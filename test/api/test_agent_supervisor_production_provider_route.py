@@ -14,8 +14,10 @@ Acceptance (fail-closed):
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -172,7 +174,6 @@ def _grok(request):
     assert "workspace_path" not in encoded
     return {
         "proposal": {
-            "patch": f"diff --git a/{PATH} b/{PATH}\n",
             "declared_paths": [PATH],
             "files": [
                 {
@@ -253,6 +254,153 @@ def test_production_model_assisted_invokes_only_typed_packet_route(
     assert production["packet"]
     assert production["review_chain"]
     assert production["provider_receipt"]
+
+
+def _admitted_file_proposal(*entries: tuple[str, str]) -> SimpleNamespace:
+    paths = [path for path, _content in entries]
+    return SimpleNamespace(
+        admitted=True,
+        payload={
+            "proposal": {
+                "declared_paths": paths,
+                "files": [
+                    {"path": path, "content": content}
+                    for path, content in entries
+                ],
+            }
+        },
+    )
+
+
+def test_production_writer_rejects_path_aliases_symlinks_and_nested_repositories(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    workspace = daemon.repo_root
+    target = workspace / PATH
+    original = target.read_bytes()
+
+    writer = daemon._make_production_workspace_writer(
+        workspace,
+        task=_task(),
+        expected_lease_id="lease:writer-paths",
+    )
+    alias = _admitted_file_proposal((f"./{PATH}", "alias\n"))
+    with pytest.raises(RuntimeError, match="canonical relative path"):
+        writer(alias, "lease:writer-paths")
+    assert target.read_bytes() == original
+
+    outside = tmp_path / "outside.py"
+    outside.write_text("outside\n", encoding="utf-8")
+    target.unlink()
+    target.symlink_to(outside)
+    with pytest.raises(RuntimeError, match="symlink write target"):
+        writer(_admitted_file_proposal((PATH, "escaped\n")), "lease:writer-paths")
+    assert outside.read_text(encoding="utf-8") == "outside\n"
+
+    nested_path = "nested/target.py"
+    nested = workspace / "nested"
+    nested.mkdir()
+    (nested / ".git").write_text("gitdir: elsewhere\n", encoding="utf-8")
+    (nested / "target.py").write_text("nested baseline\n", encoding="utf-8")
+    nested_writer = daemon._make_production_workspace_writer(
+        workspace,
+        task=_task(outputs=[nested_path]),
+        expected_lease_id="lease:nested-repo",
+    )
+    with pytest.raises(RuntimeError, match="nested repository path"):
+        nested_writer(
+            _admitted_file_proposal((nested_path, "nested replacement\n")),
+            "lease:nested-repo",
+        )
+    assert (nested / "target.py").read_text(encoding="utf-8") == (
+        "nested baseline\n"
+    )
+
+
+def test_production_writer_rolls_back_all_files_after_partial_replace_failure(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    workspace = daemon.repo_root
+    second_path = "second.py"
+    first = workspace / PATH
+    second = workspace / second_path
+    second.write_text("second baseline\n", encoding="utf-8")
+    first_before = first.read_bytes()
+    second_before = second.read_bytes()
+    writer = daemon._make_production_workspace_writer(
+        workspace,
+        task=_task(outputs=[PATH, second_path]),
+        expected_lease_id="lease:transaction",
+    )
+
+    real_replace = os.replace
+    failed = False
+
+    def fail_second_once(source, destination):
+        nonlocal failed
+        if Path(destination) == second and not failed:
+            failed = True
+            raise OSError("injected second replacement failure")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", fail_second_once)
+    with pytest.raises(RuntimeError, match="transactional file replacement failed"):
+        writer(
+            _admitted_file_proposal(
+                (PATH, "first replacement\n"),
+                (second_path, "second replacement\n"),
+            ),
+            "lease:transaction",
+        )
+
+    assert failed
+    assert first.read_bytes() == first_before
+    assert second.read_bytes() == second_before
+    assert not list(workspace.rglob(".production-provider-write-*"))
+
+
+def test_production_writer_requires_one_exact_declared_representation(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    workspace = daemon.repo_root
+    target = workspace / PATH
+    original = target.read_bytes()
+    writer = daemon._make_production_workspace_writer(
+        workspace,
+        task=_task(),
+        expected_lease_id="lease:representation",
+    )
+    ambiguous = SimpleNamespace(
+        admitted=True,
+        payload={
+            "proposal": {
+                "declared_paths": [PATH],
+                "files": [{"path": PATH, "content": "replacement\n"}],
+                "patch": f"diff --git a/{PATH} b/{PATH}\n",
+            }
+        },
+    )
+    with pytest.raises(RuntimeError, match="both file replacements and a patch"):
+        writer(ambiguous, "lease:representation")
+
+    extra_declared = SimpleNamespace(
+        admitted=True,
+        payload={
+            "proposal": {
+                "declared_paths": [PATH, "unused.py"],
+                "files": [{"path": PATH, "content": "replacement\n"}],
+            }
+        },
+    )
+    with pytest.raises(RuntimeError, match="must exactly match replacements"):
+        writer(extra_declared, "lease:representation")
+    assert target.read_bytes() == original
 
 
 def test_production_route_forbids_raw_implementation_command(

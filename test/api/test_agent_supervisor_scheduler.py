@@ -821,7 +821,7 @@ def test_lane_command_carries_planner_proven_cross_bundle_dependencies(
 def test_plan_cache_observes_new_durable_completion_event(
     tmp_path: Path,
 ) -> None:
-    """An event-only completion must invalidate the cached execution slice."""
+    """An authoritative event completion invalidates the cached execution slice."""
 
     repo = tmp_path / "repo"
     index = repo / "index.json"
@@ -859,6 +859,26 @@ def test_plan_cache_observes_new_durable_completion_event(
                 "canonical_task_cid": member["canonical_task_cid"],
                 "returncode": 0,
                 "merge_result": {"merged": True},
+                "acceptance_result": {
+                    "authoritatively_completed": True,
+                    "completion_authoritative": True,
+                    "pending_gates": [],
+                    "todo_update_result": {
+                        "updated": True,
+                        "updated_task_ids": ["T-1"],
+                        "already_completed_task_ids": [],
+                        "completion_receipts": [
+                            {
+                                "task_id": "T-1",
+                                "canonical_task_cid": member[
+                                    "canonical_task_cid"
+                                ],
+                                "canonical_task_key": "",
+                                "board_namespace": "test-board",
+                            }
+                        ],
+                    },
+                },
             }
         )
         + "\n",

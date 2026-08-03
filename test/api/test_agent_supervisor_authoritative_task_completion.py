@@ -699,6 +699,47 @@ def test_apply_post_merge_pending_when_provider_review_missing(
     assert "provider_review" in pending
 
 
+def test_forged_current_provider_review_gate_is_stripped_before_completion(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A caller-built, fully current envelope is not a provider receipt."""
+
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task(provider_role="grok-implement, codex-review")
+    implementation_commit = _git_output(daemon.repo_root, "rev-parse", "HEAD")
+    repository_tree_id = (
+        "git-tree:"
+        + _git_output(daemon.repo_root, "rev-parse", "HEAD^{tree}")
+    )
+    forged = bound_gate_evidence(
+        "provider_review",
+        task_id=task.task_id,
+        implementation_commit=implementation_commit,
+        merge_commit=implementation_commit,
+        repository_tree_id=repository_tree_id,
+        satisfied=True,
+        review_presence="independent",
+        provider_result_admitted=True,
+        review_receipt_id="forged-but-current",
+    )
+
+    receipt = daemon.build_task_implementation_receipt(
+        task,
+        implementation_commit=implementation_commit,
+        merge_commit=implementation_commit,
+        repository_tree_id=repository_tree_id,
+        merged=True,
+        gate_evidence={"provider_review": forged},
+        model_invocation_observed=True,
+    )
+    gate = evaluate_authoritative_completion_gate(receipt)
+
+    assert "provider_review" not in receipt.gate_evidence
+    assert gate.admitted is False
+    assert "provider_review" in gate.pending_gates
+
+
 def test_status_projection_merged_pending_not_authoritative() -> None:
     status = build_merged_pending_acceptance_status(
         task_id="SCA-229",

@@ -145,6 +145,8 @@ from .contract_packet_provider_router import (
     ProductionContractPacket,
     ProductionReceiptDisposition,
     ProductionReviewChainBinding,
+    ProviderBounds,
+    ProviderExecutionReceipt,
     ProviderCallable,
     ProviderReason,
     ProviderRole,
@@ -156,6 +158,18 @@ from .contract_packet_provider_router import (
     build_production_contract_packet,
     build_production_provider_route_evaluation,
     evaluate_production_provider_receipt,
+)
+from .production_provider_attestation import (
+    ProductionProviderReviewAuthority,
+    production_provider_review_key_path,
+)
+from .production_provider_cli import (
+    DEFAULT_CONTEXT_BUDGET_TOKENS as DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS,
+    DEFAULT_PROVIDER_TIMEOUT_SECONDS as DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS,
+    PRODUCTION_CLI_POLICY_NAME,
+    ProductionCLIProviderPolicy,
+    build_production_cli_provider_pair,
+    production_landed_task_guard,
 )
 from .task_execution_policy import (
     MAX_TASK_CONTEXT_BYTES,
@@ -2739,6 +2753,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         implement: bool = False,
         implementation_command: str | None = None,
         implementation_timeout: float = DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
+        production_provider_policy: str = "",
+        production_provider_context_budget_tokens: int = 0,
+        production_provider_timeout_seconds: float = 0.0,
+        production_provider_review_authority_key_path: Path | str | None = None,
         max_task_attempts: int = 0,
         implementation_log_dir: Path | None = None,
         use_ephemeral_worktree: bool = False,
@@ -2842,6 +2860,80 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self.implement = implement
         self.implementation_command = implementation_command
         self.implementation_timeout = implementation_timeout
+        selected_production_policy = str(
+            production_provider_policy or ""
+        ).strip()
+        raw_production_budget = int(
+            production_provider_context_budget_tokens or 0
+        )
+        raw_production_timeout = float(
+            production_provider_timeout_seconds or 0.0
+        )
+        if (
+            (raw_production_budget or raw_production_timeout)
+            and not selected_production_policy
+        ):
+            raise ValueError(
+                "production provider bounds require a production provider policy"
+            )
+        if (
+            production_provider_review_authority_key_path is not None
+            and not selected_production_policy
+        ):
+            raise ValueError(
+                "production provider review authority requires a production "
+                "provider policy"
+            )
+        self.production_provider_policy: ProductionCLIProviderPolicy | None = None
+        self.production_provider_policy_name = ""
+        self.production_provider_context_budget_tokens = 0
+        self.production_provider_timeout_seconds = 0.0
+        self._production_grok_provider: ProviderCallable | None = None
+        self._production_codex_provider: ProviderCallable | None = None
+        self._production_provider_bounds: ProviderBounds | None = None
+        self._production_provider_review_authority: (
+            ProductionProviderReviewAuthority | None
+        ) = None
+        self.production_provider_review_key_path = Path(
+            production_provider_review_authority_key_path
+            or production_provider_review_key_path(self.state_path)
+        )
+        if selected_production_policy:
+            policy = ProductionCLIProviderPolicy(
+                name=selected_production_policy,
+                context_budget_tokens=(
+                    raw_production_budget
+                    or DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS
+                ),
+                provider_timeout_seconds=(
+                    raw_production_timeout
+                    or DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS
+                ),
+            )
+            self.production_provider_policy = policy
+            self.production_provider_policy_name = policy.name
+            self.production_provider_context_budget_tokens = (
+                policy.context_budget_tokens
+            )
+            self.production_provider_timeout_seconds = float(
+                policy.provider_timeout_seconds
+            )
+            (
+                self._production_grok_provider,
+                self._production_codex_provider,
+            ) = build_production_cli_provider_pair(policy)
+            self._production_provider_bounds = ProviderBounds(
+                max_prompt_tokens=policy.context_budget_tokens,
+                timeout_seconds=policy.provider_timeout_seconds,
+            )
+            if self.implement:
+                authority = ProductionProviderReviewAuthority.load_or_create(
+                    self.production_provider_review_key_path
+                )
+                self._production_provider_review_authority = authority
+                self.production_provider_review_trusted_public_keys = {
+                    authority.issuer_key_id: authority.public_key_bytes
+                }
         self.max_task_attempts = max(0, int(max_task_attempts))
         self.implementation_log_dir = implementation_log_dir or self.state_path.parent / "implementation_logs"
         self.implementation_context_budget = implementation_context_budget
@@ -8868,6 +8960,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         raw_binding = value.get("admitted_review_chain_binding")
         if isinstance(raw_binding, Mapping):
             evidence["admitted_review_chain_binding"] = dict(raw_binding)
+        raw_receipt = value.get("provider_execution_receipt")
+        if isinstance(raw_receipt, Mapping):
+            evidence["provider_execution_receipt"] = dict(raw_receipt)
+        raw_attestation = value.get("provider_review_attestation")
+        if isinstance(raw_attestation, Mapping):
+            evidence["provider_review_attestation"] = dict(raw_attestation)
         receipt_id = str(value.get("provider_review_receipt_id") or "")
         if receipt_id:
             evidence["provider_review_receipt_id"] = receipt_id
@@ -9649,12 +9747,54 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         if isinstance(production_binding, ProductionReviewChainBinding):
             if production_binding.task_id == task.task_id:
+                production_binding = replace(
+                    production_binding,
+                    implementation_commit=implementation_commit,
+                    merge_commit="",
+                )
+                self._last_production_review_chain_binding = production_binding
                 metadata["admitted_review_chain_binding"] = (
                     production_binding.to_dict()
                 )
                 metadata["provider_review_receipt_id"] = (
                     production_binding.receipt_id
                 )
+                provider_receipt = getattr(
+                    self, "_last_production_provider_receipt", None
+                )
+                production_policy = getattr(
+                    self, "production_provider_policy", None
+                )
+                if isinstance(
+                    production_policy, ProductionCLIProviderPolicy
+                ):
+                    authority = getattr(
+                        self, "_production_provider_review_authority", None
+                    )
+                    if not isinstance(
+                        authority, ProductionProviderReviewAuthority
+                    ) or provider_receipt is None:
+                        raise RuntimeError(
+                            "production provider review authority or full "
+                            "execution receipt is missing"
+                        )
+                    attestation = authority.issue(
+                        provider_receipt=provider_receipt,
+                        review_chain_binding=production_binding,
+                        provider_policy_id=production_policy.policy_id,
+                        implementation_commit=implementation_commit,
+                        implementation_tree_id=repository_tree_id,
+                    )
+                    metadata["provider_execution_receipt"] = (
+                        provider_receipt.to_dict()
+                        if isinstance(
+                            provider_receipt, ProviderExecutionReceipt
+                        )
+                        else dict(provider_receipt)
+                    )
+                    metadata["provider_review_attestation"] = (
+                        attestation.to_dict()
+                    )
         elif isinstance(production_binding, Mapping):
             if str(production_binding.get("task_id") or "") == task.task_id:
                 metadata["admitted_review_chain_binding"] = dict(
@@ -10702,6 +10842,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 and self._production_provider_route_enabled(task)
             )
             production_route_payload: dict[str, Any] = {}
+            production_landed_guard: dict[str, Any] = {}
+            if use_production_route:
+                production_landed_guard = (
+                    self._production_landed_task_guard_for_workspace(
+                        task,
+                        baseline_ref=baseline_ref,
+                        workspace_path=worktree_path,
+                    )
+                )
             # SCA-615: production model-assisted work invokes only the typed
             # packet route.  The raw model CLI command is not built or run.
             command = (
@@ -10766,6 +10915,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         )
                     ),
                     "production_provider_route": use_production_route,
+                    "production_landed_task_guard": production_landed_guard,
                     "typed_packet_route_only": use_production_route,
                     "raw_model_command_invoked": False if use_production_route else (
                         not deterministic_only
@@ -10792,6 +10942,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     log_fh.write(
                         "Execution: typed local declared-validation-plan\n\n"
                     )
+                elif use_production_route and production_landed_guard.get(
+                    "guarded"
+                ):
+                    log_fh.write(
+                        "Execution: already-landed task guarded; provider "
+                        "review remains pending without reimplementation\n\n"
+                    )
                 elif use_production_route:
                     log_fh.write(
                         "Execution: production typed packet route "
@@ -10807,6 +10964,49 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     completed = subprocess.CompletedProcess(
                         args=(),
                         returncode=0,
+                    )
+                elif use_production_route and production_landed_guard.get(
+                    "guarded"
+                ):
+                    # The exact task implementation already landed. Never
+                    # invoke Grok merely to manufacture a typed receipt after
+                    # the fact, or claim a fresh Codex-only response reviewed
+                    # the original implementation provenance.
+                    guard_clean = bool(
+                        production_landed_guard.get("workspace_clean")
+                    )
+                    production_route_payload = {
+                        "returncode": 0 if guard_clean else 1,
+                        "pending": True,
+                        "disposition": "provider_review_pending",
+                        "disposition_reason": str(
+                            production_landed_guard.get("reason") or ""
+                        ),
+                        "event": {
+                            "provider_result_admitted": False,
+                            "review_presence": ReviewPresence.ABSENT.value,
+                            "write_performed": False,
+                            "raw_model_command_invoked": False,
+                            "typed_packet_route_only": True,
+                            "landed_task_guard": dict(
+                                production_landed_guard
+                            ),
+                        },
+                        "landed_task_guard": dict(production_landed_guard),
+                        "raw_model_command_invoked": False,
+                        "typed_packet_route_only": True,
+                    }
+                    self._record_event(
+                        "production_provider_landed_task_guarded",
+                        {
+                            "task_id": task.task_id,
+                            "attempt": int(attempt),
+                            **production_landed_guard,
+                        },
+                    )
+                    completed = subprocess.CompletedProcess(
+                        args=("production-landed-task-guard",),
+                        returncode=int(production_route_payload["returncode"]),
                     )
                 elif use_production_route:
                     # Injected production providers (tests/operators) may be
@@ -10840,14 +11040,23 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                     "_production_deterministic_provider",
                                     None,
                                 ),
+                                bounds=getattr(
+                                    self, "_production_provider_bounds", None
+                                ),
                             ),
                         )
                     )
+                    production_returncode = production_route_payload.get(
+                        "returncode"
+                    )
+                    if (
+                        isinstance(production_returncode, bool)
+                        or not isinstance(production_returncode, int)
+                    ):
+                        production_returncode = 1
                     completed = subprocess.CompletedProcess(
                         args=("production-provider-route",),
-                        returncode=int(
-                            production_route_payload.get("returncode") or 1
-                        ),
+                        returncode=production_returncode,
                     )
                     route_event = dict(
                         production_route_payload.get("event") or {}
@@ -17771,24 +17980,29 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if task is None or self._task_uses_typed_local_execution(task):
             return False
 
+        operator_policy = self.production_provider_policy
         raw_role = self._task_metadata_value(task, "provider role")
-        if not raw_role:
-            return False
-        roles = {
-            item.strip().lower()
-            for item in re.split(r"[,;]", raw_role)
-            if item.strip()
-        }
+        roles = (
+            {
+                item.strip().lower()
+                for item in re.split(r"[,;]", raw_role)
+                if item.strip()
+            }
+            if raw_role
+            else set()
+        )
         production_roles = {
             ProviderRole.GROK_IMPLEMENT.value,
             "codex-review",
         }
-        if roles != production_roles:
+        if roles and roles != production_roles:
             raise ImplementationRetryDeferred(
                 "model-assisted provider role must be exactly "
                 "'grok-implement, codex-review' or omitted",
                 backoff_seconds=300,
             )
+        if not roles and operator_policy is None:
+            return False
 
         missing_fields: list[str] = []
         if not task.outputs:
@@ -17797,14 +18011,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             missing_fields.append("validation")
         if not str(task.acceptance or "").strip():
             missing_fields.append("acceptance")
-        raw_context_budget = self._task_metadata_value(
-            task,
-            "context budget tokens",
-        )
-        try:
-            context_budget = int(raw_context_budget)
-        except (TypeError, ValueError):
-            context_budget = 0
+        raw_context_budget = self._task_metadata_value(task, "context budget tokens")
+        if operator_policy is not None and not raw_context_budget:
+            context_budget = operator_policy.context_budget_tokens
+        else:
+            try:
+                context_budget = int(raw_context_budget)
+            except (TypeError, ValueError):
+                context_budget = 0
         if context_budget < 1:
             missing_fields.append("positive context budget tokens")
         if missing_fields:
@@ -17824,6 +18038,64 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 backoff_seconds=300,
             )
         return True
+
+    def _production_landed_task_guard_for_workspace(
+        self,
+        task: PortalTask,
+        *,
+        baseline_ref: str,
+        workspace_path: Path,
+    ) -> dict[str, Any]:
+        """Recognize exact landed work before any production model invocation."""
+
+        baseline = str(baseline_ref or "").strip()
+        baseline_tree = self._candidate_repository_tree(baseline)
+        repository_tree_id = f"git-tree:{baseline_tree}" if baseline_tree else ""
+        recovery = (
+            self._recover_no_change_implementation_binding(
+                task,
+                merge_commit=baseline,
+                repository_tree_id=repository_tree_id,
+            )
+            if baseline and repository_tree_id
+            else {
+                "recovered": False,
+                "reason": "baseline_identity_missing",
+            }
+        )
+        status = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            cwd=workspace_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        workspace_clean = status.returncode == 0 and not status.stdout.strip()
+        raw_evidence = recovery.get("gate_evidence")
+        evidence = dict(raw_evidence) if isinstance(raw_evidence, Mapping) else {}
+        typed_receipt_available = all(
+            isinstance(evidence.get(key), Mapping)
+            for key in (
+                "provider_execution_receipt",
+                "admitted_review_chain_binding",
+                "provider_review_attestation",
+            )
+        )
+        guard = production_landed_task_guard(
+            recovered_binding=recovery,
+            workspace_clean=workspace_clean,
+            typed_provider_receipt_available=typed_receipt_available,
+        )
+        return {
+            **guard,
+            "task_id": task.task_id,
+            "baseline_ref": baseline,
+            "repository_tree_id": repository_tree_id,
+            "workspace_clean": workspace_clean,
+            "recovery_reason": str(recovery.get("reason") or ""),
+            "recovery_source": str(recovery.get("source") or ""),
+            "recovered_gate_evidence_keys": sorted(evidence),
+        }
 
     def _current_production_snapshot_id(
         self,
@@ -17932,11 +18204,26 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         has_files = isinstance(body.get("files"), (list, tuple)) and bool(
             body.get("files")
         )
-        has_decision = str(payload.get("decision") or "").strip() != ""
         role = getattr(proposal, "role", None)
         role_value = str(getattr(role, "value", role) or "")
         if role_value == ProviderRole.CODEX_REVIEW.value:
-            if not has_decision and not has_patch and not has_files:
+            decision = payload.get("decision")
+            if not isinstance(decision, str) or decision not in {
+                "approve",
+                "reject",
+            }:
+                return {
+                    "accepted": False,
+                    "reason_code": ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
+                }
+            findings = payload.get("findings", [])
+            if not isinstance(findings, list):
+                return {
+                    "accepted": False,
+                    "reason_code": ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
+                }
+            repaired = payload.get("proposal")
+            if repaired not in (None, {}):
                 return {
                     "accepted": False,
                     "reason_code": ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
@@ -17964,12 +18251,243 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     ) -> WriterCallable:
         """Return a fenced writer that applies only an admitted proposal."""
 
-        allowed = {
-            str(path).strip().lstrip("./")
-            for path in (task.outputs or ())
-            if str(path).strip()
-        }
         workspace = workspace_path.resolve()
+        if not workspace.is_dir():
+            raise RuntimeError("production workspace must be an existing directory")
+
+        def canonical_relative_path(value: Any, *, label: str) -> str:
+            if not isinstance(value, str):
+                raise RuntimeError(f"{label} must be a string")
+            if (
+                not value
+                or value != value.strip()
+                or "\x00" in value
+                or "\\" in value
+            ):
+                raise RuntimeError(f"{label} is not a canonical relative path")
+            path = PurePosixPath(value)
+            if (
+                path.is_absolute()
+                or value in {".", ".."}
+                or ".." in path.parts
+                or (path.parts and path.parts[0].endswith(":"))
+                or path.as_posix() != value
+                or posixpath.normpath(value) != value
+            ):
+                raise RuntimeError(f"{label} is not a canonical relative path")
+            return value
+
+        allowed_paths = [
+            canonical_relative_path(path, label="task output path")
+            for path in (task.outputs or ())
+        ]
+        if len(allowed_paths) != len(set(allowed_paths)):
+            raise RuntimeError("duplicate task output path")
+        allowed = set(allowed_paths)
+        if not allowed:
+            raise RuntimeError("production writer requires explicit task output paths")
+
+        def safe_target(
+            rel: str,
+            *,
+            create_parents: bool = False,
+            created_dirs: list[Path] | None = None,
+        ) -> Path:
+            if ".git" in PurePosixPath(rel).parts:
+                raise RuntimeError(f"git administrative path forbidden: {rel}")
+            target = workspace.joinpath(*PurePosixPath(rel).parts)
+            current = workspace
+            for part in PurePosixPath(rel).parts[:-1]:
+                current = current / part
+                try:
+                    info = os.lstat(current)
+                except FileNotFoundError:
+                    if not create_parents:
+                        break
+                    try:
+                        current.mkdir(mode=0o755)
+                        if created_dirs is not None:
+                            created_dirs.append(current)
+                    except FileExistsError:
+                        pass
+                    info = os.lstat(current)
+                if stat_module.S_ISLNK(info.st_mode):
+                    raise RuntimeError(f"symlink path component forbidden: {rel}")
+                if not stat_module.S_ISDIR(info.st_mode):
+                    raise RuntimeError(f"non-directory path component: {rel}")
+                # The outer worktree has its own .git file/directory.  Any
+                # further repository boundary belongs to a submodule/nested
+                # checkout and requires its own separately verified protocol.
+                try:
+                    os.lstat(current / ".git")
+                except FileNotFoundError:
+                    pass
+                else:
+                    raise RuntimeError(f"nested repository path forbidden: {rel}")
+            try:
+                target_info = os.lstat(target)
+            except FileNotFoundError:
+                return target
+            if stat_module.S_ISLNK(target_info.st_mode):
+                raise RuntimeError(f"symlink write target forbidden: {rel}")
+            if not stat_module.S_ISREG(target_info.st_mode):
+                raise RuntimeError(f"non-regular write target forbidden: {rel}")
+            return target
+
+        def snapshot_targets(paths: Sequence[str]) -> dict[str, tuple[bytes, int] | None]:
+            snapshots: dict[str, tuple[bytes, int] | None] = {}
+            for rel in paths:
+                target = safe_target(rel)
+                try:
+                    info = os.lstat(target)
+                except FileNotFoundError:
+                    snapshots[rel] = None
+                else:
+                    snapshots[rel] = (
+                        target.read_bytes(),
+                        stat_module.S_IMODE(info.st_mode),
+                    )
+            return snapshots
+
+        def stage_bytes(target: Path, content: bytes, mode: int) -> Path:
+            fd, temporary_name = tempfile.mkstemp(
+                prefix=".production-provider-write-",
+                dir=target.parent,
+            )
+            temporary = Path(temporary_name)
+            try:
+                os.fchmod(fd, mode)
+                remaining = memoryview(content)
+                while remaining:
+                    written = os.write(fd, remaining)
+                    if written <= 0:
+                        raise OSError("short production-provider file write")
+                    remaining = remaining[written:]
+                os.fsync(fd)
+            except BaseException:
+                os.close(fd)
+                temporary.unlink(missing_ok=True)
+                raise
+            os.close(fd)
+            return temporary
+
+        def restore_targets(
+            snapshots: Mapping[str, tuple[bytes, int] | None],
+        ) -> list[str]:
+            failures: list[str] = []
+            for rel, original in reversed(tuple(snapshots.items())):
+                target = workspace.joinpath(*PurePosixPath(rel).parts)
+                try:
+                    if original is None:
+                        target.unlink(missing_ok=True)
+                    else:
+                        content, mode = original
+                        temporary = stage_bytes(target, content, mode)
+                        try:
+                            os.replace(temporary, target)
+                        finally:
+                            temporary.unlink(missing_ok=True)
+                except BaseException as exc:  # best-effort rollback audit detail
+                    failures.append(f"{rel}: {type(exc).__name__}: {exc}")
+            return failures
+
+        def clean_created_dirs(created_dirs: Sequence[Path]) -> list[str]:
+            failures: list[str] = []
+            for directory in reversed(tuple(created_dirs)):
+                try:
+                    directory.rmdir()
+                except FileNotFoundError:
+                    pass
+                except OSError as exc:
+                    failures.append(
+                        f"{directory.relative_to(workspace)}: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+            return failures
+
+        def missing_parent_dirs(paths: Sequence[str]) -> list[Path]:
+            missing: list[Path] = []
+            for rel in paths:
+                current = workspace
+                for part in PurePosixPath(rel).parts[:-1]:
+                    current = current / part
+                    if current.exists():
+                        continue
+                    if current not in missing:
+                        missing.append(current)
+            return missing
+
+        def fsync_paths(paths: Sequence[str]) -> None:
+            parents: set[Path] = set()
+            for rel in paths:
+                target = safe_target(rel)
+                parents.add(target.parent)
+                try:
+                    descriptor = os.open(
+                        target,
+                        os.O_RDONLY
+                        | getattr(os, "O_CLOEXEC", 0)
+                        | getattr(os, "O_NOFOLLOW", 0),
+                    )
+                except FileNotFoundError:
+                    continue
+                try:
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
+            for parent in parents:
+                descriptor = os.open(
+                    parent,
+                    os.O_RDONLY
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_DIRECTORY", 0)
+                    | getattr(os, "O_NOFOLLOW", 0),
+                )
+                try:
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
+
+        def patch_paths(patch: str) -> tuple[str, ...]:
+            paths: list[str] = []
+
+            def add(raw: str, *, prefix: str = "") -> None:
+                candidate = raw
+                if candidate == "/dev/null":
+                    return
+                if prefix:
+                    if not candidate.startswith(prefix):
+                        raise RuntimeError("patch path prefix is malformed")
+                    candidate = candidate[len(prefix):]
+                rel = canonical_relative_path(candidate, label="patch path")
+                if rel not in paths:
+                    paths.append(rel)
+
+            for line in patch.splitlines():
+                if line.startswith("diff --git "):
+                    try:
+                        tokens = shlex.split(line, posix=True)
+                    except ValueError as exc:
+                        raise RuntimeError("patch header is malformed") from exc
+                    if len(tokens) != 4 or tokens[:2] != ["diff", "--git"]:
+                        raise RuntimeError("patch header is malformed")
+                    add(tokens[2], prefix="a/")
+                    add(tokens[3], prefix="b/")
+                elif line.startswith("--- "):
+                    add(line[4:].split("\t", 1)[0], prefix="a/")
+                elif line.startswith("+++ "):
+                    add(line[4:].split("\t", 1)[0], prefix="b/")
+                elif line.startswith("rename from "):
+                    add(line[len("rename from "):])
+                elif line.startswith("rename to "):
+                    add(line[len("rename to "):])
+                elif line.startswith("copy from "):
+                    add(line[len("copy from "):])
+                elif line.startswith("copy to "):
+                    add(line[len("copy to "):])
+            if not paths:
+                raise RuntimeError("patch does not declare a canonical path")
+            return tuple(paths)
 
         def writer(proposal: Any, lease_id: str) -> None:
             if str(lease_id or "") != str(expected_lease_id or ""):
@@ -17987,41 +18505,113 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             ):
                 body = nested
             declared = body.get("declared_paths")
-            declared_paths = (
-                [str(item).strip().lstrip("./") for item in declared]
-                if isinstance(declared, (list, tuple))
-                else []
-            )
+            if declared is not None and not isinstance(declared, (list, tuple)):
+                raise RuntimeError("declared_paths must be an array")
+            declared_paths = [
+                canonical_relative_path(item, label="declared proposal path")
+                for item in (declared or ())
+            ]
+            if len(declared_paths) != len(set(declared_paths)):
+                raise RuntimeError("duplicate declared proposal path")
             files = body.get("files")
+            patch_value = body.get("patch")
+            if files is not None and not isinstance(files, (list, tuple)):
+                raise RuntimeError("files must be an array")
+            if (
+                isinstance(files, (list, tuple))
+                and bool(files)
+                and isinstance(patch_value, str)
+                and bool(patch_value.strip())
+            ):
+                raise RuntimeError(
+                    "proposal cannot contain both file replacements and a patch"
+                )
             if isinstance(files, (list, tuple)):
+                replacements: list[tuple[str, bytes]] = []
+                seen_paths: set[str] = set()
                 for item in files:
                     if not isinstance(item, Mapping):
                         raise RuntimeError("file replacement entry malformed")
-                    rel = str(
-                        item.get("path") or item.get("file") or ""
-                    ).strip().lstrip("./")
-                    if not rel:
-                        raise RuntimeError("file replacement path required")
-                    if allowed and rel not in allowed:
+                    raw_path = item.get("path")
+                    if raw_path is None:
+                        raw_path = item.get("file")
+                    rel = canonical_relative_path(
+                        raw_path,
+                        label="file replacement path",
+                    )
+                    if rel in seen_paths:
+                        raise RuntimeError(f"duplicate file replacement path: {rel}")
+                    seen_paths.add(rel)
+                    if rel not in allowed:
                         raise RuntimeError(f"write path out of task scope: {rel}")
                     if declared_paths and rel not in declared_paths:
                         raise RuntimeError(
                             f"write path not declared on proposal: {rel}"
                         )
-                    target = (workspace / rel).resolve()
-                    if workspace not in target.parents and target != workspace:
-                        raise RuntimeError(f"path escape: {rel}")
-                    target.parent.mkdir(parents=True, exist_ok=True)
+                    safe_target(rel)
                     content = item.get("content")
                     if content is None:
                         content = item.get("new_content")
-                    if content is None:
+                    if not isinstance(content, str):
                         raise RuntimeError(f"missing content for {rel}")
-                    target.write_text(str(content), encoding="utf-8")
+                    replacements.append((rel, content.encode("utf-8")))
+                if not replacements:
+                    raise RuntimeError("file replacement array is empty")
+                if set(declared_paths) != seen_paths:
+                    raise RuntimeError(
+                        "declared proposal paths must exactly match replacements"
+                    )
+
+                # Validate and stage every replacement before changing any
+                # target, then restore the complete snapshot on any failure.
+                snapshots = snapshot_targets([rel for rel, _ in replacements])
+                staged: list[tuple[str, Path]] = []
+                created_dirs: list[Path] = []
+                try:
+                    for rel, content in replacements:
+                        target = safe_target(
+                            rel,
+                            create_parents=True,
+                            created_dirs=created_dirs,
+                        )
+                        original = snapshots[rel]
+                        mode = original[1] if original is not None else 0o644
+                        staged.append((rel, stage_bytes(target, content, mode)))
+                    for rel, temporary in staged:
+                        target = safe_target(rel)
+                        os.replace(temporary, target)
+                    fsync_paths([rel for rel, _content in replacements])
+                except BaseException as exc:
+                    rollback_failures = restore_targets(snapshots)
+                    rollback_failures.extend(clean_created_dirs(created_dirs))
+                    detail = (
+                        "; rollback failures: " + "; ".join(rollback_failures)
+                        if rollback_failures
+                        else ""
+                    )
+                    raise RuntimeError(
+                        f"transactional file replacement failed: {exc}{detail}"
+                    ) from exc
+                finally:
+                    for _rel, temporary in staged:
+                        temporary.unlink(missing_ok=True)
                 return
-            patch = str(body.get("patch") or "").strip()
+            if patch_value is not None and not isinstance(patch_value, str):
+                raise RuntimeError("patch must be a string")
+            patch = (patch_value or "").strip()
             if not patch:
                 raise RuntimeError("admitted proposal has no apply payload")
+            if re.search(r"(?m)^(?:old|new) mode 120000$", patch):
+                raise RuntimeError("patch may not create or modify symbolic links")
+            parsed_names = patch_paths(patch)
+            for rel in parsed_names:
+                if rel not in allowed:
+                    raise RuntimeError(f"patch path out of task scope: {rel}")
+                if declared_paths and rel not in declared_paths:
+                    raise RuntimeError(
+                        f"patch path not declared on proposal: {rel}"
+                    )
+                safe_target(rel)
             # Bounded unified-diff apply; reject paths outside task scope.
             proc = subprocess.run(
                 ["git", "apply", "--check", "--whitespace=nowarn", "-"],
@@ -18054,18 +18644,43 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 check=False,
             )
             names = [
-                line.strip().lstrip("./")
+                canonical_relative_path(line, label="git-reported patch path")
                 for line in (name_proc.stdout or "").splitlines()
-                if line.strip()
+                if line
             ]
             if not names and path_proc.returncode == 0:
                 for line in (path_proc.stdout or "").splitlines():
                     parts = line.split("\t")
                     if len(parts) >= 3:
-                        names.append(parts[-1].strip().lstrip("./"))
+                        names.append(
+                            canonical_relative_path(
+                                parts[-1],
+                                label="git-reported patch path",
+                            )
+                        )
+            if name_proc.returncode != 0 or not names:
+                raise RuntimeError("git could not enumerate patch paths")
+            if len(names) != len(set(names)):
+                raise RuntimeError("git reported duplicate patch paths")
+            if set(parsed_names) != set(names):
+                raise RuntimeError(
+                    "parsed patch paths do not match git-reported paths"
+                )
+            if set(declared_paths) != set(names):
+                raise RuntimeError(
+                    "declared proposal paths must exactly match patch paths"
+                )
             for rel in names:
-                if allowed and rel not in allowed:
+                if rel not in allowed:
                     raise RuntimeError(f"patch path out of task scope: {rel}")
+                if declared_paths and rel not in declared_paths:
+                    raise RuntimeError(
+                        f"patch path not declared on proposal: {rel}"
+                    )
+                safe_target(rel)
+            transactional_paths = tuple(dict.fromkeys((*parsed_names, *names)))
+            snapshots = snapshot_targets(transactional_paths)
+            absent_parent_dirs = missing_parent_dirs(transactional_paths)
             apply_proc = subprocess.run(
                 ["git", "apply", "--whitespace=nowarn", "-"],
                 cwd=workspace,
@@ -18075,10 +18690,35 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 check=False,
             )
             if apply_proc.returncode != 0:
+                rollback_failures = restore_targets(snapshots)
+                rollback_failures.extend(clean_created_dirs(absent_parent_dirs))
+                rollback_detail = (
+                    "; rollback failures: " + "; ".join(rollback_failures)
+                    if rollback_failures
+                    else ""
+                )
                 raise RuntimeError(
                     "patch apply failed: "
                     f"{apply_proc.stderr[-500:] or apply_proc.stdout[-500:]}"
+                    f"{rollback_detail}"
                 )
+            try:
+                for rel in snapshots:
+                    target = workspace.joinpath(*PurePosixPath(rel).parts)
+                    if target.exists():
+                        safe_target(rel)
+                fsync_paths(transactional_paths)
+            except BaseException as exc:
+                rollback_failures = restore_targets(snapshots)
+                rollback_failures.extend(clean_created_dirs(absent_parent_dirs))
+                detail = (
+                    "; rollback failures: " + "; ".join(rollback_failures)
+                    if rollback_failures
+                    else ""
+                )
+                raise RuntimeError(
+                    f"unsafe patch result: {exc}{detail}"
+                ) from exc
 
         return writer
 
@@ -18123,6 +18763,42 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 if not self._production_provider_route_enabled()
                 else "production provider route disabled"
             )
+
+        operator_policy = getattr(self, "production_provider_policy", None)
+        if isinstance(operator_policy, ProductionCLIProviderPolicy):
+            expected_grok = getattr(self, "_production_grok_provider", None)
+            expected_codex = getattr(self, "_production_codex_provider", None)
+            expected_bounds = getattr(self, "_production_provider_bounds", None)
+            if grok_provider is None:
+                grok_provider = expected_grok
+            elif grok_provider is not expected_grok:
+                raise RuntimeError(
+                    "configured production policy forbids Grok provider override"
+                )
+            if codex_provider is None:
+                codex_provider = expected_codex
+            elif codex_provider is not expected_codex:
+                raise RuntimeError(
+                    "configured production policy forbids Codex provider override"
+                )
+            if deterministic_provider is not None:
+                raise RuntimeError(
+                    "configured production policy forbids deterministic fallback"
+                )
+            if admission_gate is not None or writer is not None:
+                raise RuntimeError(
+                    "configured production policy forbids trust-boundary overrides"
+                )
+            if bounds is None:
+                bounds = expected_bounds
+            elif bounds is not expected_bounds:
+                raise RuntimeError(
+                    "configured production policy forbids provider bounds override"
+                )
+            if grok_quota is not None or codex_quota is not None or local_only:
+                raise RuntimeError(
+                    "configured production policy forbids routing-policy overrides"
+                )
 
         current_snapshot = str(snapshot_id or "").strip() or (
             self._current_production_snapshot_id(
@@ -18197,6 +18873,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
 
         receipt = route_result.provider_receipt
+        self._last_production_provider_receipt = receipt
+        policy = getattr(self, "production_provider_policy", None)
+        self._last_production_provider_policy_id = (
+            policy.policy_id
+            if isinstance(policy, ProductionCLIProviderPolicy)
+            else ""
+        )
         disposition, disposition_reason = evaluate_production_provider_receipt(
             receipt,
             expected_task_id=task.task_id,
@@ -28501,6 +29184,43 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--production-provider-policy",
+        default="",
+        choices=("", PRODUCTION_CLI_POLICY_NAME),
+        help=(
+            "Operator overlay for bounded Grok implementation followed by "
+            "independent Codex review; task metadata is not rewritten."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-context-budget-tokens",
+        type=int,
+        default=0,
+        help=(
+            "Positive production packet context budget. Zero selects the "
+            f"policy default ({DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS})."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-timeout-seconds",
+        type=float,
+        default=0.0,
+        help=(
+            "Bounded per-provider timeout. Zero selects the policy default "
+            f"({DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS:g}s)."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-review-authority-key-path",
+        type=Path,
+        default=None,
+        help=(
+            "Operator-controlled Ed25519 private-key file shared by all "
+            "production-provider lanes. The key bytes are never written to "
+            "task, receipt, or event metadata."
+        ),
+    )
+    parser.add_argument(
         "--implementation-protected-path",
         action="append",
         default=[],
@@ -28819,6 +29539,16 @@ def main(argv: list[str] | None = None) -> None:
         implement=args.implement,
         implementation_command=args.implementation_command or None,
         implementation_timeout=args.implementation_timeout,
+        production_provider_policy=args.production_provider_policy,
+        production_provider_context_budget_tokens=(
+            args.production_provider_context_budget_tokens
+        ),
+        production_provider_timeout_seconds=(
+            args.production_provider_timeout_seconds
+        ),
+        production_provider_review_authority_key_path=(
+            args.production_provider_review_authority_key_path
+        ),
         max_task_attempts=args.max_task_attempts,
         use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,

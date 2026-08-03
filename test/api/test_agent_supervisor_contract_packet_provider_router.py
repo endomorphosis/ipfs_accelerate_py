@@ -182,6 +182,7 @@ def test_no_provider_receives_repository_path_corpus_or_expansion_bodies() -> No
         "task_id",
         "provider_input",
         "bounds",
+        "response_contract",
         "authority",
     }
     assert seen[0]["authority"]["repository_write_allowed"] is False
@@ -243,7 +244,7 @@ def test_provider_cannot_change_proof_or_completion(
     assert writes == []
 
 
-def test_review_repair_must_be_admitted_before_the_single_write() -> None:
+def test_review_repair_requires_a_further_review_and_never_writes() -> None:
     admissions = []
     writes = []
 
@@ -270,10 +271,11 @@ def test_review_repair_must_be_admitted_before_the_single_write() -> None:
         ProviderRole.GROK_IMPLEMENT,
         ProviderRole.CODEX_REVIEW,
     ]
-    assert len(writes) == 1
-    assert writes[0][0].role is ProviderRole.CODEX_REVIEW
-    assert writes[0][0].payload["patch"] == "codex repair"
-    assert result.selected_proposal is writes[0][0]
+    assert writes == []
+    assert result.status is RouteStatus.REJECTED
+    assert result.reason_code == ProviderReason.REVIEW_REJECTED.value
+    assert result.selected_proposal is None
+    assert not result.write_performed
 
 
 def test_missing_admission_or_writer_lease_never_writes() -> None:
@@ -333,7 +335,7 @@ def test_grok_quota_without_fallback_defers_with_typed_reason() -> None:
     assert result.reason_code == ProviderReason.GROK_QUOTA_EXHAUSTED.value
 
 
-def test_codex_quota_falls_back_to_already_admitted_grok_independently() -> None:
+def test_codex_quota_preserves_grok_as_evidence_without_writing() -> None:
     writes = []
     router = ImplementationProviderRouter(
         grok_provider=_grok,
@@ -352,8 +354,8 @@ def test_codex_quota_falls_back_to_already_admitted_grok_independently() -> None
 
     assert result.status is RouteStatus.FALLBACK
     assert result.reason_code == ProviderReason.CODEX_QUOTA_EXHAUSTED.value
-    assert result.write_performed and len(writes) == 1
-    assert writes[0][0].role is ProviderRole.GROK_IMPLEMENT
+    assert not result.write_performed
+    assert writes == []
     assert router.grok_quota.attempts == 1
     assert router.codex_quota.attempts == 0
 

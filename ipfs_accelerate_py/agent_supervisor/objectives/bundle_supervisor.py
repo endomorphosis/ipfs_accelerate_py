@@ -66,6 +66,15 @@ from ..runtime.resource_scheduler import (
     sample_host_resources,
 )
 from ..todo_daemon.supervisor import active_codex_exec_workers
+from ..todo_daemon.production_provider_attestation import (
+    DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME,
+)
+from ..todo_daemon.production_provider_cli import (
+    DEFAULT_CONTEXT_BUDGET_TOKENS as DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS,
+    DEFAULT_PROVIDER_TIMEOUT_SECONDS as DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS,
+    PRODUCTION_CLI_POLICY_NAME,
+    ProductionCLIProviderPolicy,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -230,6 +239,11 @@ def bundle_member_completion_receipts(state_root: Path) -> dict[str, dict[str, A
     shard is regenerated without rewriting the reviewed shard.
 
     New events carry one canonical ``completion_receipts`` entry per member.
+    A successful merge event is only terminal when it also carries the
+    authoritative acceptance packet that performed that board mutation.  A
+    raw ``returncode == 0``/``merged == true`` pair is integration evidence,
+    not completion authority, and must not drain a regenerated execution
+    lane.
     Legacy packet-aggregate events only carried the primary canonical CID plus
     ``updated_task_ids``/``already_completed_task_ids``.  For those events,
     explicit canonical identities are recovered from the generated board named
@@ -241,6 +255,16 @@ def bundle_member_completion_receipts(state_root: Path) -> dict[str, dict[str, A
         for event in read_jsonl_events(source):
             event_type = str(event.get("type") or "")
             task_id = str(event.get("task_id") or "")
+            acceptance_result = (
+                event.get("acceptance_result")
+                if isinstance(event.get("acceptance_result"), Mapping)
+                else {}
+            )
+            todo_update = (
+                acceptance_result.get("todo_update_result")
+                if isinstance(acceptance_result.get("todo_update_result"), Mapping)
+                else {}
+            )
             completed = False
             if event_type == "todo_status_updated":
                 completed_ids = {
@@ -251,19 +275,41 @@ def bundle_member_completion_receipts(state_root: Path) -> dict[str, dict[str, A
                 completed = bool(event.get("updated")) or bool(task_id and task_id in completed_ids)
             elif event_type == "implementation_finished":
                 merge_result = event.get("merge_result")
+                authoritative_member_receipts = (
+                    todo_update.get("completion_receipts")
+                    or todo_update.get("member_completion_receipts")
+                )
+                authoritative_completed_ids = {
+                    str(item)
+                    for key in ("updated_task_ids", "already_completed_task_ids")
+                    for item in (todo_update.get(key) or [])
+                    if str(item)
+                }
+                task_has_canonical_receipt = any(
+                    isinstance(item, Mapping)
+                    and str(item.get("task_id") or "") == task_id
+                    and bool(str(item.get("canonical_task_cid") or ""))
+                    for item in (
+                        authoritative_member_receipts
+                        if isinstance(authoritative_member_receipts, list)
+                        else []
+                    )
+                )
                 completed = (
                     event.get("returncode") == 0
                     and isinstance(merge_result, dict)
                     and merge_result.get("merged") is True
+                    and acceptance_result.get("authoritatively_completed") is True
+                    and acceptance_result.get("completion_authoritative") is True
+                    and not acceptance_result.get("pending_gates")
+                    and task_id in authoritative_completed_ids
+                    and task_has_canonical_receipt
                 )
             if not completed:
                 continue
 
-            todo_update = (
-                event.get("todo_update_result")
-                if isinstance(event.get("todo_update_result"), Mapping)
-                else {}
-            )
+            if event_type == "todo_status_updated":
+                todo_update = event
             completion_payload = event if event_type == "todo_status_updated" else todo_update
             raw_member_receipts = completion_payload.get(
                 "completion_receipts"
@@ -2387,6 +2433,10 @@ def implementation_supervisor_command(
     implementation_timeout: float,
     max_task_attempts: int = 0,
     implementation_command: str = "",
+    production_provider_policy: str = "",
+    production_provider_context_budget_tokens: int = 0,
+    production_provider_timeout_seconds: float = 0.0,
+    production_provider_review_authority_key_path: Path | None = None,
     merge_target_branch: str = "",
     llm_merge_resolver_command: str = "",
     llm_merge_resolver_timeout_seconds: float | None = None,
@@ -2453,6 +2503,28 @@ def implementation_supervisor_command(
     command.append("--implement" if implement else "--no-implement")
     if implementation_command:
         command.extend(["--implementation-command", implementation_command])
+    if production_provider_policy:
+        review_authority_key_path = (
+            production_provider_review_authority_key_path
+            or state_dir.parent / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
+        )
+        command.extend(
+            [
+                "--production-provider-policy",
+                production_provider_policy,
+                "--production-provider-context-budget-tokens",
+                str(int(production_provider_context_budget_tokens)),
+                "--production-provider-timeout-seconds",
+                str(
+                    float(
+                        production_provider_timeout_seconds
+                        or DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS
+                    )
+                ),
+                "--production-provider-review-authority-key-path",
+                str(review_authority_key_path),
+            ]
+        )
     if merge_target_branch:
         command.extend(["--merge-target-branch", merge_target_branch])
     if llm_merge_resolver_command:
@@ -2736,6 +2808,10 @@ def plan_bundle_lanes(
     implementation_timeout: float = 1800.0,
     max_task_attempts: int = 0,
     implementation_command: str = "",
+    production_provider_policy: str = "",
+    production_provider_context_budget_tokens: int = 0,
+    production_provider_timeout_seconds: float = 0.0,
+    production_provider_review_authority_key_path: Path | None = None,
     merge_target_branch: str = "",
     llm_merge_resolver_command: str = "",
     llm_merge_resolver_timeout_seconds: float | None = None,
@@ -2756,6 +2832,13 @@ def plan_bundle_lanes(
     """Return one isolated supervisor command for each objective bundle."""
 
     lanes: list[BundleLaneSpec] = []
+    if (
+        production_provider_policy
+        and production_provider_review_authority_key_path is None
+    ):
+        production_provider_review_authority_key_path = (
+            state_root / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
+        )
     if completion_receipts is None:
         completion_receipts = bundle_member_completion_receipts(state_root)
     if completion_receipts:
@@ -2865,6 +2948,16 @@ def plan_bundle_lanes(
             implementation_timeout=implementation_timeout,
             max_task_attempts=max_task_attempts,
             implementation_command=implementation_command,
+            production_provider_policy=production_provider_policy,
+            production_provider_context_budget_tokens=(
+                production_provider_context_budget_tokens
+            ),
+            production_provider_timeout_seconds=(
+                production_provider_timeout_seconds
+            ),
+            production_provider_review_authority_key_path=(
+                production_provider_review_authority_key_path
+            ),
             merge_target_branch=merge_target_branch,
             llm_merge_resolver_command=llm_merge_resolver_command,
             llm_merge_resolver_timeout_seconds=llm_merge_resolver_timeout_seconds,
@@ -3806,7 +3899,11 @@ class DynamicBundleScheduler:
                 "task_prefix", "implement", "daemon_interval", "stale_seconds",
                 "check_interval", "max_restarts", "max_task_attempts",
                 "implementation_timeout",
-                "implementation_command", "llm_merge_resolver_command",
+                "implementation_command", "production_provider_policy",
+                "production_provider_context_budget_tokens",
+                "production_provider_timeout_seconds",
+                "production_provider_review_authority_key_path",
+                "llm_merge_resolver_command",
                 "llm_merge_resolver_timeout_seconds", "merge_target_branch",
                 "merge_reconciliation_max_merges",
                 "generated_dirty_repair_enabled", "generated_dirty_repair_commit_subject",
@@ -5386,6 +5483,42 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--implementation-timeout", type=float, default=1800.0)
     parser.add_argument("--implementation-command", default="")
     parser.add_argument(
+        "--production-provider-policy",
+        default="",
+        choices=("", PRODUCTION_CLI_POLICY_NAME),
+        help=(
+            "Operator policy overlay for the typed Grok implementation and "
+            "independent Codex review route; task metadata and CIDs are unchanged."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-context-budget-tokens",
+        type=int,
+        default=0,
+        help=(
+            "Positive provider packet context budget. Zero uses the policy "
+            f"default ({DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS})."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-timeout-seconds",
+        type=float,
+        default=0.0,
+        help=(
+            "Bounded per-provider timeout for the production route. "
+            f"Zero selects the policy default ({DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS:g}s)."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-review-authority-key-path",
+        type=Path,
+        default=None,
+        help=(
+            "Shared operator-controlled Ed25519 private-key file for every "
+            "bundle lane. Defaults beneath --state-root."
+        ),
+    )
+    parser.add_argument(
         "--merge-target-branch",
         default="",
         help=(
@@ -5451,6 +5584,52 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
     log_dir = (args.log_dir or state_root / "logs").resolve()
     manifest_path = (args.manifest_path or state_root / "bundle_lanes.json").resolve()
     bundle_index_path = args.bundle_index_path.resolve()
+    production_provider_policy = str(
+        getattr(args, "production_provider_policy", "") or ""
+    ).strip()
+    raw_production_budget = int(
+        getattr(args, "production_provider_context_budget_tokens", 0) or 0
+    )
+    raw_production_timeout = float(
+        getattr(args, "production_provider_timeout_seconds", 0.0) or 0.0
+    )
+    raw_review_authority_key_path = getattr(
+        args, "production_provider_review_authority_key_path", None
+    )
+    if (
+        raw_production_budget
+        or raw_production_timeout
+        or raw_review_authority_key_path is not None
+    ) and not production_provider_policy:
+        raise ValueError(
+            "production provider bounds/review authority require a production "
+            "provider policy"
+        )
+    production_provider_context_budget_tokens = 0
+    production_provider_timeout_seconds = 0.0
+    production_provider_review_authority_key_path = None
+    if production_provider_policy:
+        production_policy = ProductionCLIProviderPolicy(
+            name=production_provider_policy,
+            context_budget_tokens=(
+                raw_production_budget
+                or DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS
+            ),
+            provider_timeout_seconds=(
+                raw_production_timeout
+                or DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS
+            ),
+        )
+        production_provider_context_budget_tokens = (
+            production_policy.context_budget_tokens
+        )
+        production_provider_timeout_seconds = float(
+            production_policy.provider_timeout_seconds
+        )
+        production_provider_review_authority_key_path = Path(
+            raw_review_authority_key_path
+            or state_root / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
+        )
     lane_options = dict(
         task_prefix=args.task_prefix,
         implement=args.implement,
@@ -5462,6 +5641,14 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
         max_task_attempts=max(0, int(getattr(args, "max_task_attempts", 0))),
         implementation_timeout=args.implementation_timeout,
         implementation_command=args.implementation_command,
+        production_provider_policy=production_provider_policy,
+        production_provider_context_budget_tokens=(
+            production_provider_context_budget_tokens
+        ),
+        production_provider_timeout_seconds=production_provider_timeout_seconds,
+        production_provider_review_authority_key_path=(
+            production_provider_review_authority_key_path
+        ),
         merge_target_branch=args.merge_target_branch,
         llm_merge_resolver_command=args.llm_merge_resolver_command,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,

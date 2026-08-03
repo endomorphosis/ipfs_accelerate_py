@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import subprocess
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import Any, Mapping
 
 from ..task_sources.taskboard_store import (
@@ -20,6 +21,11 @@ from ..task_sources.taskboard_store import (
 from .post_merge_validation import (
     POST_MERGE_VALIDATION_EVIDENCE_SCHEMA,
     verify_post_merge_validation_evidence,
+)
+from .production_provider_attestation import (
+    production_provider_review_key_path,
+    trusted_public_key_from_private_path,
+    verify_production_provider_review_attestation,
 )
 from .status import (
     build_merged_pending_acceptance_status,
@@ -979,6 +985,167 @@ class AuthoritativeCompletionMixin:
             or self._task_metadata_value(task, "proof obligation")
         )
 
+    def _implementation_repository_tree_id(
+        self, implementation_commit: str
+    ) -> str:
+        """Resolve the exact candidate tree signed by provider review."""
+
+        commit = str(implementation_commit or "").strip()
+        repo_root = Path(getattr(self, "repo_root", Path.cwd()))
+        if not commit:
+            return ""
+        result = subprocess.run(
+            [
+                "git",
+                "rev-parse",
+                "--verify",
+                "--end-of-options",
+                f"{commit}^{{tree}}",
+            ],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        tree = str(result.stdout or "").strip()
+        return f"git-tree:{tree}" if result.returncode == 0 and tree else ""
+
+    def _trusted_production_provider_review_keys(self) -> dict[str, bytes | str]:
+        """Return operator-pinned verifier keys; queue metadata is ignored."""
+
+        configured = getattr(
+            self, "production_provider_review_trusted_public_keys", None
+        )
+        if isinstance(configured, Mapping):
+            return {
+                str(key): value
+                for key, value in configured.items()
+                if str(key) and isinstance(value, (bytes, str))
+            }
+        explicit_path = getattr(
+            self, "production_provider_review_key_path", None
+        )
+        state_path = getattr(self, "state_path", None)
+        if explicit_path:
+            key_path = Path(explicit_path)
+        elif state_path:
+            key_path = production_provider_review_key_path(Path(state_path))
+        else:
+            return {}
+        try:
+            key_id, public_key = trusted_public_key_from_private_path(key_path)
+        except (OSError, TypeError, ValueError):
+            return {}
+        return {key_id: public_key}
+
+    def _trusted_production_provider_policy_ids(self) -> tuple[str, ...]:
+        """Return policy identities pinned by daemon/operator configuration.
+
+        Receipt carriers are intentionally unable to select the policy used
+        to verify their own signature.  Deployments that are rotating policy
+        identities may pin a bounded allow-list on the daemon; otherwise the
+        active ``ProductionCLIProviderPolicy`` is the sole trust root.
+        """
+
+        configured = getattr(
+            self, "production_provider_review_allowed_policy_ids", None
+        )
+        if configured is not None:
+            if isinstance(configured, str):
+                values = (configured,)
+            else:
+                try:
+                    values = tuple(configured)
+                except TypeError:
+                    return ()
+            return tuple(
+                dict.fromkeys(
+                    str(value).strip() for value in values if str(value).strip()
+                )
+            )
+
+        policy = getattr(self, "production_provider_policy", None)
+        policy_id = str(getattr(policy, "policy_id", "") or "").strip()
+        return (policy_id,) if policy_id else ()
+
+    @staticmethod
+    def _signed_production_provider_snapshot_id(
+        evidence: Mapping[str, Any],
+    ) -> str:
+        """Derive the snapshot from receipt material covered by the signature."""
+
+        receipt = evidence.get("provider_execution_receipt")
+        binding = evidence.get("admitted_review_chain_binding")
+        if not isinstance(receipt, Mapping) or not isinstance(binding, Mapping):
+            return ""
+        packet = receipt.get("packet")
+        if not isinstance(packet, Mapping):
+            return ""
+        receipt_snapshot = str(packet.get("snapshot_id") or "").strip()
+        binding_snapshot = str(binding.get("snapshot_id") or "").strip()
+        if not receipt_snapshot or receipt_snapshot != binding_snapshot:
+            return ""
+        return receipt_snapshot
+
+    def _verified_provider_review_gate_evidence(
+        self,
+        *,
+        task_id: str,
+        implementation_commit: str,
+        merge_commit: str,
+        repository_tree_id: str,
+        evidence: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Derive, never accept, a provider-review gate from signed evidence."""
+
+        implementation_tree_id = self._implementation_repository_tree_id(
+            implementation_commit
+        )
+        if not implementation_tree_id:
+            return None
+        trusted_policy_ids = self._trusted_production_provider_policy_ids()
+        expected_snapshot_id = self._signed_production_provider_snapshot_id(
+            evidence
+        )
+        if not trusted_policy_ids or not expected_snapshot_id:
+            return None
+        verification = None
+        for expected_policy_id in trusted_policy_ids:
+            candidate = verify_production_provider_review_attestation(
+                evidence.get("provider_review_attestation"),
+                trusted_public_keys=(
+                    self._trusted_production_provider_review_keys()
+                ),
+                provider_receipt=evidence.get("provider_execution_receipt"),
+                review_chain_binding=evidence.get(
+                    "admitted_review_chain_binding"
+                ),
+                expected_task_id=task_id,
+                expected_implementation_commit=implementation_commit,
+                expected_implementation_tree_id=implementation_tree_id,
+                expected_snapshot_id=expected_snapshot_id,
+                expected_provider_policy_id=expected_policy_id,
+            )
+            if candidate.admitted:
+                verification = candidate
+                break
+        if verification is None:
+            return None
+        return bound_gate_evidence(
+            "provider_review",
+            task_id=task_id,
+            implementation_commit=implementation_commit,
+            merge_commit=merge_commit,
+            repository_tree_id=repository_tree_id,
+            satisfied=True,
+            review_presence="independent",
+            provider_result_admitted=True,
+            review_receipt_id=verification.attestation_id,
+            provider_execution_receipt_id=verification.provider_receipt_cid,
+            issuer_key_id=verification.issuer_key_id,
+            verification="ed25519_full_receipt_reconstruction",
+        )
+
     def build_task_implementation_receipt(
         self,
         task: Any,
@@ -1009,7 +1176,13 @@ class AuthoritativeCompletionMixin:
         }
         evidence = dict(gate_evidence or {})
         # Structural and validation gates are daemon-derived, never caller-overridden.
-        for kind in ("merge", "freshness", "semantic", "deterministic_only"):
+        for kind in (
+            "merge",
+            "freshness",
+            "semantic",
+            "provider_review",
+            "deterministic_only",
+        ):
             evidence.pop(kind, None)
         if merged and merge_binding_verified:
             evidence["merge"] = bound_gate_evidence(
@@ -1104,6 +1277,16 @@ class AuthoritativeCompletionMixin:
                 route_kind="no_model_provider_declared",
                 model_invocation_observed=False,
             )
+        else:
+            provider_review = self._verified_provider_review_gate_evidence(
+                task_id=task.task_id,
+                implementation_commit=implementation_commit,
+                merge_commit=merge_commit,
+                repository_tree_id=repository_tree_id,
+                evidence=evidence,
+            )
+            if provider_review is not None:
+                evidence["provider_review"] = provider_review
 
         return build_implementation_receipt(
             task_id=task.task_id,

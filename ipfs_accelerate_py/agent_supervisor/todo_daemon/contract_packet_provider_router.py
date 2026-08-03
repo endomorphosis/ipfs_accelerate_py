@@ -531,6 +531,7 @@ class ProviderRequest(Mapping[str, Any]):
     bounds: ProviderBounds
     prompt: bytes
     prompt_tokens: int
+    response_contract: Mapping[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -542,6 +543,7 @@ class ProviderRequest(Mapping[str, Any]):
             "task_id": self.task_id,
             "provider_input": dict(self.payload),
             "bounds": self.bounds.to_dict(),
+            "response_contract": dict(self.response_contract),
             "authority": {
                 "provider_output_tier": "proposal",
                 "repository_write_allowed": False,
@@ -847,6 +849,39 @@ def _bounded_evidence_slice(
     }
 
 
+def _provider_response_contract(role: ProviderRole) -> dict[str, Any]:
+    """Return the exact authority-free JSON shape requested from one role."""
+
+    if role is ProviderRole.GROK_IMPLEMENT:
+        shape: dict[str, Any] = {
+            "proposal": {
+                "declared_paths": ["repo/relative/path"],
+                "files": [
+                    {
+                        "path": "repo/relative/path",
+                        "content": "complete replacement text",
+                    }
+                ],
+                "patch": "optional unified diff instead of files",
+            }
+        }
+    elif role is ProviderRole.CODEX_REVIEW:
+        shape = {
+            "decision": "approve|repair|replace|reject",
+            "findings": [],
+            "proposal": "required only for repair or replace",
+        }
+    else:
+        shape = {"proposal": {}}
+    return {
+        "format": "canonical-json-object-only",
+        "markdown_fences_allowed": False,
+        "prose_outside_json_allowed": False,
+        "authority_claims_allowed": False,
+        "expected_shape": shape,
+    }
+
+
 def build_provider_execution_receipt(
     result: "ImplementationRoutingResult",
 ) -> ProviderExecutionReceipt:
@@ -969,12 +1004,12 @@ class ImplementationRoutingResult:
     @property
     def review_presence(self) -> str:
         if self.status is RouteStatus.SUCCEEDED and self.review_proposal is not None:
-            decision = str(
-                self.review_proposal.payload.get("decision") or "approve"
-            ).strip().casefold()
-            if decision in {"reject", "decline", "changes_required"}:
+            decision = self.review_proposal.payload.get("decision")
+            if decision == "reject":
                 return ReviewPresence.DECLINED.value
-            return ReviewPresence.INDEPENDENT.value
+            if decision in {"approve", "repair", "replace"}:
+                return ReviewPresence.INDEPENDENT.value
+            return ReviewPresence.DEGRADED.value
         if self.reason_code in {
             ProviderReason.REVIEW_DECLINED.value,
             ProviderReason.REVIEW_REJECTED.value,
@@ -1524,6 +1559,7 @@ class ImplementationProviderRouter:
                     "proof_authoritative": False,
                     "completion_authoritative": False,
                 }
+        response_contract = _provider_response_contract(role)
         envelope = {
             "schema": IMPLEMENTATION_PROVIDER_REQUEST_SCHEMA,
             "interface": IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
@@ -1533,6 +1569,7 @@ class ImplementationProviderRouter:
             "task_id": task_id,
             "provider_input": payload,
             "bounds": self.bounds.to_dict(),
+            "response_contract": response_contract,
             "authority": {
                 "provider_output_tier": "proposal",
                 "repository_write_allowed": False,
@@ -1576,6 +1613,7 @@ class ImplementationProviderRouter:
             bounds=self.bounds,
             prompt=prompt,
             prompt_tokens=prompt_tokens,
+            response_contract=MappingProxyType(response_contract),
         )
 
     def _invoke(
@@ -2047,8 +2085,23 @@ class ImplementationProviderRouter:
                 review=review,
             )
 
-        decision = str(review.payload.get("decision") or "approve").strip().casefold()
-        if decision in {"reject", "decline", "changes_required"}:
+        decision = review.payload.get("decision")
+        if not isinstance(decision, str) or decision not in {
+            "approve",
+            "repair",
+            "replace",
+            "reject",
+        }:
+            return self._result(
+                status=RouteStatus.REJECTED,
+                reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
+                packet_id=packet_id,
+                packet=packet_identity,
+                implementation_proposal=grok,
+                review_proposal=review,
+                attempts=attempts,
+            )
+        if decision == "reject":
             return self._result(
                 status=RouteStatus.REJECTED,
                 reason_code=ProviderReason.REVIEW_DECLINED.value,
@@ -2058,31 +2111,29 @@ class ImplementationProviderRouter:
                 review_proposal=review,
                 attempts=attempts,
             )
-        selected = grok
         if decision in {"repair", "replace"}:
-            repaired = review.payload.get("proposal")
-            if not isinstance(repaired, Mapping):
-                return self._result(
-                    status=RouteStatus.REJECTED,
-                    reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
-                    packet_id=packet_id,
-                    packet=packet_identity,
-                    implementation_proposal=grok,
-                    review_proposal=review,
-                    attempts=attempts,
-                )
-            # The admitted review envelope is the authority-free provenance for
-            # its nested repaired proposal.
-            selected = ProviderProposal(
-                role=ProviderRole.CODEX_REVIEW,
-                packet_id=review.packet_id,
-                snapshot_id=review.snapshot_id,
-                task_id=review.task_id,
-                payload=MappingProxyType(dict(repaired)),
-                response_bytes=review.response_bytes,
-                response_digest=review.response_digest,
-                admitted=True,
-                admission_reason=review.admission_reason,
+            # Codex-authored replacement bytes have not been independently
+            # reviewed.  Preserve both proposals as non-authoritative evidence
+            # and require a new implementation/review round before any write.
+            return self._result(
+                status=RouteStatus.REJECTED,
+                reason_code=ProviderReason.REVIEW_REJECTED.value,
+                packet_id=packet_id,
+                packet=packet_identity,
+                implementation_proposal=grok,
+                review_proposal=review,
+                attempts=attempts,
+            )
+        selected = grok
+        if review.payload.get("proposal") not in (None, {}):
+            return self._result(
+                status=RouteStatus.REJECTED,
+                reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
+                packet_id=packet_id,
+                packet=packet_identity,
+                implementation_proposal=grok,
+                review_proposal=review,
+                attempts=attempts,
             )
         wrote, write_reason = self._write(
             selected,
@@ -2124,22 +2175,10 @@ class ImplementationProviderRouter:
         writer_lease_id: str,
         review: ProviderProposal | None = None,
     ) -> ImplementationRoutingResult:
-        wrote, write_reason = self._write(
-            grok,
-            apply=apply,
-            writer_lease_id=writer_lease_id,
-        )
-        if apply and not wrote:
-            return self._result(
-                status=RouteStatus.REJECTED,
-                reason_code=write_reason,
-                packet_id=grok.packet_id,
-                packet=packet,
-                selected_proposal=grok,
-                implementation_proposal=grok,
-                review_proposal=review,
-                attempts=attempts,
-            )
+        # A Grok proposal is deliberately evidence-only until an independent
+        # Codex review is present, well formed, admitted, and approving.  In
+        # particular, review quota/error/degradation must never turn the
+        # implementation proposal into a write-capable fallback.
         return self._result(
             status=RouteStatus.FALLBACK,
             reason_code=reason_code,
@@ -2149,8 +2188,8 @@ class ImplementationProviderRouter:
             implementation_proposal=grok,
             review_proposal=review,
             attempts=attempts,
-            write_performed=wrote,
-            writer_lease_id=writer_lease_id if wrote else "",
+            write_performed=False,
+            writer_lease_id="",
         )
 
 

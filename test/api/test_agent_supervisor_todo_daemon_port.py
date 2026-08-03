@@ -18433,7 +18433,7 @@ def test_objective_daemon_refines_missing_evidence_into_child_goals(tmp_path):
     assert "Prove missing_gesture_policy for Meta display control bridge" in todo_text
 
 
-def test_bundle_member_completion_receipts_use_terminal_canonical_evidence(tmp_path):
+def test_bundle_member_completion_receipts_require_authoritative_terminal_evidence(tmp_path):
     state_dir = tmp_path / "objective-runtime" / "state"
     state_dir.mkdir(parents=True)
     event_path = state_dir / "agent_objective_runtime_events.jsonl"
@@ -18461,7 +18461,7 @@ def test_bundle_member_completion_receipts_use_terminal_canonical_evidence(tmp_p
                         "type": "implementation_finished",
                         "timestamp": "2026-07-22T12:01:00+00:00",
                         "task_id": "ACCEL-002",
-                        "canonical_task_cid": "cid-completed-from-merge",
+                        "canonical_task_cid": "cid-merged-without-authority",
                         "returncode": 0,
                         "merge_result": {"merged": True},
                     }
@@ -18486,6 +18486,35 @@ def test_bundle_member_completion_receipts_use_terminal_canonical_evidence(tmp_p
                 ),
                 json.dumps(
                     {
+                        "type": "implementation_finished",
+                        "timestamp": "2026-07-22T12:03:30+00:00",
+                        "task_id": "ACCEL-006",
+                        "returncode": 0,
+                        "merge_result": {"merged": True},
+                        "acceptance_result": {
+                            "authoritatively_completed": True,
+                            "completion_authoritative": True,
+                            "pending_gates": [],
+                            "todo_update_result": {
+                                "updated": True,
+                                "updated_task_ids": ["ACCEL-006"],
+                                "already_completed_task_ids": [],
+                                "completion_receipts": [
+                                    {
+                                        "task_id": "ACCEL-006",
+                                        "canonical_task_cid": (
+                                            "cid-completed-from-merge"
+                                        ),
+                                        "canonical_task_key": "task/v1/merge",
+                                        "board_namespace": "test-board",
+                                    }
+                                ],
+                            },
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
                         "type": "todo_status_updated",
                         "timestamp": "2026-07-22T12:04:00+00:00",
                         "task_id": "ACCEL-005",
@@ -18506,7 +18535,8 @@ def test_bundle_member_completion_receipts_use_terminal_canonical_evidence(tmp_p
 
     assert set(receipts) == {"cid-completed-from-status", "cid-completed-from-merge"}
     assert receipts["cid-completed-from-status"]["event_path"] == str(rotated_path)
-    assert receipts["cid-completed-from-merge"]["task_id"] == "ACCEL-002"
+    assert receipts["cid-completed-from-merge"]["task_id"] == "ACCEL-006"
+    assert "cid-merged-without-authority" not in receipts
 
 
 def test_goal_packet_aggregate_releases_every_covered_member_dependency(
