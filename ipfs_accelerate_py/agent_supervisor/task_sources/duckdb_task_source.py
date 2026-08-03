@@ -2897,6 +2897,270 @@ class DuckDBTaskSource:
         self._recover_atomic_install()
         return self.validate_integrity()
 
+    def plan_revision_projection_cid(self) -> str:
+        """Return the exact content-addressed DuckDB projection CID."""
+
+        if not self.database_path.exists():
+            return ""
+        snapshot = self.snapshot()
+        return str(snapshot.projection_cid)
+
+    def apply_plan_revision(
+        self,
+        *,
+        revision: Any = None,
+        admission: Any = None,
+        goal_graph: Any = None,
+        aliases: Mapping[str, str] | None = None,
+        repository_tree_id: str = "",
+        retained_task_cids: Sequence[str] = (),
+        claimed_task_cids: Sequence[str] = (),
+        deferred_item_keys: Sequence[str] = (),
+        origin: str = "create",
+        delta: Any = None,
+        store_continuation: Any | None = None,
+        idempotency_key: str = "",
+        fencing_token: int | None = None,
+        receipt: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Apply one create/steer plan revision onto this DuckDB projection.
+
+        Create installs an admitted formal plan/graph.  Steer refuses to rewrite
+        claimed or accepted task identity payloads and only admits additive
+        population growth when a full candidate graph is supplied.  Continuation
+        state is written to the optional plan-revision store (CAS), never kept
+        only in process dictionaries.
+        """
+
+        del aliases  # DuckDB materialization derives aliases from the graph.
+        source = goal_graph if goal_graph is not None else admission
+        if source is None:
+            raise TaskSourceIntegrityError(
+                "apply_plan_revision requires a goal graph or formal plan input"
+            )
+        tree_id = repository_tree_id
+        if store_continuation is not None and idempotency_key:
+            putter = getattr(store_continuation, "put_continuation", None)
+            if callable(putter):
+                existing: dict[str, Any] = {}
+                loader = getattr(store_continuation, "load_continuation", None)
+                if callable(loader):
+                    prior = loader(idempotency_key)
+                    if isinstance(prior, Mapping):
+                        existing = dict(prior)
+                existing.update(
+                    {
+                        "duckdb_pending": {
+                            "database_path": str(self.database_path),
+                            "origin": str(origin),
+                            "plan_root_cid": str(
+                                getattr(revision, "plan_root_cid", "") or ""
+                            ),
+                        }
+                    }
+                )
+                putter(idempotency_key, existing)
+
+        claimed = {str(item) for item in claimed_task_cids}
+        retained = {str(item) for item in retained_task_cids}
+        protected = claimed | retained
+
+        if self.database_path.exists():
+            current = self.snapshot()
+            if origin == "create" or str(origin).endswith("create"):
+                # Create is install-once; identical replay is a no-op.
+                result = self.materialize(
+                    source,
+                    repository_tree_id=tree_id,
+                    plan_root_cid="",
+                    receipt=receipt,
+                    fencing_token=fencing_token,
+                )
+                return {
+                    "projection_cid": str(result.get("projection_cid") or ""),
+                    "receipt_cid": str(result.get("receipt_cid") or ""),
+                    "plan_root_cid": str(result.get("plan_root_cid") or ""),
+                    "changed": bool(result.get("changed")),
+                    "replayed": bool(result.get("replayed")),
+                    "deferred_item_keys": list(deferred_item_keys),
+                }
+
+            # Steer: verify protected task identities cannot change and refuse
+            # drops.  Additive population growth is applied by materializing a
+            # candidate into a temp database and swapping under store backups.
+            candidate_root = str(getattr(revision, "plan_root_cid", "") or "")
+            formal_source, graph = _source_and_projection(
+                source, repository_tree_id=tree_id
+            )
+            bundle = _section_bundle(formal_source)
+            task_rows, _task_records = _task_rows(bundle, graph)
+            candidate_cids = {str(row[0]) for row in task_rows}
+            current_tasks = {
+                str(task.task_cid): task for task in self.list_tasks(limit=MAX_TASKS)
+            }
+            current_cids = set(current_tasks)
+            if protected - candidate_cids:
+                missing = sorted(protected - candidate_cids)
+                raise TaskSourceConflictError(
+                    "claimed/accepted tasks missing from candidate plan: "
+                    + ", ".join(missing)
+                )
+            if current_cids - candidate_cids:
+                raise TaskSourceConflictError(
+                    "steer apply would drop existing DuckDB tasks"
+                )
+            if candidate_cids == current_cids and (
+                not candidate_root or candidate_root == current.plan_root_cid
+            ):
+                return {
+                    "projection_cid": current.projection_cid,
+                    "receipt_cid": "",
+                    "plan_root_cid": current.plan_root_cid,
+                    "changed": False,
+                    "replayed": True,
+                    "deferred_item_keys": list(deferred_item_keys),
+                    "delta_cid": str(getattr(delta, "delta_cid", "") or ""),
+                }
+
+            # After lifecycle events exist, a full candidate reinstall would
+            # destroy status history.  Refuse rather than rewrite claimed work.
+            if int(current.event_cursor) > 0:
+                raise TaskSourceConflictError(
+                    "DuckDB plan revision cannot reinstall after lifecycle "
+                    "events; claimed/accepted history must remain durable"
+                )
+            # Verify protected task identities against the live rows before any
+            # candidate install.
+            with self._read_connection() as (live_connection, _metadata):
+                live_identity_rows = live_connection.execute(
+                    "SELECT task_cid, identity_json FROM tasks ORDER BY task_cid"
+                ).fetchall()
+            live_identities = {
+                str(task_cid): _decode_canonical(
+                    identity_json, noun=f"task {task_cid} identity"
+                )
+                for task_cid, identity_json in live_identity_rows
+            }
+            candidate_identities = {
+                str(row[0]): _decode_canonical(
+                    row[6], noun=f"task {row[0]} identity"
+                )
+                for row in task_rows
+            }
+            for task_cid in protected:
+                if task_cid not in live_identities:
+                    continue
+                if live_identities[task_cid] != candidate_identities.get(task_cid):
+                    raise TaskSourceConflictError(
+                        f"claimed/accepted task {task_cid!r} identity "
+                        "would change under steer apply"
+                    )
+
+            # Build a candidate database beside the live path, then atomically
+            # replace under the live lock.  Safe only while no lifecycle events
+            # have been recorded (all tasks still at initial revision).
+            candidate_path = self.database_path.with_name(
+                f".{self.database_path.name}.plan-revision-candidate"
+            )
+            if candidate_path.exists():
+                candidate_path.unlink()
+            candidate = DuckDBTaskSource(
+                candidate_path,
+                writer_id=self.writer_id,
+                fencing_token=(
+                    self.fencing_token if fencing_token is None else fencing_token
+                ),
+                lock_timeout_seconds=self.lock_timeout_seconds,
+            )
+            try:
+                materialize_result = candidate.materialize(
+                    source,
+                    repository_tree_id=tree_id,
+                    plan_root_cid="",
+                    receipt={
+                        **dict(receipt or {}),
+                        "plan_revision_cid": str(
+                            getattr(revision, "revision_cid", "")
+                            or getattr(revision, "content_id", "")
+                            or ""
+                        ),
+                        "plan_revision_plan_root_cid": candidate_root,
+                        "origin": str(origin),
+                        "deferred_item_keys": list(deferred_item_keys),
+                    },
+                    fencing_token=fencing_token,
+                )
+                with exclusive_file_lock(
+                    self._lock_path, timeout_seconds=self.lock_timeout_seconds
+                ):
+                    os.replace(candidate_path, self.database_path)
+                    self._fsync_parent()
+                return {
+                    "projection_cid": str(
+                        materialize_result.get("projection_cid") or ""
+                    ),
+                    "receipt_cid": str(materialize_result.get("receipt_cid") or ""),
+                    "plan_root_cid": str(
+                        materialize_result.get("plan_root_cid") or candidate_root
+                    ),
+                    "changed": True,
+                    "replayed": False,
+                    "deferred_item_keys": list(deferred_item_keys),
+                    "delta_cid": str(getattr(delta, "delta_cid", "") or ""),
+                }
+            except Exception:
+                try:
+                    if candidate_path.exists():
+                        candidate_path.unlink()
+                except OSError:
+                    pass
+                raise
+
+        # DuckDB materialize binds the graph/formal plan root.  The plan
+        # revision root may be an admitted-plan envelope CID and must not be
+        # forced as the projection plan_root_cid.
+        result = self.materialize(
+            source,
+            repository_tree_id=tree_id,
+            plan_root_cid="",
+            receipt={
+                **dict(receipt or {}),
+                "plan_revision_cid": str(
+                    getattr(revision, "revision_cid", "")
+                    or getattr(revision, "content_id", "")
+                    or ""
+                ),
+                "plan_revision_plan_root_cid": str(
+                    getattr(revision, "plan_root_cid", "") or ""
+                ),
+                "deferred_item_keys": list(deferred_item_keys),
+                "origin": str(origin),
+            },
+            fencing_token=fencing_token,
+        )
+        if store_continuation is not None and idempotency_key:
+            putter = getattr(store_continuation, "put_continuation", None)
+            if callable(putter):
+                existing = {}
+                loader = getattr(store_continuation, "load_continuation", None)
+                if callable(loader):
+                    prior = loader(idempotency_key)
+                    if isinstance(prior, Mapping):
+                        existing = dict(prior)
+                existing["duckdb_committed"] = {
+                    "projection_cid": str(result.get("projection_cid") or ""),
+                    "receipt_cid": str(result.get("receipt_cid") or ""),
+                }
+                putter(idempotency_key, existing)
+        return {
+            "projection_cid": str(result.get("projection_cid") or ""),
+            "receipt_cid": str(result.get("receipt_cid") or ""),
+            "plan_root_cid": str(result.get("plan_root_cid") or ""),
+            "changed": bool(result.get("changed")),
+            "replayed": bool(result.get("replayed")),
+            "deferred_item_keys": list(deferred_item_keys),
+        }
+
 
 def materialize_duckdb_task_source(
     database_path: str | os.PathLike[str],
