@@ -13,14 +13,18 @@ import subprocess
 from dataclasses import dataclass, field, replace
 from typing import Any, Mapping
 
+from ..task_sources.taskboard_store import (
+    locked_taskboard,
+    replace_locked_taskboard,
+)
+from .post_merge_validation import (
+    POST_MERGE_VALIDATION_EVIDENCE_SCHEMA,
+    verify_post_merge_validation_evidence,
+)
 from .status import (
     build_merged_pending_acceptance_status,
     build_reopened_acceptance_status,
     project_authoritative_acceptance_status,
-)
-from ..task_sources.taskboard_store import (
-    locked_taskboard,
-    replace_locked_taskboard,
 )
 
 __all__ = [
@@ -54,9 +58,6 @@ AUTHORITATIVE_COMPLETION_GATE_SCHEMA = (
 )
 AUTHORITATIVE_GATE_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/authoritative-gate-evidence@1"
-)
-POST_MERGE_VALIDATION_EVIDENCE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/post-merge-validation-evidence@1"
 )
 DETERMINISTIC_ONLY_POLICY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/deterministic-only-policy@1"
@@ -1020,8 +1021,17 @@ class AuthoritativeCompletionMixin:
             or validation.get("validation_stale")
             or validation.get("freshness_authoritative") is False
         )
+        validation_integrity_verified, _validation_integrity_reasons = (
+            verify_post_merge_validation_evidence(
+                validation,
+                expected_task_id=task.task_id,
+                expected_target_commit=merge_commit,
+                expected_repository_tree_id=repository_tree_id,
+            )
+        )
         validation_bound = bool(
-            validation.get("schema") == POST_MERGE_VALIDATION_EVIDENCE_SCHEMA
+            validation_integrity_verified
+            and validation.get("schema") == POST_MERGE_VALIDATION_EVIDENCE_SCHEMA
             and validation.get("task_id") == task.task_id
             and validation.get("target_commit") == merge_commit
             and validation.get("repository_tree_id") == repository_tree_id
