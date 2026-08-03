@@ -9812,6 +9812,65 @@ def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(
     assert not any(event["type"] == "implementation_finished" for event in events)
 
 
+def test_implementation_daemon_does_not_defer_grok_policy_denial(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    failure_script = repo / "nonquota.sh"
+    failure_script.write_text(
+        "printf \"PermissionError: [Errno 13] Permission denied: "
+        "'/run/ipfs-accelerate/prompt.md'\\n\"\n"
+        "printf \"Grok CLI failed without a terminal-correlated native quota "
+        "record; Codex fallback is forbidden\\n\"\n"
+        "exit 1\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
+    )
+    state_path = repo / "state" / "task_state.json"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="bash nonquota.sh",
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Record non-quota provider failure",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+    persisted = TodoTaskState.load(state_path)
+
+    assert result["returncode"] == 1
+    assert result.get("deferred", False) is False
+    assert persisted.implementation_attempts == {task.task_id: 1}
+    events = [
+        json.loads(line)
+        for line in (repo / "state" / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert not any(
+        event["type"] == "implementation_provider_exhausted" for event in events
+    )
+    assert any(event["type"] == "implementation_finished" for event in events)
+
+
 def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
     tmp_path,
     monkeypatch,
