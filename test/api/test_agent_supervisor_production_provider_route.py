@@ -21,6 +21,9 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router import (
     PRODUCTION_PROVIDER_ROUTE_EVALUATION_SCHEMA,
     PRODUCTION_PROVIDER_ROUTE_INTERFACE,
@@ -680,6 +683,124 @@ def test_absent_degraded_stale_cross_task_receipts_remain_pending(
     assert pending_events
     assert all(item.get("pending") is True for item in pending_events)
     assert all(item.get("completion_authoritative") is False for item in pending_events)
+
+
+def test_merge_receipt_admission_requires_exact_v2_content_and_review_effort(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    result = daemon.run_production_model_assisted_route(
+        task,
+        attempt=1,
+        workspace_path=daemon.repo_root,
+        snapshot_id=_snapshot(daemon),
+        apply=True,
+        grok_provider=_grok,
+        codex_provider=_codex,
+        admission_gate=_accept,
+    )
+    receipt = result["receipt"].to_dict()
+    disposition, reason = evaluate_production_provider_receipt(
+        receipt,
+        expected_task_id=task.task_id,
+        expected_snapshot_id=result["snapshot_id"],
+    )
+    assert disposition is ProductionReceiptDisposition.ADMITTED
+    assert reason == ProviderReason.ROUTED.value
+    # Generic router callables can exercise the protocol classifier, but a
+    # receipt without supervisor-observed production execution provenance is
+    # never sufficient merge authority.
+    assert daemon.production_provider_receipt_allows_merge(
+        receipt,
+        expected_task_id=task.task_id,
+        expected_snapshot_id=result["snapshot_id"],
+    ) is False
+
+    bound_receipt = json.loads(json.dumps(receipt))
+    exact_executions = (
+        ("grok_cli", "grok-4.5", ""),
+        ("codex_cli", "gpt-5.6-terra", "medium"),
+    )
+    for index, (provider, model, effort) in enumerate(exact_executions):
+        bound_receipt["attempts"][index].update(
+            {
+                "execution_schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "production-cli-provider-execution@2"
+                ),
+                "execution_policy_id": "sha256:" + str(index + 1) * 64,
+                "execution_request_id": f"provider-request:{index + 1:064x}",
+                "configured_provider": provider,
+                "effective_provider": provider,
+                "configured_model": model,
+                "configured_reasoning_effort": effort,
+                "child_result_schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "todo-daemon-llm-child-result@1"
+                ),
+                "child_result_status": "ok",
+                "child_exit_code": 0,
+            }
+        )
+    unsigned = dict(bound_receipt)
+    unsigned.pop("receipt_id")
+    bound_receipt["receipt_id"] = content_identity(unsigned)
+    assert daemon.production_provider_receipt_allows_merge(
+        bound_receipt,
+        expected_task_id=task.task_id,
+        expected_snapshot_id=result["snapshot_id"],
+    ) is True
+
+    counterfeit = {
+        "packet": {
+            "task_id": task.task_id,
+            "snapshot_id": result["snapshot_id"],
+        },
+        "review_presence": ReviewPresence.INDEPENDENT.value,
+        "admission": {"provider_result_admitted": True},
+        "completion_authoritative": False,
+    }
+    disposition, reason = evaluate_production_provider_receipt(
+        counterfeit,
+        expected_task_id=task.task_id,
+        expected_snapshot_id=result["snapshot_id"],
+    )
+    assert disposition is ProductionReceiptDisposition.REJECTED
+    assert reason == ProviderReason.PACKET_MALFORMED.value
+
+    old_v1 = json.loads(json.dumps(receipt))
+    old_v1["schema"] = (
+        "ipfs_accelerate_py/agent-supervisor/provider-execution-receipt@1"
+    )
+    old_v1["interface"] = "ProviderExecutionReceipt@1"
+    unsigned = dict(old_v1)
+    unsigned.pop("receipt_id")
+    old_v1["receipt_id"] = content_identity(unsigned)
+    assert daemon.production_provider_receipt_allows_merge(
+        old_v1,
+        expected_task_id=task.task_id,
+        expected_snapshot_id=result["snapshot_id"],
+    ) is False
+
+    wrong_effort = json.loads(json.dumps(bound_receipt))
+    wrong_effort["attempts"][1]["configured_reasoning_effort"] = "high"
+    unsigned = dict(wrong_effort)
+    unsigned.pop("receipt_id")
+    wrong_effort["receipt_id"] = content_identity(unsigned)
+    disposition, reason = evaluate_production_provider_receipt(
+        wrong_effort,
+        expected_task_id=task.task_id,
+        expected_snapshot_id=result["snapshot_id"],
+    )
+    assert disposition is ProductionReceiptDisposition.PENDING_NOT_ADMITTED
+    assert reason == ProviderReason.REVIEW_CHAIN_UNBOUND.value
+    assert daemon.production_provider_receipt_allows_merge(
+        wrong_effort,
+        expected_task_id=task.task_id,
+        expected_snapshot_id=result["snapshot_id"],
+    ) is False
 
 
 def test_deterministic_only_tasks_invoke_no_model(

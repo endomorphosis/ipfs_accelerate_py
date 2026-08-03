@@ -6011,7 +6011,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help=(
-            "Explicit operator-owned LegacyLandedReviewPolicy@1 JSON. Omitted "
+            "Explicit operator-owned LegacyLandedReviewPolicy@2 JSON. Omitted "
             "by default; supplying a path does not enable a disabled policy."
         ),
     )

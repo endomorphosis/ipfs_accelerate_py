@@ -8038,7 +8038,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         default=None,
         help=(
-            "Explicit operator-owned LegacyLandedReviewPolicy@1 JSON forwarded "
+            "Explicit operator-owned LegacyLandedReviewPolicy@2 JSON forwarded "
             "unchanged; omitted by default and never inferred from task metadata."
         ),
     )

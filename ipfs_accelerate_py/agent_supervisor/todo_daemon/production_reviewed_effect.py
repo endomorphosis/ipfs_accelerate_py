@@ -180,6 +180,7 @@ _PROVIDER_ATTEMPT_KEYS: Final = frozenset(
         "configured_provider",
         "effective_provider",
         "configured_model",
+        "configured_reasoning_effort",
         "child_result_schema",
         "child_result_status",
         "child_exit_code",
@@ -1147,6 +1148,7 @@ def _provider_receipt_failures(
         if set(attempt) != _PROVIDER_ATTEMPT_KEYS:
             failures.append(f"reviewed_effect_provider_attempt_shape_invalid:{index}")
         provider_name, model_name, proposal_payload = expected_executions[index]
+        reasoning_effort = "medium" if role is ProviderRole.CODEX_REVIEW else ""
         if (
             step.get("role") != role.value
             or step.get("status") != "succeeded"
@@ -1165,6 +1167,7 @@ def _provider_receipt_failures(
             or attempt.get("configured_provider") != provider_name
             or attempt.get("effective_provider") != provider_name
             or attempt.get("configured_model") != model_name
+            or attempt.get("configured_reasoning_effort") != reasoning_effort
             or attempt.get("child_result_schema") != LLM_CHILD_RESULT_SCHEMA
             or attempt.get("child_result_status") != "ok"
             or type(attempt.get("child_exit_code")) is not int

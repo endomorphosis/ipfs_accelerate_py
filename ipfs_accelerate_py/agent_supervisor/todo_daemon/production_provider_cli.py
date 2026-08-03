@@ -53,13 +53,13 @@ from .llm import (
 )
 
 PRODUCTION_CLI_POLICY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/production-cli-provider-policy@1"
+    "ipfs_accelerate_py/agent-supervisor/production-cli-provider-policy@2"
 )
 PRODUCTION_CLI_EXECUTION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/production-cli-provider-execution@1"
+    "ipfs_accelerate_py/agent-supervisor/production-cli-provider-execution@2"
 )
 PRODUCTION_NATIVE_STRUCTURED_EXECUTION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/production-native-structured-execution@1"
+    "ipfs_accelerate_py/agent-supervisor/production-native-structured-execution@2"
 )
 PRODUCTION_LANDED_TASK_GUARD_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/production-landed-task-guard@1"
@@ -68,7 +68,8 @@ PRODUCTION_CLI_POLICY_NAME: Final = (
     "grok-implement-codex-independent-review"
 )
 DEFAULT_GROK_MODEL: Final = "grok-4.5"
-DEFAULT_CODEX_MODEL: Final = "gpt-5.6-sol"
+DEFAULT_CODEX_MODEL: Final = "gpt-5.6-terra"
+DEFAULT_CODEX_REVIEW_REASONING_EFFORT: Final = "medium"
 DEFAULT_CONTEXT_BUDGET_TOKENS: Final = MAX_PROVIDER_PROMPT_TOKENS
 DEFAULT_PROVIDER_TIMEOUT_SECONDS: Final = 300.0
 DEFAULT_MAX_NEW_TOKENS: Final = 4_096
@@ -330,6 +331,7 @@ class ProductionCLIProviderPolicy:
     grok_model: str = DEFAULT_GROK_MODEL
     codex_provider: str = "codex_cli"
     codex_model: str = DEFAULT_CODEX_MODEL
+    codex_reasoning_effort: str = DEFAULT_CODEX_REVIEW_REASONING_EFFORT
 
     def __post_init__(self) -> None:
         if self.name != PRODUCTION_CLI_POLICY_NAME:
@@ -370,6 +372,7 @@ class ProductionCLIProviderPolicy:
             ("grok_model", self.grok_model),
             ("codex_provider", self.codex_provider),
             ("codex_model", self.codex_model),
+            ("codex_reasoning_effort", self.codex_reasoning_effort),
         ):
             if not str(value or "").strip():
                 raise ValueError(f"{name} is required")
@@ -379,6 +382,17 @@ class ProductionCLIProviderPolicy:
             )
         if self.grok_provider.strip().casefold() == self.codex_provider.strip().casefold():
             raise ValueError("implementation and review providers must be distinct")
+        if self.grok_model != DEFAULT_GROK_MODEL:
+            raise ValueError("production implementation model must be exact Grok 4.5")
+        if (
+            self.codex_model != DEFAULT_CODEX_MODEL
+            or self.codex_reasoning_effort
+            != DEFAULT_CODEX_REVIEW_REASONING_EFFORT
+        ):
+            raise ValueError(
+                "production independent Codex review requires exact "
+                "gpt-5.6-terra with medium reasoning"
+            )
 
     @property
     def declared_roles(self) -> tuple[str, str]:
@@ -405,6 +419,7 @@ class ProductionCLIProviderPolicy:
                 "role": ProviderRole.CODEX_REVIEW.value,
                 "provider": self.codex_provider,
                 "model": self.codex_model,
+                "reasoning_effort": self.codex_reasoning_effort,
                 "independent": True,
             },
             "codex_implementation_fallback": {
@@ -474,6 +489,11 @@ class BoundProductionCLIProvider:
             response_validator=_validate_production_native_response,
             execution_schema=PRODUCTION_NATIVE_STRUCTURED_EXECUTION_SCHEMA,
             max_response_bytes=max_response_bytes,
+            codex_reasoning_effort=(
+                self.policy.codex_reasoning_effort
+                if self.role is ProviderRole.CODEX_REVIEW
+                else ""
+            ),
         )
 
     def __call__(self, request: ProviderRequest) -> Mapping[str, Any]:
@@ -594,6 +614,11 @@ class BoundProductionCLIProvider:
             # generic child envelope has no effective-model field, so this
             # supervisor-authored receipt records and enforces that boundary.
             "effective_model": self.model_name,
+            "model_reasoning_effort": (
+                self.policy.codex_reasoning_effort
+                if self.role is ProviderRole.CODEX_REVIEW
+                else ""
+            ),
             "child_result_schema": receipt["schema"],
             "child_result_status": receipt["status"],
             "child_exit_code": exit_code,
@@ -795,6 +820,7 @@ def production_landed_task_guard(
 __all__ = [
     "BoundProductionCLIProvider",
     "DEFAULT_CODEX_MODEL",
+    "DEFAULT_CODEX_REVIEW_REASONING_EFFORT",
     "DEFAULT_CONTEXT_BUDGET_TOKENS",
     "DEFAULT_GROK_MODEL",
     "DEFAULT_MAX_NEW_TOKENS",

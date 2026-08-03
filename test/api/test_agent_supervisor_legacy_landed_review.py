@@ -176,6 +176,8 @@ class _ApprovingProvider:
                 "leaf_id": leaf["leaf_id"],
                 "findings": [],
             },
+            requested_reasoning_effort=request.reasoning_effort,
+            effective_reasoning_effort=request.reasoning_effort,
         )
 
 
@@ -184,8 +186,10 @@ def test_exact_template_pins_all_eight_and_original_ase_023_interval() -> None:
     tasks = {item["task_id"]: item for item in template["tasks"]}
 
     assert tuple(tasks) == legacy.EXACT_LEGACY_LANDED_TASK_IDS
+    assert template["schema"].endswith("@2")
     assert template["providers"]["grok"]["model"] == "grok-4.5"
-    assert template["providers"]["codex"]["model"] == "gpt-5.6-sol"
+    assert template["providers"]["codex"]["model"] == "gpt-5.6-terra"
+    assert template["providers"]["codex"]["reasoning_effort"] == "medium"
     assert tasks["ASE-023"]["baseline_commit"] == (
         "27cc4219f67358d90abd36b08b37950be344009e"
     )
@@ -235,6 +239,15 @@ def test_production_parser_rejects_template_placeholders_and_any_scope_widening(
     changed_provider = copy.deepcopy(valid)
     changed_provider["providers"]["grok"]["model"] = "another-model"
     mutations.append(changed_provider)
+    old_schema = copy.deepcopy(valid)
+    old_schema["schema"] = (
+        "ipfs_accelerate_py/agent-supervisor/legacy-landed-review-policy@1"
+    )
+    old_schema["interface"] = "LegacyLandedReviewPolicy@1"
+    mutations.append(old_schema)
+    missing_reasoning = copy.deepcopy(valid)
+    missing_reasoning["providers"]["codex"].pop("reasoning_effort")
+    mutations.append(missing_reasoning)
     changed_budget = copy.deepcopy(valid)
     changed_budget["max_leaf_tokens"] = 4095
     mutations.append(changed_budget)
@@ -470,6 +483,9 @@ def test_full_review_requires_both_exact_providers_fresh_validation_and_signatur
         assert pair["codex"]["effective_provider"] == "codex_cli"
         assert pair["grok"]["fallback_used"] is False
         assert pair["codex"]["fallback_used"] is False
+        assert pair["grok"]["effective_reasoning_effort"] == ""
+        assert pair["codex"]["requested_reasoning_effort"] == "medium"
+        assert pair["codex"]["effective_reasoning_effort"] == "medium"
 
     tampered = result.attestation.to_dict()
     tampered["signature"] = "AAAA"
@@ -1147,11 +1163,16 @@ def test_cli_adapters_use_native_request_bound_schema_and_verbatim_prompt(
     assert "--verbatim" in grok_command
     assert grok_command[grok_command.index("--tools") + 1] == ""
     assert "--output-schema" in codex_command
+    assert codex_command[codex_command.index("-c") + 1] == (
+        'model_reasoning_effort="medium"'
+    )
     assert codex_command[-1] == "-"
     assert grok_observation.effective_provider == "grok_cli"
     assert grok_observation.effective_model == policy.grok.model
     assert codex_observation.effective_provider == "codex_cli"
     assert codex_observation.effective_model == policy.codex.model
+    assert codex_observation.requested_reasoning_effort == "medium"
+    assert codex_observation.effective_reasoning_effort == "medium"
 
 
 def test_native_response_parser_requires_empty_findings_but_keeps_reject(

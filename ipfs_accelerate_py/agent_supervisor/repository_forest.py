@@ -1697,13 +1697,20 @@ def inspect_gitlink_closure(
             reasons.append("recursive_gitlink_map_unavailable")
             return
         for relative, recorded_commit in gitlinks:
-            link_id = canonical_content_cid(
-                {
-                    "schema": GITLINK_ENTRY_SCHEMA + "/location",
-                    "parent_commit": parent_commit,
-                    "location": relative,
-                }
-            )
+            location_identity = {
+                "schema": GITLINK_ENTRY_SCHEMA + "/location",
+                "parent_commit": parent_commit,
+                "location": relative,
+            }
+            # A relative gitlink path is unique only within its parent
+            # checkout.  The same child commit may be mounted more than once,
+            # and each mount can contain an identical nested path.  Bind only
+            # nested identities to their opaque parent identity so legitimate
+            # closure entries do not alias while existing top-level identity
+            # bytes remain backward compatible.
+            if parent_gitlink_id:
+                location_identity["parent_gitlink_id"] = parent_gitlink_id
+            link_id = canonical_content_cid(location_identity)
             candidate = checkout / relative
             try:
                 resolved_candidate = candidate.resolve()

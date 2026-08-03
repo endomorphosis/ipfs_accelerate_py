@@ -99,8 +99,8 @@ long options:
 
 | Entry module | Operator options | Including `--help` |
 | --- | ---: | ---: |
-| `todo_daemon.implementation_supervisor` | 133 | 134 |
-| `todo_daemon.implementation_daemon` | 50 | 51 |
+| `todo_daemon.implementation_supervisor` | 139 | 140 |
+| `todo_daemon.implementation_daemon` | 56 | 57 |
 
 These remain useful expert interfaces. A prompt-only facade should infer a
 reviewable launch profile and call the package-level builders instead of

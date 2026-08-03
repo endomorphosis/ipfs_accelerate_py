@@ -2727,6 +2727,434 @@ def test_untracked_leased_lane_self_fences_fresh_exact_blocked_slice(
     assert receipts[0]["receipt"]["failure_class"] == "blocked"
 
 
+def test_leased_lane_defers_provider_review_pending_without_task_receipt(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    coordination = tmp_path / "coordination.sqlite3"
+    phase_state = tmp_path / "phase-state.json"
+    events_path = tmp_path / "events.jsonl"
+    task_id = "T-PENDING-REVIEW"
+    task_cid = profile_g_cid({"member": task_id})
+    bundle = {
+        "bundle_key": "objective/test/pending-review",
+        "tasks": [
+            {
+                "task_id": task_id,
+                "canonical_task_cid": task_cid,
+            }
+        ],
+        "execution_slice_task_ids": [task_id],
+        "execution_slice_task_cids": [task_cid],
+        "max_attempts": 1,
+    }
+    with LeaseCoordinator(coordination) as coordinator:
+        registered = coordinator.register_bundle(bundle)
+        grant = coordinator.claim(
+            registered["task_cid"],
+            "did:web:pending-review.example",
+            requested_lease_ms=5_000,
+        )
+
+    def publish_pending_acceptance() -> None:
+        merge_commit = "a" * 40
+        repository_tree_id = f"git-tree:{'b' * 40}"
+        append_jsonl_event(
+            events_path,
+            "implementation_merged_pending_acceptance",
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "authoritative-acceptance-status@1"
+                ),
+                "task_id": task_id,
+                "canonical_task_cid": task_cid,
+                "acceptance_state": "implemented_merged_but_pending",
+                "state": "implemented_merged_but_pending",
+                "admitted": False,
+                "completion_authoritative": False,
+                "merge_commit": merge_commit,
+                "pending_gates": ["provider_review"],
+                "gate": {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "authoritative-completion-gate@1"
+                    ),
+                    "task_id": task_id,
+                    "admitted": False,
+                    "completion_authoritative": False,
+                    "acceptance_state": "implemented_merged_but_pending",
+                    "merge_commit": merge_commit,
+                    "pending_gates": ["provider_review"],
+                    "satisfied_gates": [
+                        "merge",
+                        "freshness",
+                        "semantic",
+                        "proof",
+                        "deterministic_only",
+                    ],
+                    "repository_tree_id": repository_tree_id,
+                },
+                "receipt": {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "implementation-receipt@1"
+                    ),
+                    "task_id": task_id,
+                    "merged": True,
+                    "completion_authoritative": False,
+                    "acceptance_state": "implemented_merged_but_pending",
+                    "pending_gates": ["provider_review"],
+                    "validation_passed": True,
+                    "validation_stale": False,
+                    "merge_commit": merge_commit,
+                    "repository_tree_id": repository_tree_id,
+                },
+            },
+        )
+        phase_state.write_text(
+            json.dumps(
+                {
+                    "heartbeat_at": datetime.now(timezone.utc).isoformat(),
+                    "active_task_id": "",
+                    "implementation_in_progress": False,
+                    "ready_count": 1,
+                    "waiting_count": 0,
+                    "blocked_count": 0,
+                    "selectable_ready_count": 1,
+                    "selection_idle_reason": "",
+                    "task_statuses": {task_id: "ready"},
+                    "task_identities": {
+                        task_id: {"canonical_task_cid": task_cid}
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        append_jsonl_event(
+            events_path,
+            "daemon_pass",
+            {
+                "active_task_id": "",
+                "ready_count": 1,
+                "waiting_count": 0,
+                "blocked_count": 0,
+                "selectable_ready_count": 1,
+                "selection_idle_reason": "",
+                "attempt_limited_task_ids": [],
+                "execution_slice_task_statuses": {task_id: "ready"},
+                "execution_slice_task_cids_by_id": {task_id: task_cid},
+            },
+        )
+
+    class Process:
+        pid = 43_211
+        returncode: int | None = None
+        poll_calls = 0
+        tree_fenced = False
+
+        def poll(self):
+            self.poll_calls += 1
+            if self.poll_calls == 2:
+                publish_pending_acceptance()
+            elif self.poll_calls > 20 and self.returncode is None:
+                self.returncode = 0
+            return self.returncode
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+    process = Process()
+
+    def stop_tree(candidate, *, timeout=5.0, fence_descendants=False):
+        assert candidate is process
+        assert fence_descendants is True
+        candidate.tree_fenced = True
+        candidate.returncode = -signal.SIGTERM
+
+    monkeypatch.setattr(
+        leased_lane_module.subprocess,
+        "Popen",
+        lambda _command, **_kwargs: process,
+    )
+    monkeypatch.setattr(leased_lane_module, "_terminate_child", stop_tree)
+
+    result = run_leased_lane_result(
+        coordination_path=coordination,
+        grant=grant,
+        command=(sys.executable, "-c", "pass"),
+        lease_ms=5_000,
+        heartbeat_interval=0.01,
+        phase_state_path=phase_state,
+        completion_events_path=events_path,
+        expected_task_ids=(task_id,),
+        expected_task_cids_by_id={task_id: task_cid},
+    )
+
+    assert process.tree_fenced is True
+    assert result.disposition == "pending_acceptance"
+    assert result.successful is False
+    assert result.receipt_cid is None
+    assert result.resolution_cid
+    with LeaseCoordinator(coordination) as coordinator:
+        assert coordinator.list_receipts(grant.task_cid) == []
+        pending = coordinator.task_state(grant.task_cid)
+        assert pending["state"] == "blocked"
+        assert pending["acceptance_pending"] is True
+        assert pending["resumable"] is True
+        assert pending["blocked_reason"] == "acceptance_pending_cooldown"
+        assert pending["attempt"] == 0
+        resumed = coordinator.claim_ready(
+            "did:web:review-resumer.example",
+            eligible_task_cids=(grant.task_cid,),
+            requested_lease_ms=5_000,
+            now_ms=pending["retry_not_before_ms"] + 1,
+        )
+        assert resumed is not None
+        assert resumed.attempt == 1
+        with pytest.raises(ValueError, match="provider-review-only evidence"):
+            coordinator.defer_pending_acceptance(
+                resumed,
+                evidence={
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "pending-acceptance@1"
+                    ),
+                    "acceptance_pending": True,
+                    "completion_authoritative": True,
+                    "admitted": False,
+                    "pending_gates": ["provider_review"],
+                    "task_ids": [task_id],
+                    "task_cids": [task_cid],
+                    "task_cids_by_id": {task_id: task_cid},
+                    "acceptance_event_ids": ["sha256:forged"],
+                    "terminal_event_id": "sha256:forged-pass",
+                },
+                now_ms=pending["retry_not_before_ms"] + 2,
+            )
+        with pytest.raises(ValueError, match="provider-review-only evidence"):
+            coordinator.defer_pending_acceptance(
+                resumed,
+                evidence={
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "pending-acceptance@1"
+                    ),
+                    "acceptance_pending": True,
+                    "completion_authoritative": False,
+                    "admitted": False,
+                    "pending_gates": ["provider_review"],
+                    "task_ids": [task_id, task_id],
+                    "task_cids": [task_cid, task_cid],
+                    "task_cids_by_id": {task_id: task_cid},
+                    "acceptance_event_ids": [
+                        "sha256:duplicate-1",
+                        "sha256:duplicate-2",
+                    ],
+                    "terminal_event_id": "sha256:duplicate-pass",
+                },
+                now_ms=pending["retry_not_before_ms"] + 3,
+            )
+        with pytest.raises(ValueError, match="provider-review-only evidence"):
+            coordinator.defer_pending_acceptance(
+                resumed,
+                evidence={
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "pending-acceptance@1"
+                    ),
+                    "acceptance_pending": True,
+                    "completion_authoritative": False,
+                    "admitted": False,
+                    "pending_gates": ["provider_review"],
+                    "task_ids": [task_id],
+                    "task_cids": ["not-a-cid"],
+                    "task_cids_by_id": {task_id: "not-a-cid"},
+                    "acceptance_event_ids": ["sha256:invalid-cid"],
+                    "terminal_event_id": "sha256:invalid-cid-pass",
+                },
+                now_ms=pending["retry_not_before_ms"] + 4,
+            )
+        unrelated_cid = profile_g_cid({"member": "unrelated"})
+        with pytest.raises(ValueError, match="leased execution slice"):
+            coordinator.defer_pending_acceptance(
+                resumed,
+                evidence={
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "pending-acceptance@1"
+                    ),
+                    "acceptance_pending": True,
+                    "completion_authoritative": False,
+                    "admitted": False,
+                    "pending_gates": ["provider_review"],
+                    "task_ids": [task_id],
+                    "task_cids": [unrelated_cid],
+                    "task_cids_by_id": {task_id: unrelated_cid},
+                    "acceptance_event_ids": ["sha256:unrelated"],
+                    "terminal_event_id": "sha256:unrelated-pass",
+                },
+                now_ms=pending["retry_not_before_ms"] + 5,
+            )
+        assert coordinator.list_receipts(grant.task_cid) == []
+
+
+def test_pending_acceptance_evidence_fails_closed_until_exact_idle_pass(
+    tmp_path: Path,
+) -> None:
+    phase_state = tmp_path / "phase-state.json"
+    events_path = tmp_path / "events.jsonl"
+    task_id = "T-EXACT-PENDING-REVIEW"
+    task_cid = profile_g_cid({"member": task_id})
+    wrong_cid = profile_g_cid({"wrong-member": task_id})
+    merge_commit = "c" * 40
+    repository_tree_id = f"git-tree:{'d' * 40}"
+    started_at_ms = int(datetime.now(timezone.utc).timestamp() * 1000) - 1
+
+    def pending_payload(
+        canonical_task_cid: str,
+        *,
+        completion_authoritative: bool = False,
+    ) -> dict[str, Any]:
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "authoritative-acceptance-status@1"
+            ),
+            "task_id": task_id,
+            "canonical_task_cid": canonical_task_cid,
+            "acceptance_state": "implemented_merged_but_pending",
+            "admitted": False,
+            "completion_authoritative": completion_authoritative,
+            "merge_commit": merge_commit,
+            "pending_gates": ["provider_review"],
+            "gate": {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "authoritative-completion-gate@1"
+                ),
+                "task_id": task_id,
+                "admitted": False,
+                "completion_authoritative": False,
+                "acceptance_state": "implemented_merged_but_pending",
+                "merge_commit": merge_commit,
+                "pending_gates": ["provider_review"],
+                "satisfied_gates": [
+                    "merge",
+                    "freshness",
+                    "semantic",
+                    "proof",
+                    "deterministic_only",
+                ],
+                "repository_tree_id": repository_tree_id,
+            },
+            "receipt": {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "implementation-receipt@1"
+                ),
+                "task_id": task_id,
+                "merged": True,
+                "completion_authoritative": False,
+                "acceptance_state": "implemented_merged_but_pending",
+                "pending_gates": ["provider_review"],
+                "validation_passed": True,
+                "validation_stale": False,
+                "merge_commit": merge_commit,
+                "repository_tree_id": repository_tree_id,
+            },
+        }
+
+    def write_idle_state() -> None:
+        phase_state.write_text(
+            json.dumps(
+                {
+                    "heartbeat_at": datetime.now(timezone.utc).isoformat(),
+                    "active_task_id": "",
+                    "implementation_in_progress": False,
+                    "task_statuses": {task_id: "ready"},
+                    "task_identities": {
+                        task_id: {"canonical_task_cid": task_cid}
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def append_idle_pass(canonical_task_cid: str) -> dict[str, Any]:
+        return append_jsonl_event(
+            events_path,
+            "daemon_pass",
+            {
+                "active_task_id": "",
+                "execution_slice_task_statuses": {task_id: "ready"},
+                "execution_slice_task_cids_by_id": {
+                    task_id: canonical_task_cid
+                },
+            },
+        )
+
+    append_jsonl_event(
+        events_path,
+        "implementation_merged_pending_acceptance",
+        pending_payload(wrong_cid),
+    )
+    write_idle_state()
+    append_idle_pass(task_cid)
+    assert leased_lane_module._fresh_provider_review_pending_acceptance(
+        phase_state,
+        events_path,
+        {task_id: task_cid},
+        started_at_ms=started_at_ms,
+    ) is None
+
+    append_jsonl_event(
+        events_path,
+        "implementation_merged_pending_acceptance",
+        pending_payload(task_cid, completion_authoritative=True),
+    )
+    write_idle_state()
+    append_idle_pass(task_cid)
+    assert leased_lane_module._fresh_provider_review_pending_acceptance(
+        phase_state,
+        events_path,
+        {task_id: task_cid},
+        started_at_ms=started_at_ms,
+    ) is None
+
+    accepted = append_jsonl_event(
+        events_path,
+        "implementation_merged_pending_acceptance",
+        pending_payload(task_cid),
+    )
+    write_idle_state()
+    assert leased_lane_module._fresh_provider_review_pending_acceptance(
+        phase_state,
+        events_path,
+        {task_id: task_cid},
+        started_at_ms=started_at_ms,
+    ) is None
+    append_idle_pass(wrong_cid)
+    assert leased_lane_module._fresh_provider_review_pending_acceptance(
+        phase_state,
+        events_path,
+        {task_id: task_cid},
+        started_at_ms=started_at_ms,
+    ) is None
+
+    terminal = append_idle_pass(task_cid)
+    evidence = leased_lane_module._fresh_provider_review_pending_acceptance(
+        phase_state,
+        events_path,
+        {task_id: task_cid},
+        started_at_ms=started_at_ms,
+    )
+    assert evidence is not None
+    assert evidence["completion_authoritative"] is False
+    assert evidence["acceptance_event_ids"] == [accepted["event_id"]]
+    assert evidence["terminal_event_id"] == terminal["event_id"]
+
+
 def test_terminal_blocked_pass_rejects_readdressed_or_future_evidence(
     tmp_path: Path,
 ) -> None:

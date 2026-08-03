@@ -42,11 +42,11 @@ from .legacy_landed_attestation import (
 )
 
 LEGACY_LANDED_REVIEW_POLICY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/legacy-landed-review-policy@1"
+    "ipfs_accelerate_py/agent-supervisor/legacy-landed-review-policy@2"
 )
-LEGACY_LANDED_REVIEW_POLICY_INTERFACE: Final = "LegacyLandedReviewPolicy@1"
+LEGACY_LANDED_REVIEW_POLICY_INTERFACE: Final = "LegacyLandedReviewPolicy@2"
 LEGACY_LANDED_REVIEW_POLICY_TEMPLATE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/legacy-landed-review-policy-template@1"
+    "ipfs_accelerate_py/agent-supervisor/legacy-landed-review-policy-template@2"
 )
 LEGACY_LANDED_REVIEW_MANIFEST_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/legacy-landed-byte-manifest@1"
@@ -61,7 +61,7 @@ LEGACY_LANDED_LEAF_DECISION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/legacy-landed-leaf-decision@1"
 )
 LEGACY_LANDED_LEAF_REVIEW_RECEIPT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/legacy-landed-leaf-review-receipt@1"
+    "ipfs_accelerate_py/agent-supervisor/legacy-landed-leaf-review-receipt@2"
 )
 LEGACY_LANDED_REVIEW_AGGREGATE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/legacy-landed-review-aggregate@1"
@@ -89,6 +89,8 @@ MAX_POLICY_BYTES: Final = 2 * 1024 * 1024
 _COMMIT_RE: Final = re.compile(r"^[0-9a-f]{40}$")
 _TASK_CID_RE: Final = re.compile(r"^b[a-z2-7]{20,}$")
 _TASK_KEY_RE: Final = re.compile(r"^task/v1/[0-9a-f]{64}$")
+LEGACY_CODEX_REVIEW_MODEL: Final = "gpt-5.6-terra"
+LEGACY_CODEX_REVIEW_REASONING_EFFORT: Final = "medium"
 
 
 # Reviewed historical bindings.  This is deliberately a non-runnable
@@ -108,7 +110,8 @@ EXACT_EIGHT_LEGACY_LANDED_POLICY_TEMPLATE: Final = {
         "codex": {
             "role": "codex_audit",
             "provider": "codex_cli",
-            "model": "gpt-5.6-sol",
+            "model": LEGACY_CODEX_REVIEW_MODEL,
+            "reasoning_effort": LEGACY_CODEX_REVIEW_REASONING_EFFORT,
             "fallback_allowed": False,
             "self_review_allowed": False,
         },
@@ -343,6 +346,7 @@ class LegacyProviderPolicy:
     role: str
     provider: str
     model: str
+    reasoning_effort: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -386,9 +390,12 @@ class LegacyLandedReviewPolicy:
 
 
 def _parse_provider(value: Any, expected_role: str) -> LegacyProviderPolicy:
-    if not isinstance(value, Mapping) or set(value) != {
+    expected_fields = {
         "role", "provider", "model", "fallback_allowed", "self_review_allowed"
-    }:
+    }
+    if expected_role == "codex_audit":
+        expected_fields.add("reasoning_effort")
+    if not isinstance(value, Mapping) or set(value) != expected_fields:
         raise ValueError("legacy provider policy shape is invalid")
     if value.get("role") != expected_role:
         raise ValueError("legacy provider role is invalid")
@@ -402,7 +409,24 @@ def _parse_provider(value: Any, expected_role: str) -> LegacyProviderPolicy:
         raise ValueError("legacy effective provider is required")
     if not isinstance(model, str) or not model.strip():
         raise ValueError("legacy effective model is required")
-    return LegacyProviderPolicy(expected_role, provider.strip(), model.strip())
+    reasoning_effort = str(value.get("reasoning_effort") or "").strip()
+    if expected_role == "grok_audit":
+        if provider != "grok_cli" or model != "grok-4.5":
+            raise ValueError("legacy Grok reviewer binding is not exact")
+        if reasoning_effort:
+            raise ValueError("legacy Grok reviewer reasoning override is forbidden")
+    elif (
+        provider != "codex_cli"
+        or model != LEGACY_CODEX_REVIEW_MODEL
+        or reasoning_effort != LEGACY_CODEX_REVIEW_REASONING_EFFORT
+    ):
+        raise ValueError("legacy Codex reviewer binding is not exact")
+    return LegacyProviderPolicy(
+        expected_role,
+        provider.strip(),
+        model.strip(),
+        reasoning_effort,
+    )
 
 
 def parse_legacy_landed_review_policy(
@@ -1363,6 +1387,7 @@ class LegacyLeafReviewRequest:
     role: str
     provider: str
     model: str
+    reasoning_effort: str
     request_id: str
     payload: dict[str, Any]
 
@@ -1370,11 +1395,12 @@ class LegacyLeafReviewRequest:
         """Return the exact adapter envelope sent as the provider prompt."""
 
         return {
-            "schema": "ipfs_accelerate_py/agent-supervisor/legacy-landed-provider-envelope@1",
+            "schema": "ipfs_accelerate_py/agent-supervisor/legacy-landed-provider-envelope@2",
             "request_id": self.request_id,
             "role": self.role,
             "provider": self.provider,
             "model": self.model,
+            "reasoning_effort": self.reasoning_effort,
             "payload": self.payload,
         }
 
@@ -1402,6 +1428,8 @@ class LegacyProviderObservation:
     fallback_used: bool
     supervisor_observed: bool
     response: Mapping[str, Any]
+    requested_reasoning_effort: str = ""
+    effective_reasoning_effort: str = ""
 
 
 class LegacyProviderInvoker(Protocol):
@@ -1468,10 +1496,11 @@ def _leaf_review_request(
         "proof_authoritative": False,
     }
     request_body = {
-        "schema": "ipfs_accelerate_py/agent-supervisor/legacy-landed-provider-envelope@1",
+        "schema": "ipfs_accelerate_py/agent-supervisor/legacy-landed-provider-envelope@2",
         "role": provider.role,
         "provider": provider.provider,
         "model": provider.model,
+        "reasoning_effort": provider.reasoning_effort,
         "payload": payload,
     }
     request_id = content_identity(request_body)
@@ -1479,6 +1508,7 @@ def _leaf_review_request(
         role=provider.role,
         provider=provider.provider,
         model=provider.model,
+        reasoning_effort=provider.reasoning_effort,
         request_id=request_id,
         payload=payload,
     )
@@ -1514,6 +1544,8 @@ def _review_one_leaf(
         and observation.effective_provider == provider.provider
         and observation.requested_model == provider.model
         and observation.effective_model == provider.model
+        and observation.requested_reasoning_effort == provider.reasoning_effort
+        and observation.effective_reasoning_effort == provider.reasoning_effort
         and observation.provider_chain == (provider.provider,)
         and observation.fallback_used is False
         and observation.supervisor_observed is True
@@ -1547,8 +1579,10 @@ def _review_one_leaf(
         "leaf_id": leaf["leaf_id"],
         "requested_provider": provider.provider,
         "requested_model": provider.model,
+        "requested_reasoning_effort": provider.reasoning_effort,
         "effective_provider": observation.effective_provider,
         "effective_model": observation.effective_model,
+        "effective_reasoning_effort": observation.effective_reasoning_effort,
         "provider_chain": list(observation.provider_chain),
         "fallback_used": False,
         "self_review": False,
@@ -1672,8 +1706,10 @@ def verify_legacy_landed_review_aggregate(
                 "leaf_id",
                 "requested_provider",
                 "requested_model",
+                "requested_reasoning_effort",
                 "effective_provider",
                 "effective_model",
+                "effective_reasoning_effort",
                 "provider_chain",
                 "fallback_used",
                 "self_review",
@@ -1724,8 +1760,10 @@ def verify_legacy_landed_review_aggregate(
                 "leaf_id": leaf.get("leaf_id"),
                 "requested_provider": provider.provider,
                 "requested_model": provider.model,
+                "requested_reasoning_effort": provider.reasoning_effort,
                 "effective_provider": provider.provider,
                 "effective_model": provider.model,
+                "effective_reasoning_effort": provider.reasoning_effort,
                 "provider_chain": [provider.provider],
                 "fallback_used": False,
                 "self_review": False,

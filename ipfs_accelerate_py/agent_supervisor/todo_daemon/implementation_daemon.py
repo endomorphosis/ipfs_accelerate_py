@@ -353,6 +353,7 @@ TASK_OWNED_SUBMODULE_INTEGRATION_BINDING_SCHEMA = (
 TASK_ATTEMPT_LIMIT_IDLE_REASON = (
     "all_selectable_ready_tasks_reached_max_task_attempts"
 )
+PENDING_ACCEPTANCE_RETRY_BACKOFF_SECONDS = 30
 VALIDATION_MAX_WORKERS_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_MAX_WORKERS"
 VALIDATION_RESOURCE_BUDGET_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_RESOURCE_BUDGET"
 DEFAULT_VALIDATION_MAX_WORKERS = 2
@@ -5829,6 +5830,125 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 None,
             )
 
+    @staticmethod
+    def _provider_review_only_acceptance_pending(
+        acceptance_result: Mapping[str, Any] | None,
+    ) -> bool:
+        """Recognize an integrated task whose sole missing gate is review.
+
+        This predicate is intentionally exact.  Missing merge, validation,
+        freshness, semantic, proof, or deterministic-only evidence remains a
+        consuming failure and can never enter the resumable acceptance path.
+        """
+
+        if not isinstance(acceptance_result, Mapping):
+            return False
+        gate = acceptance_result.get("gate")
+        receipt = acceptance_result.get("receipt")
+        if not isinstance(gate, Mapping) or not isinstance(receipt, Mapping):
+            return False
+        pending = tuple(
+            str(item).strip()
+            for item in (acceptance_result.get("pending_gates") or ())
+            if str(item).strip()
+        )
+        gate_pending = tuple(
+            str(item).strip()
+            for item in (gate.get("pending_gates") or ())
+            if str(item).strip()
+        )
+        receipt_pending = tuple(
+            str(item).strip()
+            for item in (receipt.get("pending_gates") or ())
+            if str(item).strip()
+        )
+        satisfied = {
+            str(item).strip()
+            for item in (gate.get("satisfied_gates") or ())
+            if str(item).strip()
+        }
+        task_id = str(acceptance_result.get("task_id") or "").strip()
+        merge_commit = str(acceptance_result.get("merge_commit") or "").strip()
+        repository_tree_id = str(gate.get("repository_tree_id") or "").strip()
+        return bool(
+            acceptance_result.get("schema")
+            == "ipfs_accelerate_py/agent-supervisor/authoritative-acceptance-status@1"
+            and task_id
+            and acceptance_result.get("acceptance_state")
+            == "implemented_merged_but_pending"
+            and acceptance_result.get("admitted") is False
+            and acceptance_result.get("completion_authoritative") is False
+            and acceptance_result.get("authoritatively_completed") is not True
+            and gate.get("admitted") is False
+            and gate.get("schema")
+            == "ipfs_accelerate_py/agent-supervisor/authoritative-completion-gate@1"
+            and str(gate.get("task_id") or "").strip() == task_id
+            and gate.get("completion_authoritative") is False
+            and gate.get("acceptance_state")
+            == "implemented_merged_but_pending"
+            and pending == ("provider_review",)
+            and gate_pending == ("provider_review",)
+            and {
+                "merge",
+                "freshness",
+                "semantic",
+                "proof",
+                "deterministic_only",
+            }.issubset(satisfied)
+            and merge_commit
+            and str(gate.get("merge_commit") or "").strip() == merge_commit
+            and repository_tree_id
+            and receipt.get("schema")
+            == "ipfs_accelerate_py/agent-supervisor/implementation-receipt@1"
+            and str(receipt.get("task_id") or "").strip() == task_id
+            and receipt.get("merged") is True
+            and receipt.get("completion_authoritative") is False
+            and receipt.get("acceptance_state")
+            == "implemented_merged_but_pending"
+            and receipt_pending == ("provider_review",)
+            and receipt.get("validation_passed") is True
+            and receipt.get("validation_stale") is False
+            and str(receipt.get("merge_commit") or "").strip() == merge_commit
+            and str(receipt.get("repository_tree_id") or "").strip()
+            == repository_tree_id
+        )
+
+    def _defer_provider_review_only_acceptance(
+        self,
+        *,
+        task: PortalTask,
+        state: PortalTaskState,
+        attempt: int,
+        acceptance_result: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Roll back one implementation charge for review-only continuation."""
+
+        if not self._provider_review_only_acceptance_pending(acceptance_result):
+            return {"deferred": False}
+        identity = self._identity_for_task(task)
+        self._restore_task_attempt(state, task, max(0, int(attempt) - 1))
+        self.task_queue.defer(
+            identity.canonical_task_cid,
+            PENDING_ACCEPTANCE_RETRY_BACKOFF_SECONDS,
+            reason="pending_acceptance_provider_review",
+        )
+        self.task_queue.save()
+        result = {
+            "deferred": True,
+            "resumable": True,
+            "acceptance_pending": True,
+            "completion_authoritative": False,
+            "reason": "pending_acceptance_provider_review",
+            "pending_gates": ["provider_review"],
+            "task_id": task.task_id,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "attempt": int(attempt),
+            "attempt_consumed": False,
+            "backoff_seconds": PENDING_ACCEPTANCE_RETRY_BACKOFF_SECONDS,
+        }
+        self._record_event("implementation_acceptance_deferred", result)
+        return result
+
     def _record_task_queue_outcome(self, task: PortalTask, returncode: int, reason: str = "") -> None:
         canonical_task_cid = self._canonical_ref(task)
         if returncode == 0:
@@ -7866,6 +7986,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "reason": "not_run",
         }
         todo_update_result: dict[str, Any] = {}
+        acceptance_result: dict[str, Any] = {}
+        pending_acceptance_deferral: dict[str, Any] = {}
         context_receipt_path: Path | None = None
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
         protected_path_violation: dict[str, Any] = {}
@@ -8285,26 +8407,40 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     acceptance_result.get("todo_update_result") or {}
                 )
             finished_at = utc_now()
-            self._record_task_attempt(state, task, attempt)
+            pending_acceptance_deferral = (
+                self._defer_provider_review_only_acceptance(
+                    task=task,
+                    state=state,
+                    attempt=attempt,
+                    acceptance_result=acceptance_result,
+                )
+            )
+            attempt_consumed = not bool(
+                pending_acceptance_deferral.get("deferred")
+            )
+            if attempt_consumed:
+                self._record_task_attempt(state, task, attempt)
             state.last_implementation_started_at = started_at
             state.last_implementation_finished_at = finished_at
             state.last_implementation_returncode = effective_returncode
             state.last_implementation_log_path = str(log_path)
             self._mark_implementation_finished(state, finished_at=finished_at)
             state.save(self.state_path)
-            self._record_task_queue_outcome(
-                task,
-                effective_returncode,
-                reason=(
-                    "implementation_protected_path_mutated"
-                    if protected_path_violation
-                    else "validation_or_implementation_failed"
-                ),
-            )
+            if attempt_consumed:
+                self._record_task_queue_outcome(
+                    task,
+                    effective_returncode,
+                    reason=(
+                        "implementation_protected_path_mutated"
+                        if protected_path_violation
+                        else "validation_or_implementation_failed"
+                    ),
+                )
             result = {
                 "task_id": task.task_id,
                 "attempt": attempt,
                 "returncode": effective_returncode,
+                "attempt_consumed": attempt_consumed,
                 "log_path": str(log_path),
                 "validation_result": validation_result,
                 "context_receipt_path": str(context_receipt_path),
@@ -8324,15 +8460,23 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if termination_result:
                 result["termination_result"] = termination_result
                 self._record_implementation_termination(task, attempt, termination_result)
-            diagnostic = self._record_failed_attempt_retry_context(
-                task,
-                returncode=effective_returncode,
-                validation_result=validation_result,
+            diagnostic = (
+                self._record_failed_attempt_retry_context(
+                    task,
+                    returncode=effective_returncode,
+                    validation_result=validation_result,
+                )
+                if attempt_consumed
+                else None
             )
             if diagnostic is not None:
                 result["diagnostic_receipt_id"] = diagnostic.receipt_id
             if todo_update_result:
                 result["todo_update_result"] = todo_update_result
+            if acceptance_result:
+                result["acceptance_result"] = acceptance_result
+            if pending_acceptance_deferral.get("deferred"):
+                result.update(pending_acceptance_deferral)
             self._record_event("implementation_finished", result)
             return result
         except subprocess.TimeoutExpired as timeout_exc:
@@ -11307,6 +11451,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         commit_result: dict[str, Any] = {"committed": False}
         failed_preservation_result: dict[str, Any] = {}
         todo_update_result: dict[str, Any] = {}
+        pending_acceptance_deferral: dict[str, Any] = {}
         exception_result: dict[str, Any] = {}
         provider_failure: dict[str, Any] = {}
         legacy_landed_capacity_signal = False
@@ -12857,6 +13002,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "board_completion": dict(board_completion),
                 },
             )
+        if attempt_consumed:
+            pending_acceptance_deferral = (
+                self._defer_provider_review_only_acceptance(
+                    task=task,
+                    state=state,
+                    attempt=attempt,
+                    acceptance_result=acceptance_result,
+                )
+            )
+            if pending_acceptance_deferral.get("deferred"):
+                attempt_consumed = False
         self._mark_implementation_finished(state, finished_at=finished_at)
         state.save(self.state_path)
         # Queueing is a successful implementation handoff, but not task
@@ -12956,6 +13112,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             result["todo_update_result"] = todo_update_result
         if acceptance_result:
             result["acceptance_result"] = acceptance_result
+        if pending_acceptance_deferral.get("deferred"):
+            result.update(pending_acceptance_deferral)
         if implementation_binding_recovery:
             result["implementation_binding_recovery"] = (
                 implementation_binding_recovery
@@ -20127,6 +20285,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             expected_task_id=expected_task_id,
             expected_snapshot_id=expected_snapshot_id,
             current_snapshot_id=current_snapshot_id or expected_snapshot_id,
+            require_execution_binding=True,
         )
         return disposition is ProductionReceiptDisposition.ADMITTED
 

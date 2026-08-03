@@ -214,6 +214,29 @@ def profile_g_cid(value: Any) -> str:
     return "b" + base64.b32encode(raw).decode("ascii").rstrip("=").lower()
 
 
+def _is_profile_g_cid(value: Any) -> bool:
+    """Return whether ``value`` is canonical Profile-G CIDv1 identity text."""
+
+    if not isinstance(value, str) or not value or value != value.lower():
+        return False
+    if not value.startswith("b"):
+        return False
+    encoded = value[1:]
+    padding = "=" * ((8 - len(encoded) % 8) % 8)
+    try:
+        raw = base64.b32decode(encoded.upper() + padding, casefold=False)
+    except (ValueError, TypeError):
+        return False
+    expected_prefix = b"\x01\xa9\x02\x12\x20"
+    return bool(
+        len(raw) == len(expected_prefix) + hashlib.sha256().digest_size
+        and raw.startswith(expected_prefix)
+        and "b"
+        + base64.b32encode(raw).decode("ascii").rstrip("=").lower()
+        == value
+    )
+
+
 def _content_digest(value: Any) -> str:
     """Return the explicit sha256 binding used by distributed envelopes."""
 
@@ -1927,6 +1950,18 @@ class LeaseCoordinator:
         result["bundle_key"] = str(state.bundle.get("bundle_key") or state.task_id)
         # Common spelling used by the lane manifest.
         result["expires_at_ms"] = state.lease_expires_at_ms
+        release_reason = str(state.release_reason or "")
+        if release_reason.startswith("deferred:pending_acceptance:"):
+            result.update(
+                {
+                    "acceptance_pending": True,
+                    "resumable": True,
+                    "deferred_reason": "pending_acceptance",
+                    "pending_gate": release_reason.rsplit(":", 1)[-1],
+                }
+            )
+            if state.state == "blocked":
+                result["blocked_reason"] = "acceptance_pending_cooldown"
         return result
 
     def _projection_with_claimability(
@@ -2826,6 +2861,216 @@ class LeaseCoordinator:
                 )
                 conn.commit()
                 return cid
+            except Exception:
+                conn.rollback()
+                raise
+
+    @_coordinator_operation
+    def defer_pending_acceptance(
+        self,
+        grant: LeaseGrant,
+        *,
+        evidence: Mapping[str, Any],
+        retry_delay_ms: int = 30_000,
+        now_ms: int | None = None,
+    ) -> dict[str, Any]:
+        """Return provider-review-pending work without publishing a receipt.
+
+        This transition is deliberately narrower than :meth:`release`.  It
+        accepts only exact, non-authoritative provider-review-pending evidence,
+        rolls back the coordination attempt charged by the current claim, and
+        applies a bounded cooldown before the task becomes claimable again.
+        The resulting ``ClaimResolution`` is resumability evidence, never task
+        completion authority.
+        """
+
+        if not isinstance(evidence, Mapping):
+            raise ValueError("pending acceptance evidence must be a mapping")
+
+        def exact_text_sequence(value: Any) -> tuple[str, ...]:
+            if not isinstance(value, (list, tuple)):
+                return ()
+            if not value or any(
+                not isinstance(item, str)
+                or not item
+                or item != item.strip()
+                for item in value
+            ):
+                return ()
+            return tuple(value)
+
+        pending_gates = exact_text_sequence(evidence.get("pending_gates"))
+        task_ids = exact_text_sequence(evidence.get("task_ids"))
+        task_cids = exact_text_sequence(evidence.get("task_cids"))
+        event_ids = exact_text_sequence(evidence.get("acceptance_event_ids"))
+        raw_task_cids_by_id = evidence.get("task_cids_by_id")
+        exact_task_cids_by_id = bool(
+            isinstance(raw_task_cids_by_id, Mapping)
+            and raw_task_cids_by_id
+            and all(
+                isinstance(task_id, str)
+                and task_id == task_id.strip()
+                and bool(task_id)
+                and isinstance(task_cid, str)
+                and task_cid == task_cid.strip()
+                and _is_profile_g_cid(task_cid)
+                for task_id, task_cid in raw_task_cids_by_id.items()
+            )
+        )
+        task_cids_by_id = (
+            {
+                str(task_id).strip(): str(task_cid).strip()
+                for task_id, task_cid in raw_task_cids_by_id.items()
+            }
+            if isinstance(raw_task_cids_by_id, Mapping)
+            else {}
+        )
+        terminal_event_id = str(evidence.get("terminal_event_id") or "").strip()
+        if (
+            evidence.get("schema")
+            != "ipfs_accelerate_py/agent-supervisor/pending-acceptance@1"
+            or evidence.get("acceptance_pending") is not True
+            or evidence.get("completion_authoritative") is not False
+            or evidence.get("admitted") is not False
+            or pending_gates != ("provider_review",)
+            or not task_ids
+            or len(set(task_ids)) != len(task_ids)
+            or len(task_ids) != len(task_cids)
+            or len(set(task_cids)) != len(task_cids)
+            or any(not _is_profile_g_cid(task_cid) for task_cid in task_cids)
+            or not exact_task_cids_by_id
+            or set(task_cids_by_id) != set(task_ids)
+            or any(
+                not task_cid or task_cids_by_id.get(task_id) != task_cid
+                for task_id, task_cid in zip(task_ids, task_cids)
+            )
+            or len(event_ids) != len(task_ids)
+            or len(set(event_ids)) != len(event_ids)
+            or not terminal_event_id
+            or terminal_event_id in event_ids
+        ):
+            raise ValueError(
+                "pending acceptance deferral requires exact, durable, "
+                "provider-review-only evidence"
+            )
+        delay = int(retry_delay_ms)
+        if not 1 <= delay <= MAX_LEASE_MS:
+            raise ValueError(
+                f"retry_delay_ms must be in [1, {MAX_LEASE_MS}]"
+            )
+        normalized_evidence = _canonical_mapping(
+            dict(evidence),
+            "pending acceptance evidence",
+        )
+        now = self._clock_ms() if now_ms is None else int(now_ms)
+        retry_not_before = now + delay
+        with self._lock:
+            conn = self._connection
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                row = self._current(conn, grant, now)
+                task = conn.execute(
+                    "SELECT bundle_json FROM tasks WHERE task_cid=?",
+                    (grant.task_cid,),
+                ).fetchone()
+                if task is None:
+                    raise LeaseError("leased task registration is missing")
+                bundle = json.loads(str(task["bundle_json"]))
+                registered_slice_ids = exact_text_sequence(
+                    bundle.get("execution_slice_task_ids")
+                )
+                registered_slice_cids = exact_text_sequence(
+                    bundle.get("execution_slice_task_cids")
+                )
+                members = bundle.get("tasks")
+                member_pairs = [
+                    (
+                        str(member.get("task_id") or "").strip(),
+                        str(
+                            member.get("canonical_task_cid")
+                            or member.get("task_cid")
+                            or ""
+                        ).strip(),
+                    )
+                    for member in (
+                        members if isinstance(members, (list, tuple)) else ()
+                    )
+                    if isinstance(member, Mapping)
+                ]
+                selected_id_set = set(registered_slice_ids)
+                selected_cid_set = set(registered_slice_cids)
+                selected_pairs = [
+                    (task_id, task_cid)
+                    for task_id, task_cid in member_pairs
+                    if task_id in selected_id_set and task_cid in selected_cid_set
+                ]
+                registered_task_cids_by_id = dict(selected_pairs)
+                if (
+                    not registered_slice_ids
+                    or len(set(registered_slice_ids)) != len(registered_slice_ids)
+                    or len(registered_slice_ids) != len(registered_slice_cids)
+                    or len(set(registered_slice_cids)) != len(registered_slice_cids)
+                    or any(
+                        not _is_profile_g_cid(task_cid)
+                        for task_cid in registered_slice_cids
+                    )
+                    or not registered_task_cids_by_id
+                    or len(selected_pairs) != len(registered_task_cids_by_id)
+                    or any(
+                        not task_id or not task_cid
+                        for task_id, task_cid in registered_task_cids_by_id.items()
+                    )
+                    or set(registered_task_cids_by_id) != selected_id_set
+                    or set(registered_task_cids_by_id.values()) != selected_cid_set
+                    or task_cids_by_id != registered_task_cids_by_id
+                ):
+                    raise ValueError(
+                        "pending acceptance evidence is not bound to the "
+                        "leased execution slice"
+                    )
+                resolution = self._resolution_payload(
+                    row,
+                    outcome="released",
+                    now=now,
+                )
+                resolution.update(
+                    {
+                        "retry_not_before_ms": retry_not_before,
+                        "deferred_reason": "pending_acceptance",
+                        "pending_acceptance": normalized_evidence,
+                    }
+                )
+                resolution_cid = self._put_artifact(
+                    conn,
+                    "ClaimResolution",
+                    resolution,
+                )
+                prior_attempt = max(0, int(row["attempt"] or 0) - 1)
+                conn.execute(
+                    """UPDATE leases
+                       SET state='released', resolution_cid=?, attempt=?,
+                           release_reason=?, retry_not_before_ms=?
+                       WHERE task_cid=? AND claim_cid=? AND fencing_token=?""",
+                    (
+                        resolution_cid,
+                        prior_attempt,
+                        "deferred:pending_acceptance:provider_review",
+                        retry_not_before,
+                        grant.task_cid,
+                        grant.claim_cid,
+                        grant.fencing_token,
+                    ),
+                )
+                conn.commit()
+                return {
+                    "resolution_cid": resolution_cid,
+                    "task_cid": grant.task_cid,
+                    "attempt": prior_attempt,
+                    "retry_not_before_ms": retry_not_before,
+                    "acceptance_pending": True,
+                    "resumable": True,
+                    "completion_authoritative": False,
+                }
             except Exception:
                 conn.rollback()
                 raise

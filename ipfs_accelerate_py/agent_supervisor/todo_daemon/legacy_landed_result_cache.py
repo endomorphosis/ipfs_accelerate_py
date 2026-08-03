@@ -25,7 +25,7 @@ import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
@@ -33,9 +33,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
-from ..entrypoints.verified_ipld_backend import (
-    VerifiedIPLDBackend,
-    admit_cid,
+from ..multiformats_identity import (
+    MultiformatsIdentityError,
+    validate_cid,
 )
 from ..proof.formal_verification_contracts import (
     canonical_json_bytes,
@@ -98,6 +98,56 @@ class LegacyLandedLeafCacheError(RuntimeError):
 
 class LegacyLandedLeafCacheTimeout(LegacyLandedLeafCacheError, TimeoutError):
     """No signed leaf record arrived before the bounded deadline."""
+
+
+class _SnapshotPutReceipt(Protocol):
+    """Minimum content-addressed put receipt consumed by this cache."""
+
+    cid: str
+
+
+class _SnapshotBackend(Protocol):
+    """Transport-neutral IPLD snapshot interface used by the daemon layer.
+
+    The concrete verified backend is composed by a higher layer.  Keeping the
+    cache dependent on this structural interface preserves the supervisor
+    package DAG while retaining fail-closed CID admission locally.
+    """
+
+    def put_raw(
+        self,
+        data: bytes,
+        *,
+        pin: bool = True,
+    ) -> _SnapshotPutReceipt: ...
+
+    def get_raw(self, cid: str) -> tuple[bytes, Any]: ...
+
+    def put_dag_json(
+        self,
+        obj: Any,
+        *,
+        pin: bool = True,
+    ) -> _SnapshotPutReceipt: ...
+
+    def get_dag_json(self, cid: str) -> tuple[bytes, Any]: ...
+
+
+def _admit_snapshot_cid(value: Any, *, codecs: tuple[str, ...]) -> str:
+    """Admit only canonical CIDv1 values under the snapshot codec profile."""
+
+    allowed = frozenset({"raw", "dag-json"})
+    if not codecs or any(codec not in allowed for codec in codecs):
+        raise LegacyLandedLeafCacheError(
+            "snapshot CID codecs must be a nonempty subset of "
+            f"{sorted(allowed)}"
+        )
+    try:
+        return validate_cid(value, codecs=codecs)
+    except MultiformatsIdentityError as exc:
+        raise LegacyLandedLeafCacheError(
+            f"snapshot CID rejected for coordination admission: {exc}"
+        ) from exc
 
 
 def _strict_object(value: bytes | str | Mapping[str, Any]) -> dict[str, Any]:
@@ -314,8 +364,10 @@ _LEAF_RECEIPT_FIELDS: Final = frozenset(
         "leaf_id",
         "requested_provider",
         "requested_model",
+        "requested_reasoning_effort",
         "effective_provider",
         "effective_model",
+        "effective_reasoning_effort",
         "provider_chain",
         "fallback_used",
         "self_review",
@@ -373,8 +425,14 @@ def _verified_origin_leaf_receipt(
         "leaf_id": key.leaf_id,
         "requested_provider": key.provider,
         "requested_model": key.model,
+        "requested_reasoning_effort": (
+            "medium" if key.role == "codex_audit" else ""
+        ),
         "effective_provider": key.provider,
         "effective_model": key.model,
+        "effective_reasoning_effort": (
+            "medium" if key.role == "codex_audit" else ""
+        ),
         "provider_chain": [key.provider],
         "fallback_used": False,
         "self_review": False,
@@ -1336,7 +1394,7 @@ class LegacyLandedLeafResultCache:
         self,
         directory: str | Path,
         *,
-        backend: VerifiedIPLDBackend,
+        backend: _SnapshotBackend,
         pin: bool = True,
     ) -> LegacyLandedLeafCacheSnapshot:
         """Export one immutable, non-authoritative Parquet/IPLD snapshot."""
@@ -1411,7 +1469,7 @@ class LegacyLandedLeafResultCache:
                     "legacy leaf cache snapshot Parquet byte bound exceeded"
                 )
             put = backend.put_raw(parquet_bytes, pin=pin)
-            parquet_cid = admit_cid(put.cid, codecs=("raw",))
+            parquet_cid = _admit_snapshot_cid(put.cid, codecs=("raw",))
             admitted_bytes, _raw_receipt = backend.get_raw(parquet_cid)
             if admitted_bytes != parquet_bytes:
                 raise LegacyLandedLeafCacheError(
@@ -1453,7 +1511,10 @@ class LegacyLandedLeafResultCache:
                 "proof_authoritative": False,
             }
             manifest_put = backend.put_dag_json(manifest, pin=pin)
-            manifest_cid = admit_cid(manifest_put.cid, codecs=("dag-json",))
+            manifest_cid = _admit_snapshot_cid(
+                manifest_put.cid,
+                codecs=("dag-json",),
+            )
             manifest_bytes, _manifest_receipt = backend.get_dag_json(
                 manifest_cid
             )
@@ -1541,7 +1602,7 @@ class LegacyLandedLeafResultCache:
         self,
         manifest_cid: str,
         *,
-        backend: VerifiedIPLDBackend,
+        backend: _SnapshotBackend,
     ) -> int:
         """Rehydrate only exact signed records from a verified IPLD snapshot."""
 
@@ -1623,7 +1684,10 @@ class LegacyLandedLeafResultCache:
             raise LegacyLandedLeafCacheError(
                 "legacy cache snapshot inventory bounds are invalid"
             )
-        parquet_cid = admit_cid(manifest.get("parquet_cid"), codecs=("raw",))
+        parquet_cid = _admit_snapshot_cid(
+            manifest.get("parquet_cid"),
+            codecs=("raw",),
+        )
         parquet_bytes, _parquet_receipt = backend.get_raw(parquet_cid)
         if len(parquet_bytes) != parquet_byte_length:
             raise LegacyLandedLeafCacheError(

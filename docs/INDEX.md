@@ -80,6 +80,8 @@ codebase-proof, domain layout) remain under architecture as execution records.
 - [Prompt-only entrypoints and automatic target inference](architecture/AGENT_SUPERVISOR_PROMPT_ONLY_ENTRYPOINTS_PLAN.md)
 - [Prompt-only entrypoint objective heap](architecture/agent_supervisor_prompt_only_entrypoints.objectives.md)
 - [Prompt-only entrypoint parallel task board](architecture/agent_supervisor_prompt_only_entrypoints.todo.md)
+- [Prompt-only entrypoint v2 delta objectives](architecture/agent_supervisor_prompt_only_entrypoints_v2_delta.objectives.md)
+- [Prompt-only entrypoint v2 delta task board](architecture/agent_supervisor_prompt_only_entrypoints_v2_delta.todo.md)
 - [Self-improvement rollout plan](architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md)
 - [Formal planning and prover matrix](architecture/AGENT_SUPERVISOR_FORMAL_PLANNING_PROVER_MATRIX_PLAN.md)
 - [Formal verification plan](architecture/AGENT_SUPERVISOR_FORMAL_VERIFICATION_PLAN.md)

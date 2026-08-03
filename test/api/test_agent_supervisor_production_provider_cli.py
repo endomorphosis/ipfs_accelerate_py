@@ -140,11 +140,13 @@ def test_policy_is_fixed_to_grok_implementation_and_independent_codex_review() -
     payload = policy.to_dict()
 
     assert policy.name == PRODUCTION_CLI_POLICY_NAME
+    assert payload["schema"].endswith("@2")
     assert policy.declared_roles == ("grok-implement", "codex-review")
     assert payload["implementation"]["provider"] == "grok_cli"
     assert payload["implementation"]["model"] == "grok-4.5"
     assert payload["review"]["provider"] == "codex_cli"
-    assert payload["review"]["model"] == "gpt-5.6-sol"
+    assert payload["review"]["model"] == "gpt-5.6-terra"
+    assert payload["review"]["reasoning_effort"] == "medium"
     assert payload["review"]["independent"] is True
     assert payload["implementation"]["fallback_provider"] == ""
     assert payload["implementation"]["failure_disposition"] == (
@@ -248,6 +250,9 @@ def test_board_metadata_edit_keeps_task_cid_but_invalidates_source_digest(
         {"provider_timeout_seconds": 601},
         {"max_new_tokens": 0},
         {"codex_provider": "grok_cli"},
+        {"grok_model": "grok-4"},
+        {"codex_model": "gpt-5.6-sol"},
+        {"codex_reasoning_effort": "high"},
         {"name": "unreviewed-grok"},
     ],
 )
@@ -390,7 +395,7 @@ def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
 
     for provider, expected_model, role in (
         ("grok_cli", "grok-4.5", ProviderRole.GROK_IMPLEMENT),
-        ("codex_cli", "gpt-5.6-sol", ProviderRole.CODEX_REVIEW),
+        ("codex_cli", "gpt-5.6-terra", ProviderRole.CODEX_REVIEW),
     ):
         record = observed[provider]
         command = record["command"]
@@ -420,6 +425,10 @@ def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
     ] == ""
     assert "--verbatim" in observed["grok_cli"]["command"]
     assert "--output-schema" in observed["codex_cli"]["command"]
+    codex_command = observed["codex_cli"]["command"]
+    assert codex_command[codex_command.index("-c") + 1] == (
+        'model_reasoning_effort="medium"'
+    )
     assert observed["codex_cli"]["command"][-1] == "-"
     assert observed["codex_cli"]["schema"]["properties"]["findings"][
         "maxItems"
@@ -427,11 +436,14 @@ def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
 
     for response, expected_provider, expected_model in (
         (grok_response, "grok_cli", "grok-4.5"),
-        (codex_response, "codex_cli", "gpt-5.6-sol"),
+        (codex_response, "codex_cli", "gpt-5.6-terra"),
     ):
         execution = response["supervisor_provider_execution"]
         assert execution["effective_provider"] == expected_provider
         assert execution["effective_model"] == expected_model
+        assert execution["model_reasoning_effort"] == (
+            "medium" if expected_provider == "codex_cli" else ""
+        )
         assert execution["native_structured_output_enforced"] is True
         assert execution["cross_provider_fallback_allowed"] is False
         assert execution["supervisor_receipt_id"]

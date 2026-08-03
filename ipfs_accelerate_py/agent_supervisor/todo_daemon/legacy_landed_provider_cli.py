@@ -42,12 +42,12 @@ from .llm import (
 )
 
 LEGACY_LANDED_CLI_EXECUTION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/legacy-landed-cli-execution@1"
+    "ipfs_accelerate_py/agent-supervisor/legacy-landed-cli-execution@2"
 )
 DEFAULT_LEGACY_LANDED_PROVIDER_TIMEOUT_SECONDS: Final = 300
 DEFAULT_LEGACY_LANDED_MAX_NEW_TOKENS: Final = 1_024
 LEGACY_LANDED_NATIVE_STRUCTURED_EXECUTION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/legacy-landed-native-structured-execution@1"
+    "ipfs_accelerate_py/agent-supervisor/legacy-landed-native-structured-execution@2"
 )
 _MAX_NATIVE_CLI_CAPTURE_BYTES: Final = 1024 * 1024
 _MAX_NATIVE_RESPONSE_BYTES: Final = 64 * 1024
@@ -516,11 +516,17 @@ def _codex_native_structured_output(
     response_schema: Mapping[str, Any],
     *,
     max_response_bytes: int,
+    reasoning_effort: str,
 ) -> tuple[str, str]:
     binary = shutil.which("codex")
     if not binary:
         raise RuntimeError("legacy Codex CLI is unavailable")
     cwd = invocation.repo_root.resolve(strict=True)
+    reasoning_effort = str(reasoning_effort or "").strip()
+    if reasoning_effort != "medium":
+        raise RuntimeError(
+            "legacy Codex independent review requires medium reasoning"
+        )
     schema_path = cwd / "response-schema.json"
     response_path = cwd / "last-message.json"
     _write_private_text(schema_path, _canonical_json(response_schema))
@@ -538,6 +544,8 @@ def _codex_native_structured_output(
         "never",
         "--model",
         invocation.model_name,
+        "-c",
+        f'model_reasoning_effort="{reasoning_effort}"',
         "--output-schema",
         str(schema_path),
         "--output-last-message",
@@ -607,6 +615,7 @@ def _invoke_native_structured_cli(
     response_validator: NativeStructuredResponseValidator | None = None,
     execution_schema: str = LEGACY_LANDED_NATIVE_STRUCTURED_EXECUTION_SCHEMA,
     max_response_bytes: int = _MAX_NATIVE_RESPONSE_BYTES,
+    codex_reasoning_effort: str = "",
 ) -> tuple[str, LlmChildResultEnvelope]:
     if (
         isinstance(max_response_bytes, bool)
@@ -628,6 +637,7 @@ def _invoke_native_structured_cli(
             invocation,
             response_schema,
             max_response_bytes=max_response_bytes,
+            reasoning_effort=codex_reasoning_effort,
         )
     else:
         raise RuntimeError("legacy native provider is not policy-admissible")
@@ -643,6 +653,7 @@ def _invoke_native_structured_cli(
         "request_id": invocation.request_id,
         "configured_provider": expected_provider,
         "configured_model": invocation.model_name,
+        "model_reasoning_effort": codex_reasoning_effort,
         "effective_provider": expected_provider,
         "effective_model": invocation.model_name,
         "canonical_prompt_sha256": hashlib.sha256(
@@ -733,7 +744,12 @@ class BoundLegacyLandedCLIProvider:
     ) -> tuple[str, LlmChildResultEnvelope | None]:
         if self.invoker is not None:
             return self.invoker(prompt, invocation)
-        return _invoke_native_structured_cli(prompt, invocation, response_schema)
+        return _invoke_native_structured_cli(
+            prompt,
+            invocation,
+            response_schema,
+            codex_reasoning_effort=self.provider_policy.reasoning_effort,
+        )
 
     def __call__(
         self, request: LegacyLeafReviewRequest
@@ -745,6 +761,7 @@ class BoundLegacyLandedCLIProvider:
             request.role != expected.role
             or request.provider != expected.provider
             or request.model != expected.model
+            or request.reasoning_effort != expected.reasoning_effort
         ):
             raise RuntimeError("legacy CLI request differs from operator policy")
         if request.token_upper_bound > MAX_LEAF_TOKENS:
@@ -833,6 +850,8 @@ class BoundLegacyLandedCLIProvider:
             fallback_used=False,
             supervisor_observed=True,
             response=response,
+            requested_reasoning_effort=expected.reasoning_effort,
+            effective_reasoning_effort=expected.reasoning_effort,
         )
 
 

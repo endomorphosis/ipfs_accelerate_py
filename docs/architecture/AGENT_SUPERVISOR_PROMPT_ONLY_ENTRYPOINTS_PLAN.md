@@ -29,7 +29,22 @@ and taskboard are:
 - `agent_supervisor_prompt_only_entrypoints.objectives.md`; and
 - `agent_supervisor_prompt_only_entrypoints.todo.md`.
 
-They use the new `ASE-G…` and `ASE-…` namespaces. The proposed
+The audited 2026-08-03 refresh is recorded in:
+
+- `agent_supervisor_prompt_only_entrypoints_v2_delta.objectives.md`; and
+- `agent_supervisor_prompt_only_entrypoints_v2_delta.todo.md`.
+
+The delta is deliberately versioned rather than edited into the live v1
+taskboard: task metadata contributes to canonical task CIDs, and a v1 bundle
+supervisor is still consuming that materialized projection. The delta adds
+the missing ambient-evidence composition layer, signed local bootstrap,
+DuckDB run-registry convergence, effect-bound launch-plan revalidation, and
+the exact quota-only provider route. It must be merged into a newly
+materialized v2 projection before execution; it must not rewrite v1 task
+identity or completion evidence in place.
+
+The v1 heap and board use the `ASE-G…` and `ASE-…` namespaces; the delta uses
+`ASE2-G…` and `ASE2-…`. The proposed
 `ASI-172` through `ASI-185` identifiers in the earlier create/steer plan are
 retired as planning aliases because the live ASI board subsequently reused
 some of them for unrelated completed work.
@@ -363,7 +378,7 @@ unstructured overrides.
 | Task source | run binding, existing canonical projection, capability policy | DuckDB runtime index plus Markdown mirror when available; Markdown fallback is explicit |
 | Policy | server/embedding policy or signed local profile | Built-in local worktree policy; repository policy is a constraint, never authority |
 | Caller | authenticated MCP/MCP++ principal or local OS/key identity | Never derive from prompt or repository prose |
-| Provider | capability catalog, credentials handles, health, budget and policy | Prefer Grok; use Codex as the typed fallback when Grok is unavailable, exhausted, or fails before an accepted effect |
+| Provider | capability catalog, credential handles, exact model identity, fresh typed quota evidence, budget and policy | Select `grok-4.5`; permit one `gpt-5.6-terra`/`medium` implementation fallback only after verified Grok quota exhaustion and before any repository effect |
 | Lanes | ready width, conflict graph, host resources and provider quotas | ResourceScheduler computes a bounded ceiling, never prompt text |
 | Branch/worktree | run namespace, repository authority and merge policy | Create an isolated run worktree; never edit/merge/push main by default |
 | Validation | task acceptance, AST impact, repository metadata and reviewed command policy | Compile allowlisted argv; never execute prompt-authored shell |
@@ -379,7 +394,12 @@ schema = "ipfs_accelerate_py/agent-supervisor/profile@1"
 mode = "worktree"
 output = "both"
 max_lanes = 4
-provider_policy = "grok,codex"
+primary_provider = "grok"
+primary_model = "grok-4.5"
+quota_fallback_provider = "codex"
+quota_fallback_model = "gpt-5.6-terra"
+quota_fallback_reasoning = "medium"
+quota_fallback_reasons = ["quota_exhausted"]
 coordination_backend = "duckdb-ipld"
 coordination_shards = 1
 replication = "parquet-ipld-ipfs"
@@ -403,49 +423,76 @@ projection. Provide:
 
 Do not read arbitrary command strings or secrets from repository profiles.
 
+### Ambient evidence composition
+
+Leaf resolvers are not themselves a prompt-only entrypoint. Add one
+`InferenceEvidenceCollector` that adapts bounded current process, CWD,
+repository, installed-profile, authenticated-server, run-registry,
+provider-capacity, host-resource, validation-policy, and topology evidence
+into an immutable `InvocationContext`. A `SupervisorResolutionService` calls
+the leaf resolvers in dependency order and emits one complete profile and
+root-linked receipt. It performs observation only: provider dispatch,
+repository mutation, process start, and transport authorization remain beyond
+this boundary.
+
+Transport adapters supply different trusted inputs to the collector. Local
+CLI uses the nearest unambiguous enclosing Git root and an installed signed
+profile; Python uses embedder allowlists or that same local bootstrap; MCP
+maps server-owned target aliases; MCP++ additionally binds verified UCAN
+attenuation. Prompt content cannot supply a root allowlist, caller, provider,
+policy, authority, validation argv, or effect ceiling.
+
 ### Default provider route
 
-The built-in implementation route is ordered, not model-selected:
+The built-in implementation route is exact and policy-selected, never
+prompt-selected:
 
 ```text
-Grok -> Codex -> typed unavailable/deferred result
+grok-4.5
+  -> verified quota_exhausted before any repository effect
+  -> gpt-5.6-terra with medium reasoning, once
+  -> typed unavailable/deferred result
 ```
 
-`auto` and the prompt-only facade prefer an authenticated, policy-allowed,
-healthy Grok provider. Codex is the bounded fallback when Grok is absent,
-unhealthy, quota/capacity exhausted, or fails before publishing an accepted
-effect. The route receipt records both candidates, capability and usage
-evidence, selected provider, fallback reason, attempt/worktree identity, and
-whether an independent review remains required. An explicit signed profile may
-select a different allowed route; prompt or repository prose cannot.
+`auto` and the prompt-only facade require an authenticated, policy-allowed
+`grok-4.5` primary. The only automatic implementation fallback is exact
+`gpt-5.6-terra` with `medium` reasoning after fresh, typed evidence proves
+that Grok quota is exhausted. The fallback is prohibited for mere
+unavailability, capacity pressure, authentication errors, network errors,
+timeouts, a bare status code, a nonzero exit, or an unclassified failure. It
+is also prohibited after any repository effect. The receipt binds both exact
+models, reasoning effort, quota evidence, prompt CID, scope, authorization,
+budget, attempt/worktree identity, and effect boundary. Prompt or repository
+prose cannot select or relax this route.
 
-Fallback does not erase provider-role separation. If Codex implements after a
-Grok failure, that same Codex attempt cannot satisfy an independent Codex
-review obligation. The supervisor must select another admitted reviewer or
-defer the review-bound effect.
+Fallback does not erase provider-role separation. If Terra implements after
+verified Grok quota exhaustion, that attempt cannot satisfy its own review
+obligation. A separately authorized, independent reviewer must be selected or
+the review-bound effect remains deferred; the route does not unconditionally
+require or enable a particular Codex review model.
 
 There are two implementation routes to harden, and their evidence must not be
 conflated:
 
-- the current legacy/raw-command `auto` route treats Grok as the default,
-  selects Codex when Grok is not ready before dispatch, and uses a bounded,
-  shell-free replay of the same prompt to Codex when Grok exits nonzero.
-  Explicit Grok selection remains fail-closed. This compatibility path does
-  not produce the typed pre-effect/effect-boundary evidence required for the
-  production claim;
+- the current legacy/raw-command `auto` route pins `grok-4.5` and permits a
+  bounded, shell-free replay of the same prompt to `gpt-5.6-terra` at medium
+  reasoning only when its transcript yields verified quota-exhaustion
+  evidence. Explicit Grok selection and every non-quota failure remain
+  fail-closed. This compatibility path still needs the same durable
+  pre-effect/effect-boundary receipt used by the production claim;
 - the production packet route currently has Grok-implementation and
   Codex-review roles, so it needs a new typed
   `codex-implementation-fallback` role, bounded proposal/effect admission,
   fallback receipt, and independent-review continuation before it can make
   the same claim.
 
-The production route may dispatch that fallback only for an unavailable,
-quota-exhausted, capacity-unavailable, or failed-before-accepted-effect reason.
-It never replays a provider after an observed effect, never expands the
-authorized path/effect set, and permits at most one fallback dispatch for a
-task revision. Provider executable identity, attempt/process identity,
-authorization, budget, reason evidence, and review separation are committed
-before the fallback starts.
+The production route may dispatch that fallback only for a verified
+`quota_exhausted` reason. It never replays after an observed repository
+effect, never expands the authorized path/effect set, and permits at most one
+fallback dispatch for a task revision. Exact provider/model/reasoning and
+executable identity, attempt/process identity, authorization, budget, quota
+evidence, prompt/scope equality, and review separation are committed before
+the fallback starts.
 
 ## Standard runtime factory
 
@@ -465,9 +512,13 @@ Implement one `StandardSupervisorRuntimeFactory` that:
    as root-linked epochs, never hand-authored;
 6. compiles an immutable lifecycle profile from the resolved profile,
    including verified task-source kind and expected plan/repository roots;
-7. resumes saga and process identity after restart;
-8. adopts a compatible healthy process before launching;
-9. exposes capability degradation instead of pretending unavailable handlers
+7. requires a complete `LaunchPlan` and re-observes tree, authority, policy,
+   provider route, run revision, task-source root, idempotency key, DuckDB
+   owner lease, and fence immediately before every provider, write, or process
+   effect;
+8. resumes saga and process identity after restart;
+9. adopts a compatible healthy process before launching;
+10. exposes capability degradation instead of pretending unavailable handlers
    exist.
 
 The read-only backend remains available for discovery and restricted servers.
@@ -521,9 +572,13 @@ typed conflict and a fresh preview; they are not silently rebased.
 
 ### Local development
 
-An explicit setup action may generate a local signing authority and install a
-bounded `local-worktree` profile. Thereafter prompt-only work can run without
-repeated flags. The profile grants only:
+`ipfs-accelerate supervisor init` may generate an Ed25519 `did:key` local
+development authority and install a signed, content-addressed
+`local-worktree` profile. Private material is stored outside the repository
+with mode 0600; profile load verifies its signature, repository/state roots,
+effect ceiling, expiry, and revocation state. The same command family can
+inspect, rotate, and revoke the profile. Thereafter prompt-only work can run
+without repeated flags. The profile grants only:
 
 - repository reads;
 - supervisor-state writes;
@@ -554,8 +609,12 @@ lane contracts as the foundation. The storage model has three explicit planes:
 1. **Authoritative mutable shard.** One owner process writes each
    `coordination.duckdb` shard. Short transactions plus the existing
    process-shared lock atomically claim, renew, release, fence, publish, and
-   quarantine. A deterministic shard map partitions repositories/runs/tasks so
-   independent shards and lanes can progress concurrently.
+   quarantine. Mutable run heads, run-revision CAS, adoption keys,
+   idempotency keys, and event cursors use a `RunRegistryBackend` on this same
+   coordination plane; the current JSON/file-lock registry becomes a bounded
+   import and rollback adapter, not a second production authority. A
+   deterministic shard map partitions repositories/runs/tasks so independent
+   shards and lanes can progress concurrently.
 2. **Immutable exchange and history.** After commit, export bounded,
    schema-versioned Parquet fragments for tasks, dependencies, events, leases,
    receipts, artifacts, metrics, and terminal results. Build a canonical
@@ -689,10 +748,10 @@ degraded, and optional capabilities and suggests the smallest safe remedy.
   deleted/untracked cases;
 - state-root and run-namespace collision resistance;
 - objective/task-source/run unique, absent and ambiguous populations;
-- Grok-first provider selection, legacy preflight/runtime fallback and
-  production typed Codex fallback, typed fallback reasons, bounded attempts,
-  provider/attempt identity, independent-review separation, and
-  unavailable/degraded/over-budget selection;
+- exact `grok-4.5` selection; verified quota classification; once-only,
+  pre-effect `gpt-5.6-terra`/`medium` fallback; same-prompt/scope/budget
+  proofs; non-quota and post-effect denials; provider/attempt identity; and
+  independent-review separation;
 - resource and lane ceiling computation;
 - profile parsing, signing, catalog selection and forbidden fields;
 - prompt secret/body non-persistence;
@@ -759,8 +818,9 @@ equivalence and old expert commands.
   integrity;
 - zero unclassified or disallowed fields in public replication objects and
   zero accepted CID/codec mismatches;
-- Grok is selected whenever healthy and policy-allowed, while every Codex
-  fallback has a typed, reproducible reason;
+- exact `grok-4.5` is selected whenever admitted, while every
+  `gpt-5.6-terra`/`medium` fallback is once-only, pre-effect, prompt/scope
+  preserving, and backed by verified quota-exhaustion evidence;
 - Python/CLI/MCP/MCP++ canonical parity for the closed fixture population;
 - bounded time to first run handle and time to first useful event, with
   published baselines and regression thresholds;
@@ -778,7 +838,8 @@ Wave 1: entrypoint package/contracts, safety matrix, steering contracts
 Wave 2: repository, state, objective, policy, provider and profile resolvers
 Wave 3: run registry, prompt broker, authority adapters, runtime factory
 Wave 4: prompt-to-run saga, profile compiler, steering runtime, DuckDB shard
-        coordination, typed provider fallback, strict CID adapter, shard
+        coordination, exact quota-only provider fallback, strict CID adapter,
+        shard
         commit sequence, signing, and disclosure policy in parallel where
         their declared files do not overlap
 Wave 5: immutable Parquet/IPLD/IPFS replication fan-in plus Python, CLI,
@@ -829,8 +890,9 @@ The program is complete only when:
 - Python, CLI, MCP, and MCP++ produce equivalent canonical outcomes;
 - concurrent launch/steer and crash/recovery tests prove idempotency, CAS,
   lease and fencing behavior;
-- Grok is the verified default implementation provider and Codex is its typed,
-  policy-bounded fallback;
+- `grok-4.5` is the verified default implementation model and exact
+  `gpt-5.6-terra` with medium reasoning is available once, only on verified
+  pre-effect Grok quota exhaustion;
 - committed coordination state is queryable in DuckDB, distributable as
   Parquet/IPLD/CAR through IPFS, and exactly reconstructible without granting
   authority to a replica;

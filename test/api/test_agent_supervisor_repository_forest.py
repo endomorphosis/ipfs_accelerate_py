@@ -17,6 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.repository_forest import (
     DEFAULT_SWISSKNIFE_ROOT,
     ForestPolicy,
     ForestRootSpec,
+    GITLINK_ENTRY_SCHEMA,
     IgnorePolicy,
     RepositoryAuthority,
     RepositoryForest,
@@ -29,6 +30,9 @@ from ipfs_accelerate_py.agent_supervisor.repository_forest import (
     make_repository_id,
     path_within_repository,
     resolve_repository_root,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.task_identity import (
+    canonical_content_cid,
 )
 
 
@@ -184,6 +188,48 @@ def test_submodule_gitlink_closure_affects_identity(tmp_path: Path) -> None:
     portable = json.dumps(with_link.to_portable_dict(), sort_keys=True)
     assert "child-component" not in portable
     assert str(child) not in portable
+
+
+def test_nested_gitlinks_are_scoped_to_their_distinct_parent_mounts(
+    tmp_path: Path,
+) -> None:
+    leaf = _init_repo(tmp_path / "leaf", name="leaf")
+    child = _init_repo(tmp_path / "child", name="child")
+    _add_submodule(child, leaf, "nested/leaf")
+    child_commit = _git(child, "rev-parse", "HEAD")
+
+    parent = _init_repo(tmp_path / "parent", name="parent")
+    _add_submodule(parent, child, "vendor/child-one")
+    _add_submodule(parent, child, "vendor/child-two")
+
+    descriptor = build_repository_descriptor(
+        parent,
+        alias="ipfs_accelerate_py",
+        authority=RepositoryAuthority(mode=AuthorityMode.READ_WRITE.value),
+    )
+    entries = descriptor.portable_closure.gitlinks
+    mounted_children = [
+        item for item in entries if item.depth == 0 and item.commit == child_commit
+    ]
+    nested_leaves = [item for item in entries if item.depth == 1]
+
+    assert len(mounted_children) == 2
+    assert len({item.gitlink_id for item in mounted_children}) == 2
+    assert {item.gitlink_id for item in mounted_children} == {
+        canonical_content_cid(
+            {
+                "schema": GITLINK_ENTRY_SCHEMA + "/location",
+                "parent_commit": descriptor.commit,
+                "location": location,
+            }
+        )
+        for location in ("vendor/child-one", "vendor/child-two")
+    }
+    assert len(nested_leaves) == 2
+    assert len({item.gitlink_id for item in nested_leaves}) == 2
+    assert {item.parent_gitlink_id for item in nested_leaves} == {
+        item.gitlink_id for item in mounted_children
+    }
 
 
 def test_submodule_content_change_changes_closure(tmp_path: Path) -> None:

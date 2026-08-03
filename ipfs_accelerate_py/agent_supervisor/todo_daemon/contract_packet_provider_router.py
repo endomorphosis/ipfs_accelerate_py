@@ -42,9 +42,9 @@ IMPLEMENTATION_PROVIDER_PROPOSAL_SCHEMA: Final = (
 IMPLEMENTATION_PROVIDER_ROUTE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/implementation-provider-route@1"
 )
-PROVIDER_EXECUTION_RECEIPT_INTERFACE: Final = "ProviderExecutionReceipt@1"
+PROVIDER_EXECUTION_RECEIPT_INTERFACE: Final = "ProviderExecutionReceipt@2"
 PROVIDER_EXECUTION_RECEIPT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/provider-execution-receipt@1"
+    "ipfs_accelerate_py/agent-supervisor/provider-execution-receipt@2"
 )
 # SCA-615 production wiring: the only model-assisted implement/review route.
 PRODUCTION_PROVIDER_ROUTE_INTERFACE: Final = "ProductionProviderRoute@1"
@@ -669,6 +669,7 @@ class ProviderAttempt:
     configured_provider: str = ""
     effective_provider: str = ""
     configured_model: str = ""
+    configured_reasoning_effort: str = ""
     child_result_schema: str = ""
     child_result_status: str = ""
     child_exit_code: int | None = None
@@ -689,6 +690,7 @@ class ProviderAttempt:
             "configured_provider": self.configured_provider,
             "effective_provider": self.effective_provider,
             "configured_model": self.configured_model,
+            "configured_reasoning_effort": self.configured_reasoning_effort,
             "child_result_schema": self.child_result_schema,
             "child_result_status": self.child_result_status,
             "child_exit_code": self.child_exit_code,
@@ -912,7 +914,7 @@ def _provider_response_contract(role: ProviderRole) -> dict[str, Any]:
 def build_provider_execution_receipt(
     result: "ImplementationRoutingResult",
 ) -> ProviderExecutionReceipt:
-    """Materialize a content-addressed ProviderExecutionReceipt@1 from a route."""
+    """Materialize a content-addressed ProviderExecutionReceipt@2 from a route."""
 
     review_chain = result.review_chain
     review_presence = result.review_presence
@@ -1702,6 +1704,9 @@ class ImplementationProviderRouter:
             configured_provider=str(execution.get("configured_provider") or ""),
             effective_provider=str(execution.get("effective_provider") or ""),
             configured_model=str(execution.get("configured_model") or ""),
+            configured_reasoning_effort=str(
+                execution.get("model_reasoning_effort") or ""
+            ),
             child_result_schema=str(execution.get("child_result_schema") or ""),
             child_result_status=str(execution.get("child_result_status") or ""),
             child_exit_code=(
@@ -2348,18 +2353,275 @@ def review_chain_content_digest(
     return _packet_content_id({"review_chain": steps})
 
 
+_PROVIDER_EXECUTION_RECEIPT_V2_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "interface",
+        "receipt_id",
+        "status",
+        "reason_code",
+        "provider",
+        "packet",
+        "review_chain",
+        "review_presence",
+        "admission",
+        "attempts",
+        "writer_lease_id",
+        "write_performed",
+        "fallback",
+        "selected_proposal_digest",
+        "implementation_proposal_digest",
+        "review_proposal_digest",
+        "proof_authoritative",
+        "completion_authoritative",
+    }
+)
+_PROVIDER_EXECUTION_PACKET_FIELDS: Final = frozenset(
+    {"packet_id", "packet_cid", "packet_bytes", "snapshot_id", "task_id"}
+)
+_PROVIDER_EXECUTION_ADMISSION_FIELDS: Final = frozenset(
+    {
+        "proposal_only",
+        "repository_write_allowed",
+        "completion_authoritative",
+        "proof_authoritative",
+        "provider_result_admitted",
+        "independent_review",
+        "review_presence",
+        "self_review",
+        "writer_lease_bound",
+    }
+)
+_PROVIDER_EXECUTION_REVIEW_STEP_FIELDS: Final = frozenset(
+    {
+        "role",
+        "status",
+        "reason_code",
+        "admitted",
+        "response_digest",
+        "prompt_bytes",
+        "prompt_tokens",
+        "response_bytes",
+    }
+)
+_PROVIDER_EXECUTION_ATTEMPT_FIELDS: Final = frozenset(
+    {
+        "role",
+        "status",
+        "reason_code",
+        "prompt_bytes",
+        "prompt_tokens",
+        "response_bytes",
+        "prompt_digest",
+        "response_digest",
+        "execution_schema",
+        "execution_policy_id",
+        "execution_request_id",
+        "configured_provider",
+        "effective_provider",
+        "configured_model",
+        "configured_reasoning_effort",
+        "child_result_schema",
+        "child_result_status",
+        "child_exit_code",
+        "prompt_embedded",
+        "response_embedded",
+    }
+)
+_PRODUCTION_CLI_EXECUTION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/production-cli-provider-execution@2"
+)
+_LLM_CHILD_RESULT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/todo-daemon-llm-child-result@1"
+)
+
+
+def _bounded_nonnegative_integer(value: Any) -> bool:
+    return type(value) is int and 0 <= value <= MAX_PROVIDER_RESPONSE_BYTES
+
+
+def _provider_execution_receipt_v2_protocol_valid(
+    payload: Mapping[str, Any],
+) -> bool:
+    """Validate the exact content-addressed receipt envelope before routing."""
+
+    if (
+        set(payload) != _PROVIDER_EXECUTION_RECEIPT_V2_FIELDS
+        or payload.get("schema") != PROVIDER_EXECUTION_RECEIPT_SCHEMA
+        or payload.get("interface") != PROVIDER_EXECUTION_RECEIPT_INTERFACE
+        or payload.get("completion_authoritative") is not False
+        or payload.get("proof_authoritative") is not False
+        or type(payload.get("write_performed")) is not bool
+        or type(payload.get("fallback")) is not bool
+    ):
+        return False
+    claimed_receipt_id = str(payload.get("receipt_id") or "").strip()
+    unsigned = dict(payload)
+    unsigned.pop("receipt_id", None)
+    try:
+        if not claimed_receipt_id or claimed_receipt_id != _packet_content_id(unsigned):
+            return False
+    except (TypeError, ValueError):
+        return False
+
+    packet = payload.get("packet")
+    admission = payload.get("admission")
+    chain = payload.get("review_chain")
+    attempts = payload.get("attempts")
+    if (
+        not isinstance(packet, Mapping)
+        or set(packet) != _PROVIDER_EXECUTION_PACKET_FIELDS
+        or not isinstance(admission, Mapping)
+        or set(admission) != _PROVIDER_EXECUTION_ADMISSION_FIELDS
+        or not isinstance(chain, list)
+        or not isinstance(attempts, list)
+        or not all(isinstance(item, Mapping) for item in (*chain, *attempts))
+    ):
+        return False
+    packet_bytes = packet.get("packet_bytes")
+    if (
+        not str(packet.get("packet_id") or "").strip()
+        or not str(packet.get("packet_cid") or "").strip()
+        or type(packet_bytes) is not int
+        or packet_bytes < 1
+        or not str(packet.get("snapshot_id") or "").strip()
+        or not str(packet.get("task_id") or "").strip()
+        or admission.get("completion_authoritative") is not False
+        or admission.get("proof_authoritative") is not False
+        or admission.get("self_review") is not False
+        or admission.get("review_presence") != payload.get("review_presence")
+    ):
+        return False
+    if payload.get("write_performed") is False and str(
+        payload.get("writer_lease_id") or ""
+    ):
+        return False
+    return True
+
+
+def _independent_provider_execution_receipt_v2_valid(
+    payload: Mapping[str, Any],
+    *,
+    require_execution_binding: bool = False,
+) -> bool:
+    """Require an exact, independently reviewed apply receipt for merge."""
+
+    admission = payload["admission"]
+    expected_admission = {
+        "proposal_only": True,
+        "repository_write_allowed": True,
+        "completion_authoritative": False,
+        "proof_authoritative": False,
+        "provider_result_admitted": True,
+        "independent_review": True,
+        "review_presence": ReviewPresence.INDEPENDENT.value,
+        "self_review": False,
+        "writer_lease_bound": True,
+    }
+    if (
+        payload.get("status") != RouteStatus.SUCCEEDED.value
+        or payload.get("reason_code") != ProviderReason.ROUTED.value
+        or payload.get("provider") != ProviderRole.GROK_IMPLEMENT.value
+        or payload.get("review_presence") != ReviewPresence.INDEPENDENT.value
+        or payload.get("fallback") is not False
+        or payload.get("write_performed") is not True
+        or not str(payload.get("writer_lease_id") or "").strip()
+        or admission != expected_admission
+    ):
+        return False
+
+    chain = payload["review_chain"]
+    attempts = payload["attempts"]
+    roles = (ProviderRole.GROK_IMPLEMENT, ProviderRole.CODEX_REVIEW)
+    if len(chain) != 2 or len(attempts) != 2:
+        return False
+    response_digests: list[str] = []
+    for index, role in enumerate(roles):
+        step = chain[index]
+        attempt = attempts[index]
+        if (
+            set(step) != _PROVIDER_EXECUTION_REVIEW_STEP_FIELDS
+            or set(attempt) != _PROVIDER_EXECUTION_ATTEMPT_FIELDS
+            or step.get("role") != role.value
+            or step.get("status") != "succeeded"
+            or step.get("admitted") is not True
+            or attempt.get("role") != role.value
+            or attempt.get("status") != "succeeded"
+            or attempt.get("reason_code") != ProviderReason.ROUTED.value
+            or attempt.get("prompt_embedded") is not False
+            or attempt.get("response_embedded") is not False
+            or not str(attempt.get("prompt_digest") or "").strip()
+            or not str(step.get("response_digest") or "").strip()
+            or attempt.get("response_digest") != step.get("response_digest")
+            or any(
+                not _bounded_nonnegative_integer(item.get(field_name))
+                for item in (step, attempt)
+                for field_name in ("prompt_bytes", "prompt_tokens", "response_bytes")
+            )
+        ):
+            return False
+        response_digests.append(str(step["response_digest"]))
+
+        configured = (
+            str(attempt.get("configured_provider") or ""),
+            str(attempt.get("effective_provider") or ""),
+            str(attempt.get("configured_model") or ""),
+            str(attempt.get("configured_reasoning_effort") or ""),
+        )
+        execution_fields = (
+            str(attempt.get("execution_schema") or ""),
+            str(attempt.get("execution_policy_id") or ""),
+            str(attempt.get("execution_request_id") or ""),
+            str(attempt.get("child_result_schema") or ""),
+            str(attempt.get("child_result_status") or ""),
+        )
+        has_execution_binding = any((*configured, *execution_fields)) or (
+            attempt.get("child_exit_code") is not None
+        )
+        if has_execution_binding:
+            expected_configured = (
+                ("grok_cli", "grok_cli", "grok-4.5", "")
+                if role is ProviderRole.GROK_IMPLEMENT
+                else ("codex_cli", "codex_cli", "gpt-5.6-terra", "medium")
+            )
+            if (
+                configured != expected_configured
+                or execution_fields[0] != _PRODUCTION_CLI_EXECUTION_SCHEMA
+                or not execution_fields[1]
+                or not execution_fields[2]
+                or execution_fields[3] != _LLM_CHILD_RESULT_SCHEMA
+                or execution_fields[4] != "ok"
+                or type(attempt.get("child_exit_code")) is not int
+                or attempt.get("child_exit_code") != 0
+            ):
+                return False
+        elif require_execution_binding:
+            return False
+        elif any(configured) or attempt.get("child_exit_code") is not None:
+            return False
+
+    return bool(
+        payload.get("selected_proposal_digest") == response_digests[0]
+        and payload.get("implementation_proposal_digest") == response_digests[0]
+        and payload.get("review_proposal_digest") == response_digests[1]
+    )
+
+
 def evaluate_production_provider_receipt(
     receipt: ProviderExecutionReceipt | Mapping[str, Any] | None,
     *,
     expected_task_id: str,
     expected_snapshot_id: str,
     current_snapshot_id: str = "",
+    require_execution_binding: bool = False,
 ) -> tuple[ProductionReceiptDisposition, str]:
     """Fail-closed production admission for apply/merge/completion gates.
 
     Absent, degraded, stale, and cross-task receipts remain *pending* and never
     satisfy authoritative completion.  Independent admitted review is required
-    for the ``ADMITTED`` disposition.
+    for the ``ADMITTED`` disposition.  Set ``require_execution_binding`` at an
+    apply/merge boundary so generic test providers cannot supply merge authority
+    without the pinned production Grok/Codex child-execution provenance.
     """
 
     if receipt is None:
@@ -2384,11 +2646,15 @@ def evaluate_production_provider_receipt(
             ProviderReason.PACKET_MALFORMED.value,
         )
 
+    if not _provider_execution_receipt_v2_protocol_valid(payload):
+        return (
+            ProductionReceiptDisposition.REJECTED,
+            ProviderReason.PACKET_MALFORMED.value,
+        )
+
     packet = payload.get("packet")
-    packet_map = dict(packet) if isinstance(packet, Mapping) else {}
-    receipt_task = str(
-        packet_map.get("task_id") or payload.get("task_id") or ""
-    ).strip()
+    packet_map = dict(packet)
+    receipt_task = str(packet_map.get("task_id") or "").strip()
     if receipt_task and receipt_task != task_id:
         return (
             ProductionReceiptDisposition.PENDING_CROSS_TASK,
@@ -2444,20 +2710,19 @@ def evaluate_production_provider_receipt(
             ProviderReason.REVIEW_CHAIN_UNBOUND.value,
         )
 
-    admitted = bool(
-        payload.get("provider_result_admitted")
-        if "provider_result_admitted" in payload
-        else (payload.get("admission") or {}).get("provider_result_admitted")
-    )
+    admitted = (payload.get("admission") or {}).get("provider_result_admitted")
     if not admitted:
         return (
             ProductionReceiptDisposition.PENDING_NOT_ADMITTED,
             ProviderReason.ADMISSION_REQUIRED.value,
         )
-    if payload.get("completion_authoritative") is True:
+    if not _independent_provider_execution_receipt_v2_valid(
+        payload,
+        require_execution_binding=require_execution_binding,
+    ):
         return (
-            ProductionReceiptDisposition.REJECTED,
-            ProviderReason.PROVIDER_AUTHORITY_CLAIM.value,
+            ProductionReceiptDisposition.PENDING_NOT_ADMITTED,
+            ProviderReason.REVIEW_CHAIN_UNBOUND.value,
         )
     return (
         ProductionReceiptDisposition.ADMITTED,

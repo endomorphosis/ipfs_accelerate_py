@@ -13,6 +13,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_ro
     MAX_PROVIDER_PROMPT_BYTES,
     MAX_PROVIDER_PROMPT_TOKENS,
     MAX_PROVIDER_RESPONSE_BYTES,
+    PROVIDER_EXECUTION_RECEIPT_INTERFACE,
+    PROVIDER_EXECUTION_RECEIPT_SCHEMA,
     REDACTION_MARKER,
     ImplementationProviderRouter,
     ProviderBounds,
@@ -651,6 +653,10 @@ def test_route_receipt_has_provider_packet_review_chain_and_provider_receipt() -
     assert chain[1].status == "succeeded"
     receipt = result.provider_receipt
     assert receipt.receipt_id
+    assert receipt.to_dict()["schema"] == PROVIDER_EXECUTION_RECEIPT_SCHEMA
+    assert receipt.to_dict()["interface"] == PROVIDER_EXECUTION_RECEIPT_INTERFACE
+    assert PROVIDER_EXECUTION_RECEIPT_SCHEMA.endswith("@2")
+    assert PROVIDER_EXECUTION_RECEIPT_INTERFACE.endswith("@2")
     assert receipt.provider == ProviderRole.GROK_IMPLEMENT.value
     assert receipt.packet["packet_cid"] == result.packet.packet_cid
     assert receipt.review_presence == "independent_review"

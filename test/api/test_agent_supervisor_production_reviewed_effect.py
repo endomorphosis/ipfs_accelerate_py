@@ -537,6 +537,30 @@ def test_exact_unified_patch_is_reconstructed_and_substitution_is_rejected(
     assert any("provider_execution_invalid" in reason for reason in verification.reason_codes)
 
     receipt = json.loads(json.dumps(finalized.provider_receipt))
+    receipt["attempts"][1]["configured_reasoning_effort"] = "high"
+    unsigned_receipt = dict(receipt)
+    unsigned_receipt.pop("receipt_id")
+    receipt["receipt_id"] = content_identity(unsigned_receipt)
+    wrong_review_effort = _recid(
+        finalized,
+        provider_receipt=receipt,
+        provider_receipt_cid=receipt["receipt_id"],
+    )
+    verification = verify_finalized_production_reviewed_effect(
+        wrong_review_effort,
+        repo_root=repo,
+        task=task,
+        task_identity=IDENTITY,
+        expected_implementation_commit=commit,
+        expected_implementation_tree_id=tree,
+    )
+    assert not verification.admitted
+    assert any(
+        "provider_execution_invalid:1" in reason
+        for reason in verification.reason_codes
+    )
+
+    receipt = json.loads(json.dumps(finalized.provider_receipt))
     receipt["attempts"][1].pop("child_exit_code")
     unsigned_receipt = dict(receipt)
     unsigned_receipt.pop("receipt_id")

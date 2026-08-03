@@ -500,6 +500,149 @@ def test_provider_capacity_deferral_rolls_back_start_charge(tmp_path) -> None:
     assert daemon._task_attempt(recovered, task) == 1
 
 
+def test_provider_review_only_acceptance_preserves_retry_budget(tmp_path) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    _write_single_task_board(todo_path)
+    state_dir = tmp_path / "state"
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## TASK-",
+        implement=True,
+        max_task_attempts=1,
+        worktree_pool_enabled=False,
+    )
+    task = parse_task_file(todo_path, "## TASK-")[0]
+    daemon._register_task_identities([task])
+    identity = daemon._identity_for_task(task)
+    state = PortalTaskState(
+        task_identities={task.task_id: identity.to_dict()},
+    )
+    daemon._mark_implementation_started(
+        state,
+        task=task,
+        attempt=1,
+        started_at="2026-08-03T00:00:00+00:00",
+        log_path=state_dir / "attempt-1.log",
+    )
+    acceptance = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "authoritative-acceptance-status@1"
+        ),
+        "task_id": task.task_id,
+        "merge_commit": "a" * 40,
+        "acceptance_state": "implemented_merged_but_pending",
+        "admitted": False,
+        "authoritatively_completed": False,
+        "completion_authoritative": False,
+        "pending_gates": ["provider_review"],
+        "gate": {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "authoritative-completion-gate@1"
+            ),
+            "task_id": task.task_id,
+            "admitted": False,
+            "completion_authoritative": False,
+            "acceptance_state": "implemented_merged_but_pending",
+            "merge_commit": "a" * 40,
+            "repository_tree_id": f"git-tree:{'b' * 40}",
+            "pending_gates": ["provider_review"],
+            "satisfied_gates": [
+                "merge",
+                "freshness",
+                "semantic",
+                "proof",
+                "deterministic_only",
+            ],
+        },
+        "receipt": {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "implementation-receipt@1"
+            ),
+            "task_id": task.task_id,
+            "merged": True,
+            "completion_authoritative": False,
+            "acceptance_state": "implemented_merged_but_pending",
+            "pending_gates": ["provider_review"],
+            "validation_passed": True,
+            "validation_stale": False,
+            "merge_commit": "a" * 40,
+            "repository_tree_id": f"git-tree:{'b' * 40}",
+        },
+    }
+
+    deferred = daemon._defer_provider_review_only_acceptance(
+        task=task,
+        state=state,
+        attempt=1,
+        acceptance_result=acceptance,
+    )
+    state.save(daemon.state_path)
+    recovered = PortalTaskState.load(daemon.state_path)
+    selectable, limited = daemon._partition_tasks_at_attempt_limit(
+        [task],
+        {task.task_id: "ready"},
+        recovered,
+    )
+
+    assert deferred["deferred"] is True
+    assert deferred["resumable"] is True
+    assert deferred["attempt_consumed"] is False
+    assert recovered.implementation_attempts == {}
+    assert recovered.implementation_attempts_by_cid == {}
+    assert selectable == [task]
+    assert limited == []
+    assert daemon.task_queue.is_cooled_down(identity.canonical_task_cid) is True
+
+    missing_semantic = {
+        **acceptance,
+        "gate": {
+            **acceptance["gate"],
+            "satisfied_gates": [
+                "merge",
+                "freshness",
+                "proof",
+                "deterministic_only",
+            ],
+        },
+    }
+    assert daemon._provider_review_only_acceptance_pending(missing_semantic) is False
+
+    missing_merge = json.loads(json.dumps(acceptance))
+    missing_merge.pop("merge_commit")
+    assert daemon._provider_review_only_acceptance_pending(missing_merge) is False
+
+    mismatched_receipt_merge = json.loads(json.dumps(acceptance))
+    mismatched_receipt_merge["receipt"]["merge_commit"] = "c" * 40
+    assert (
+        daemon._provider_review_only_acceptance_pending(mismatched_receipt_merge)
+        is False
+    )
+
+    missing_tree = json.loads(json.dumps(acceptance))
+    missing_tree["gate"].pop("repository_tree_id")
+    assert daemon._provider_review_only_acceptance_pending(missing_tree) is False
+
+    mismatched_receipt_tree = json.loads(json.dumps(acceptance))
+    mismatched_receipt_tree["receipt"]["repository_tree_id"] = (
+        f"git-tree:{'d' * 40}"
+    )
+    assert (
+        daemon._provider_review_only_acceptance_pending(mismatched_receipt_tree)
+        is False
+    )
+
+    missing_admission = json.loads(json.dumps(acceptance))
+    missing_admission.pop("admitted")
+    assert daemon._provider_review_only_acceptance_pending(missing_admission) is False
+
+
 def test_new_canonical_revision_gets_fresh_attempt_budget(
     tmp_path,
     monkeypatch,

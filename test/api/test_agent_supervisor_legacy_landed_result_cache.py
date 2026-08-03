@@ -177,6 +177,8 @@ class _ApprovingProvider:
                 "leaf_id": leaf["leaf_id"],
                 "findings": [],
             },
+            requested_reasoning_effort=request.reasoning_effort,
+            effective_reasoning_effort=request.reasoning_effort,
         )
 
 
@@ -207,6 +209,8 @@ class _SharedApprovingProvider:
                 "leaf_id": leaf["leaf_id"],
                 "findings": [],
             },
+            requested_reasoning_effort=request.reasoning_effort,
+            effective_reasoning_effort=request.reasoning_effort,
         )
 
 
@@ -238,6 +242,8 @@ class _ThreadSafeApprovingProvider:
                 "leaf_id": leaf["leaf_id"],
                 "findings": [],
             },
+            requested_reasoning_effort=request.reasoning_effort,
+            effective_reasoning_effort=request.reasoning_effort,
         )
 
 
