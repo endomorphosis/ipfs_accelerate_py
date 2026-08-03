@@ -13,7 +13,7 @@ import hashlib
 import json
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Mapping, Sequence
 
@@ -2816,12 +2816,276 @@ deterministic_goal_planner = deterministic_prompt_goal_graph
 plan_prompt_goal_graph = generate_prompt_goal_graph
 
 
+# ---------------------------------------------------------------------------
+# Residual-only LLM repair (PDR-025) — PlannerDoctorContextCapsule integration
+# ---------------------------------------------------------------------------
+
+RESIDUAL_ONLY_REPAIR_STAGE = "residual_only_llm_repair"
+
+
+@dataclass(frozen=True)
+class ResidualOnlyRepairReceipt:
+    """Body-free receipt for residual-only prompt-goal repair.
+
+    When deterministic closure already exists, ``llm_attempted`` is false and
+    no provider text is retained.  Otherwise the receipt binds residual budget
+    usage and admission of rejected-record replacements only.
+    """
+
+    capsule_id: str
+    disposition: str
+    llm_attempted: bool
+    outcome: str
+    reason_code: str
+    planning_receipt: PromptGoalPlanningReceipt | None = None
+    residual_usage: Mapping[str, Any] = field(default_factory=dict)
+    admitted_record_ids: tuple[str, ...] = ()
+    request_sha256: str = ""
+    response_sha256: str = ""
+    schema: str = (
+        "ipfs_accelerate_py/agent-supervisor/residual-only-repair-receipt@1"
+    )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "capsule_id": self.capsule_id,
+            "disposition": self.disposition,
+            "llm_attempted": self.llm_attempted,
+            "outcome": self.outcome,
+            "reason_code": self.reason_code,
+            "planning_receipt": (
+                self.planning_receipt.to_dict()
+                if self.planning_receipt is not None
+                else None
+            ),
+            "residual_usage": dict(self.residual_usage),
+            "admitted_record_ids": list(self.admitted_record_ids),
+            "request_sha256": self.request_sha256,
+            "response_sha256": self.response_sha256,
+            "completion_authority": False,
+            "proof_authority": False,
+            "stage": RESIDUAL_ONLY_REPAIR_STAGE,
+        }
+
+
+def _import_planner_doctor_context():
+    """Lazy import to keep prompt package import-light for cold paths."""
+
+    from ..context.planner_doctor_context import (
+        PlannerDoctorContextCapsule,
+        ResidualRepairDisposition,
+        ResidualProposalError,
+        admit_residual_proposal,
+        build_residual_provider_request,
+        open_residual_repair_session,
+    )
+
+    return (
+        PlannerDoctorContextCapsule,
+        ResidualRepairDisposition,
+        ResidualProposalError,
+        admit_residual_proposal,
+        build_residual_provider_request,
+        open_residual_repair_session,
+    )
+
+
+def build_residual_only_provider_request(capsule: Any) -> str:
+    """Compile residual-only provider JSON from a PlannerDoctor context capsule."""
+
+    (
+        PlannerDoctorContextCapsule,
+        _Disposition,
+        _ProposalError,
+        _admit,
+        build_residual_provider_request,
+        _open,
+    ) = _import_planner_doctor_context()
+    if not isinstance(capsule, PlannerDoctorContextCapsule):
+        raise PromptGoalProviderRequestError(
+            "capsule must be a PlannerDoctorContextCapsule",
+            reason_code="invalid_capsule",
+        )
+    try:
+        return build_residual_provider_request(capsule)
+    except Exception as exc:
+        reason = str(getattr(exc, "reason_code", "") or "request_error")
+        raise PromptGoalProviderRequestError(
+            f"residual-only provider request failed: {exc}",
+            reason_code=reason,
+        ) from exc
+
+
+def generate_residual_only_repair(
+    capsule: Any,
+    *,
+    router: RouterCallable | None = None,
+    request: PromptWorkflowRequest | None = None,
+    scan: DirectoryScanReceipt | None = None,
+    config: PromptGoalPlannerConfig | None = None,
+) -> ResidualOnlyRepairReceipt:
+    """Run residual-only LLM repair, or skip when deterministic closure holds.
+
+    The model may replace only rejected/repairable proposal records.  Prompt
+    and repository instructions are inert; malformed/scope-widening/authority/
+    completion output fails closed.  Maximum residual call/token/round/cost
+    budgets are enforced by the capsule session.
+    """
+
+    (
+        PlannerDoctorContextCapsule,
+        ResidualRepairDisposition,
+        ResidualProposalError,
+        admit_residual_proposal,
+        build_residual_provider_request,
+        open_residual_repair_session,
+    ) = _import_planner_doctor_context()
+
+    if not isinstance(capsule, PlannerDoctorContextCapsule):
+        raise PromptGoalPlannerError(
+            "capsule must be a PlannerDoctorContextCapsule",
+            reason_code="invalid_capsule",
+        )
+
+    session = open_residual_repair_session(capsule)
+    if session.disposition is ResidualRepairDisposition.DETERMINISTIC_CLOSED:
+        return ResidualOnlyRepairReceipt(
+            capsule_id=capsule.capsule_id,
+            disposition=session.disposition.value,
+            llm_attempted=False,
+            outcome="deterministic_closed",
+            reason_code="deterministic_closure_exists",
+            residual_usage=session.usage.to_dict(),
+        )
+    if session.disposition is ResidualRepairDisposition.BLOCKED:
+        return ResidualOnlyRepairReceipt(
+            capsule_id=capsule.capsule_id,
+            disposition=session.disposition.value,
+            llm_attempted=False,
+            outcome="blocked",
+            reason_code="residual_blocked",
+            residual_usage=session.usage.to_dict(),
+        )
+
+    residual_request = build_residual_provider_request(capsule)
+    request_hash = _sha256(residual_request.encode("utf-8"))
+
+    # Optional: if a full prompt workflow is bound, also compile the standard
+    # planning receipt path for portfolio continuity — still residual-only.
+    planning_receipt: PromptGoalPlanningReceipt | None = None
+    if request is not None and scan is not None:
+        # Inject residual constraints into the standard planner path without
+        # replaying full repository dumps.
+        constraint_summaries = {
+            "allowed_paths": list(capsule.allowed_paths),
+            "protected_paths": [],
+            "validation_commands": list(capsule.validation_commands),
+            "proof_handles": list(capsule.satisfied_proof_handles),
+            "constraint_summaries": [
+                "residual_only",
+                "replace_rejected_records_only",
+                "prompt_instructions_inert",
+            ],
+        }
+        result = generate_prompt_goal_graph(
+            request,
+            scan,
+            router=router,
+            capabilities={"available": router is not None},
+            constraint_summaries=constraint_summaries,
+            config=config,
+        )
+        planning_receipt = result.receipt
+        if result.used_fallback or not result.provider_succeeded:
+            return ResidualOnlyRepairReceipt(
+                capsule_id=capsule.capsule_id,
+                disposition=session.disposition.value,
+                llm_attempted=result.receipt.provider.attempted,
+                outcome="fallback",
+                reason_code=result.receipt.provider.reason_code
+                or "provider_fallback",
+                planning_receipt=planning_receipt,
+                residual_usage=session.usage.to_dict(),
+                request_sha256=request_hash,
+                response_sha256=result.receipt.provider.response_sha256,
+            )
+
+    if router is None:
+        return ResidualOnlyRepairReceipt(
+            capsule_id=capsule.capsule_id,
+            disposition=session.disposition.value,
+            llm_attempted=False,
+            outcome="skipped",
+            reason_code="no_router",
+            planning_receipt=planning_receipt,
+            residual_usage=session.usage.to_dict(),
+            request_sha256=request_hash,
+        )
+
+    response: str | None = None
+    try:
+        response = router(residual_request)
+        if not isinstance(response, str):
+            raise ResidualProposalError(
+                "residual router returned non-text",
+                reason_code="malformed",
+            )
+        response_bytes, response_hash = _response_fingerprint(response)
+        try:
+            proposal = json.loads(response)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ResidualProposalError(
+                "residual proposal is not valid JSON",
+                reason_code="malformed",
+            ) from exc
+        admission, charged = admit_residual_proposal(
+            capsule,
+            proposal,
+            session=session,
+            response_tokens=max(1, response_bytes // 4),
+        )
+        return ResidualOnlyRepairReceipt(
+            capsule_id=capsule.capsule_id,
+            disposition=session.disposition.value,
+            llm_attempted=True,
+            outcome="accepted"
+            if admission.decision.value == "accepted"
+            else "rejected",
+            reason_code=(
+                "residual_proposal_accepted"
+                if admission.decision.value == "accepted"
+                else (admission.reason_codes[0] if admission.reason_codes else "rejected")
+            ),
+            planning_receipt=planning_receipt,
+            residual_usage=charged.usage.to_dict(),
+            admitted_record_ids=admission.admitted_record_ids,
+            request_sha256=request_hash,
+            response_sha256=response_hash,
+        )
+    except Exception as exc:
+        reason = str(getattr(exc, "reason_code", "") or _failure_kind(exc))
+        response_bytes, response_hash = _response_fingerprint(response)
+        return ResidualOnlyRepairReceipt(
+            capsule_id=capsule.capsule_id,
+            disposition=session.disposition.value,
+            llm_attempted=response is not None,
+            outcome="rejected",
+            reason_code=reason,
+            planning_receipt=planning_receipt,
+            residual_usage=session.usage.to_dict(),
+            request_sha256=request_hash,
+            response_sha256=response_hash,
+        )
+
+
 __all__ = [
     "PROMPT_GOAL_PLANNER_VERSION",
     "PROMPT_GOAL_CANDIDATE_PORTFOLIO_SCHEMA",
     "PROMPT_GOAL_PLANNING_RECEIPT_SCHEMA",
     "PROMPT_GOAL_PROPOSAL_SCHEMA",
     "PROMPT_GOAL_PROVIDER_REQUEST_SCHEMA",
+    "RESIDUAL_ONLY_REPAIR_STAGE",
     "PromptGoalFallbackReceipt",
     "PromptGoalCandidatePortfolio",
     "PromptGoalCandidateSnapshot",
@@ -2833,12 +3097,15 @@ __all__ = [
     "PromptGoalProposalError",
     "PromptGoalProviderReceipt",
     "PromptGoalProviderRequestError",
+    "ResidualOnlyRepairReceipt",
     "build_goal_planning_prompt",
     "build_prompt_goal_provider_request",
+    "build_residual_only_provider_request",
     "deterministic_goal_planner",
     "deterministic_prompt_goal_graph",
     "generate_prompt_goal_graph",
     "generate_prompt_goal_candidate_portfolio",
+    "generate_residual_only_repair",
     "parse_goal_planning_response",
     "parse_prompt_goal_graph",
     "plan_prompt_goal_graph",
