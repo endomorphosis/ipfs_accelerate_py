@@ -43,6 +43,9 @@ PROMPT_GOAL_PROPOSAL_SCHEMA = (
 PROMPT_GOAL_PLANNING_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/prompt-goal-planning-receipt@1"
 )
+PROMPT_GOAL_CANDIDATE_PORTFOLIO_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/prompt-goal-candidate-portfolio@1"
+)
 PROMPT_GOAL_PLANNER_VERSION = "1"
 
 DEFAULT_MAX_PROVIDER_REQUEST_BYTES = 64 * 1024
@@ -292,6 +295,7 @@ class PromptGoalPlanningReceipt:
 class PromptGoalPlanningResult:
     graph: PromptGoalGraph
     receipt: PromptGoalPlanningReceipt
+    portfolio: Any = None
 
     @property
     def used_fallback(self) -> bool:
@@ -302,7 +306,13 @@ class PromptGoalPlanningResult:
         return not self.used_fallback and self.receipt.provider.status == "succeeded"
 
     def to_dict(self) -> dict[str, Any]:
-        return {"graph": self.graph.to_dict(), "receipt": self.receipt.to_dict()}
+        payload = {
+            "graph": self.graph.to_dict(),
+            "receipt": self.receipt.to_dict(),
+        }
+        if self.portfolio is not None:
+            payload["portfolio"] = self.portfolio.to_dict()
+        return payload
 
 
 RouterCallable = Callable[[str], str]
@@ -849,6 +859,7 @@ def build_prompt_goal_provider_request(
             "require_validation": request.planning_policy.require_validation,
         },
         "budgets": {
+            "candidate_count": request.planning_policy.candidate_count,
             "max_evidence": min(
                 len(evidence),
                 request.budget.max_evidence,
@@ -1831,11 +1842,11 @@ def parse_prompt_goal_graph(
     return graph
 
 
-def _fallback_output_path(
+def _fallback_output_paths(
     request: PromptWorkflowRequest,
     evidence: Sequence[PromptEvidenceRecord],
     protected: frozenset[str],
-) -> str:
+) -> tuple[str, ...]:
     scope = _scan_scope(request)
     terms = _evidence_terms(request)
     ranked: list[tuple[int, str]] = []
@@ -1849,15 +1860,13 @@ def _fallback_output_path(
             for path in item.repository_paths
             if _within_scope(path, scope) and path not in protected
         )
-    candidates = [path for _score, path in sorted(set(ranked))]
-    if candidates:
-        return candidates[0]
-    if scope:
-        return f"{scope}/prompt_workflow_plan.md"
-    markdown = request.output_policy.markdown_path
-    if markdown and markdown not in protected:
-        return markdown
-    return "prompt_workflow_plan.md"
+    candidates = tuple(path for _score, path in sorted(set(ranked)))
+    if not candidates:
+        raise PromptWorkflowContractError(
+            "deterministic planning requires an in-scope, non-protected "
+            "codebase evidence path"
+        )
+    return candidates[: request.budget.max_tasks]
 
 
 def deterministic_prompt_goal_graph(
@@ -1876,21 +1885,34 @@ def deterministic_prompt_goal_graph(
         item for item in evidence if item.evidence_key == "prompt:request"
     )
     scope = _scan_scope(request)
-    output_path = _fallback_output_path(
+    output_paths = _fallback_output_paths(
         request, evidence, frozenset(resolved.protected_paths)
     )
-    scope_path = scope or output_path
-    validation = PromptValidationRecord(
-        validation_key="validation:deterministic",
-        argv=("python", "-m", "pytest", "-q"),
-        cwd=".",
-        policy_cid=request.policy_root,
+    scope_path = scope or str(PurePosixPath(output_paths[0]).parent)
+    test_paths = tuple(
+        path
+        for path in output_paths
+        if "test" in PurePosixPath(path).name.casefold()
+    )
+
+    def validation_for(path: str, index: int) -> PromptValidationRecord:
+        targets = test_paths or (path,)
+        return PromptValidationRecord(
+            validation_key=f"validation:deterministic:{index}",
+            argv=("python", "-m", "pytest", *targets, "-q"),
+            cwd=".",
+            policy_cid=request.policy_root,
+        )
+
+    validations = tuple(
+        validation_for(path, index)
+        for index, path in enumerate(output_paths, start=1)
     )
     acceptance = PromptAcceptanceRecord(
         criterion_key="criterion:bounded-plan",
         criterion="The proposed scoped change passes the declared deterministic validation.",
         evidence_cids=(prompt_item.evidence_cid,),
-        validation_keys=(validation.validation_key,),
+        validation_keys=tuple(item.validation_key for item in validations),
     )
     objective = prompt_item.summary
     if _INSTRUCTION_RE.search(objective):
@@ -1924,55 +1946,76 @@ def deterministic_prompt_goal_graph(
             }
         )
     )
-    task = PromptTaskRecord(
-        task_key="task:bounded-implementation",
-        goal_cid=root.goal_cid,
-        dependency_task_cids=(),
-        objective="Implement the smallest scoped change that satisfies the root acceptance criterion.",
-        rationale="The deterministic fallback creates one bounded, independently validatable task.",
-        scope_paths=(output_path,),
-        outputs=(
-            PromptOutputRecord(
-                path=output_path,
-                effect="modify" if any(
-                    output_path in item.repository_paths for item in evidence
-                ) else "create",
-                media_type=(
-                    "text/x-python"
-                    if output_path.endswith(".py")
-                    else "text/markdown"
-                    if output_path.endswith(".md")
-                    else "text/plain"
+    tasks: list[PromptTaskRecord] = []
+    for index, (output_path, validation) in enumerate(
+        zip(output_paths, validations), start=1
+    ):
+        supporting = tuple(
+            item.evidence_cid
+            for item in evidence
+            if output_path in item.repository_paths
+        ) or (prompt_item.evidence_cid,)
+        tasks.append(
+            PromptTaskRecord(
+                task_key=f"task:codebase-evidence:{index}",
+                goal_cid=root.goal_cid,
+                dependency_task_cids=(),
+                objective=(
+                    f"Implement the evidence-backed change at {output_path} "
+                    "and satisfy its focused validation."
                 ),
-            ),
-        ),
-        validations=(validation,),
-        acceptance=(acceptance,),
-        evidence_cids=(prompt_item.evidence_cid,),
-        policy_roots=policy_roots,
-        priority="P1",
-        track="prompt-goal-planning",
-        bundle="prompt-workflow/deterministic",
-        parallel_lane="prompt-goal-deterministic",
-        resource_class="cpu-small",
-        predicted_files=(output_path,),
-        risks=("The provider-free plan may be less granular than an admitted model proposal.",),
-        assumptions=("Admission will independently verify scope, policy, and proof obligations.",),
-        fallback_behavior="fail_closed",
-        provenance={
-            "planner": "deterministic",
-            "reason_code": reason_code,
-            "request_cid": request.request_cid,
-            "scan_cid": scan.scan_cid,
-        },
-    )
+                rationale=(
+                    "The pinned repository scan nominates this exact path; "
+                    "independent admission still decides authority and proof."
+                ),
+                scope_paths=(output_path,),
+                outputs=(
+                    PromptOutputRecord(
+                        path=output_path,
+                        effect="modify",
+                        media_type=(
+                            "text/x-python"
+                            if output_path.endswith(".py")
+                            else "text/markdown"
+                            if output_path.endswith(".md")
+                            else "text/plain"
+                        ),
+                    ),
+                ),
+                validations=(validation,),
+                acceptance=(acceptance,),
+                evidence_cids=supporting,
+                policy_roots=policy_roots,
+                priority="P1",
+                track="prompt-goal-planning",
+                bundle="prompt-workflow/deterministic",
+                parallel_lane=f"prompt-goal-deterministic-{index}",
+                resource_class="cpu-small",
+                predicted_files=(output_path,),
+                risks=(
+                    "Static scan evidence may omit a dependent path; admission "
+                    "must check impact closure.",
+                ),
+                assumptions=(
+                    "Admission will independently verify scope, policy, and proof obligations.",
+                ),
+                fallback_behavior="fail_closed",
+                provenance={
+                    "planner": "deterministic",
+                    "strategy": "codebase-evidence-template",
+                    "reason_code": reason_code,
+                    "request_cid": request.request_cid,
+                    "scan_cid": scan.scan_cid,
+                },
+            )
+        )
     graph = PromptGoalGraph(
         request_cid=request.request_cid,
         scan_cid=scan.scan_cid,
         program_root=request.program_root,
         policy_roots=policy_roots,
         goals=(root,),
-        tasks=(task,),
+        tasks=tuple(tasks),
         evidence=evidence,
         unresolved_questions=(),
         uncertainty_debt=(
@@ -2093,7 +2136,7 @@ def _failure_kind(exc: BaseException) -> str:
     return "failed"
 
 
-def generate_prompt_goal_graph(
+def _generate_prompt_goal_graph_single(
     request: PromptWorkflowRequest,
     scan: DirectoryScanReceipt,
     *,
@@ -2390,6 +2433,382 @@ def generate_prompt_goal_graph(
         )
 
 
+@dataclass(frozen=True)
+class PromptGoalCandidateSnapshot:
+    """One request/scan-bound graph with a content-addressed disposition."""
+
+    graph: PromptGoalGraph
+    source: str
+    disposition: str
+    reason_codes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.graph, PromptGoalGraph):
+            raise PromptGoalPlannerError("candidate graph must be PromptGoalGraph")
+        source = str(self.source or "").strip()
+        if source not in {"deterministic_baseline", "model_proposal"}:
+            raise PromptGoalPlannerError("candidate source is unsupported")
+        disposition = str(self.disposition or "").strip()
+        if disposition not in {"selected", "rejected"}:
+            raise PromptGoalPlannerError("candidate disposition is unsupported")
+        reasons = tuple(
+            sorted({str(item).strip() for item in self.reason_codes if str(item).strip()})
+        )
+        if disposition == "selected" and reasons:
+            raise PromptGoalPlannerError(
+                "selected prompt candidate cannot contain rejection reasons"
+            )
+        if disposition == "rejected" and not reasons:
+            raise PromptGoalPlannerError(
+                "rejected prompt candidate requires a typed reason"
+            )
+        object.__setattr__(self, "source", source)
+        object.__setattr__(self, "disposition", disposition)
+        object.__setattr__(self, "reason_codes", reasons)
+
+    @property
+    def snapshot_id(self) -> str:
+        return _sha256(
+            _canonical_json(self.to_dict(include_identity=False)).encode("utf-8")
+        )
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "graph": self.graph.to_dict(),
+            "plan_root_cid": self.graph.plan_root_cid,
+            "source": self.source,
+            "disposition": self.disposition,
+            "reason_codes": list(self.reason_codes),
+        }
+        if include_identity:
+            payload["snapshot_id"] = self.snapshot_id
+        return payload
+
+
+@dataclass(frozen=True)
+class PromptGoalCandidatePortfolio:
+    """Bounded deterministic-first prompt graph portfolio."""
+
+    request_cid: str
+    scan_cid: str
+    candidate_count: int
+    snapshots: tuple[PromptGoalCandidateSnapshot, ...]
+    provider_receipts: tuple[PromptGoalProviderReceipt, ...] = ()
+    schema: str = PROMPT_GOAL_CANDIDATE_PORTFOLIO_SCHEMA
+
+    def __post_init__(self) -> None:
+        for name in ("request_cid", "scan_cid"):
+            value = str(getattr(self, name) or "").strip()
+            if not value:
+                raise PromptGoalPlannerError(f"{name} must not be empty")
+            object.__setattr__(self, name, value)
+        if (
+            isinstance(self.candidate_count, bool)
+            or not isinstance(self.candidate_count, int)
+            or not 1 <= self.candidate_count <= 32
+        ):
+            raise PromptGoalPlannerError("candidate_count must be in [1, 32]")
+        snapshots = tuple(self.snapshots)
+        if not snapshots or len(snapshots) > self.candidate_count:
+            raise PromptGoalPlannerError(
+                "portfolio must retain a baseline within candidate_count"
+            )
+        if snapshots[0].source != "deterministic_baseline":
+            raise PromptGoalPlannerError(
+                "first prompt candidate must be the deterministic baseline"
+            )
+        if any(
+            item.graph.request_cid != self.request_cid
+            or item.graph.scan_cid != self.scan_cid
+            for item in snapshots
+        ):
+            raise PromptGoalPlannerError(
+                "prompt candidate is detached from frozen request or scan"
+            )
+        ids = [item.graph.plan_root_cid for item in snapshots]
+        if len(ids) != len(set(ids)):
+            raise PromptGoalPlannerError("prompt portfolio contains duplicate graphs")
+        selected = [item for item in snapshots if item.disposition == "selected"]
+        if len(selected) != 1:
+            raise PromptGoalPlannerError(
+                "prompt portfolio requires exactly one selected candidate"
+            )
+        if any(
+            item.disposition
+            != (
+                "selected"
+                if item.graph.plan_root_cid == selected[0].graph.plan_root_cid
+                else "rejected"
+            )
+            for item in snapshots
+        ):
+            raise PromptGoalPlannerError(
+                "every non-selected prompt candidate must be rejected"
+            )
+        object.__setattr__(self, "snapshots", snapshots)
+        object.__setattr__(self, "provider_receipts", tuple(self.provider_receipts))
+        if self.schema != PROMPT_GOAL_CANDIDATE_PORTFOLIO_SCHEMA:
+            raise PromptGoalPlannerError("unsupported prompt portfolio schema")
+
+    @property
+    def selected(self) -> PromptGoalCandidateSnapshot:
+        return next(item for item in self.snapshots if item.disposition == "selected")
+
+    @property
+    def baseline(self) -> PromptGoalCandidateSnapshot:
+        return self.snapshots[0]
+
+    @property
+    def rejected(self) -> tuple[PromptGoalCandidateSnapshot, ...]:
+        return tuple(item for item in self.snapshots if item.disposition == "rejected")
+
+    @property
+    def portfolio_id(self) -> str:
+        return _sha256(
+            _canonical_json(self.to_dict(include_identity=False)).encode("utf-8")
+        )
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": self.schema,
+            "request_cid": self.request_cid,
+            "scan_cid": self.scan_cid,
+            "candidate_count": self.candidate_count,
+            "snapshots": [item.to_dict() for item in self.snapshots],
+            "provider_usage": [
+                {
+                    **item.to_dict(),
+                    "usage_id": _sha256(
+                        _canonical_json(item.to_dict()).encode("utf-8")
+                    ),
+                }
+                for item in self.provider_receipts
+            ],
+            "baseline_snapshot_id": self.baseline.snapshot_id,
+            "selected_snapshot_id": self.selected.snapshot_id,
+            "rejected_snapshot_ids": [
+                item.snapshot_id for item in self.rejected
+            ],
+        }
+        if include_identity:
+            payload["portfolio_id"] = self.portfolio_id
+        return payload
+
+
+def generate_prompt_goal_candidate_portfolio(
+    request: PromptWorkflowRequest,
+    scan: DirectoryScanReceipt,
+    *,
+    router: RouterCallable | None = None,
+    capabilities: Mapping[str, Any] | None = None,
+    constraint_summaries: Mapping[str, Any] | None = None,
+    config: PromptGoalPlannerConfig | None = None,
+) -> PromptGoalCandidatePortfolio:
+    """Generate exactly one baseline plus bounded, deduplicated proposals.
+
+    The legacy singular helper remains available, but this is the authoritative
+    ``candidate_count`` path: the configured count is an aggregate ceiling and
+    includes the mandatory codebase-derived baseline.
+    """
+
+    resolved = config or PromptGoalPlannerConfig()
+    baseline = deterministic_prompt_goal_graph(
+        request,
+        scan,
+        config=resolved,
+        reason_code="mandatory_deterministic_baseline",
+    )
+    graphs: list[tuple[PromptGoalGraph, str]] = [
+        (baseline, "deterministic_baseline")
+    ]
+    provider_receipts: list[PromptGoalProviderReceipt] = []
+    if request.planning_policy.allow_model:
+        for _index in range(request.planning_policy.candidate_count - 1):
+            result = _generate_prompt_goal_graph_single(
+                request,
+                scan,
+                router=router,
+                capabilities=capabilities,
+                constraint_summaries=constraint_summaries,
+                config=resolved,
+            )
+            provider_receipts.append(result.receipt.provider)
+            if (
+                result.provider_succeeded
+                and result.graph.plan_root_cid
+                not in {item.plan_root_cid for item, _source in graphs}
+            ):
+                graphs.append((result.graph, "model_proposal"))
+            if len(graphs) >= request.planning_policy.candidate_count:
+                break
+
+    # All provider graphs have already crossed strict scope/schema/command
+    # admission.  Rank deterministic, reproducible structural utility only;
+    # no provider confidence or prose participates.
+    ranked = sorted(
+        graphs,
+        key=lambda item: (
+            -len(item[0].tasks),
+            -sum(len(task.evidence_cids) for task in item[0].tasks),
+            len(item[0].unresolved_questions),
+            item[0].plan_root_cid,
+        ),
+    )
+    selected_id = ranked[0][0].plan_root_cid
+    snapshots = tuple(
+        PromptGoalCandidateSnapshot(
+            graph=graph,
+            source=source,
+            disposition=(
+                "selected" if graph.plan_root_cid == selected_id else "rejected"
+            ),
+            reason_codes=(
+                ()
+                if graph.plan_root_cid == selected_id
+                else ("lower_deterministic_structural_utility",)
+            ),
+        )
+        for graph, source in graphs
+    )
+    return PromptGoalCandidatePortfolio(
+        request_cid=request.request_cid,
+        scan_cid=scan.scan_cid,
+        candidate_count=request.planning_policy.candidate_count,
+        snapshots=snapshots,
+        provider_receipts=tuple(provider_receipts),
+    )
+
+
+def generate_prompt_goal_graph(
+    request: PromptWorkflowRequest,
+    scan: DirectoryScanReceipt,
+    *,
+    router: RouterCallable | None = None,
+    capabilities: Mapping[str, Any] | None = None,
+    constraint_summaries: Mapping[str, Any] | None = None,
+    config: PromptGoalPlannerConfig | None = None,
+) -> PromptGoalPlanningResult:
+    """Generate the selected graph, using a real portfolio when requested.
+
+    A count of one retains the historical singular provider behavior for API
+    compatibility.  The explicit portfolio helper treats one as baseline-only,
+    and every count above one flows through that deterministic-first contract.
+    """
+
+    if request.planning_policy.candidate_count == 1:
+        return _generate_prompt_goal_graph_single(
+            request,
+            scan,
+            router=router,
+            capabilities=capabilities,
+            constraint_summaries=constraint_summaries,
+            config=config,
+        )
+    portfolio = generate_prompt_goal_candidate_portfolio(
+        request,
+        scan,
+        router=router,
+        capabilities=capabilities,
+        constraint_summaries=constraint_summaries,
+        config=config,
+    )
+    selected = portfolio.selected
+    matching_receipt = next(
+        (
+            receipt
+            for receipt in portfolio.provider_receipts
+            if selected.source == "model_proposal"
+            and receipt.status == "succeeded"
+        ),
+        None,
+    )
+    if matching_receipt is None:
+        provider = PromptGoalProviderReceipt(
+            attempted=bool(portfolio.provider_receipts),
+            status=(
+                portfolio.provider_receipts[-1].status
+                if portfolio.provider_receipts
+                else "disabled"
+            ),
+            reason_code="deterministic_baseline_selected",
+            provider_id=(
+                portfolio.provider_receipts[-1].provider_id
+                if portfolio.provider_receipts
+                else "llm_router:auto"
+            ),
+            model_id=(
+                portfolio.provider_receipts[-1].model_id
+                if portfolio.provider_receipts
+                else (config or PromptGoalPlannerConfig()).model
+            ),
+            request_bytes=(
+                portfolio.provider_receipts[-1].request_bytes
+                if portfolio.provider_receipts
+                else 0
+            ),
+            request_sha256=(
+                portfolio.provider_receipts[-1].request_sha256
+                if portfolio.provider_receipts
+                else _sha256(
+                    _canonical_json(
+                        {
+                            "request_cid": request.request_cid,
+                            "scan_cid": scan.scan_cid,
+                        }
+                    ).encode("utf-8")
+                )
+            ),
+        )
+        outcome = "fallback"
+        fallback = PromptGoalFallbackReceipt(
+            used=True,
+            status="succeeded",
+            reason_code="deterministic_baseline_selected",
+            plan_root_cid=selected.graph.plan_root_cid,
+        )
+        parse = PromptGoalParseReceipt(
+            attempted=False,
+            status="not_attempted",
+            reason_code="deterministic_baseline_selected",
+            proposal_schema=PROMPT_GOAL_PROPOSAL_SCHEMA,
+            response_bytes=0,
+            response_sha256="",
+        )
+    else:
+        provider = matching_receipt
+        outcome = "provider"
+        fallback = PromptGoalFallbackReceipt(
+            used=False,
+            status="not_used",
+            reason_code="provider_graph_selected",
+        )
+        parse = PromptGoalParseReceipt(
+            attempted=True,
+            status="succeeded",
+            reason_code="strict_graph_selected",
+            proposal_schema=PROMPT_GOAL_PROPOSAL_SCHEMA,
+            response_bytes=provider.response_bytes,
+            response_sha256=provider.response_sha256,
+            goal_count=len(selected.graph.goals),
+            task_count=len(selected.graph.tasks),
+            evidence_count=len(selected.graph.evidence),
+            plan_root_cid=selected.graph.plan_root_cid,
+        )
+    return PromptGoalPlanningResult(
+        graph=selected.graph,
+        receipt=PromptGoalPlanningReceipt(
+            request_cid=request.request_cid,
+            scan_cid=scan.scan_cid,
+            plan_root_cid=selected.graph.plan_root_cid,
+            outcome=outcome,
+            provider=provider,
+            parse=parse,
+            fallback=fallback,
+        ),
+        portfolio=portfolio,
+    )
+
+
 # Descriptive compatibility aliases for callers that name the planning stage.
 build_goal_planning_prompt = build_prompt_goal_provider_request
 parse_goal_planning_response = parse_prompt_goal_graph
@@ -2399,10 +2818,13 @@ plan_prompt_goal_graph = generate_prompt_goal_graph
 
 __all__ = [
     "PROMPT_GOAL_PLANNER_VERSION",
+    "PROMPT_GOAL_CANDIDATE_PORTFOLIO_SCHEMA",
     "PROMPT_GOAL_PLANNING_RECEIPT_SCHEMA",
     "PROMPT_GOAL_PROPOSAL_SCHEMA",
     "PROMPT_GOAL_PROVIDER_REQUEST_SCHEMA",
     "PromptGoalFallbackReceipt",
+    "PromptGoalCandidatePortfolio",
+    "PromptGoalCandidateSnapshot",
     "PromptGoalParseReceipt",
     "PromptGoalPlannerConfig",
     "PromptGoalPlannerError",
@@ -2416,6 +2838,7 @@ __all__ = [
     "deterministic_goal_planner",
     "deterministic_prompt_goal_graph",
     "generate_prompt_goal_graph",
+    "generate_prompt_goal_candidate_portfolio",
     "parse_goal_planning_response",
     "parse_prompt_goal_graph",
     "plan_prompt_goal_graph",
