@@ -361,7 +361,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-015 Record why objectives and taskboards have different mutability
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -386,7 +386,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-016 Record why models propose and evidence admits
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -411,7 +411,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-017 Record capability, catalog, usage and routing separation
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -436,7 +436,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-018 Record worktree, lease and fencing isolation
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
