@@ -132,7 +132,12 @@ from ..validation.validation_scheduler import (
     build_declared_validation_plan_graph,
 )
 from .diagnostics import summarize_test_failure
-from .llm_defaults import DEFAULT_CODEX_MODEL
+from .llm_defaults import (
+    DEFAULT_CODEX_MODEL,
+    DEFAULT_CODEX_QUOTA_FALLBACK_MODEL,
+    DEFAULT_CODEX_QUOTA_FALLBACK_REASONING_EFFORT,
+    DEFAULT_GROK_PRIMARY_MODEL,
+)
 from .post_merge_validation import build_post_merge_validation_evidence
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 from .supervisor_runtime import run_process_group_stream
@@ -1452,7 +1457,11 @@ def _grok_cli_available() -> bool:
         return False
 
 
-def _grok_cli_command(*, workspace_path: Path) -> list[str]:
+def _grok_cli_command(
+    *,
+    workspace_path: Path,
+    grok_model: str | None = None,
+) -> list[str]:
     """Build a Grok CLI agent command through llm_router.grok_cli.
 
     Prompt body is supplied on stdin by the daemon; :mod:`grok_cli_runner`
@@ -1467,11 +1476,15 @@ def _grok_cli_command(*, workspace_path: Path) -> list[str]:
         )
 
     model = (
-        os.environ.get(_GROK_MODEL_ENV, "").strip()
-        or os.environ.get("GROK_CLI_MODEL", "").strip()
-        or os.environ.get("GROK_MODEL", "").strip()
-        or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
-        or "grok-4.5"
+        str(grok_model).strip()
+        if grok_model is not None
+        else (
+            os.environ.get(_GROK_MODEL_ENV, "").strip()
+            or os.environ.get("GROK_CLI_MODEL", "").strip()
+            or os.environ.get("GROK_MODEL", "").strip()
+            or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
+            or DEFAULT_GROK_PRIMARY_MODEL
+        )
     )
     # Prefer an effectively uncapped turn budget; the implementation daemon
     # still enforces implementation_timeout as the hard wall-clock limit.
@@ -1526,21 +1539,29 @@ def _codex_implementation_command(
     codex: str,
     workspace_path: Path,
     codex_context_window: int | None = None,
+    codex_model: str | None = None,
+    codex_reasoning_effort: str | None = None,
 ) -> list[str]:
     """Build the non-interactive Codex implementation argv."""
 
-    codex_model = (
-        os.environ.get(_CODEX_MODEL_ENV, "").strip()
-        or DEFAULT_CODEX_MODEL
+    selected_codex_model = (
+        str(codex_model).strip()
+        if codex_model is not None
+        else (
+            os.environ.get(_CODEX_MODEL_ENV, "").strip()
+            or DEFAULT_CODEX_MODEL
+        )
     )
     codex_context = (
         str(codex_context_window)
         if codex_context_window is not None
         else os.environ.get(_CODEX_CONTEXT_WINDOW_ENV, "200000").strip()
     )
-    codex_reasoning = os.environ.get(
-        _CODEX_REASONING_EFFORT_ENV, "high"
-    ).strip()
+    codex_reasoning = (
+        str(codex_reasoning_effort).strip()
+        if codex_reasoning_effort is not None
+        else os.environ.get(_CODEX_REASONING_EFFORT_ENV, "high").strip()
+    )
     codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
     codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
 
@@ -1551,8 +1572,8 @@ def _codex_implementation_command(
         "-C",
         str(workspace_path),
     ]
-    if codex_model:
-        command.extend(["-m", codex_model])
+    if selected_codex_model:
+        command.extend(["-m", selected_codex_model])
     if codex_context:
         command.extend(["-c", f"model_context_window={codex_context}"])
     if codex_reasoning:
@@ -1565,6 +1586,30 @@ def _codex_implementation_command(
         command.extend(["-c", f"agents.max_depth={codex_max_depth}"])
     command.append("-")
     return command
+
+
+def _codex_quota_fallback_command(
+    *,
+    codex: str,
+    workspace_path: Path,
+    codex_context_window: int | None = None,
+) -> list[str]:
+    """Build the exact Codex route authorized only after Grok quota exhaustion.
+
+    These two settings deliberately ignore the ambient direct-Codex defaults.
+    The runner independently validates them before it starts Grok, preventing
+    an environment or serialized argv from widening the fallback policy.
+    """
+
+    return _codex_implementation_command(
+        codex=codex,
+        workspace_path=workspace_path,
+        codex_context_window=codex_context_window,
+        codex_model=DEFAULT_CODEX_QUOTA_FALLBACK_MODEL,
+        codex_reasoning_effort=(
+            DEFAULT_CODEX_QUOTA_FALLBACK_REASONING_EFFORT
+        ),
+    )
 
 
 def _copilot_fallback_command(
@@ -27522,15 +27567,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         grok_ready = _grok_cli_available()
         goose_meta_ready = _goose_meta_spark_available()
-        prefer_grok = provider in {
+        quota_fallback_grok = provider in {
             "auto",
-            "grok",
-            "grok_cli",
-            "grok-cli",
-            "grok_build",
-            "grok-build",
-            "xai_cli",
-            "xai-cli",
+            "grok_quota_fallback",
+            "grok-quota-fallback",
+            "grok_with_quota_fallback",
+            "grok-with-quota-fallback",
         }
         force_grok = provider in {
             "grok",
@@ -27565,8 +27607,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         }
         force_codex = provider in {"codex", "copilot", "openai"}
 
-        # Prefer only when the binary is actually resolvable so an auth-only
-        # readiness signal does not block auto-fallback to codex/copilot.
+        # An explicitly pinned Grok route remains fail-closed and has no
+        # cross-provider fallback.  The quota-fallback profile below is the
+        # only ordinary route allowed to serialize a Codex fallback command.
         if force_grok:
             if not grok_ready:
                 raise RuntimeError(
@@ -27575,14 +27618,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "login/auth (or XAI_API_KEY)"
                 )
             return _grok_cli_command(workspace_path=workspace_path)
-        if (
-            prefer_grok
-            and grok_ready
-            and _grok_binary()
-            and not force_codex
-            and not force_goose_meta
-        ):
-            command = _grok_cli_command(workspace_path=workspace_path)
+        if quota_fallback_grok:
+            if not grok_ready or not _grok_binary():
+                raise RuntimeError(
+                    "Grok 4.5 primary is unavailable; Codex is authorized only "
+                    "after a confirmed Grok quota exhaustion"
+                )
+            command = _grok_cli_command(
+                workspace_path=workspace_path,
+                grok_model=DEFAULT_GROK_PRIMARY_MODEL,
+            )
             codex = shutil.which("codex")
             if codex:
                 codex_context_window = (
@@ -27594,7 +27639,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     [
                         "--codex-fallback-command-json",
                         json.dumps(
-                            _codex_implementation_command(
+                            _codex_quota_fallback_command(
                                 codex=codex,
                                 workspace_path=workspace_path,
                                 codex_context_window=codex_context_window,
@@ -27636,14 +27681,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 workspace_path=workspace_path,
                 codex_context_window=codex_context_window,
             )
-        if grok_ready:
-            return _grok_cli_command(workspace_path=workspace_path)
-        if goose_meta_ready:
-            return _goose_meta_spark_command(workspace_path=workspace_path)
         raise RuntimeError(
-            "No implementation command configured. Install the Grok Build CLI "
-            "(`grok` with auth), goose (with Meta Spark credentials), codex, or "
-            "copilot, or set IMPLEMENTATION_DAEMON_COMMAND."
+            "No authorized implementation provider route is configured. Use "
+            "Grok 4.5 with the quota-only fallback profile, or explicitly pin "
+            "a provider or IMPLEMENTATION_DAEMON_COMMAND."
         )
 
     def _task_metadata_value(self, task: PortalTask, *keys: str) -> str:

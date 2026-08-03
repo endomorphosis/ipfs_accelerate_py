@@ -12,7 +12,7 @@ import sys
 import time
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from hashlib import sha1
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -2061,6 +2061,9 @@ class PortalImplementationSupervisor:
             loop = self.shared_supervisor_loop_class(
                 self.build_supervisor_loop_config(),
                 watchdog_hook=self._supervisor_loop_watchdog_decision,
+                stale_heartbeat_hook=(
+                    self._provider_backoff_stale_heartbeat_decision
+                ),
             )
             result = loop.run()
             self.restart_count = result.restart_count
@@ -2279,6 +2282,137 @@ class PortalImplementationSupervisor:
                 detail={"active_task_id": result.get("active_task_id") or ""},
             )
         return SupervisorLoopDecision.keep_running()
+
+    def _provider_backoff_watchdog_pause(
+        self,
+        current_status: Mapping[str, Any],
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Return a bounded stale-heartbeat exception for a durable retry latch.
+
+        Provider-capacity deferrals deliberately leave task state, queues, and
+        events unchanged while the daemon sleeps until ``retry_at``.  That is
+        healthy idle time, not a stalled child.  Admit the exception only from
+        the latest exact, non-consuming provider-exhaustion event and only for
+        the task that the current lane still exposes as ready.
+        """
+
+        if (
+            current_status.get("selection_idle_reason")
+            != "provider_capacity_backoff"
+            or bool(current_status.get("active_task_id"))
+            or current_status.get("implementation_in_progress") is True
+        ):
+            return {}
+
+        heartbeat_at = parse_timestamp(
+            str(current_status.get("heartbeat_at") or "")
+        )
+        if heartbeat_at is None:
+            return {}
+
+        ready_task_ids: set[str] = set()
+        for field_name in (
+            "eligible_ready_task_ids",
+            "selectable_ready_task_ids",
+            "ready_task_ids",
+        ):
+            value = current_status.get(field_name)
+            if not isinstance(value, (list, tuple, set, frozenset)):
+                continue
+            ready_task_ids.update(
+                str(item).strip() for item in value if str(item).strip()
+            )
+        if not ready_task_ids:
+            return {}
+
+        latest_boundary: dict[str, Any] | None = None
+        events_path = self._managed_daemon_events_path()
+        try:
+            with events_path.open("r", encoding="utf-8") as handle:
+                for raw_line in handle:
+                    if not raw_line.strip():
+                        continue
+                    event = json.loads(raw_line)
+                    if not isinstance(event, dict):
+                        return {}
+                    if str(event.get("type") or "") in {
+                        "implementation_provider_exhausted",
+                        "implementation_started",
+                        "implementation_finished",
+                    }:
+                        latest_boundary = event
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+        if (
+            latest_boundary is None
+            or latest_boundary.get("type")
+            != "implementation_provider_exhausted"
+            or latest_boundary.get("reason") != "provider_capacity_exhausted"
+            or latest_boundary.get("deferred") is not True
+            or latest_boundary.get("attempt_consumed") is not False
+        ):
+            return {}
+
+        task_id = str(latest_boundary.get("task_id") or "").strip()
+        if not task_id or task_id not in ready_task_ids:
+            return {}
+        raw_providers = latest_boundary.get("providers")
+        if not isinstance(raw_providers, (list, tuple, set, frozenset)):
+            return {}
+        providers = [
+            str(item).strip()
+            for item in raw_providers
+            if str(item).strip()
+        ]
+        if not providers:
+            return {}
+
+        retry_at = parse_timestamp(str(latest_boundary.get("retry_at") or ""))
+        if retry_at is None or retry_at <= heartbeat_at:
+            return {}
+        now_at = now or datetime.now(timezone.utc)
+        if now_at.tzinfo is None:
+            now_at = now_at.replace(tzinfo=timezone.utc)
+        grace_seconds = max(30.0, float(self.config.check_interval) * 2.0)
+        watchdog_until = retry_at + timedelta(seconds=grace_seconds)
+        if watchdog_until <= now_at:
+            return {}
+
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "provider-backoff-watchdog-pause@1"
+            ),
+            "reason": "provider_capacity_backoff",
+            "task_id": task_id,
+            "providers": providers,
+            "retry_at": retry_at.isoformat(),
+            "watchdog_until": watchdog_until.isoformat(),
+            "remaining_seconds": max(
+                0.0,
+                (watchdog_until - now_at).total_seconds(),
+            ),
+            "attempt_consumed": False,
+            "events_path": str(events_path),
+        }
+
+    def _provider_backoff_stale_heartbeat_decision(
+        self,
+        _loop: SupervisorLoop,
+        _child: Any,
+        current_status: Mapping[str, Any],
+    ) -> SupervisorLoopDecision | None:
+        pause = self._provider_backoff_watchdog_pause(current_status)
+        if not pause:
+            return None
+        return SupervisorLoopDecision(
+            action="continue",
+            reason="provider_capacity_backoff",
+            detail=pause,
+        )
 
     def repair_main_checkout_merge_state(self) -> dict[str, Any]:
         """Resolve or abort an interrupted merge in the shared repository checkout."""
@@ -7434,6 +7568,9 @@ class PortalImplementationSupervisor:
 
     def _managed_daemon_pid_path(self) -> Path:
         return self.config.state_dir / f"{self.config.state_prefix}_managed_daemon.pid"
+
+    def _managed_daemon_events_path(self) -> Path:
+        return self.config.state_dir / f"{self.config.state_prefix}_events.jsonl"
 
     def _terminate_managed_daemon_tree(self, *, grace_seconds: float = 1.0) -> dict[str, Any]:
         """Stop the daemon this supervisor owns, including late-spawned workers."""

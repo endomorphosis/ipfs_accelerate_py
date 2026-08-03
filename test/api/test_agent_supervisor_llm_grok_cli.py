@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import io
-import subprocess
+import os
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor import grok_cli_runner
@@ -13,6 +14,68 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.llm import (
     LlmRouterInvocation,
     call_llm_router,
 )
+
+
+def test_grok_streaming_runner_forwards_output_and_keeps_bounded_tail(capsys) -> None:
+    returncode, transcript = grok_cli_runner._run_grok_streaming(
+        [
+            "/bin/sh",
+            "-c",
+            "printf 'provider stdout'; printf 'provider stderr' >&2; exit 7",
+        ],
+        env=dict(os.environ),
+    )
+
+    captured = capsys.readouterr()
+    assert returncode == 7
+    assert captured.out == "provider stdout"
+    assert captured.err == "provider stderr"
+    assert "provider stdout" not in transcript
+    assert "provider stderr" in transcript
+
+
+def test_grok_streaming_runner_forwards_short_output_before_child_exit(
+    monkeypatch,
+) -> None:
+    output_seen = threading.Event()
+    result: dict[str, tuple[int, str]] = {}
+
+    class _Buffer:
+        def write(self, chunk: bytes) -> int:
+            if b"provider-ready" in chunk:
+                output_seen.set()
+            return len(chunk)
+
+        def flush(self) -> None:
+            return None
+
+    class _Target:
+        buffer = _Buffer()
+
+    monkeypatch.setattr(grok_cli_runner.sys, "stdout", _Target())
+
+    def invoke() -> None:
+        result["value"] = grok_cli_runner._run_grok_streaming(
+            [
+                sys.executable,
+                "-u",
+                "-c",
+                (
+                    "import sys, time; "
+                    "sys.stdout.write('provider-ready\\n'); "
+                    "sys.stdout.flush(); time.sleep(4)"
+                ),
+            ],
+            env=dict(os.environ),
+        )
+
+    worker = threading.Thread(target=invoke, daemon=True)
+    worker.start()
+    assert output_seen.wait(timeout=3), "short output was buffered until EOF"
+    assert worker.is_alive(), "child exited before incremental output was observed"
+    worker.join(timeout=6)
+    assert worker.is_alive() is False
+    assert result["value"] == (0, "")
 
 
 def test_supervisor_child_routes_grok_through_canonical_router(monkeypatch, tmp_path) -> None:
@@ -100,15 +163,15 @@ def test_grok_agent_runner_forwards_resolved_launch_policy(
 ) -> None:
     captured: dict[str, object] = {}
 
-    def fake_run(cmd, **kwargs):
+    def fake_run(cmd, *, env):
         captured["cmd"] = list(cmd)
-        captured["env"] = dict(kwargs["env"])
+        captured["env"] = dict(env)
         prompt_path = Path(cmd[cmd.index("--prompt-file") + 1])
         captured["prompt"] = prompt_path.read_text(encoding="utf-8")
-        return subprocess.CompletedProcess(cmd, 0)
+        return 0, ""
 
     monkeypatch.setattr(grok_cli_runner.sys, "stdin", io.StringIO("repair the board"))
-    monkeypatch.setattr(grok_cli_runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(grok_cli_runner, "_run_grok_streaming", fake_run)
 
     result = grok_cli_runner.main(
         [

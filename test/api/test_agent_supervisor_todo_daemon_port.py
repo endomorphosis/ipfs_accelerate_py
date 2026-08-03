@@ -1181,6 +1181,10 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
         implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
         raising=False,
     )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "codex",
+    )
     monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
     monkeypatch.delenv(implementation_daemon_module._CODEX_MODEL_ENV, raising=False)
     monkeypatch.delenv(implementation_daemon_module._CODEX_CONTEXT_WINDOW_ENV, raising=False)
@@ -1208,7 +1212,12 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
         str(repo),
     ]
     assert command[-1] == "-"
-    assert ["-c", "model_context_window=200000"] == command[5:7]
+    assert command[command.index("-m") + 1] == "gpt-5.6-sol"
+    context_index = command.index("model_context_window=200000")
+    assert command[context_index - 1 : context_index + 1] == [
+        "-c",
+        "model_context_window=200000",
+    ]
     assert "-c" in command
     assert 'model_reasoning_effort="high"' in command
     assert "agents.max_threads=10" in command
@@ -1594,6 +1603,10 @@ def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, mon
         implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
         raising=False,
     )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "codex",
+    )
     monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
     monkeypatch.delenv(implementation_daemon_module._CODEX_MODEL_ENV, raising=False)
     monkeypatch.delenv(implementation_daemon_module._CODEX_CONTEXT_WINDOW_ENV, raising=False)
@@ -1620,7 +1633,17 @@ def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, mon
     assert command[:2] == ["bash", "-lc"]
     assert "falling back to copilot" in command[2]
     assert command[3:7] == ["bash", "/usr/local/bin/codex", "/usr/local/bin/copilot", str(repo)]
-    assert command[7:] == ["", "200000", "high", "10", "2", "", "high", "long_context", "30"]
+    assert command[7:] == [
+        "gpt-5.6-sol",
+        "200000",
+        "high",
+        "10",
+        "2",
+        "",
+        "high",
+        "long_context",
+        "30",
+    ]
 
 
 def test_implementation_daemon_links_shared_dependencies_only_in_managed_worktrees(tmp_path):
@@ -8072,6 +8095,103 @@ def test_supervisor_loop_starts_stall_clock_when_worker_disappears(tmp_path):
     assert expired["stalled_without_active_worker"] is True
 
 
+def test_implementation_supervisor_keeps_nonconsuming_provider_backoff_alive(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    state_path = state_dir / "task_state.json"
+    now = datetime.now(timezone.utc)
+    TodoTaskState(
+        heartbeat_at=(now - timedelta(hours=3)).isoformat(),
+        last_progress_at=(now - timedelta(hours=3)).isoformat(),
+        ready_count=1,
+        ready_task_ids=["AUTO-001"],
+        selectable_ready_count=1,
+        selectable_ready_task_ids=["AUTO-001"],
+        eligible_ready_count=1,
+        eligible_ready_task_ids=["AUTO-001"],
+        selection_idle_reason="provider_capacity_backoff",
+    ).save(state_path)
+    daemon_events_path = state_dir / "portal_events.jsonl"
+    exhausted = {
+        "type": "implementation_provider_exhausted",
+        "reason": "provider_capacity_exhausted",
+        "task_id": "AUTO-001",
+        "providers": ["grok"],
+        "deferred": True,
+        "attempt_consumed": False,
+        "retry_at": (now + timedelta(minutes=10)).isoformat(),
+    }
+    daemon_events_path.write_text(
+        json.dumps(exhausted) + "\n",
+        encoding="utf-8",
+    )
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_path,
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            stale_seconds=1,
+            implementation_timeout=1,
+            check_interval=1,
+        )
+    )
+    loop = SupervisorLoop(
+        supervisor.build_supervisor_loop_config(),
+        stale_heartbeat_hook=(
+            supervisor._provider_backoff_stale_heartbeat_decision
+        ),
+    )
+    child = SimpleNamespace(pid=os.getpid())
+    before = (state_path.read_bytes(), daemon_events_path.read_bytes())
+
+    decision = loop.watchdog_decision(child)
+
+    assert decision.action == "continue"
+    assert decision.reason == "provider_capacity_backoff"
+    assert decision.detail["task_id"] == "AUTO-001"
+    assert decision.detail["providers"] == ["grok"]
+    assert decision.detail["attempt_consumed"] is False
+    assert (state_path.read_bytes(), daemon_events_path.read_bytes()) == before
+
+    exhausted["attempt_consumed"] = True
+    daemon_events_path.write_text(
+        json.dumps(exhausted) + "\n",
+        encoding="utf-8",
+    )
+    consuming = loop.watchdog_decision(child)
+    assert consuming.action == "recycle"
+    assert consuming.reason == "stale_heartbeat"
+
+    exhausted["attempt_consumed"] = False
+    exhausted["retry_at"] = (now - timedelta(minutes=10)).isoformat()
+    daemon_events_path.write_text(
+        json.dumps(exhausted) + "\n",
+        encoding="utf-8",
+    )
+    expired = loop.watchdog_decision(child)
+    assert expired.action == "recycle"
+    assert expired.reason == "stale_heartbeat"
+
+    exhausted["retry_at"] = (now + timedelta(minutes=10)).isoformat()
+    daemon_events_path.write_text(
+        json.dumps(exhausted)
+        + "\n"
+        + json.dumps({"type": "implementation_started", "task_id": "AUTO-001"})
+        + "\n",
+        encoding="utf-8",
+    )
+    superseded = loop.watchdog_decision(child)
+    assert superseded.action == "recycle"
+    assert superseded.reason == "stale_heartbeat"
+
+
 def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -8081,9 +8201,16 @@ def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(
     class RecoveringLoop:
         calls = 0
 
-        def __init__(self, config, *, watchdog_hook=None):
+        def __init__(
+            self,
+            config,
+            *,
+            watchdog_hook=None,
+            stale_heartbeat_hook=None,
+        ):
             self.config = config
             self.watchdog_hook = watchdog_hook
+            self.stale_heartbeat_hook = stale_heartbeat_hook
 
         def run(self):
             RecoveringLoop.calls += 1
@@ -16549,7 +16676,11 @@ def test_task_llm_context_budget_caps_codex_window_without_widening_operator_lim
     assert resolution.provider_context_window == 6_000
     assert resolution.effective_input_limit == 4_500
     assert result.capsule.budget.max_input_tokens == 4_500
-    assert ["-c", "model_context_window=6000"] == command[5:7]
+    context_index = command.index("model_context_window=6000")
+    assert command[context_index - 1 : context_index + 1] == [
+        "-c",
+        "model_context_window=6000",
+    ]
     assert "model_context_window=200000" not in command
 
 
