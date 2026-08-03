@@ -686,7 +686,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-028 Integrate navigation and publish the validation closeout
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
