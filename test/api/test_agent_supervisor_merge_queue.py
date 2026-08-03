@@ -1404,6 +1404,38 @@ def test_completion_requires_the_exact_current_claim_fence(
     assert queue.get(pending.request_id).status == "completed"  # type: ignore[union-attr]
 
 
+def test_successful_retry_clears_failure_reason_but_retains_retry_history(
+    tmp_path: Path,
+) -> None:
+    queue = MergeQueue(tmp_path / "queue", max_attempts=3)
+    pending = _enqueue(queue, 0)
+    first_claim = queue.dequeue(consumer_id="merge-train:first")
+    assert first_claim is not None
+
+    retry = queue.requeue(
+        first_claim,
+        reason="merge cleanup failed",
+        metadata={"cleanup_error": "transient lock contention"},
+    )
+    assert retry is not None
+    assert not isinstance(retry, Path)
+    second_claim = queue.dequeue(consumer_id="merge-train:retry")
+    assert second_claim is not None
+    assert second_claim.request_id == pending.request_id
+
+    queue.complete(second_claim)
+
+    completed = queue.get(pending.request_id)
+    assert completed is not None
+    assert completed.status == "completed"
+    assert completed.attempt == 2
+    assert completed.failure_count == 1
+    assert completed.failure_reason == ""
+    assert completed.metadata["failure_metadata"] == [
+        {"cleanup_error": "transient lock contention"}
+    ]
+
+
 def test_recovered_claim_increments_generation_and_fences_crashed_worker(
     tmp_path: Path,
 ) -> None:

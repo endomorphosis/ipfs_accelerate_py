@@ -4327,7 +4327,7 @@ class MergeQueue:
                 request_metadata["completion"] = dict(metadata)
             connection.execute(
                 """UPDATE merge_requests SET status='completed', metadata_json=?,
-                   finished_at=?, updated_at=?, consumer_id='', claimed_at=0,
+                   failure_reason='', finished_at=?, updated_at=?, consumer_id='', claimed_at=0,
                    claim_token='', claim_generation=claim_generation + 1
                    WHERE request_id=? AND status='processing'
                      AND claim_token=? AND claim_generation=? AND consumer_id=?""",
