@@ -1,0 +1,2398 @@
+{
+  "schema_version": "formal-verification-authoritative-vendor-release/v1",
+  "interface": "FormalVerificationAuthoritativeVendorRelease@1",
+  "program_interface": "FormalVerificationTacticianRelease@1",
+  "program_goal_id": "FVT-G000",
+  "goal_id": "FVT-G221",
+  "task_id": "FVT-089",
+  "program": "formal-verification-tactician/authoritative-vendor-release",
+  "observed_at": "2026-08-03T23:07:22Z",
+  "status": "authoritative_vendor_release_blocked",
+  "deployment_ready": false,
+  "description": "Content-addressed, fail-closed reissue gate for packaging, lazy installers, readiness axes, genuine SecPAL and ErgoAI execution, authority ceilings, supervisor completion, trees, gitlinks, and origin publication. Authentic provenance never substitutes for platform, semantics, license, freshness, or deployment authority.",
+  "policy": {
+    "max_evidence_age_seconds": 86400,
+    "freshness_uses_current_utc_wall_clock": true,
+    "future_clock_skew_seconds": 300,
+    "unkeyed_self_digest_is_not_authority": true,
+    "exact_committed_repository_receipt_required": true,
+    "matrix_claims_require_canonical_reconstruction": true,
+    "ergoai_claims_require_independent_offline_rerun": true,
+    "required_readiness_axes": [
+      "dependency",
+      "packaging",
+      "installer",
+      "capability",
+      "semantic",
+      "platform",
+      "authority",
+      "freshness",
+      "public_surface"
+    ],
+    "fixture_shim_unsupported_proposal_and_stale_block": true,
+    "external_authority_blockers_block": true,
+    "unsupported_platform_never_counts_as_complete": true,
+    "operator_compatibility_is_not_vendor_platform_support": true,
+    "vendor_provenance_is_not_production_permission": true,
+    "advisory_ergoai_never_grants_proof_authority": true,
+    "restricted_vendor_bytes_forbidden_from_public_receipt": true,
+    "no_install": true,
+    "no_download": true,
+    "no_network": true
+  },
+  "known_secpal_release": {
+    "msi_sha256": "c1988b9f1f6a2fb602bac4fc777a1765e59e74126285a095684a4743ea683159",
+    "msi_size_bytes": 2458624,
+    "product_code": "{957BD905-629C-45B0-AA93-EC1AAD218115}",
+    "product_version": "1.0.0",
+    "target_clr": "v2.0.50727",
+    "eula_sha256": "de075e7848fb737b9da3cfec5ce7c906742f4767fa04ed2bc38e69e2dd5e4fad",
+    "artifact_bytes_embedded": false,
+    "eula_text_embedded": false,
+    "redistribution_disposition": "prohibited_obtain_from_microsoft",
+    "production_purpose_disposition": "not_intended_for_live_environment"
+  },
+  "dependency_bindings": {
+    "end_to_end_assurance_matrix": {
+      "path": "docs/architecture/formal_verification_end_to_end_assurance_matrix.json",
+      "source_kind": "checked_file",
+      "fallback_used": false,
+      "present": true,
+      "reachable": true,
+      "file_present": true,
+      "file_sha256": "sha256:103032530ba6b7c3005973ead5c22d6817c358de3319d98a727cf50a4d49eac0",
+      "repository_body_matches": true,
+      "repository_head_blob": "2d09ccd01902d3e738745f2897dc8f8d849c04ee",
+      "repository_working_blob": "2d09ccd01902d3e738745f2897dc8f8d849c04ee",
+      "repository_file_committed_at_head": true,
+      "repository_content_bound": true,
+      "interface": "FormalVerificationEndToEndAssuranceMatrix@1",
+      "schema_version": "formal-verification-end-to-end-assurance-matrix/v1",
+      "goal_id": "FVT-G220",
+      "task_id": "FVT-088",
+      "status": null,
+      "declared_identity_field": "matrix_digest_sha256",
+      "declared_identity": "2ce2cb5ba662cbbd8dce7d008cc2967e97bb417ba2ab02e7a370fc22b3c52bd5",
+      "payload_content_identity": "sha256:ad00e8df907c73381fecc60b3305c3ad1510c57bb2cef9bbf28818a38e8bdadc",
+      "identity_valid": true,
+      "interface_valid": true,
+      "interface_contract_valid": true,
+      "interface_contract_failures": [],
+      "fresh": true,
+      "public_safe": true,
+      "freshness": {
+        "valid": true,
+        "timestamp": "2026-08-03T23:06:15Z",
+        "age_seconds": 67.0,
+        "wall_clock_age_seconds": 67.602396,
+        "release_wall_clock_age_seconds": 0.602396,
+        "wall_clock_observed_at": "2026-08-03T23:07:22.602396Z",
+        "max_age_seconds": 86400,
+        "clock_skew_seconds": 300,
+        "failures": []
+      },
+      "public_evidence_audit": {
+        "satisfied": true,
+        "failure_count": 0,
+        "failures": []
+      },
+      "binding_failures": [],
+      "binding_valid": true
+    },
+    "secpal_authoritative_live": {
+      "path": "docs/architecture/formal_verification_secpal_live_receipt.json",
+      "source_kind": "checked_file",
+      "fallback_used": false,
+      "present": false,
+      "reachable": false,
+      "file_present": false,
+      "file_sha256": null,
+      "repository_body_matches": false,
+      "repository_head_blob": null,
+      "repository_working_blob": null,
+      "repository_file_committed_at_head": false,
+      "repository_content_bound": false,
+      "interface": null,
+      "schema_version": null,
+      "goal_id": null,
+      "task_id": null,
+      "status": null,
+      "declared_identity_field": null,
+      "declared_identity": null,
+      "payload_content_identity": null,
+      "identity_valid": false,
+      "interface_valid": false,
+      "interface_contract_valid": false,
+      "interface_contract_failures": [],
+      "fresh": false,
+      "public_safe": false,
+      "freshness": {
+        "valid": false,
+        "timestamp": null,
+        "age_seconds": null,
+        "max_age_seconds": 86400,
+        "clock_skew_seconds": 300,
+        "failures": [
+          "dependency_missing"
+        ]
+      },
+      "public_evidence_audit": {
+        "satisfied": false,
+        "failures": [
+          "dependency_missing"
+        ]
+      },
+      "binding_failures": [
+        "dependency_missing",
+        "interface_contract_mismatch:interface",
+        "interface_not_accepted_for_dependency",
+        "payload_does_not_match_selected_repository_file",
+        "selected_repository_file_not_committed_at_head"
+      ],
+      "binding_valid": false
+    },
+    "ergoai_managed_vendor_live": {
+      "path": "docs/architecture/formal_verification_ergoai_java_api_live_receipt.json",
+      "source_kind": "checked_file",
+      "fallback_used": true,
+      "present": true,
+      "reachable": true,
+      "file_present": true,
+      "file_sha256": "sha256:edd5ead441507d18dc60ec7bf2633b3c712ecb4b3d4c39d9052b697bb6df4fea",
+      "repository_body_matches": true,
+      "repository_head_blob": "28b33cad1ff37c2301f72bec1c719d238f7f3439",
+      "repository_working_blob": "28b33cad1ff37c2301f72bec1c719d238f7f3439",
+      "repository_file_committed_at_head": true,
+      "repository_content_bound": true,
+      "interface": "ErgoAIJavaAPILiveCertification@1",
+      "schema_version": "ergoai-java-api-live-certification/v1",
+      "goal_id": "FVT-G223",
+      "task_id": "FVT-091",
+      "status": null,
+      "declared_identity_field": "receipt_digest_sha256",
+      "declared_identity": "5e66e5152d7d9b60c194e51cc71209be8727063d61ffa822abb039cdb712df59",
+      "payload_content_identity": "sha256:1d8a77fda03326e04e81e5d06f8545475fa558814cd671d49357f13a3f548f8a",
+      "identity_valid": true,
+      "interface_valid": false,
+      "interface_contract_valid": false,
+      "interface_contract_failures": [],
+      "fresh": false,
+      "public_safe": true,
+      "freshness": {
+        "valid": false,
+        "timestamp": null,
+        "age_seconds": null,
+        "wall_clock_age_seconds": null,
+        "release_wall_clock_age_seconds": 0.602396,
+        "wall_clock_observed_at": "2026-08-03T23:07:22.602396Z",
+        "max_age_seconds": 86400,
+        "clock_skew_seconds": 300,
+        "failures": [
+          "freshness_timestamp_missing_or_invalid"
+        ]
+      },
+      "public_evidence_audit": {
+        "satisfied": true,
+        "failure_count": 0,
+        "failures": []
+      },
+      "binding_failures": [
+        "interface_contract_mismatch:interface",
+        "interface_not_accepted_for_dependency"
+      ],
+      "binding_valid": false
+    },
+    "role_aware_release_candidate": {
+      "path": "docs/architecture/formal_verification_role_aware_release_candidate.json",
+      "source_kind": "checked_file",
+      "fallback_used": false,
+      "present": true,
+      "reachable": true,
+      "file_present": true,
+      "file_sha256": "sha256:0e0f7592b0a48420ee507bd5cd86f86ec42c1d5ed1451ff60e3f2cfacb540333",
+      "repository_body_matches": true,
+      "repository_head_blob": "6baf4c85e6d822ba1937b699a97263b41b661f0f",
+      "repository_working_blob": "6baf4c85e6d822ba1937b699a97263b41b661f0f",
+      "repository_file_committed_at_head": true,
+      "repository_content_bound": true,
+      "interface": "RoleAwareFormalVerificationReleaseCandidate@1",
+      "schema_version": "formal-verification-role-aware-release-candidate/v1",
+      "goal_id": "FVT-G213",
+      "task_id": "FVT-066",
+      "status": "role_aware_release_candidate_ready",
+      "declared_identity_field": "candidate_identity",
+      "declared_identity": "sha256:a115bf6e8de217e3f75131b9d44e74c6d4714a3dda8feebfd13038e793a586df",
+      "payload_content_identity": "sha256:bca8819616bed9fb342763f557a2acca20995ef643c9f7fe9a6f162024cfb312",
+      "identity_valid": true,
+      "interface_valid": true,
+      "interface_contract_valid": true,
+      "interface_contract_failures": [],
+      "fresh": true,
+      "public_safe": true,
+      "freshness": {
+        "valid": true,
+        "timestamp": "2026-08-03T04:19:06Z",
+        "age_seconds": 67696.0,
+        "wall_clock_age_seconds": 67696.602396,
+        "release_wall_clock_age_seconds": 0.602396,
+        "wall_clock_observed_at": "2026-08-03T23:07:22.602396Z",
+        "max_age_seconds": 86400,
+        "clock_skew_seconds": 300,
+        "failures": []
+      },
+      "public_evidence_audit": {
+        "satisfied": true,
+        "failure_count": 0,
+        "failures": []
+      },
+      "binding_failures": [],
+      "binding_valid": true
+    },
+    "post_merge_deployment_attestation": {
+      "path": "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
+      "source_kind": "checked_file",
+      "fallback_used": false,
+      "present": true,
+      "reachable": true,
+      "file_present": true,
+      "file_sha256": "sha256:cb5cdd27659dd9cf2e8ed10bace3f7c753d54d81b8819742a734a6fa846c61f9",
+      "repository_body_matches": true,
+      "repository_head_blob": "b3e715a2f458579bd897ae304c0ab2a135048fd7",
+      "repository_working_blob": "b3e715a2f458579bd897ae304c0ab2a135048fd7",
+      "repository_file_committed_at_head": true,
+      "repository_content_bound": true,
+      "interface": "RoleAwareFormalVerificationRelease@1",
+      "schema_version": "formal-verification-role-aware-deployment-receipt/v1",
+      "goal_id": "FVT-G200",
+      "task_id": "FVT-083",
+      "status": "role_aware_deployment_blocked",
+      "declared_identity_field": "receipt_identity",
+      "declared_identity": "sha256:43949c4b9734d3436985c66bfebb12ce2f46bdcd3267b65e3b4e56866e15b9b8",
+      "payload_content_identity": "sha256:75e16b62fd337999222f03fa4490f05aafba1f7d174d038b295b0be7d5008633",
+      "identity_valid": true,
+      "interface_valid": true,
+      "interface_contract_valid": true,
+      "interface_contract_failures": [],
+      "fresh": true,
+      "public_safe": true,
+      "freshness": {
+        "valid": true,
+        "timestamp": "2026-08-03T04:17:46Z",
+        "age_seconds": 67776.0,
+        "wall_clock_age_seconds": 67776.602396,
+        "release_wall_clock_age_seconds": 0.602396,
+        "wall_clock_observed_at": "2026-08-03T23:07:22.602396Z",
+        "max_age_seconds": 86400,
+        "clock_skew_seconds": 300,
+        "failures": []
+      },
+      "public_evidence_audit": {
+        "satisfied": true,
+        "failure_count": 0,
+        "failures": []
+      },
+      "binding_failures": [],
+      "binding_valid": true
+    },
+    "tactician_completion": {
+      "path": "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
+      "source_kind": "checked_file",
+      "fallback_used": false,
+      "present": true,
+      "reachable": true,
+      "file_present": true,
+      "file_sha256": "sha256:abd29e6cf636d8e3a3b7fa94e86e2b5649bf07e212ef1c2db4080ab8a5edc600",
+      "repository_body_matches": true,
+      "repository_head_blob": "bf53bb8e74402decb7e38d99bbd7a665757f96ba",
+      "repository_working_blob": "bf53bb8e74402decb7e38d99bbd7a665757f96ba",
+      "repository_file_committed_at_head": true,
+      "repository_content_bound": true,
+      "interface": "FormalVerificationTacticianCompletionReceipt@1",
+      "schema_version": "formal-verification-tactician-completion-receipt/v1",
+      "goal_id": null,
+      "task_id": "FVT-036",
+      "status": null,
+      "declared_identity_field": "receipt_identity",
+      "declared_identity": "sha256:918919cc8afab079ece15e5520fd7d6b7788d89a0262ff9c5f33d197e701a314",
+      "payload_content_identity": "sha256:2303d64e444d503dd37c9f9574e5644b930fa642827f2d864ae2064cf256df77",
+      "identity_valid": true,
+      "interface_valid": true,
+      "interface_contract_valid": true,
+      "interface_contract_failures": [],
+      "fresh": true,
+      "public_safe": true,
+      "freshness": {
+        "valid": true,
+        "timestamp": "2026-08-03T04:19:06Z",
+        "age_seconds": 67696.0,
+        "wall_clock_age_seconds": 67696.602396,
+        "release_wall_clock_age_seconds": 0.602396,
+        "wall_clock_observed_at": "2026-08-03T23:07:22.602396Z",
+        "max_age_seconds": 86400,
+        "clock_skew_seconds": 300,
+        "failures": []
+      },
+      "public_evidence_audit": {
+        "satisfied": true,
+        "failure_count": 0,
+        "failures": []
+      },
+      "binding_failures": [],
+      "binding_valid": true
+    }
+  },
+  "end_to_end_assurance": {
+    "valid": false,
+    "local_row_claims_ready": false,
+    "hardened_validation_valid": true,
+    "hardened_validation": {
+      "valid": true,
+      "failures": [],
+      "recomputed_deployment_ready": false,
+      "rows_validated": 28,
+      "axes_validated": 252
+    },
+    "row_count": 28,
+    "required_axes": [
+      "dependency",
+      "packaging",
+      "installer",
+      "capability",
+      "semantic",
+      "platform",
+      "authority",
+      "freshness",
+      "public_surface"
+    ],
+    "rows": [
+      {
+        "row_id": "apalache@linux-aarch64",
+        "tool_id": "apalache",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "blocked",
+          "packaging": "ready",
+          "installer": "ready",
+          "capability": "blocked",
+          "semantic": "blocked",
+          "platform": "ready",
+          "authority": "blocked",
+          "freshness": "blocked",
+          "public_surface": "ready"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "authority",
+          "capability",
+          "dependency",
+          "freshness",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "autohyper@linux-aarch64",
+        "tool_id": "autohyper",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "blocked",
+          "packaging": "ready",
+          "installer": "ready",
+          "capability": "blocked",
+          "semantic": "blocked",
+          "platform": "ready",
+          "authority": "blocked",
+          "freshness": "blocked",
+          "public_surface": "ready"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "authority",
+          "capability",
+          "dependency",
+          "freshness",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "coq@linux-aarch64",
+        "tool_id": "coq",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "blocked",
+          "packaging": "ready",
+          "installer": "ready",
+          "capability": "blocked",
+          "semantic": "blocked",
+          "platform": "ready",
+          "authority": "blocked",
+          "freshness": "blocked",
+          "public_surface": "ready"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "authority",
+          "capability",
+          "dependency",
+          "freshness",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "cvc5@linux-aarch64",
+        "tool_id": "cvc5",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "ready",
+          "packaging": "ready",
+          "installer": "ready",
+          "capability": "ready",
+          "semantic": "ready",
+          "platform": "ready",
+          "authority": "ready",
+          "freshness": "ready",
+          "public_surface": "ready"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [],
+        "ready_axes_without_evidence": [],
+        "ready": true
+      },
+      {
+        "row_id": "datalog-authorization@linux-aarch64",
+        "tool_id": "datalog-authorization",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "ready",
+          "packaging": "ready",
+          "installer": "not_applicable",
+          "capability": "ready",
+          "semantic": "blocked",
+          "platform": "ready",
+          "authority": "blocked",
+          "freshness": "ready",
+          "public_surface": "ready"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "authority",
+          "installer",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "eprover@linux-aarch64",
+        "tool_id": "eprover",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "blocked",
+          "packaging": "ready",
+          "installer": "ready",
+          "capability": "blocked",
+          "semantic": "blocked",
+          "platform": "ready",
+          "authority": "blocked",
+          "freshness": "blocked",
+          "public_surface": "ready"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "authority",
+          "capability",
+          "dependency",
+          "freshness",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "ergoai@linux-aarch64",
+        "tool_id": "ergoai",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "blocked",
+          "packaging": "ready",
+          "installer": "ready",
+          "capability": "blocked",
+          "semantic": "blocked",
+          "platform": "ready",
+          "authority": "ready",
+          "freshness": "blocked",
+          "public_surface": "blocked"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "capability",
+          "dependency",
+          "freshness",
+          "public_surface",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "hyperltl@linux-aarch64",
+        "tool_id": "hyperltl",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "blocked",
+          "packaging": "ready",
+          "installer": "ready",
+          "capability": "blocked",
+          "semantic": "blocked",
+          "platform": "ready",
+          "authority": "blocked",
+          "freshness": "blocked",
+          "public_surface": "ready"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "authority",
+          "capability",
+          "dependency",
+          "freshness",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "isabelle@linux-aarch64",
+        "tool_id": "isabelle",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "blocked",
+          "packaging": "ready",
+          "installer": "ready",
+          "capability": "blocked",
+          "semantic": "blocked",
+          "platform": "ready",
+          "authority": "blocked",
+          "freshness": "blocked",
+          "public_surface": "ready"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "authority",
+          "capability",
+          "dependency",
+          "freshness",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "java@linux-aarch64",
+        "tool_id": "java",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "ready",
+          "packaging": "ready",
+          "installer": "not_applicable",
+          "capability": "ready",
+          "semantic": "not_applicable",
+          "platform": "ready",
+          "authority": "ready",
+          "freshness": "ready",
+          "public_surface": "not_applicable"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "installer",
+          "public_surface",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "lean@linux-aarch64",
+        "tool_id": "lean",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "ready",
+          "packaging": "ready",
+          "installer": "ready",
+          "capability": "ready",
+          "semantic": "ready",
+          "platform": "ready",
+          "authority": "ready",
+          "freshness": "ready",
+          "public_surface": "ready"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [],
+        "ready_axes_without_evidence": [],
+        "ready": true
+      },
+      {
+        "row_id": "maude@linux-aarch64",
+        "tool_id": "maude",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "blocked",
+          "packaging": "ready",
+          "installer": "ready",
+          "capability": "blocked",
+          "semantic": "not_applicable",
+          "platform": "ready",
+          "authority": "ready",
+          "freshness": "blocked",
+          "public_surface": "not_applicable"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "capability",
+          "dependency",
+          "freshness",
+          "public_surface",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "mchyper@linux-aarch64",
+        "tool_id": "mchyper",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "blocked",
+          "packaging": "ready",
+          "installer": "ready",
+          "capability": "blocked",
+          "semantic": "blocked",
+          "platform": "ready",
+          "authority": "blocked",
+          "freshness": "blocked",
+          "public_surface": "ready"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "authority",
+          "capability",
+          "dependency",
+          "freshness",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "opam@linux-aarch64",
+        "tool_id": "opam",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "blocked",
+          "packaging": "ready",
+          "installer": "ready",
+          "capability": "blocked",
+          "semantic": "not_applicable",
+          "platform": "ready",
+          "authority": "ready",
+          "freshness": "blocked",
+          "public_surface": "not_applicable"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "capability",
+          "dependency",
+          "freshness",
+          "public_surface",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "proverif@linux-aarch64",
+        "tool_id": "proverif",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "blocked",
+          "packaging": "ready",
+          "installer": "ready",
+          "capability": "blocked",
+          "semantic": "blocked",
+          "platform": "ready",
+          "authority": "blocked",
+          "freshness": "blocked",
+          "public_surface": "ready"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "authority",
+          "capability",
+          "dependency",
+          "freshness",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "runtime-mtl@linux-aarch64",
+        "tool_id": "runtime-mtl",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "ready",
+          "packaging": "ready",
+          "installer": "not_applicable",
+          "capability": "ready",
+          "semantic": "blocked",
+          "platform": "ready",
+          "authority": "blocked",
+          "freshness": "ready",
+          "public_surface": "ready"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "authority",
+          "installer",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "runtime-mtl-external@linux-aarch64",
+        "tool_id": "runtime-mtl-external",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "blocked",
+          "packaging": "ready",
+          "installer": "ready",
+          "capability": "blocked",
+          "semantic": "blocked",
+          "platform": "ready",
+          "authority": "blocked",
+          "freshness": "blocked",
+          "public_surface": "blocked"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "authority",
+          "capability",
+          "dependency",
+          "freshness",
+          "public_surface",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "secpal@linux-aarch64",
+        "tool_id": "secpal",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "ready",
+          "packaging": "blocked",
+          "installer": "blocked",
+          "capability": "blocked",
+          "semantic": "blocked",
+          "platform": "unsupported",
+          "authority": "ready",
+          "freshness": "blocked",
+          "public_surface": "blocked"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "capability",
+          "freshness",
+          "installer",
+          "packaging",
+          "platform",
+          "public_surface",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "secpal-authorization@linux-aarch64",
+        "tool_id": "secpal-authorization",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "ready",
+          "packaging": "ready",
+          "installer": "not_applicable",
+          "capability": "ready",
+          "semantic": "blocked",
+          "platform": "ready",
+          "authority": "blocked",
+          "freshness": "ready",
+          "public_surface": "ready"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "authority",
+          "installer",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "souffle@linux-aarch64",
+        "tool_id": "souffle",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "blocked",
+          "packaging": "ready",
+          "installer": "ready",
+          "capability": "blocked",
+          "semantic": "blocked",
+          "platform": "ready",
+          "authority": "ready",
+          "freshness": "blocked",
+          "public_surface": "blocked"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "capability",
+          "dependency",
+          "freshness",
+          "public_surface",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "stack@linux-aarch64",
+        "tool_id": "stack",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "blocked",
+          "packaging": "ready",
+          "installer": "ready",
+          "capability": "blocked",
+          "semantic": "blocked",
+          "platform": "ready",
+          "authority": "blocked",
+          "freshness": "blocked",
+          "public_surface": "blocked"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "authority",
+          "capability",
+          "dependency",
+          "freshness",
+          "public_surface",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "symbolicai@linux-aarch64",
+        "tool_id": "symbolicai",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "ready",
+          "packaging": "ready",
+          "installer": "not_applicable",
+          "capability": "ready",
+          "semantic": "blocked",
+          "platform": "ready",
+          "authority": "ready",
+          "freshness": "ready",
+          "public_surface": "blocked"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "installer",
+          "public_surface",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "tamarin@linux-aarch64",
+        "tool_id": "tamarin",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "blocked",
+          "packaging": "ready",
+          "installer": "ready",
+          "capability": "blocked",
+          "semantic": "blocked",
+          "platform": "ready",
+          "authority": "blocked",
+          "freshness": "blocked",
+          "public_surface": "ready"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "authority",
+          "capability",
+          "dependency",
+          "freshness",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "temurin-jdk@linux-aarch64",
+        "tool_id": "temurin-jdk",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "blocked",
+          "packaging": "ready",
+          "installer": "blocked",
+          "capability": "blocked",
+          "semantic": "blocked",
+          "platform": "ready",
+          "authority": "blocked",
+          "freshness": "blocked",
+          "public_surface": "blocked"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "authority",
+          "capability",
+          "dependency",
+          "freshness",
+          "installer",
+          "public_surface",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "tlc@linux-aarch64",
+        "tool_id": "tlc",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "blocked",
+          "packaging": "ready",
+          "installer": "ready",
+          "capability": "blocked",
+          "semantic": "blocked",
+          "platform": "ready",
+          "authority": "blocked",
+          "freshness": "blocked",
+          "public_surface": "ready"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "authority",
+          "capability",
+          "dependency",
+          "freshness",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "vampire@linux-aarch64",
+        "tool_id": "vampire",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "blocked",
+          "packaging": "ready",
+          "installer": "ready",
+          "capability": "blocked",
+          "semantic": "blocked",
+          "platform": "ready",
+          "authority": "blocked",
+          "freshness": "blocked",
+          "public_surface": "ready"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "authority",
+          "capability",
+          "dependency",
+          "freshness",
+          "semantic"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "z3@linux-aarch64",
+        "tool_id": "z3",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "ready",
+          "packaging": "ready",
+          "installer": "not_applicable",
+          "capability": "ready",
+          "semantic": "ready",
+          "platform": "ready",
+          "authority": "ready",
+          "freshness": "ready",
+          "public_surface": "ready"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [
+          "installer"
+        ],
+        "ready_axes_without_evidence": [],
+        "ready": false
+      },
+      {
+        "row_id": "zkp-circuit@linux-aarch64",
+        "tool_id": "zkp-circuit",
+        "host": {
+          "platform_id": "linux-aarch64",
+          "system": "linux",
+          "machine": "aarch64"
+        },
+        "states": {
+          "dependency": "ready",
+          "packaging": "ready",
+          "installer": "ready",
+          "capability": "ready",
+          "semantic": "ready",
+          "platform": "ready",
+          "authority": "ready",
+          "freshness": "ready",
+          "public_surface": "ready"
+        },
+        "missing_axes": [],
+        "non_ready_axes": [],
+        "ready_axes_without_evidence": [],
+        "ready": true
+      }
+    ],
+    "all_rows_jointly_ready": false,
+    "secpal_external_row_present": true,
+    "ergoai_row_present": true,
+    "clean_wheel_evidence_bound": false,
+    "lazy_install_receipts_bound": false,
+    "exact_dependency_and_platform_identities_bound": false,
+    "complete_specialized_semantic_cases_bound": false
+  },
+  "vendor_evidence": {
+    "secpal": {
+      "valid": false,
+      "official_release_identity_bound": false,
+      "microsoft_authenticode_verified": false,
+      "live_vendor_execution": false,
+      "vendor_supported_platform": false,
+      "operator_compatibility_only": false,
+      "authoritative_live_evidence": false,
+      "arbitrary_policy_query_execution": false,
+      "license_terms_reviewed": false,
+      "claimed_production_use_allowed": false,
+      "known_eula_live_purpose_block": false,
+      "production_use_allowed": false,
+      "restricted_bytes_absent": true,
+      "clr_identity_bound": false,
+      "semantic_cases": {
+        "valid": false,
+        "required": [
+          "allow",
+          "deny",
+          "unknown",
+          "delegation",
+          "conflict",
+          "rule_mutation",
+          "scope_mutation",
+          "replay",
+          "malformed",
+          "timeout",
+          "resource_bound",
+          "cross_engine_disagreement"
+        ],
+        "passed": [],
+        "missing": [
+          "allow",
+          "conflict",
+          "cross_engine_disagreement",
+          "delegation",
+          "deny",
+          "malformed",
+          "replay",
+          "resource_bound",
+          "rule_mutation",
+          "scope_mutation",
+          "timeout",
+          "unknown"
+        ],
+        "failed": [],
+        "case_count": 0
+      },
+      "external_authority_blockers": [],
+      "blockers": [
+        "arbitrary_policy_query_cases_complete",
+        "authoritative_live_evidence",
+        "clr_identity_bound",
+        "license_terms_reviewed",
+        "live_vendor_execution",
+        "microsoft_authenticode_verified",
+        "official_release_identity_bound",
+        "production_use_allowed",
+        "semantic_case_missing:allow",
+        "semantic_case_missing:conflict",
+        "semantic_case_missing:cross_engine_disagreement",
+        "semantic_case_missing:delegation",
+        "semantic_case_missing:deny",
+        "semantic_case_missing:malformed",
+        "semantic_case_missing:replay",
+        "semantic_case_missing:resource_bound",
+        "semantic_case_missing:rule_mutation",
+        "semantic_case_missing:scope_mutation",
+        "semantic_case_missing:timeout",
+        "semantic_case_missing:unknown",
+        "vendor_supported_platform"
+      ]
+    },
+    "ergoai": {
+      "valid": false,
+      "repository_receipt_bound": false,
+      "managed_vendor_live_evidence": false,
+      "vendor_certified_for_advisor_role": false,
+      "managed_vendor_provenance_bound": false,
+      "lock_identity_bound": false,
+      "release_artifact_identity_bound": false,
+      "managed_runtime_tool_identity_bound": false,
+      "platform_identity_bound": false,
+      "raw_checks_digest_bound": false,
+      "claimed_raw_checks_digest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "rederived_raw_checks_digest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "independent_rederivation_succeeded": false,
+      "independent_rederivation_error": "exact_committed_ergoai_receipt_not_bound",
+      "rederived_interface": null,
+      "rederived_receipt_digest_sha256": null,
+      "authority_ceiling": "advisory",
+      "advisory_authority_ceiling_respected": false,
+      "certification_did_not_install_or_download": false,
+      "claimed_semantic_cases": {
+        "valid": false,
+        "required": [
+          "entailment",
+          "non_entailment",
+          "contradiction",
+          "mutation",
+          "replay",
+          "malformed",
+          "timeout",
+          "resource_bound"
+        ],
+        "passed": [
+          "replay"
+        ],
+        "missing": [
+          "contradiction",
+          "entailment",
+          "malformed",
+          "mutation",
+          "non_entailment",
+          "resource_bound",
+          "timeout"
+        ],
+        "failed": [],
+        "case_count": 13
+      },
+      "semantic_cases": {
+        "valid": false,
+        "required": [
+          "entailment",
+          "non_entailment",
+          "contradiction",
+          "mutation",
+          "replay",
+          "malformed",
+          "timeout",
+          "resource_bound"
+        ],
+        "passed": [],
+        "missing": [
+          "contradiction",
+          "entailment",
+          "malformed",
+          "mutation",
+          "non_entailment",
+          "replay",
+          "resource_bound",
+          "timeout"
+        ],
+        "failed": [],
+        "case_count": 0
+      },
+      "lock_identity": {
+        "valid": false
+      },
+      "blockers": [
+        "advisory_authority_ceiling_respected",
+        "certification_did_not_install_or_download",
+        "current_lock_identity_bound",
+        "exact_committed_ergoai_receipt_not_bound",
+        "exact_committed_repository_receipt_bound",
+        "independent_live_rederivation_succeeded",
+        "managed_runtime_tool_identity_bound",
+        "managed_vendor_live_evidence",
+        "platform_identity_bound",
+        "raw_checks_digest_bound_to_independent_rerun",
+        "release_artifact_identity_bound",
+        "semantic_case_missing:contradiction",
+        "semantic_case_missing:entailment",
+        "semantic_case_missing:malformed",
+        "semantic_case_missing:mutation",
+        "semantic_case_missing:non_entailment",
+        "semantic_case_missing:replay",
+        "semantic_case_missing:resource_bound",
+        "semantic_case_missing:timeout",
+        "semantic_cases_complete",
+        "vendor_certified_for_advisor_role"
+      ]
+    }
+  },
+  "release_chain": {
+    "candidate_ready": false,
+    "post_merge_ready": false,
+    "completion_ready": false,
+    "durable_supervisor_completion_bound": true,
+    "source_and_merged_trees_bound": true,
+    "origin_publication_bound": true,
+    "post_merge_acceptance_count": 34
+  },
+  "recursive_gitlinks": {
+    "valid": false,
+    "gitlink_count": 38,
+    "rows": [
+      {
+        "path": "docs/fastmcp",
+        "mode": "160000",
+        "pinned_commit": "1d932cc778a24cc0bf46fc4baad8306d4fed9c4b",
+        "checkout_present": true,
+        "checkout_head": "1968ac6733f9758cd8122e49146572ea3590ddf0",
+        "origin_main": "3e33149ff8a40444f0433e4d2f04a2f11a2f9bda",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "docs/fastmcp/.",
+        "mode": "160000",
+        "pinned_commit": "1d932cc778a24cc0bf46fc4baad8306d4fed9c4b",
+        "checkout_present": true,
+        "checkout_head": "1968ac6733f9758cd8122e49146572ea3590ddf0",
+        "origin_main": "3e33149ff8a40444f0433e4d2f04a2f11a2f9bda",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "docs/mcp-python-sdk",
+        "mode": "160000",
+        "pinned_commit": "0da9a074d09267a927d72faa58c26d828f0f8edb",
+        "checkout_present": true,
+        "checkout_head": "1968ac6733f9758cd8122e49146572ea3590ddf0",
+        "origin_main": "3e33149ff8a40444f0433e4d2f04a2f11a2f9bda",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "docs/mcp-python-sdk/.",
+        "mode": "160000",
+        "pinned_commit": "0da9a074d09267a927d72faa58c26d828f0f8edb",
+        "checkout_present": true,
+        "checkout_head": "1968ac6733f9758cd8122e49146572ea3590ddf0",
+        "origin_main": "3e33149ff8a40444f0433e4d2f04a2f11a2f9bda",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_accelerate_py/mcplusplus",
+        "mode": "160000",
+        "pinned_commit": "15c1816d6c63a2b11edd505704f6a04a9abc6167",
+        "checkout_present": true,
+        "checkout_head": "15c1816d6c63a2b11edd505704f6a04a9abc6167",
+        "origin_main": "15c1816d6c63a2b11edd505704f6a04a9abc6167",
+        "working_tree_clean": true,
+        "matches_checkout": true,
+        "published_to_origin_main": true,
+        "bound": true
+      },
+      {
+        "path": "ipfs_datasets_py",
+        "mode": "160000",
+        "pinned_commit": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": true,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_datasets_py/.tools/ipfs_kit_py",
+        "mode": "160000",
+        "pinned_commit": "80afdad2fa6db5875f40e5f495f26b98b7f3c767",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_datasets_py/.tools/ipfs_kit_py/.",
+        "mode": "160000",
+        "pinned_commit": "80afdad2fa6db5875f40e5f495f26b98b7f3c767",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_datasets_py/ipfs_accelerate_py",
+        "mode": "160000",
+        "pinned_commit": "48f13ab632dec4c3575acaad6e309ef60420904b",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_datasets_py/ipfs_accelerate_py/.",
+        "mode": "160000",
+        "pinned_commit": "48f13ab632dec4c3575acaad6e309ef60420904b",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/CEC/DCEC_Library",
+        "mode": "160000",
+        "pinned_commit": "a4beb5b3280595be6b9221cac3c91dd019e6d371",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/CEC/DCEC_Library/.",
+        "mode": "160000",
+        "pinned_commit": "a4beb5b3280595be6b9221cac3c91dd019e6d371",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/CEC/Eng-DCEC",
+        "mode": "160000",
+        "pinned_commit": "df518c21ef81b8001e6db59f5fd70f10cc04ff6c",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/CEC/Eng-DCEC/.",
+        "mode": "160000",
+        "pinned_commit": "df518c21ef81b8001e6db59f5fd70f10cc04ff6c",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/CEC/ShadowProver",
+        "mode": "160000",
+        "pinned_commit": "3060ede1ac1ec3f8ef9f9c9e41386aed1dbbe7f9",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/CEC/ShadowProver/.",
+        "mode": "160000",
+        "pinned_commit": "3060ede1ac1ec3f8ef9f9c9e41386aed1dbbe7f9",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/CEC/Talos",
+        "mode": "160000",
+        "pinned_commit": "e0b7650d3e3a403924773f8253e924c719748d36",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/CEC/Talos/.",
+        "mode": "160000",
+        "pinned_commit": "e0b7650d3e3a403924773f8253e924c719748d36",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_datasets_py/ipfs_datasets_py/multimedia/convert_to_txt_based_on_mime_type",
+        "mode": "160000",
+        "pinned_commit": "d58933631a5362b1e2fdc45254ef620fa231223a",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_datasets_py/ipfs_datasets_py/multimedia/convert_to_txt_based_on_mime_type/.",
+        "mode": "160000",
+        "pinned_commit": "d58933631a5362b1e2fdc45254ef620fa231223a",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_datasets_py/ipfs_datasets_py/multimedia/omni_converter_mk2",
+        "mode": "160000",
+        "pinned_commit": "c1d9b0d517cea022516aab5b5d8fa5e3bc9a65aa",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_datasets_py/ipfs_datasets_py/multimedia/omni_converter_mk2/.",
+        "mode": "160000",
+        "pinned_commit": "c1d9b0d517cea022516aab5b5d8fa5e3bc9a65aa",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_datasets_py/ipfs_datasets_py/processors/web_archiving/common_crawl_search_engine",
+        "mode": "160000",
+        "pinned_commit": "5c7c2ab8a509073f39359b2a35446183855f460a",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_datasets_py/ipfs_datasets_py/processors/web_archiving/common_crawl_search_engine/.",
+        "mode": "160000",
+        "pinned_commit": "5c7c2ab8a509073f39359b2a35446183855f460a",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_datasets_py/ipfs_kit_py",
+        "mode": "160000",
+        "pinned_commit": "80afdad2fa6db5875f40e5f495f26b98b7f3c767",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_datasets_py/ipfs_kit_py/.",
+        "mode": "160000",
+        "pinned_commit": "80afdad2fa6db5875f40e5f495f26b98b7f3c767",
+        "checkout_present": true,
+        "checkout_head": "0734202b9f2c444539d1b7388489b7337bbb3369",
+        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_kit_py",
+        "mode": "160000",
+        "pinned_commit": "f6a574375febbcf9a46fcd24bbc7bc5cfb551de5",
+        "checkout_present": true,
+        "checkout_head": "1968ac6733f9758cd8122e49146572ea3590ddf0",
+        "origin_main": "3e33149ff8a40444f0433e4d2f04a2f11a2f9bda",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_kit_py/.",
+        "mode": "160000",
+        "pinned_commit": "f6a574375febbcf9a46fcd24bbc7bc5cfb551de5",
+        "checkout_present": true,
+        "checkout_head": "1968ac6733f9758cd8122e49146572ea3590ddf0",
+        "origin_main": "3e33149ff8a40444f0433e4d2f04a2f11a2f9bda",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_model_manager_py",
+        "mode": "160000",
+        "pinned_commit": "f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
+        "checkout_present": true,
+        "checkout_head": "1968ac6733f9758cd8122e49146572ea3590ddf0",
+        "origin_main": "3e33149ff8a40444f0433e4d2f04a2f11a2f9bda",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_model_manager_py/.",
+        "mode": "160000",
+        "pinned_commit": "f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
+        "checkout_present": true,
+        "checkout_head": "1968ac6733f9758cd8122e49146572ea3590ddf0",
+        "origin_main": "3e33149ff8a40444f0433e4d2f04a2f11a2f9bda",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_transformers_py",
+        "mode": "160000",
+        "pinned_commit": "b397988ed9e3e656475c1cf4417b84efdb95daf3",
+        "checkout_present": true,
+        "checkout_head": "1968ac6733f9758cd8122e49146572ea3590ddf0",
+        "origin_main": "3e33149ff8a40444f0433e4d2f04a2f11a2f9bda",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "ipfs_transformers_py/.",
+        "mode": "160000",
+        "pinned_commit": "b397988ed9e3e656475c1cf4417b84efdb95daf3",
+        "checkout_present": true,
+        "checkout_head": "1968ac6733f9758cd8122e49146572ea3590ddf0",
+        "origin_main": "3e33149ff8a40444f0433e4d2f04a2f11a2f9bda",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "test/doc-builder",
+        "mode": "160000",
+        "pinned_commit": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
+        "checkout_present": true,
+        "checkout_head": "1968ac6733f9758cd8122e49146572ea3590ddf0",
+        "origin_main": "3e33149ff8a40444f0433e4d2f04a2f11a2f9bda",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "test/doc-builder/.",
+        "mode": "160000",
+        "pinned_commit": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
+        "checkout_present": true,
+        "checkout_head": "1968ac6733f9758cd8122e49146572ea3590ddf0",
+        "origin_main": "3e33149ff8a40444f0433e4d2f04a2f11a2f9bda",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "test/huggingface_doc_builder",
+        "mode": "160000",
+        "pinned_commit": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
+        "checkout_present": true,
+        "checkout_head": "1968ac6733f9758cd8122e49146572ea3590ddf0",
+        "origin_main": "3e33149ff8a40444f0433e4d2f04a2f11a2f9bda",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "test/huggingface_doc_builder/.",
+        "mode": "160000",
+        "pinned_commit": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
+        "checkout_present": true,
+        "checkout_head": "1968ac6733f9758cd8122e49146572ea3590ddf0",
+        "origin_main": "3e33149ff8a40444f0433e4d2f04a2f11a2f9bda",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "test/huggingface_transformers",
+        "mode": "160000",
+        "pinned_commit": "44752c8dd99f3fb0da23006dc4fde4a07d9c417f",
+        "checkout_present": true,
+        "checkout_head": "1968ac6733f9758cd8122e49146572ea3590ddf0",
+        "origin_main": "3e33149ff8a40444f0433e4d2f04a2f11a2f9bda",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      },
+      {
+        "path": "test/huggingface_transformers/.",
+        "mode": "160000",
+        "pinned_commit": "44752c8dd99f3fb0da23006dc4fde4a07d9c417f",
+        "checkout_present": true,
+        "checkout_head": "1968ac6733f9758cd8122e49146572ea3590ddf0",
+        "origin_main": "3e33149ff8a40444f0433e4d2f04a2f11a2f9bda",
+        "working_tree_clean": true,
+        "matches_checkout": false,
+        "published_to_origin_main": false,
+        "bound": false
+      }
+    ],
+    "network_used": false,
+    "fetch_attempted": false
+  },
+  "disallowed_evidence": {
+    "count": 62,
+    "by_dependency": {
+      "end_to_end_assurance_matrix": [
+        {
+          "path": "$.provider_host_rows[0].axes.capability.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[0].axes.semantic.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[11].axes.capability.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[12].axes.capability.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[12].axes.semantic.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[13].axes.capability.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[14].axes.capability.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[14].axes.semantic.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[16].axes.capability.details.evidence_class",
+          "reason": "disallowed_evidence_class:hermetic_adapter_shim"
+        },
+        {
+          "path": "$.provider_host_rows[16].axes.semantic.details.evidence_class",
+          "reason": "disallowed_evidence_class:hermetic_adapter_shim"
+        },
+        {
+          "path": "$.provider_host_rows[17].axes.capability.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[17].axes.platform.state",
+          "reason": "disallowed_state:unsupported"
+        },
+        {
+          "path": "$.provider_host_rows[17].axes.semantic.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[19].axes.capability.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[19].axes.semantic.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[1].axes.capability.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[1].axes.semantic.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[20].axes.capability.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[20].axes.semantic.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[21].axes.capability.details.evidence_class",
+          "reason": "disallowed_evidence_class:proposal_only_semantics"
+        },
+        {
+          "path": "$.provider_host_rows[21].axes.semantic.details.evidence_class",
+          "reason": "disallowed_evidence_class:proposal_only_semantics"
+        },
+        {
+          "path": "$.provider_host_rows[22].axes.capability.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[22].axes.semantic.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[24].axes.capability.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[24].axes.semantic.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[25].axes.capability.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[25].axes.semantic.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[2].axes.capability.details.evidence_class",
+          "reason": "disallowed_evidence_class:external_prover_installation_pending"
+        },
+        {
+          "path": "$.provider_host_rows[2].axes.semantic.details.evidence_class",
+          "reason": "disallowed_evidence_class:external_prover_installation_pending"
+        },
+        {
+          "path": "$.provider_host_rows[5].axes.capability.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[5].axes.semantic.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[6].axes.capability.details.evidence_class",
+          "reason": "disallowed_evidence_class:proposal_only_semantics"
+        },
+        {
+          "path": "$.provider_host_rows[6].axes.semantic.details.evidence_class",
+          "reason": "disallowed_evidence_class:proposal_only_semantics"
+        },
+        {
+          "path": "$.provider_host_rows[7].axes.capability.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[7].axes.semantic.details.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.provider_host_rows[8].axes.capability.details.evidence_class",
+          "reason": "disallowed_evidence_class:external_prover_installation_pending"
+        },
+        {
+          "path": "$.provider_host_rows[8].axes.semantic.details.evidence_class",
+          "reason": "disallowed_evidence_class:external_prover_installation_pending"
+        }
+      ],
+      "ergoai_managed_vendor_live": [
+        {
+          "path": "$.cases[2].is_hermetic_advisor_shim",
+          "reason": "disallowed_boolean:is_hermetic_advisor_shim"
+        }
+      ],
+      "role_aware_release_candidate": [
+        {
+          "path": "$.elevations.details[15].evidence_class",
+          "reason": "disallowed_evidence_class:hermetic_adapter_shim"
+        },
+        {
+          "path": "$.elevations.details[19].evidence_class",
+          "reason": "disallowed_evidence_class:proposal_only_semantics"
+        },
+        {
+          "path": "$.elevations.details[20].evidence_class",
+          "reason": "disallowed_evidence_class:proposal_only_semantics"
+        },
+        {
+          "path": "$.role_aware_certificate.tools[16].evidence_class",
+          "reason": "disallowed_evidence_class:hermetic_adapter_shim"
+        },
+        {
+          "path": "$.role_aware_certificate.tools[17].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.role_aware_certificate.tools[21].evidence_class",
+          "reason": "disallowed_evidence_class:proposal_only_semantics"
+        },
+        {
+          "path": "$.role_aware_certificate.tools[6].evidence_class",
+          "reason": "disallowed_evidence_class:proposal_only_semantics"
+        },
+        {
+          "path": "$.semantic_audit.lanes.advisors.elevation_policy.evidence_class",
+          "reason": "disallowed_evidence_class:proposal_only_semantics"
+        },
+        {
+          "path": "$.semantic_audit.lanes.authorization_external.elevation_policy.evidence_class",
+          "reason": "disallowed_evidence_class:hermetic_shadow_shim"
+        },
+        {
+          "path": "$.semantic_audit.lanes.runtime_mtl_external.elevation_policy.evidence_class",
+          "reason": "disallowed_evidence_class:hermetic_adapter_shim"
+        }
+      ],
+      "post_merge_deployment_attestation": [
+        {
+          "path": "$.elevations.details[15].evidence_class",
+          "reason": "disallowed_evidence_class:hermetic_adapter_shim"
+        },
+        {
+          "path": "$.elevations.details[19].evidence_class",
+          "reason": "disallowed_evidence_class:proposal_only_semantics"
+        },
+        {
+          "path": "$.elevations.details[20].evidence_class",
+          "reason": "disallowed_evidence_class:proposal_only_semantics"
+        },
+        {
+          "path": "$.role_aware_certificate.tools[16].evidence_class",
+          "reason": "disallowed_evidence_class:hermetic_adapter_shim"
+        },
+        {
+          "path": "$.role_aware_certificate.tools[17].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.role_aware_certificate.tools[21].evidence_class",
+          "reason": "disallowed_evidence_class:proposal_only_semantics"
+        },
+        {
+          "path": "$.role_aware_certificate.tools[6].evidence_class",
+          "reason": "disallowed_evidence_class:proposal_only_semantics"
+        },
+        {
+          "path": "$.semantic_audit.lanes.advisors.elevation_policy.evidence_class",
+          "reason": "disallowed_evidence_class:proposal_only_semantics"
+        },
+        {
+          "path": "$.semantic_audit.lanes.authorization_external.elevation_policy.evidence_class",
+          "reason": "disallowed_evidence_class:hermetic_shadow_shim"
+        },
+        {
+          "path": "$.semantic_audit.lanes.runtime_mtl_external.elevation_policy.evidence_class",
+          "reason": "disallowed_evidence_class:hermetic_adapter_shim"
+        }
+      ],
+      "tactician_completion": [
+        {
+          "path": "$.deployment.exact_tools[13].certification.evidence_class",
+          "reason": "disallowed_evidence_class:proposal_only_semantics"
+        },
+        {
+          "path": "$.deployment.exact_tools[20].certification.evidence_class",
+          "reason": "disallowed_evidence_class:hermetic_adapter_shim"
+        },
+        {
+          "path": "$.deployment.exact_tools[21].certification.evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.deployment.exact_tools[25].certification.evidence_class",
+          "reason": "disallowed_evidence_class:proposal_only_semantics"
+        }
+      ]
+    }
+  },
+  "acceptance": {
+    "dependencies_reachable": false,
+    "dependencies_content_identity_bound": false,
+    "dependencies_fresh": false,
+    "clean_wheel_evidence_bound": false,
+    "lazy_install_receipts_bound": false,
+    "exact_dependency_and_platform_identities_bound": false,
+    "every_readiness_axis_jointly_ready": false,
+    "complete_specialized_semantic_cases_bound": false,
+    "secpal_authoritative_live_receipt_bound": false,
+    "secpal_production_use_permitted": false,
+    "ergoai_managed_vendor_live_receipt_bound": false,
+    "authority_ceilings_bound": false,
+    "disagreement_quarantines_bound": false,
+    "public_safe_envelopes_bound": false,
+    "release_candidate_bound_and_ready": false,
+    "post_merge_attestation_bound_and_ready": false,
+    "durable_supervisor_completion_bound": true,
+    "source_and_merged_trees_bound": true,
+    "recursive_gitlinks_bound": false,
+    "origin_publication_bound": true,
+    "tactician_completion_bound_and_clear": false,
+    "no_fixture_shim_unsupported_proposal_or_stale_lane": false,
+    "current_task_future_merge_not_claimed": true
+  },
+  "blockers": [
+    "authority_ceilings_bound",
+    "clean_wheel_evidence_bound",
+    "complete_specialized_semantic_cases_bound",
+    "dependencies_content_identity_bound",
+    "dependencies_fresh",
+    "dependencies_reachable",
+    "disagreement_quarantines_bound",
+    "ergoai_managed_vendor_live_receipt_bound",
+    "every_readiness_axis_jointly_ready",
+    "exact_dependency_and_platform_identities_bound",
+    "lazy_install_receipts_bound",
+    "no_fixture_shim_unsupported_proposal_or_stale_lane",
+    "post_merge_attestation_bound_and_ready",
+    "public_safe_envelopes_bound",
+    "recursive_gitlinks_bound",
+    "release_candidate_bound_and_ready",
+    "secpal_authoritative_live_receipt_bound",
+    "secpal_production_use_permitted",
+    "tactician_completion_bound_and_clear"
+  ],
+  "blocker_details": [
+    "end_to_end_assurance_matrix:disallowed_evidence_class:external_prover_installation_pending:$.provider_host_rows[2].axes.capability.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:external_prover_installation_pending:$.provider_host_rows[2].axes.semantic.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:external_prover_installation_pending:$.provider_host_rows[8].axes.capability.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:external_prover_installation_pending:$.provider_host_rows[8].axes.semantic.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:hermetic_adapter_shim:$.provider_host_rows[16].axes.capability.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:hermetic_adapter_shim:$.provider_host_rows[16].axes.semantic.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:proposal_only_semantics:$.provider_host_rows[21].axes.capability.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:proposal_only_semantics:$.provider_host_rows[21].axes.semantic.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:proposal_only_semantics:$.provider_host_rows[6].axes.capability.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:proposal_only_semantics:$.provider_host_rows[6].axes.semantic.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[0].axes.capability.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[0].axes.semantic.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[11].axes.capability.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[12].axes.capability.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[12].axes.semantic.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[13].axes.capability.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[14].axes.capability.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[14].axes.semantic.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[17].axes.capability.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[17].axes.semantic.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[19].axes.capability.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[19].axes.semantic.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[1].axes.capability.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[1].axes.semantic.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[20].axes.capability.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[20].axes.semantic.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[22].axes.capability.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[22].axes.semantic.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[24].axes.capability.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[24].axes.semantic.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[25].axes.capability.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[25].axes.semantic.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[5].axes.capability.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[5].axes.semantic.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[7].axes.capability.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[7].axes.semantic.details.evidence_class",
+    "end_to_end_assurance_matrix:disallowed_state:unsupported:$.provider_host_rows[17].axes.platform.state",
+    "ergoai:advisory_authority_ceiling_respected",
+    "ergoai:certification_did_not_install_or_download",
+    "ergoai:current_lock_identity_bound",
+    "ergoai:exact_committed_ergoai_receipt_not_bound",
+    "ergoai:exact_committed_repository_receipt_bound",
+    "ergoai:independent_live_rederivation_succeeded",
+    "ergoai:managed_runtime_tool_identity_bound",
+    "ergoai:managed_vendor_live_evidence",
+    "ergoai:platform_identity_bound",
+    "ergoai:raw_checks_digest_bound_to_independent_rerun",
+    "ergoai:release_artifact_identity_bound",
+    "ergoai:semantic_case_missing:contradiction",
+    "ergoai:semantic_case_missing:entailment",
+    "ergoai:semantic_case_missing:malformed",
+    "ergoai:semantic_case_missing:mutation",
+    "ergoai:semantic_case_missing:non_entailment",
+    "ergoai:semantic_case_missing:replay",
+    "ergoai:semantic_case_missing:resource_bound",
+    "ergoai:semantic_case_missing:timeout",
+    "ergoai:semantic_cases_complete",
+    "ergoai:vendor_certified_for_advisor_role",
+    "ergoai_managed_vendor_live:disallowed_boolean:is_hermetic_advisor_shim:$.cases[2].is_hermetic_advisor_shim",
+    "matrix:apalache@linux-aarch64:authority:blocked",
+    "matrix:apalache@linux-aarch64:capability:blocked",
+    "matrix:apalache@linux-aarch64:dependency:blocked",
+    "matrix:apalache@linux-aarch64:freshness:blocked",
+    "matrix:apalache@linux-aarch64:semantic:blocked",
+    "matrix:autohyper@linux-aarch64:authority:blocked",
+    "matrix:autohyper@linux-aarch64:capability:blocked",
+    "matrix:autohyper@linux-aarch64:dependency:blocked",
+    "matrix:autohyper@linux-aarch64:freshness:blocked",
+    "matrix:autohyper@linux-aarch64:semantic:blocked",
+    "matrix:coq@linux-aarch64:authority:blocked",
+    "matrix:coq@linux-aarch64:capability:blocked",
+    "matrix:coq@linux-aarch64:dependency:blocked",
+    "matrix:coq@linux-aarch64:freshness:blocked",
+    "matrix:coq@linux-aarch64:semantic:blocked",
+    "matrix:datalog-authorization@linux-aarch64:authority:blocked",
+    "matrix:datalog-authorization@linux-aarch64:installer:not_applicable",
+    "matrix:datalog-authorization@linux-aarch64:semantic:blocked",
+    "matrix:eprover@linux-aarch64:authority:blocked",
+    "matrix:eprover@linux-aarch64:capability:blocked",
+    "matrix:eprover@linux-aarch64:dependency:blocked",
+    "matrix:eprover@linux-aarch64:freshness:blocked",
+    "matrix:eprover@linux-aarch64:semantic:blocked",
+    "matrix:ergoai@linux-aarch64:capability:blocked",
+    "matrix:ergoai@linux-aarch64:dependency:blocked",
+    "matrix:ergoai@linux-aarch64:freshness:blocked",
+    "matrix:ergoai@linux-aarch64:public_surface:blocked",
+    "matrix:ergoai@linux-aarch64:semantic:blocked",
+    "matrix:hyperltl@linux-aarch64:authority:blocked",
+    "matrix:hyperltl@linux-aarch64:capability:blocked",
+    "matrix:hyperltl@linux-aarch64:dependency:blocked",
+    "matrix:hyperltl@linux-aarch64:freshness:blocked",
+    "matrix:hyperltl@linux-aarch64:semantic:blocked",
+    "matrix:isabelle@linux-aarch64:authority:blocked",
+    "matrix:isabelle@linux-aarch64:capability:blocked",
+    "matrix:isabelle@linux-aarch64:dependency:blocked",
+    "matrix:isabelle@linux-aarch64:freshness:blocked",
+    "matrix:isabelle@linux-aarch64:semantic:blocked",
+    "matrix:java@linux-aarch64:installer:not_applicable",
+    "matrix:java@linux-aarch64:public_surface:not_applicable",
+    "matrix:java@linux-aarch64:semantic:not_applicable",
+    "matrix:maude@linux-aarch64:capability:blocked",
+    "matrix:maude@linux-aarch64:dependency:blocked",
+    "matrix:maude@linux-aarch64:freshness:blocked",
+    "matrix:maude@linux-aarch64:public_surface:not_applicable",
+    "matrix:maude@linux-aarch64:semantic:not_applicable",
+    "matrix:mchyper@linux-aarch64:authority:blocked",
+    "matrix:mchyper@linux-aarch64:capability:blocked",
+    "matrix:mchyper@linux-aarch64:dependency:blocked",
+    "matrix:mchyper@linux-aarch64:freshness:blocked",
+    "matrix:mchyper@linux-aarch64:semantic:blocked",
+    "matrix:opam@linux-aarch64:capability:blocked",
+    "matrix:opam@linux-aarch64:dependency:blocked",
+    "matrix:opam@linux-aarch64:freshness:blocked",
+    "matrix:opam@linux-aarch64:public_surface:not_applicable",
+    "matrix:opam@linux-aarch64:semantic:not_applicable",
+    "matrix:proverif@linux-aarch64:authority:blocked",
+    "matrix:proverif@linux-aarch64:capability:blocked",
+    "matrix:proverif@linux-aarch64:dependency:blocked",
+    "matrix:proverif@linux-aarch64:freshness:blocked",
+    "matrix:proverif@linux-aarch64:semantic:blocked",
+    "matrix:runtime-mtl-external@linux-aarch64:authority:blocked",
+    "matrix:runtime-mtl-external@linux-aarch64:capability:blocked",
+    "matrix:runtime-mtl-external@linux-aarch64:dependency:blocked",
+    "matrix:runtime-mtl-external@linux-aarch64:freshness:blocked",
+    "matrix:runtime-mtl-external@linux-aarch64:public_surface:blocked",
+    "matrix:runtime-mtl-external@linux-aarch64:semantic:blocked",
+    "matrix:runtime-mtl@linux-aarch64:authority:blocked",
+    "matrix:runtime-mtl@linux-aarch64:installer:not_applicable",
+    "matrix:runtime-mtl@linux-aarch64:semantic:blocked",
+    "matrix:secpal-authorization@linux-aarch64:authority:blocked",
+    "matrix:secpal-authorization@linux-aarch64:installer:not_applicable",
+    "matrix:secpal-authorization@linux-aarch64:semantic:blocked",
+    "matrix:secpal@linux-aarch64:capability:blocked",
+    "matrix:secpal@linux-aarch64:freshness:blocked",
+    "matrix:secpal@linux-aarch64:installer:blocked",
+    "matrix:secpal@linux-aarch64:packaging:blocked",
+    "matrix:secpal@linux-aarch64:platform:unsupported",
+    "matrix:secpal@linux-aarch64:public_surface:blocked",
+    "matrix:secpal@linux-aarch64:semantic:blocked",
+    "matrix:souffle@linux-aarch64:capability:blocked",
+    "matrix:souffle@linux-aarch64:dependency:blocked",
+    "matrix:souffle@linux-aarch64:freshness:blocked",
+    "matrix:souffle@linux-aarch64:public_surface:blocked",
+    "matrix:souffle@linux-aarch64:semantic:blocked",
+    "matrix:stack@linux-aarch64:authority:blocked",
+    "matrix:stack@linux-aarch64:capability:blocked",
+    "matrix:stack@linux-aarch64:dependency:blocked",
+    "matrix:stack@linux-aarch64:freshness:blocked",
+    "matrix:stack@linux-aarch64:public_surface:blocked",
+    "matrix:stack@linux-aarch64:semantic:blocked",
+    "matrix:symbolicai@linux-aarch64:installer:not_applicable",
+    "matrix:symbolicai@linux-aarch64:public_surface:blocked",
+    "matrix:symbolicai@linux-aarch64:semantic:blocked",
+    "matrix:tamarin@linux-aarch64:authority:blocked",
+    "matrix:tamarin@linux-aarch64:capability:blocked",
+    "matrix:tamarin@linux-aarch64:dependency:blocked",
+    "matrix:tamarin@linux-aarch64:freshness:blocked",
+    "matrix:tamarin@linux-aarch64:semantic:blocked",
+    "matrix:temurin-jdk@linux-aarch64:authority:blocked",
+    "matrix:temurin-jdk@linux-aarch64:capability:blocked",
+    "matrix:temurin-jdk@linux-aarch64:dependency:blocked",
+    "matrix:temurin-jdk@linux-aarch64:freshness:blocked",
+    "matrix:temurin-jdk@linux-aarch64:installer:blocked",
+    "matrix:temurin-jdk@linux-aarch64:public_surface:blocked",
+    "matrix:temurin-jdk@linux-aarch64:semantic:blocked",
+    "matrix:tlc@linux-aarch64:authority:blocked",
+    "matrix:tlc@linux-aarch64:capability:blocked",
+    "matrix:tlc@linux-aarch64:dependency:blocked",
+    "matrix:tlc@linux-aarch64:freshness:blocked",
+    "matrix:tlc@linux-aarch64:semantic:blocked",
+    "matrix:vampire@linux-aarch64:authority:blocked",
+    "matrix:vampire@linux-aarch64:capability:blocked",
+    "matrix:vampire@linux-aarch64:dependency:blocked",
+    "matrix:vampire@linux-aarch64:freshness:blocked",
+    "matrix:vampire@linux-aarch64:semantic:blocked",
+    "matrix:z3@linux-aarch64:installer:not_applicable",
+    "post_merge_deployment_attestation:disallowed_evidence_class:hermetic_adapter_shim:$.elevations.details[15].evidence_class",
+    "post_merge_deployment_attestation:disallowed_evidence_class:hermetic_adapter_shim:$.role_aware_certificate.tools[16].evidence_class",
+    "post_merge_deployment_attestation:disallowed_evidence_class:hermetic_adapter_shim:$.semantic_audit.lanes.runtime_mtl_external.elevation_policy.evidence_class",
+    "post_merge_deployment_attestation:disallowed_evidence_class:hermetic_shadow_shim:$.semantic_audit.lanes.authorization_external.elevation_policy.evidence_class",
+    "post_merge_deployment_attestation:disallowed_evidence_class:proposal_only_semantics:$.elevations.details[19].evidence_class",
+    "post_merge_deployment_attestation:disallowed_evidence_class:proposal_only_semantics:$.elevations.details[20].evidence_class",
+    "post_merge_deployment_attestation:disallowed_evidence_class:proposal_only_semantics:$.role_aware_certificate.tools[21].evidence_class",
+    "post_merge_deployment_attestation:disallowed_evidence_class:proposal_only_semantics:$.role_aware_certificate.tools[6].evidence_class",
+    "post_merge_deployment_attestation:disallowed_evidence_class:proposal_only_semantics:$.semantic_audit.lanes.advisors.elevation_policy.evidence_class",
+    "post_merge_deployment_attestation:disallowed_evidence_class:unavailable:$.role_aware_certificate.tools[17].evidence_class",
+    "role_aware_release_candidate:disallowed_evidence_class:hermetic_adapter_shim:$.elevations.details[15].evidence_class",
+    "role_aware_release_candidate:disallowed_evidence_class:hermetic_adapter_shim:$.role_aware_certificate.tools[16].evidence_class",
+    "role_aware_release_candidate:disallowed_evidence_class:hermetic_adapter_shim:$.semantic_audit.lanes.runtime_mtl_external.elevation_policy.evidence_class",
+    "role_aware_release_candidate:disallowed_evidence_class:hermetic_shadow_shim:$.semantic_audit.lanes.authorization_external.elevation_policy.evidence_class",
+    "role_aware_release_candidate:disallowed_evidence_class:proposal_only_semantics:$.elevations.details[19].evidence_class",
+    "role_aware_release_candidate:disallowed_evidence_class:proposal_only_semantics:$.elevations.details[20].evidence_class",
+    "role_aware_release_candidate:disallowed_evidence_class:proposal_only_semantics:$.role_aware_certificate.tools[21].evidence_class",
+    "role_aware_release_candidate:disallowed_evidence_class:proposal_only_semantics:$.role_aware_certificate.tools[6].evidence_class",
+    "role_aware_release_candidate:disallowed_evidence_class:proposal_only_semantics:$.semantic_audit.lanes.advisors.elevation_policy.evidence_class",
+    "role_aware_release_candidate:disallowed_evidence_class:unavailable:$.role_aware_certificate.tools[17].evidence_class",
+    "secpal:arbitrary_policy_query_cases_complete",
+    "secpal:authoritative_live_evidence",
+    "secpal:clr_identity_bound",
+    "secpal:license_terms_reviewed",
+    "secpal:live_vendor_execution",
+    "secpal:microsoft_authenticode_verified",
+    "secpal:official_release_identity_bound",
+    "secpal:production_use_allowed",
+    "secpal:semantic_case_missing:allow",
+    "secpal:semantic_case_missing:conflict",
+    "secpal:semantic_case_missing:cross_engine_disagreement",
+    "secpal:semantic_case_missing:delegation",
+    "secpal:semantic_case_missing:deny",
+    "secpal:semantic_case_missing:malformed",
+    "secpal:semantic_case_missing:replay",
+    "secpal:semantic_case_missing:resource_bound",
+    "secpal:semantic_case_missing:rule_mutation",
+    "secpal:semantic_case_missing:scope_mutation",
+    "secpal:semantic_case_missing:timeout",
+    "secpal:semantic_case_missing:unknown",
+    "secpal:vendor_supported_platform",
+    "tactician_completion:disallowed_evidence_class:hermetic_adapter_shim:$.deployment.exact_tools[20].certification.evidence_class",
+    "tactician_completion:disallowed_evidence_class:proposal_only_semantics:$.deployment.exact_tools[13].certification.evidence_class",
+    "tactician_completion:disallowed_evidence_class:proposal_only_semantics:$.deployment.exact_tools[25].certification.evidence_class",
+    "tactician_completion:disallowed_evidence_class:unavailable:$.deployment.exact_tools[21].certification.evidence_class"
+  ],
+  "claims": {
+    "deployment_ready": false,
+    "current_task_merge": false,
+    "current_release_artifact_published": false,
+    "post_merge_ancestor_evidence_bound": true,
+    "self_referential_current_tree": false
+  },
+  "evidence": {
+    "receipt": "docs/architecture/formal_verification_authoritative_vendor_release.json",
+    "integration_test": "test/integration/test_formal_verification_authoritative_vendor_release.py",
+    "vendor_evidence_test": "test/integration/toolchains/test_secpal_ergoai_authoritative_live_evidence.py",
+    "builder": "tools/logic/build_formal_verification_tactician_receipt.py",
+    "validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/test_formal_verification_authoritative_vendor_release.py test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py test/integration/toolchains/test_secpal_ergoai_authoritative_live_evidence.py -q"
+  },
+  "notes": [
+    "The recovered Microsoft MSI signature, hash, ProductCode, and EULA hash satisfy provenance only; they do not grant live-use or redistribution authority.",
+    "Authentic SecPAL sample execution under operator-selected Mono is compatibility evidence, not Microsoft platform support or an arbitrary-policy production interface.",
+    "ErgoAI remains bounded by its advisory authority ceiling even when genuine managed-vendor execution is complete.",
+    "This receipt never attests FVT-089's own future merge or publication."
+  ],
+  "public_evidence_policy": {
+    "satisfied": true,
+    "failure_count": 0,
+    "failures": []
+  },
+  "release_identity": "sha256:a8fc6dbac4e3898a5d626c0efe663b3149c5883eeecc96e6a5fcd9cca923eeac"
+}
