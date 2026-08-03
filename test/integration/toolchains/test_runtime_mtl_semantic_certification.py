@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -62,6 +63,12 @@ LANE_ID = "runtime_mtl"
 HANDLER_ID = "runtime_mtl_semantic_certification@1"
 TOOL_ID = "runtime-mtl"
 AUTHORITY_CEILING = "finite_trace"
+SEALED_ROOT = Path(
+    os.environ.get(
+        "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
+        "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers",
+    )
+)
 
 REQUIRED_CATEGORIES = {
     "satisfied",
@@ -91,6 +98,18 @@ def _load_module(path: Path, name: str):
     return module
 
 
+def _sealed_runtime_mtl_root() -> Path:
+    if not (
+        SEALED_ROOT
+        / "runtime-mtl-vendor"
+        / "runtime-mtl-external"
+        / "1.0.0-reviewed"
+        / "identity.json"
+    ).is_file():
+        pytest.skip(f"sealed Runtime MTL deployment unavailable: {SEALED_ROOT}")
+    return SEALED_ROOT
+
+
 @pytest.fixture(scope="module")
 def certifier():
     return _load_module(CERTIFIER_PATH, "tools_logic_certification_runtime_mtl")
@@ -110,6 +129,7 @@ def certificate(certifier, manifest) -> dict[str, Any]:
         manifest=manifest,
         manifest_path=MANIFEST_PATH,
         repo_root=REPO_ROOT,
+        typescript_prebuilt_root=_sealed_runtime_mtl_root(),
     )
 
 
@@ -464,10 +484,12 @@ def test_certificate_digest_is_stable(certifier) -> None:
     first = certifier.certify_runtime_mtl_semantics(
         manifest_path=MANIFEST_PATH,
         repo_root=REPO_ROOT,
+        typescript_prebuilt_root=_sealed_runtime_mtl_root(),
     )
     second = certifier.certify_runtime_mtl_semantics(
         manifest_path=MANIFEST_PATH,
         repo_root=REPO_ROOT,
+        typescript_prebuilt_root=_sealed_runtime_mtl_root(),
     )
     assert first["certificate_digest_sha256"] == second["certificate_digest_sha256"]
     assert first["certified"] is True
@@ -476,7 +498,10 @@ def test_certificate_digest_is_stable(certifier) -> None:
 
 
 def test_lane_handler_reports_certified(certifier) -> None:
-    result = certifier.runtime_mtl_lane_handler(repo_root=REPO_ROOT)
+    result = certifier.runtime_mtl_lane_handler(
+        repo_root=REPO_ROOT,
+        typescript_prebuilt_root=_sealed_runtime_mtl_root(),
+    )
     assert result["lane_id"] == LANE_ID
     assert result["handler_id"] == HANDLER_ID
     assert result["certified"] is True
@@ -487,7 +512,10 @@ def test_lane_handler_reports_certified(certifier) -> None:
     assert result["certificate_digest_sha256"]
     assert len(result["certificate_digest_sha256"]) == 64
 
-    alias = certifier.lane_handler(repo_root=REPO_ROOT)
+    alias = certifier.lane_handler(
+        repo_root=REPO_ROOT,
+        typescript_prebuilt_root=_sealed_runtime_mtl_root(),
+    )
     assert alias["certified"] is True
     assert alias["handler_id"] == HANDLER_ID
 
@@ -505,7 +533,10 @@ def test_lane_handler_binds_under_roles_without_editing_central_certificate(
     bound = certifier.bind_runtime_mtl_lane(policy, replace=True)
     handler = bound.get_lane_handler(LANE_ID)
     assert handler is not None
-    result = handler(repo_root=REPO_ROOT)
+    result = handler(
+        repo_root=REPO_ROOT,
+        typescript_prebuilt_root=_sealed_runtime_mtl_root(),
+    )
     assert result["certified"] is True
     assert result["handler_id"] == HANDLER_ID
     assert result["grants_theorem_authority"] is False
@@ -635,11 +666,13 @@ def test_objective_validation_repair_proves_g103_acceptance(
         assert item["recipe"]
 
     # Lane handler reports the same validation-repair binding.
-    handler = certifier.runtime_mtl_lane_handler(repo_root=REPO_ROOT)
+    handler = certifier.runtime_mtl_lane_handler(
+        repo_root=REPO_ROOT,
+        typescript_prebuilt_root=_sealed_runtime_mtl_root(),
+    )
     assert handler["certified"] is True
     assert handler["repair_task_id"] == REPAIR_TASK_ID
     assert handler["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     assert handler["objective_validation_repair"] is True
     assert handler["grants_theorem_authority"] is False
     assert handler["grants_finite_trace_authority"] is True
-

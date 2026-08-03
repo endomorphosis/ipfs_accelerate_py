@@ -39,13 +39,14 @@ import argparse
 import copy
 import hashlib
 import json
-import os
+import re
 import shutil
+import stat
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Final, Mapping, Sequence
+from typing import Any, Callable, Final, Mapping
 
 # Allow running as a script from a worktree without an installed package.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -64,7 +65,6 @@ from ipfs_datasets_py.logic.software_verification.monitoring.runtime_mtl import 
     RUNTIME_MTL_INTERFACE,
     RUNTIME_MTL_SCHEMA_VERSION,
     MonitorAuthority,
-    RuntimeMTLMonitor,
     evaluate_case,
     evaluate_portable,
     golden_fixtures,
@@ -105,6 +105,15 @@ IMPLEMENTATION_RELATIVE: Final = Path(
     "monitoring/runtime_mtl.py"
 )
 TS_PACKAGE_RELATIVE: Final = Path("ipfs_datasets_py/typescript/logic-runtime-mtl")
+TYPESCRIPT_PARITY_TIMEOUT_SECONDS: Final = 10.0
+TYPESCRIPT_PARITY_MAX_TIMEOUT_SECONDS: Final = 30.0
+TYPESCRIPT_VENDOR_RECEIPT_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json"
+)
+TYPESCRIPT_VENDOR_TOOL_ID: Final = "runtime-mtl-external"
+TYPESCRIPT_VENDOR_PACKAGE_IDENTITY: Final = "@ipfs-datasets/logic-runtime-mtl"
+TYPESCRIPT_VENDOR_VERSION: Final = "1.0.0-reviewed"
+TYPESCRIPT_PREBUILT_APPROVED_ROOTS: Final = (Path("/opt"),)
 
 # Hermetic validation command bound by FVT-G103 / FVT-069.
 OBJECTIVE_VALIDATION_COMMAND: Final = (
@@ -823,7 +832,594 @@ def shortest_violating_prefix(
     return None, None, None
 
 
-def _ensure_typescript_built(repo_root: Path) -> Path | None:
+def _typescript_process_env(node: Path) -> dict[str, str]:
+    """Return the complete, minimal environment used for Node parity."""
+
+    return {
+        "PATH": str(node.parent),
+        "HOME": "/nonexistent",
+        "LANG": "C",
+        "LC_ALL": "C",
+        "TZ": "UTC",
+        "NO_COLOR": "1",
+        "NODE_DISABLE_COLORS": "1",
+        "NODE_PATH": "",
+        "FORMAL_VERIFICATION_CERTIFY_OFFLINE": "1",
+        "FORMAL_VERIFICATION_FORBID_INSTALL": "1",
+        "FORMAL_VERIFICATION_FORBID_NETWORK": "1",
+        "NPM_CONFIG_OFFLINE": "true",
+        "npm_config_offline": "true",
+        "NO_PROXY": "*",
+        "no_proxy": "*",
+    }
+
+
+def _typescript_source_tree_digest(root: Path) -> str:
+    digest = hashlib.sha256()
+    if not root.is_dir():
+        return digest.hexdigest()
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(root)
+        if any(part in {"node_modules", "dist", ".git"} for part in relative.parts):
+            continue
+        digest.update(relative.as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update((_file_digest(path) or "").encode("ascii"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _typescript_sealed_path_failures(
+    root: Path,
+    path: Path,
+    *,
+    directory: bool = False,
+    executable: bool = False,
+) -> list[str]:
+    failures: list[str] = []
+    try:
+        resolved = path.resolve(strict=True)
+        relative = resolved.relative_to(root)
+    except (OSError, RuntimeError, ValueError):
+        return ["not_contained"]
+    if resolved != path:
+        failures.append("resolution_changed")
+    current = root
+    for part in relative.parts:
+        current = current / part
+        try:
+            observed = current.lstat()
+        except OSError:
+            failures.append("component_unreadable")
+            continue
+        if stat.S_ISLNK(observed.st_mode):
+            failures.append("symlink")
+        if observed.st_uid != 0:
+            failures.append("not_root_owned")
+        if stat.S_IMODE(observed.st_mode) & 0o222:
+            failures.append("writable")
+    try:
+        observed = resolved.stat()
+    except OSError:
+        return sorted(set(failures + ["unreadable"]))
+    if directory:
+        if not stat.S_ISDIR(observed.st_mode):
+            failures.append("not_directory")
+    elif not stat.S_ISREG(observed.st_mode):
+        failures.append("not_regular_file")
+    if executable and not (stat.S_IMODE(observed.st_mode) & 0o111):
+        failures.append("not_executable")
+    return sorted(set(failures))
+
+
+def _typescript_launcher_fields(path: Path) -> dict[str, Any]:
+    """Parse the exact non-comment statement sequence of the vendor wrapper."""
+
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return {"valid": False, "failures": ["launcher_unreadable"]}
+    if len(text.encode("utf-8")) > 32 * 1024 or "\0" in text:
+        return {"valid": False, "failures": ["launcher_size_or_nul_invalid"]}
+    lines = [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    if len(lines) != 14:
+        return {"valid": False, "failures": ["launcher_statement_count_invalid"]}
+    fixed = {
+        0: "set -euo pipefail",
+        5: 'if [[ ! -x "$NODE" && ! -f "$NODE" ]]; then',
+        6: 'echo "runtime-mtl-external: node runtime missing: $NODE" >&2',
+        7: "exit 127",
+        8: "fi",
+        9: 'if [[ ! -f "$CLI" ]]; then',
+        10: 'echo "runtime-mtl-external: vendor CLI missing: $CLI" >&2',
+        11: "exit 127",
+        12: "fi",
+        13: 'exec "$NODE" "$CLI" "$@"',
+    }
+    failures = [
+        f"launcher_statement_{index}_invalid"
+        for index, expected in fixed.items()
+        if lines[index] != expected
+    ]
+    matches = {
+        "version": re.fullmatch(
+            r"export RUNTIME_MTL_EXTERNAL_VERSION='([^'\r\n]+)'",
+            lines[1],
+        ),
+        "identity_path": re.fullmatch(
+            r"export RUNTIME_MTL_EXTERNAL_IDENTITY_FILE="
+            r"\$\{RUNTIME_MTL_EXTERNAL_IDENTITY_FILE:-'([^'\r\n]+)'\}",
+            lines[2],
+        ),
+        "node_path": re.fullmatch(r"NODE='([^'\r\n]+)'", lines[3]),
+        "cli_path": re.fullmatch(r"CLI='([^'\r\n]+)'", lines[4]),
+    }
+    for name, match in matches.items():
+        if match is None:
+            failures.append(f"launcher_{name}_invalid")
+    return {
+        "valid": not failures,
+        "failures": sorted(set(failures)),
+        **{
+            name: match.group(1) if match is not None else None
+            for name, match in matches.items()
+        },
+    }
+
+
+def _authenticate_typescript_prebuilt(
+    repo_root: Path,
+    *,
+    sealed_root: Path | str,
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    """Independently authenticate the checked vendor prebuilt fail-closed."""
+
+    failures: list[str] = []
+    try:
+        timeout = float(timeout_seconds)
+    except (TypeError, ValueError):
+        timeout = TYPESCRIPT_PARITY_TIMEOUT_SECONDS
+        failures.append("timeout_invalid")
+    if not (0.0 < timeout <= TYPESCRIPT_PARITY_MAX_TIMEOUT_SECONDS):
+        failures.append("timeout_out_of_bounds")
+
+    raw_root = Path(str(sealed_root))
+    if not raw_root.is_absolute():
+        failures.append("sealed_root_not_absolute")
+        root = None
+    else:
+        try:
+            root = raw_root.resolve(strict=True)
+        except (OSError, RuntimeError):
+            root = None
+            failures.append("sealed_root_unreadable")
+    if root is not None:
+        try:
+            root_stat = root.lstat()
+        except OSError:
+            root_stat = None
+            failures.append("sealed_root_unreadable")
+        if root != raw_root or raw_root.is_symlink():
+            failures.append("sealed_root_resolution_changed")
+        if (
+            root_stat is None
+            or not stat.S_ISDIR(root_stat.st_mode)
+            or root_stat.st_uid != 0
+        ):
+            failures.append("sealed_root_not_root_owned_directory")
+        if root_stat is not None and stat.S_IMODE(root_stat.st_mode) & 0o222:
+            failures.append("sealed_root_writable")
+        approved = False
+        for allowed_root in TYPESCRIPT_PREBUILT_APPROVED_ROOTS:
+            try:
+                root.relative_to(allowed_root.resolve(strict=True))
+            except (OSError, RuntimeError, ValueError):
+                continue
+            approved = True
+            break
+        if not approved:
+            failures.append("sealed_root_not_approved")
+
+    receipt_path = repo_root / TYPESCRIPT_VENDOR_RECEIPT_RELATIVE
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        receipt = None
+        failures.append("checked_receipt_unreadable")
+    if not isinstance(receipt, Mapping):
+        receipt = {}
+        failures.append("checked_receipt_not_mapping")
+    expected_receipt = {
+        "schema_version": (
+            "formal-verification-runtime-mtl-external-install-receipt/v1"
+        ),
+        "interface": "ExternalRuntimeMTLVendorCertification@1",
+        "goal_id": "FVT-G210",
+        "task_id": "FVT-056",
+        "repair_task_id": "FVT-072",
+        "lane_id": "runtime_mtl_external_vendor",
+        "handler_id": "external_runtime_mtl_vendor_certification@1",
+        "authority_ceiling": "finite_trace",
+        "certified": True,
+    }
+    for field_name, expected in expected_receipt.items():
+        if receipt.get(field_name) != expected:
+            failures.append(f"checked_receipt_{field_name}_mismatch")
+    receipt_digest = content_digest(
+        {
+            key: value
+            for key, value in receipt.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+    if receipt.get("receipt_digest_sha256") != receipt_digest:
+        failures.append("checked_receipt_self_digest_mismatch")
+
+    summary = receipt.get("summary")
+    if not isinstance(summary, Mapping):
+        summary = {}
+        failures.append("checked_receipt_summary_missing")
+    try:
+        checks_passed = int(summary.get("checks_passed"))
+        checks_total = int(summary.get("checks_total"))
+    except (TypeError, ValueError):
+        checks_passed = 0
+        checks_total = -1
+    if (
+        summary.get("vendor_certified") is not True
+        or checks_passed <= 0
+        or checks_passed != checks_total
+        or list(summary.get("block_reasons") or [])
+    ):
+        failures.append("checked_receipt_not_fully_certified")
+
+    engine = receipt.get("runtime_mtl_external")
+    if not isinstance(engine, Mapping):
+        engine = {}
+        failures.append("checked_receipt_engine_missing")
+    engine_expected = {
+        "tool_id": TYPESCRIPT_VENDOR_TOOL_ID,
+        "version": TYPESCRIPT_VENDOR_VERSION,
+        "package_identity": TYPESCRIPT_VENDOR_PACKAGE_IDENTITY,
+        "usable": True,
+        "certified": True,
+        "is_vendor_build": True,
+        "is_hermetic_parity_engine": False,
+        "role": "authority",
+        "authority_ceiling": "finite_trace",
+        "never_grants_theorem_authority": True,
+        "finite_trace_authority_only": True,
+        "no_python_reference_dispatch": True,
+    }
+    for field_name, expected in engine_expected.items():
+        if engine.get(field_name) != expected:
+            failures.append(f"checked_engine_{field_name}_mismatch")
+    digest_fields = (
+        "artifact_sha256",
+        "executable_digest_sha256",
+        "launcher_digest_sha256",
+        "launcher_target_digest_sha256",
+        "lockfile_digest_sha256",
+        "package_digest_sha256",
+        "runtime_digest_sha256",
+        "source_digest_sha256",
+    )
+    for field_name in digest_fields:
+        if re.fullmatch(r"[0-9a-f]{64}", str(engine.get(field_name) or "")) is None:
+            failures.append(f"checked_engine_{field_name}_invalid")
+
+    paths: dict[str, Path] = {}
+    version = str(engine.get("version") or TYPESCRIPT_VENDOR_VERSION)
+    if root is not None:
+        version_root = (
+            root
+            / "runtime-mtl-vendor"
+            / TYPESCRIPT_VENDOR_TOOL_ID
+            / version
+        )
+        package = version_root / "package"
+        paths = {
+            "version_root": version_root,
+            "package": package,
+            "identity": version_root / "identity.json",
+            "vendor_launcher": version_root / "bin" / "runtime-mtl-external",
+            "public_launcher": root / "bin" / "runtime-mtl",
+            "package_json": package / "package.json",
+            "package_lock": package / "package-lock.json",
+            "source": package / "src",
+            "source_index": package / "src" / "index.ts",
+            "dist": package / "dist",
+            "index": package / "dist" / "src" / "index.js",
+            "cli": package / "dist" / "src" / "cli.js",
+        }
+        directories = {"version_root", "package", "source", "dist"}
+        executables = {"vendor_launcher", "public_launcher", "cli"}
+        for name, path in paths.items():
+            for reason in _typescript_sealed_path_failures(
+                root,
+                path,
+                directory=name in directories,
+                executable=name in executables,
+            ):
+                failures.append(f"{name}:{reason}")
+        for source_path in sorted(paths["source"].rglob("*")):
+            for reason in _typescript_sealed_path_failures(
+                root,
+                source_path,
+                directory=source_path.is_dir(),
+            ):
+                failures.append(f"source_tree:{reason}")
+
+    identity: Mapping[str, Any] = {}
+    if paths:
+        try:
+            loaded = json.loads(paths["identity"].read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            loaded = None
+        if isinstance(loaded, Mapping):
+            identity = loaded
+        else:
+            failures.append("identity_unreadable")
+    identity_expected = {
+        "schema_version": "runtime-mtl-external-vendor-install-receipt/v1",
+        "interface": "ExternalRuntimeMTLVendorInstaller@1",
+        "goal_id": "FVT-G210",
+        "task_id": "FVT-056",
+        "tool_id": TYPESCRIPT_VENDOR_TOOL_ID,
+        "version": version,
+        "package_identity": TYPESCRIPT_VENDOR_PACKAGE_IDENTITY,
+        "is_vendor_build": True,
+        "is_hermetic_parity_engine": False,
+        "role": "authority",
+        "authority_ceiling": "finite_trace",
+        "never_grants_theorem_authority": True,
+        "finite_trace_authority_only": True,
+        "no_python_reference_dispatch": True,
+    }
+    for field_name, expected in identity_expected.items():
+        if identity.get(field_name) != expected:
+            failures.append(f"identity_{field_name}_mismatch")
+    for field_name in digest_fields:
+        value = identity.get(field_name)
+        if field_name == "launcher_digest_sha256":
+            value = value or identity.get("executable_digest_sha256")
+        elif field_name == "launcher_target_digest_sha256":
+            value = value or identity.get("cli_artifact_sha256")
+        if value != engine.get(field_name):
+            failures.append(f"identity_{field_name}_mismatch")
+
+    old_root = Path(str(identity.get("install_root") or ""))
+    identity_suffixes = {
+        "executable": (
+            "runtime-mtl-vendor",
+            TYPESCRIPT_VENDOR_TOOL_ID,
+            version,
+            "bin",
+            "runtime-mtl-external",
+        ),
+        "package_dir": (
+            "runtime-mtl-vendor",
+            TYPESCRIPT_VENDOR_TOOL_ID,
+            version,
+            "package",
+        ),
+        "cli_path": (
+            "runtime-mtl-vendor",
+            TYPESCRIPT_VENDOR_TOOL_ID,
+            version,
+            "package",
+            "dist",
+            "src",
+            "cli.js",
+        ),
+    }
+    if not old_root.is_absolute():
+        failures.append("identity_install_root_not_absolute")
+    else:
+        for field_name, suffix in identity_suffixes.items():
+            if Path(str(identity.get(field_name) or "")) != old_root.joinpath(*suffix):
+                failures.append(f"identity_{field_name}_relationship_invalid")
+
+    launcher: Mapping[str, Any] = {}
+    if paths:
+        launcher = _typescript_launcher_fields(paths["public_launcher"])
+        failures.extend(str(item) for item in launcher.get("failures") or [])
+        for field_name, expected in {
+            "version": version,
+            "identity_path": str(paths["identity"]),
+            "cli_path": str(paths["cli"]),
+        }.items():
+            if launcher.get(field_name) != expected:
+                failures.append(f"public_launcher_{field_name}_mismatch")
+
+    node = None
+    node_raw = str(launcher.get("node_path") or "")
+    if node_raw:
+        raw_node = Path(node_raw)
+        if not raw_node.is_absolute():
+            failures.append("node_not_absolute")
+        else:
+            try:
+                node = raw_node.resolve(strict=True)
+                node_stat = node.lstat()
+            except (OSError, RuntimeError):
+                node = None
+                node_stat = None
+                failures.append("node_unreadable")
+            if node is not None and (
+                node != raw_node
+                or raw_node.is_symlink()
+                or node_stat is None
+                or not stat.S_ISREG(node_stat.st_mode)
+                or not (stat.S_IMODE(node_stat.st_mode) & 0o111)
+                or node_stat.st_uid != 0
+                or stat.S_IMODE(node_stat.st_mode) & 0o022
+            ):
+                failures.append("node_ownership_mode_or_resolution_invalid")
+    if identity.get("node_executable") != node_raw:
+        failures.append("identity_node_path_mismatch")
+
+    node_banner = ""
+    if node is not None and not any(item.startswith("node_") for item in failures):
+        try:
+            completed = subprocess.run(
+                [str(node), "--version"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5.0,
+                env=_typescript_process_env(node),
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            completed = None
+            failures.append("node_probe_failed")
+        if completed is not None:
+            node_banner = (completed.stdout or completed.stderr or "").strip()
+            if completed.returncode != 0:
+                failures.append("node_probe_failed")
+    if node_banner != f"v{engine.get('node_version') or ''}":
+        failures.append("node_version_mismatch")
+    if node is not None:
+        runtime_digest = hashlib.sha256(
+            f"node:{node_banner}:{node}".encode()
+        ).hexdigest()
+        if runtime_digest != engine.get("runtime_digest_sha256"):
+            failures.append("node_runtime_digest_mismatch")
+
+    index_digest = ""
+    if paths:
+        actual = {
+            "package_digest_sha256": _file_digest(paths["package_json"]) or "",
+            "lockfile_digest_sha256": _file_digest(paths["package_lock"]) or "",
+            "source_digest_sha256": _typescript_source_tree_digest(paths["source"]),
+            "executable_digest_sha256": _file_digest(paths["vendor_launcher"]) or "",
+            "launcher_digest_sha256": _file_digest(paths["vendor_launcher"]) or "",
+            "launcher_target_digest_sha256": _file_digest(paths["cli"]) or "",
+        }
+        index_digest = _file_digest(paths["index"]) or ""
+        actual["artifact_sha256"] = hashlib.sha256(
+            f"{actual['launcher_target_digest_sha256']}:{index_digest}".encode()
+        ).hexdigest()
+        for field_name, observed in actual.items():
+            if observed != engine.get(field_name):
+                failures.append(f"artifact_{field_name}_mismatch")
+
+        repo_package = repo_root / TS_PACKAGE_RELATIVE
+        repository = {
+            "package_digest_sha256": _file_digest(repo_package / "package.json")
+            or "",
+            "lockfile_digest_sha256": _file_digest(
+                repo_package / "package-lock.json"
+            )
+            or "",
+            "source_digest_sha256": _typescript_source_tree_digest(
+                repo_package / "src"
+            ),
+        }
+        for field_name, observed in repository.items():
+            if observed != engine.get(field_name):
+                failures.append(f"repository_{field_name}_mismatch")
+
+    failures = sorted(set(failures))
+    public_binding = {
+        "authenticated": not failures,
+        "failures": failures,
+        "receipt_digest_sha256": receipt.get("receipt_digest_sha256"),
+        "receipt_file_sha256": _file_digest(receipt_path) or "",
+        "identity_sha256": (
+            _file_digest(paths["identity"]) if paths else ""
+        )
+        or "",
+        "package_json_sha256": str(engine.get("package_digest_sha256") or ""),
+        "package_lock_sha256": str(engine.get("lockfile_digest_sha256") or ""),
+        "source_tree_sha256": str(engine.get("source_digest_sha256") or ""),
+        "index_sha256": index_digest,
+        "launcher_sha256": (
+            _file_digest(paths["public_launcher"]) if paths else ""
+        )
+        or "",
+        "launcher_target_sha256": str(
+            engine.get("launcher_target_digest_sha256") or ""
+        ),
+        "node_executable_sha256": (
+            _file_digest(node) if node is not None else ""
+        )
+        or "",
+        "node_version": str(engine.get("node_version") or ""),
+        "root_owned": not any("not_root_owned" in item for item in failures),
+        "immutable": not any("writable" in item for item in failures),
+        "containment_verified": not any(
+            "contain" in item or "resolution" in item
+            for item in failures
+        ),
+        "ambient_path_used": False,
+        "checkout_mutated": False,
+    }
+    return {
+        "valid": not failures,
+        "failures": failures,
+        "package": paths.get("package"),
+        "index": paths.get("index"),
+        "node": node,
+        "timeout_seconds": timeout,
+        "public_binding": public_binding,
+    }
+
+
+def _typescript_runtime(
+    repo_root: Path,
+    *,
+    typescript_prebuilt_root: Path | str | None = None,
+    typescript_prebuilt_timeout_seconds: float = TYPESCRIPT_PARITY_TIMEOUT_SECONDS,
+) -> dict[str, Any]:
+    """Resolve either an authenticated external prebuilt or a local dist."""
+
+    if typescript_prebuilt_root is not None:
+        return _authenticate_typescript_prebuilt(
+            repo_root,
+            sealed_root=typescript_prebuilt_root,
+            timeout_seconds=typescript_prebuilt_timeout_seconds,
+        )
+
+    package = repo_root / TS_PACKAGE_RELATIVE
+    if not package.is_dir():
+        return {"valid": False, "failures": ["package_missing"]}
+    node_raw = shutil.which("node")
+    if node_raw is None:
+        return {"valid": False, "failures": ["node_missing"]}
+    index = package / "dist" / "src" / "index.js"
+    if not index.is_file():
+        return {"valid": False, "failures": ["prebuilt_missing"]}
+    try:
+        node = Path(node_raw).resolve(strict=True)
+        index = index.resolve(strict=True)
+        package = package.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return {"valid": False, "failures": ["local_runtime_unreadable"]}
+    return {
+        "valid": True,
+        "failures": [],
+        "package": package,
+        "index": index,
+        "node": node,
+        "timeout_seconds": TYPESCRIPT_PARITY_TIMEOUT_SECONDS,
+        "public_binding": {},
+    }
+
+
+def _ensure_typescript_built(
+    repo_root: Path,
+    *,
+    typescript_prebuilt_root: Path | str | None = None,
+    typescript_prebuilt_timeout_seconds: float = TYPESCRIPT_PARITY_TIMEOUT_SECONDS,
+) -> Path | None:
     """Resolve an already-built TypeScript artifact without mutating it.
 
     The legacy name is retained for callers, but semantic certification is an
@@ -832,25 +1428,37 @@ def _ensure_typescript_built(repo_root: Path) -> Path | None:
     results depend on mutable network/package-manager state.
     """
 
-    package = repo_root / TS_PACKAGE_RELATIVE
-    if not package.is_dir():
-        return None
-    if shutil.which("node") is None:
-        return None
-    index = package / "dist" / "src" / "index.js"
-    if not index.is_file():
-        return None
-    return index
+    runtime = _typescript_runtime(
+        repo_root,
+        typescript_prebuilt_root=typescript_prebuilt_root,
+        typescript_prebuilt_timeout_seconds=typescript_prebuilt_timeout_seconds,
+    )
+    return runtime.get("index") if runtime.get("valid") is True else None
 
 
-def evaluate_typescript_case(case: Mapping[str, Any], *, repo_root: Path) -> dict[str, Any] | None:
+def evaluate_typescript_case(
+    case: Mapping[str, Any],
+    *,
+    repo_root: Path,
+    typescript_prebuilt_root: Path | str | None = None,
+    typescript_prebuilt_timeout_seconds: float = TYPESCRIPT_PARITY_TIMEOUT_SECONDS,
+    _validated_runtime: Mapping[str, Any] | None = None,
+) -> dict[str, Any] | None:
     """Evaluate one golden case with the TypeScript reference, if available."""
 
-    package = repo_root / TS_PACKAGE_RELATIVE
-    index = _ensure_typescript_built(repo_root)
-    if index is None:
+    runtime = dict(_validated_runtime or {})
+    if not runtime:
+        runtime = _typescript_runtime(
+            repo_root,
+            typescript_prebuilt_root=typescript_prebuilt_root,
+            typescript_prebuilt_timeout_seconds=(
+                typescript_prebuilt_timeout_seconds
+            ),
+        )
+    if runtime.get("valid") is not True:
         return None
-    node = shutil.which("node") or "node"
+    package = runtime["package"]
+    node = runtime["node"]
     payload = {
         "case_id": case.get("case_id"),
         "formula": case["formula"],
@@ -866,34 +1474,84 @@ for await (const chunk of process.stdin) chunks.push(chunk);
 const payload = JSON.parse(Buffer.concat(chunks).toString('utf8'));
 process.stdout.write(JSON.stringify(evaluateCase(payload)));
 """
-    proc = subprocess.run(
-        [node, "--input-type=module", "-e", script],
-        input=json.dumps(payload),
-        capture_output=True,
-        text=True,
-        check=False,
-        cwd=package,
-    )
+    try:
+        proc = subprocess.run(
+            [str(node), "--input-type=module", "-e", script],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=package,
+            env=_typescript_process_env(node),
+            timeout=float(runtime["timeout_seconds"]),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeMTLSemanticCertificationError(
+            "typescript_parity_timeout"
+        ) from exc
+    except OSError as exc:
+        raise RuntimeMTLSemanticCertificationError(
+            "typescript_parity_process_failed"
+        ) from exc
     if proc.returncode != 0:
         raise RuntimeMTLSemanticCertificationError(
-            f"TypeScript evaluate failed for {case.get('case_id')}: {proc.stderr[:400]}"
+            "typescript_parity_nonzero_exit"
         )
-    return json.loads(proc.stdout)
+    try:
+        result = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeMTLSemanticCertificationError(
+            "typescript_parity_malformed_json"
+        ) from exc
+    if not isinstance(result, dict):
+        raise RuntimeMTLSemanticCertificationError(
+            "typescript_parity_non_object_result"
+        )
+    return result
 
 
 def run_python_typescript_parity(
     *,
     repo_root: Path | None = None,
+    typescript_prebuilt_root: Path | str | None = None,
+    typescript_prebuilt_timeout_seconds: float = TYPESCRIPT_PARITY_TIMEOUT_SECONDS,
 ) -> tuple[CheckResult, dict[str, Any]]:
     """Compare Python and TypeScript golden fixture results."""
 
     root = repo_root or repo_root_from()
-    package = root / TS_PACKAGE_RELATIVE
+    runtime = _typescript_runtime(
+        root,
+        typescript_prebuilt_root=typescript_prebuilt_root,
+        typescript_prebuilt_timeout_seconds=(
+            typescript_prebuilt_timeout_seconds
+        ),
+    )
+    package = (
+        runtime["package"]
+        if runtime.get("valid") is True
+        else root / TS_PACKAGE_RELATIVE
+    )
     detail: dict[str, Any] = {
         "package_path": str(TS_PACKAGE_RELATIVE).replace("\\", "/"),
         "package_present": package.is_dir(),
+        "authenticated_external_prebuilt": bool(
+            typescript_prebuilt_root is not None
+            and runtime.get("valid") is True
+        ),
         "prebuilt_required": True,
         "certification_builds_or_installs": False,
+        "ambient_path_used": typescript_prebuilt_root is None,
+        "process_environment_keys": sorted(
+            _typescript_process_env(runtime["node"])
+        )
+        if runtime.get("valid") is True
+        else [],
+        "timeout_seconds": (
+            runtime.get("timeout_seconds")
+        ),
+        "prebuilt_authentication_failures": list(
+            runtime.get("failures") or []
+        ),
         "compared_cases": 0,
         "mismatches": [],
     }
@@ -909,20 +1567,34 @@ def run_python_typescript_parity(
             ),
             detail,
         )
-    node = shutil.which("node")
-    if node is None:
+    if runtime.get("valid") is not True:
+        observed = (
+            "authenticated_prebuilt_invalid"
+            if typescript_prebuilt_root is not None
+            else "node_or_prebuilt_missing"
+        )
         return (
             CheckResult(
                 check_id="parity.python_typescript",
                 kind="parity",
                 status="skipped",
                 expected="parity",
-                observed="node_missing",
-                detail="Node runtime unavailable; parity skipped without install",
+                observed=observed,
+                detail=(
+                    "explicit authenticated Node/prebuilt binding unavailable; "
+                    "parity skipped without PATH fallback, install, or build"
+                ),
             ),
             detail,
         )
-    prebuilt_index = _ensure_typescript_built(root)
+    node = runtime["node"]
+    prebuilt_index = _ensure_typescript_built(
+        root,
+        typescript_prebuilt_root=typescript_prebuilt_root,
+        typescript_prebuilt_timeout_seconds=(
+            typescript_prebuilt_timeout_seconds
+        ),
+    )
     if prebuilt_index is None:
         return (
             CheckResult(
@@ -942,12 +1614,17 @@ def run_python_typescript_parity(
     package_lock = package / "package-lock.json"
     source_index = package / "src" / "index.ts"
     detail["prebuilt"] = {
-        "index_path": str(prebuilt_index.relative_to(root)).replace("\\", "/"),
+        "index_path": (
+            str(prebuilt_index.relative_to(root)).replace("\\", "/")
+            if typescript_prebuilt_root is None
+            else "managed-runtime-mtl-package/dist/src/index.js"
+        ),
         "index_sha256": _file_digest(prebuilt_index) or "",
         "package_json_sha256": _file_digest(package_json) or "",
         "package_lock_sha256": _file_digest(package_lock) or "",
         "source_index_sha256": _file_digest(source_index) or "",
         "node_executable_sha256": _file_digest(Path(node)) or "",
+        "managed_binding": dict(runtime.get("public_binding") or {}),
     }
 
     mismatches: list[str] = []
@@ -961,7 +1638,29 @@ def run_python_typescript_parity(
                 "case_id": case["case_id"],
             }
         )
-        ts_result = evaluate_typescript_case(case, repo_root=root)
+        try:
+            ts_result = evaluate_typescript_case(
+                case,
+                repo_root=root,
+                typescript_prebuilt_root=typescript_prebuilt_root,
+                typescript_prebuilt_timeout_seconds=(
+                    typescript_prebuilt_timeout_seconds
+                ),
+                _validated_runtime=runtime,
+            )
+        except RuntimeMTLSemanticCertificationError as exc:
+            detail["execution_error"] = str(exc)
+            return (
+                CheckResult(
+                    check_id="parity.python_typescript",
+                    kind="parity",
+                    status="failed",
+                    expected="parity",
+                    observed=str(exc),
+                    detail="TypeScript parity execution failed closed",
+                ),
+                detail,
+            )
         if ts_result is None:
             return (
                 CheckResult(
@@ -1015,6 +1714,8 @@ def certify_runtime_mtl_semantics(
     manifest_path: Path | None = None,
     repo_root: Path | None = None,
     require_typescript_parity: bool = False,
+    typescript_prebuilt_root: Path | str | None = None,
+    typescript_prebuilt_timeout_seconds: float = TYPESCRIPT_PARITY_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     """Run semantic certification for the in-process Runtime MTL monitor."""
 
@@ -1055,7 +1756,13 @@ def certify_runtime_mtl_semantics(
         categories_seen.add(spec.category)
 
         if spec.recipe == "python_typescript_golden_parity" or spec.category == "parity":
-            check, parity_detail = run_python_typescript_parity(repo_root=root)
+            check, parity_detail = run_python_typescript_parity(
+                repo_root=root,
+                typescript_prebuilt_root=typescript_prebuilt_root,
+                typescript_prebuilt_timeout_seconds=(
+                    typescript_prebuilt_timeout_seconds
+                ),
+            )
             if check.status == "skipped":
                 block_reasons.append(
                     "typescript_parity_required_but_unavailable"
@@ -1433,6 +2140,11 @@ def runtime_mtl_lane_handler(
         manifest_path=kwargs.get("manifest_path"),
         repo_root=repo_root,
         require_typescript_parity=bool(kwargs.get("require_typescript_parity", False)),
+        typescript_prebuilt_root=kwargs.get("typescript_prebuilt_root"),
+        typescript_prebuilt_timeout_seconds=float(
+            kwargs.get("typescript_prebuilt_timeout_seconds")
+            or TYPESCRIPT_PARITY_TIMEOUT_SECONDS
+        ),
     )
     return {
         "lane_id": LANE_ID,
