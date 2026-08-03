@@ -171,6 +171,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     PortalTask,
     TodoTaskState,
     TodoImplementationDaemon,
+    ValidationProjectDependencyPreflightDeferred,
     WorktreeSubmoduleInitializationDeferred,
     implied_validation_test_output_paths,
     dependency_satisfied_references,
@@ -30673,6 +30674,238 @@ def test_implementation_daemon_defers_failed_submodule_setup_before_provider_wit
     )
     assert retry_event["failure_kind"] == "lifecycle_setup"
     assert retry_event["attempt_consumed"] is False
+
+
+def test_implementation_daemon_defers_dependency_drift_before_provider_without_attempt_charge(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="provider-must-not-run",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Require approved validation dependency",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["result.py"],
+        validation=[
+            "cd ipfs_kit_py && python -m pytest -q "
+            "tests/runtime_readiness/test_transport.py"
+        ],
+    )
+    dependency_receipt = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "validation-project-dependency-preflight@1"
+        ),
+        "receipt_id": "dependency-receipt",
+        "passed": False,
+        "reason": "approved_validation_environment_dependency_drift",
+        "missing_requirements": [
+            {
+                "name": "hypercorn",
+                "requirement": "hypercorn>=0.16.0",
+            }
+        ],
+        "install_attempted": False,
+        "network_accessed": False,
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args: "",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "preflight_validation_project_dependencies",
+        lambda *_args, **_kwargs: dependency_receipt,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_command",
+        lambda *_args, **_kwargs: pytest.fail(
+            "provider command must not be built after dependency drift"
+        ),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail("provider must not run"),
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+    persisted = TodoTaskState.load(daemon.state_path)
+
+    assert result["exception_result"]["exception_type"] == (
+        ValidationProjectDependencyPreflightDeferred.__name__
+    )
+    assert result["reason"] == (
+        "validation_project_dependency_preflight_failed"
+    )
+    assert result["deferred"] is True
+    assert result["infrastructure_failure"] is True
+    assert result["failure_kind"] == "lifecycle_setup"
+    assert result["provider_call_allowed"] is False
+    assert result["provider_dispatched"] is False
+    assert result["attempt_consumed"] is False
+    assert result["dependency_preflight"] == dependency_receipt
+    assert result["cleanup_result"]["cleaned"] is True
+    assert not Path(result["worktree_path"]).exists()
+    assert persisted.implementation_attempts == {}
+    assert persisted.implementation_attempts_by_cid == {}
+    assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task))
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    failure_event = next(
+        event
+        for event in events
+        if event["type"]
+        == "validation_project_dependency_preflight_failed"
+    )
+    assert failure_event["dependency_preflight"] == dependency_receipt
+    retry_event = next(
+        event
+        for event in events
+        if event["type"] == "implementation_retry_deferred"
+    )
+    assert retry_event["failure_kind"] == "lifecycle_setup"
+    assert retry_event["attempt_consumed"] is False
+
+
+def test_implementation_daemon_dispatches_provider_after_dependency_preflight_passes(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="provider-must-run",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Use approved validation environment",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["result.py"],
+        validation=["python -m pytest -q"],
+    )
+    dependency_receipt = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "validation-project-dependency-preflight@1"
+        ),
+        "receipt_id": "dependency-receipt",
+        "passed": True,
+        "reason": (
+            "approved_validation_environment_satisfies_project_dependencies"
+        ),
+        "install_attempted": False,
+        "network_accessed": False,
+    }
+    provider_calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args: "",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "preflight_validation_project_dependencies",
+        lambda *_args, **_kwargs: dependency_receipt,
+    )
+
+    def provider(command, *_args, **_kwargs):
+        provider_calls.append(tuple(command))
+        return subprocess.CompletedProcess(command, 1)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        provider,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert provider_calls
+    assert result["provider_dispatched"] is True
+    assert result["attempt_consumed"] is True
+    assert result["workspace_setup"][
+        "validation_project_dependency_preflight"
+    ] == dependency_receipt
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    started_event = next(
+        event for event in events if event["type"] == "implementation_started"
+    )
+    assert started_event["workspace_setup"][
+        "validation_project_dependency_preflight"
+    ] == dependency_receipt
+    assert not any(
+        event["type"]
+        == "validation_project_dependency_preflight_failed"
+        for event in events
+    )
 
 
 def test_implementation_daemon_commits_llm_resolved_merge(tmp_path):
