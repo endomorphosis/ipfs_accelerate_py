@@ -2,25 +2,29 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import subprocess
+import sys
+import time
 from pathlib import Path
 
+import ipfs_accelerate_py.agent_supervisor.merge.lease_coordination as lease_coordination_module
 import pytest
-from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
-    launch_bundle_lanes,
-    plan_bundle_lanes,
-)
 from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
+    MAX_PERSISTED_HEARTBEATS_PER_LEASE,
     DependencyNotReadyError,
     ExecutionScopeConflictError,
     LeaseConflictError,
     LeaseCoordinator,
     LeaseExpiredError,
     LeaseQueueBridge,
-    MAX_PERSISTED_HEARTBEATS_PER_LEASE,
     StaleFencingTokenError,
     adapt_goal_bundle,
     migrate_sqlite_coordination_store,
     profile_g_cid,
+)
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
+    launch_bundle_lanes,
+    plan_bundle_lanes,
 )
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     build_bundle_task_payloads,
@@ -44,6 +48,123 @@ def _named_bundle(name: str) -> dict[str, object]:
         "source_todo": "dependency.todo.md",
         "tasks": [{"task_id": name}],
     }
+
+
+def _duckdb_lock_error(duckdb: object) -> Exception:
+    return duckdb.IOException(  # type: ignore[attr-defined, no-any-return]
+        'IO Error: Could not set lock on file "/tmp/leases.duckdb": '
+        "Conflicting lock is held in /usr/bin/python3 (PID 123)"
+    )
+
+
+def test_coordination_connect_retries_transient_duckdb_file_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    original_connect = duckdb.connect
+    attempts = 0
+    sleeps: list[float] = []
+
+    def flaky_connect(*args: object, **kwargs: object):
+        nonlocal attempts
+        attempts += 1
+        if attempts <= 3:
+            raise _duckdb_lock_error(duckdb)
+        return original_connect(*args, **kwargs)
+
+    monkeypatch.setattr(duckdb, "connect", flaky_connect)
+    monkeypatch.setattr(lease_coordination_module.time, "sleep", sleeps.append)
+
+    with LeaseCoordinator(tmp_path / "leases.duckdb"):
+        pass
+
+    assert attempts == 4
+    assert sleeps == [0.1, 0.2, 0.4]
+
+
+def test_coordination_connect_exhausts_bounded_duckdb_file_lock_retries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    attempts = 0
+    sleeps: list[float] = []
+
+    def locked_connect(*_args: object, **_kwargs: object):
+        nonlocal attempts
+        attempts += 1
+        raise _duckdb_lock_error(duckdb)
+
+    monkeypatch.setattr(duckdb, "connect", locked_connect)
+    monkeypatch.setattr(lease_coordination_module.time, "sleep", sleeps.append)
+
+    with pytest.raises(duckdb.IOException, match="Conflicting lock is held"):
+        LeaseCoordinator(tmp_path / "leases.duckdb")
+
+    assert attempts == lease_coordination_module.COORDINATION_DUCKDB_CONNECT_MAX_ATTEMPTS
+    assert len(sleeps) == attempts - 1
+    assert sleeps[-1] <= lease_coordination_module.COORDINATION_DUCKDB_CONNECT_MAX_BACKOFF_SECONDS
+
+
+def test_coordination_connect_does_not_retry_other_duckdb_io_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    attempts = 0
+    sleeps: list[float] = []
+
+    def corrupt_connect(*_args: object, **_kwargs: object):
+        nonlocal attempts
+        attempts += 1
+        raise duckdb.IOException("IO Error: database file is corrupt")
+
+    monkeypatch.setattr(duckdb, "connect", corrupt_connect)
+    monkeypatch.setattr(lease_coordination_module.time, "sleep", sleeps.append)
+
+    with pytest.raises(duckdb.IOException, match="database file is corrupt"):
+        LeaseCoordinator(tmp_path / "leases.duckdb")
+
+    assert attempts == 1
+    assert sleeps == []
+
+
+def test_coordination_connect_survives_real_cross_process_read_only_lock(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("duckdb")
+    path = tmp_path / "leases.duckdb"
+    marker = tmp_path / "reader-ready"
+    with LeaseCoordinator(path):
+        pass
+    script = (
+        "import pathlib,sys,time; import duckdb; "
+        "connection=duckdb.connect(sys.argv[1], read_only=True); "
+        "pathlib.Path(sys.argv[2]).write_text('ready'); "
+        "time.sleep(0.75); connection.close()"
+    )
+    reader = subprocess.Popen(
+        [sys.executable, "-c", script, str(path), str(marker)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 10
+        while not marker.is_file() and reader.poll() is None:
+            if time.monotonic() >= deadline:
+                raise AssertionError("DuckDB reader did not acquire its lock")
+            time.sleep(0.01)
+        assert marker.is_file()
+        with LeaseCoordinator(path):
+            pass
+        stdout, stderr = reader.communicate(timeout=5)
+        assert reader.returncode == 0, (stdout, stderr)
+    finally:
+        if reader.poll() is None:
+            reader.kill()
+            reader.wait(timeout=5)
 
 
 def test_claim_waits_for_latest_successful_prerequisite_receipt(tmp_path: Path) -> None:

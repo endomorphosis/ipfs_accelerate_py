@@ -45,6 +45,23 @@ class _AlternateProvider:
         return "alternate-result"
 
 
+class _DefaultModelFallbackProvider:
+    def __init__(self, models: list[str | None]) -> None:
+        self._models = models
+
+    def generate(
+        self,
+        prompt: str,
+        *,
+        model_name: str | None = None,
+        **kwargs: Any,
+    ) -> str:
+        self._models.append(model_name)
+        if model_name is not None:
+            raise llm_router.LLMRouterError("requested model failed")
+        return "default-model-result"
+
+
 def _install_fallback(
     monkeypatch: pytest.MonkeyPatch,
     calls: list[tuple[str, str | None]],
@@ -114,6 +131,39 @@ def test_codex_usage_limit_is_typed_with_canonical_reset(
     assert raised.value.pre_dispatch is False
 
 
+def test_ordinary_default_route_retains_cross_provider_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, str | None]] = []
+    _install_fallback(monkeypatch, calls)
+
+    result = llm_router.generate_text(
+        "ordinary prompt",
+        provider_instance=_FailingProvider(calls),
+    )
+
+    assert result == "alternate-result"
+    assert calls == [("primary", None), ("alternate", None)]
+
+
+def test_remote_fallback_can_be_enabled_without_local_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, str | None]] = []
+    _install_fallback(monkeypatch, calls)
+
+    result = llm_router.generate_text(
+        "remote-only failover",
+        provider="codex_cli",
+        provider_instance=_FailingProvider(calls),
+        allow_local_fallback=False,
+        allow_cross_provider_fallback=True,
+    )
+
+    assert result == "alternate-result"
+    assert calls == [("primary", None), ("alternate", None)]
+
+
 def test_legacy_remote_fallback_remains_default_compatible(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -142,6 +192,7 @@ def test_new_child_fields_preserve_v1_and_positional_compatibility() -> None:
     )
     assert invocation.timeout_seconds == 17
     assert invocation.allow_cross_provider_fallback is None
+    assert invocation.model_reasoning_effort == ""
 
     envelope = todo_llm.LlmChildRequestEnvelope(
         todo_llm.LLM_CHILD_ENVELOPE_SCHEMA,
@@ -233,6 +284,29 @@ def test_exact_provider_cannot_consume_cross_provider_cache(
     assert calls[-1] == ("primary", "fixture-model")
 
 
+def test_exact_provider_never_retries_or_caches_under_a_fallback_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    models: list[str | None] = []
+    deps = llm_router.RouterDeps()
+    monkeypatch.setattr(llm_router, "_response_cache_enabled", lambda: True)
+    provider = _DefaultModelFallbackProvider(models)
+
+    for _attempt in range(2):
+        with pytest.raises(llm_router.LLMRouterError, match="requested model failed"):
+            llm_router.generate_text(
+                "same exact model request",
+                provider="codex_cli",
+                provider_instance=provider,
+                model_name="gpt-5.6-sol",
+                deps=deps,
+                allow_local_fallback=False,
+                allow_cross_provider_fallback=False,
+            )
+
+    assert models == ["gpt-5.6-sol", "gpt-5.6-sol"]
+
+
 def test_supervisor_child_pins_source_and_fallback_authority(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -274,12 +348,15 @@ def test_supervisor_child_pins_source_and_fallback_authority(
 
     assert todo_llm.call_llm_router("exact review", config) == "ok"
     env = captured["env"]
+    assert env["TODO_DAEMON_LLM_ALLOW_LOCAL_FALLBACK"] == "0"
     assert env["TODO_DAEMON_LLM_ALLOW_CROSS_PROVIDER_FALLBACK"] == "0"
     assert env["PYTHONPATH"] == str(Path(llm_router.__file__).resolve().parents[1])
     source = str(captured["source"])
     assert "from ipfs_accelerate_py import llm_router" in source
     assert "from ipfs_datasets_py import llm_router" not in source
     assert "allow_cross_provider_fallback=" in source
+    envelope = todo_llm.build_child_request_envelope(config)
+    assert envelope.allow_cross_provider_fallback is False
     assert len(captured["command"]) == 2
     assert not Path(captured["command"][1]).exists()
     assert os.path.basename(captured["command"][1]).startswith(

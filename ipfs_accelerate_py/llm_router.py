@@ -1861,9 +1861,10 @@ def _response_cache_routing_kwargs(
 ) -> Dict[str, object]:
     """Bind fallback authority into response-cache identity.
 
-    An exact-provider request must never consume a response cached after
-    cross-provider failover under the same requested provider and model.
-    These values affect cache identity only and are not provider arguments.
+    An exact-provider request must never consume a response previously cached
+    after cross-provider failover under the same requested provider/model.
+    These values affect only cache identity and are never forwarded to a
+    provider.
     """
 
     cache_kwargs = dict(kwargs)
@@ -2688,15 +2689,15 @@ def _clean_grok_cli_output(text: str) -> str:
 
 
 def _grok_cli_command() -> str:
-    return (
-        _coalesce_env(
-            "ipfs_accelerate_py_GROK_CLI_CMD",
-            "IPFS_ACCELERATE_PY_GROK_CLI_CMD",
-            "IPFS_DATASETS_PY_GROK_CLI_CMD",
-            "GROK_CLI_CMD",
-        )
-        or "grok"
+    configured = _coalesce_env(
+        "ipfs_accelerate_py_GROK_CLI_CMD",
+        "IPFS_ACCELERATE_PY_GROK_CLI_CMD",
+        "IPFS_DATASETS_PY_GROK_CLI_CMD",
+        "GROK_CLI_CMD",
     )
+    if configured:
+        return configured
+    return find_grok_cli() or "grok"
 
 
 def _grok_cli_auth_path() -> Path:
@@ -4167,7 +4168,13 @@ def build_goose_cli_env(
 
 
 def find_grok_cli() -> Optional[str]:
-    """Locate the official Grok CLI binary without starting a process."""
+    """Locate the official Grok CLI binary without starting a process.
+
+    User services commonly receive systemd's minimal ``PATH`` rather than the
+    interactive login path.  Check the two conventional per-user install
+    locations after configured/PATH discovery so an authenticated local Grok
+    install remains the default in supervised processes.
+    """
 
     configured = _coalesce_env(
         "ipfs_accelerate_py_GROK_CLI_CMD",
@@ -4186,7 +4193,19 @@ def find_grok_cli() -> Optional[str]:
             found = shutil.which(parts[0])
             if found:
                 return found
-    return shutil.which("grok")
+    found = shutil.which("grok")
+    if found:
+        return found
+    for candidate in (
+        Path.home() / ".local" / "bin" / "grok",
+        Path.home() / ".grok" / "bin" / "grok",
+    ):
+        try:
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return str(candidate)
+        except OSError:
+            continue
+    return None
 
 
 def _grok_default_model() -> str:
@@ -9530,8 +9549,8 @@ def generate_text(
 
     ``allow_cross_provider_fallback`` controls remote-provider failover
     independently from local Hugging Face fallback. When omitted, the legacy
-    remote-provider behavior remains enabled. Exact provider boundaries must
-    pass ``False`` explicitly.
+    remote-provider failover behavior remains enabled. Exact provider
+    boundaries must pass ``False`` explicitly.
     """
 
     started = time.perf_counter()
@@ -9544,8 +9563,8 @@ def generate_text(
     )
     if not cross_provider_fallback_allowed:
         # Exact-provider supervisor boundaries are exact-model boundaries too.
-        # A default-model retry could otherwise be cached under the requested
-        # model even though that exact model was never used successfully.
+        # Otherwise the same provider silently retries ``model_name=None`` and
+        # can cache that result under the operator-pinned requested model.
         kwargs["disable_model_retry"] = True
     _clear_last_generation_trace()
     _set_last_usage_admission(None)

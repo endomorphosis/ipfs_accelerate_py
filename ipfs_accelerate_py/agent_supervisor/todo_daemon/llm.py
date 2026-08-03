@@ -172,9 +172,14 @@ class LlmRouterInvocation:
     deadline_at: str = ""
     side_effect_boundary: str = "idempotent"
     write_result_envelope: bool = True
-    # Appended to preserve positional constructors used by older integrations.
+    # New options stay at the end to preserve the public positional
+    # constructor used by older daemon integrations.
     allow_cross_provider_fallback: Optional[bool] = None
     child_file_prefix: str = "todo-daemon-llm-child-"
+    # Production native adapters pin this directly in their exact CLI argv.
+    # The generic child route intentionally ignores it unless its transport
+    # explicitly implements an equally strict binding.
+    model_reasoning_effort: str = ""
 
 
 @dataclass(frozen=True)
@@ -608,7 +613,12 @@ def _allow_cross_provider_fallback(config: LlmRouterInvocation) -> bool:
 
 
 def _canonical_accelerator_source_root() -> Path:
-    """Return the source root containing this exact accelerator package."""
+    """Return the source root containing this exact accelerator package.
+
+    LLM children may run from an empty or untrusted working directory.  Bind
+    their import path to the package that authored the child program instead
+    of relying on whichever editable install happens to be first globally.
+    """
 
     source_root = Path(__file__).resolve().parents[3]
     package_root = source_root / "ipfs_accelerate_py"
@@ -650,8 +660,9 @@ def _llm_router_child_code(config: LlmRouterInvocation) -> str:
     return f"""
 import sys
 
-# Bind this child to the exact accelerator package that authored it. Remove
-# the implicit script directory before importing any non-builtin module.
+# Remove any implicit script/import authority before loading a non-builtin
+# module, then bind the child to the exact package tree that authored this
+# program.
 _canonical_source_root = {canonical_source_root!r}
 _implicit_script_root = sys.path[0] if sys.path else ""
 sys.path[:] = [_canonical_source_root] + [
@@ -905,9 +916,9 @@ def call_llm_router_with_receipt(
                 handle.write(envelope.to_json())
                 envelope_file = Path(handle.name)
 
-        # A real system-temporary script keeps the repository working tree out
-        # of Python's implicit import path. Its source then pins the exact
-        # accelerator tree that authored the child program.
+        # Execute a real 0600 script from the trusted system temporary
+        # directory.  Unlike ``python -c``, this makes sys.path[0] the script
+        # directory rather than the potentially untrusted provider cwd.
         with tempfile.NamedTemporaryFile(
             "w",
             encoding="utf-8",
@@ -919,6 +930,12 @@ def call_llm_router_with_receipt(
             child_file = Path(handle.name)
 
         env = os.environ.copy()
+        # The child intentionally runs outside the repository checkout.  Pin
+        # its core router import to this exact source tree so an unrelated
+        # editable ``ipfs_datasets_py``/``ipfs_accelerate_py`` installation
+        # cannot silently become the execution authority.
+        # Do not inherit caller-controlled import paths: Python can execute a
+        # ``sitecustomize`` from PYTHONPATH before the child program starts.
         env["PYTHONPATH"] = str(_canonical_accelerator_source_root())
         for unsafe_python_setting in (
             "PYTHONHOME",

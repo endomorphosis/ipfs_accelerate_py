@@ -44,6 +44,9 @@ READY_BUNDLE_TASK_STATUSES = frozenset({"todo", "ready", "needed", "queued", "in
 COORDINATION_STORE_SCHEMA = "ipfs_accelerate_py.agent_supervisor.lease-coordination-duckdb@1"
 COORDINATION_LOCK_TIMEOUT_SECONDS = 30.0
 COORDINATION_DUCKDB_MEMORY_LIMIT = "256MB"
+COORDINATION_DUCKDB_CONNECT_MAX_ATTEMPTS = 8
+COORDINATION_DUCKDB_CONNECT_INITIAL_BACKOFF_SECONDS = 0.1
+COORDINATION_DUCKDB_CONNECT_MAX_BACKOFF_SECONDS = 2.0
 MAX_PERSISTED_HEARTBEATS_PER_LEASE = 8
 SMALL_STORE_FULL_ARTIFACT_LIMIT = 10_000
 DISTRIBUTED_INPUT_SCHEMA = (
@@ -95,6 +98,49 @@ def _coordinator_operation(method: Callable[..., Any]) -> Callable[..., Any]:
 
 def _duckdb_path_literal(path: Path) -> str:
     return "'" + str(path).replace("'", "''") + "'"
+
+
+def _is_transient_duckdb_file_lock_error(
+    error: BaseException,
+    duckdb_module: Any,
+) -> bool:
+    """Recognize only DuckDB's cross-process file-lock connect failure."""
+
+    io_exception = getattr(duckdb_module, "IOException", None)
+    if not isinstance(io_exception, type) or not isinstance(error, io_exception):
+        return False
+    message = str(error).casefold()
+    return (
+        "could not set lock on file" in message
+        and "conflicting lock is held" in message
+    )
+
+
+def _connect_coordination_duckdb(duckdb_module: Any, path: Path) -> Any:
+    """Open a writable coordination connection with bounded lock retries.
+
+    The surrounding advisory lock remains held while this retries.  The retry
+    is deliberately limited to DuckDB's explicit cross-process file-lock
+    ``IOException``; corrupt stores, permission failures, and other I/O errors
+    fail immediately with their original exception.
+    """
+
+    delay = COORDINATION_DUCKDB_CONNECT_INITIAL_BACKOFF_SECONDS
+    for attempt in range(1, COORDINATION_DUCKDB_CONNECT_MAX_ATTEMPTS + 1):
+        try:
+            return duckdb_module.connect(str(path))
+        except Exception as exc:
+            if (
+                not _is_transient_duckdb_file_lock_error(exc, duckdb_module)
+                or attempt >= COORDINATION_DUCKDB_CONNECT_MAX_ATTEMPTS
+            ):
+                raise
+            time.sleep(delay)
+            delay = min(
+                delay * 2,
+                COORDINATION_DUCKDB_CONNECT_MAX_BACKOFF_SECONDS,
+            )
+    raise AssertionError("unreachable DuckDB connection retry state")
 
 
 class LeaseError(RuntimeError):
@@ -1053,7 +1099,7 @@ class LeaseCoordinator:
                     raise RuntimeError(
                         "DuckDB is required for lease coordination"
                     ) from exc
-                duckdb_connection = duckdb.connect(str(self.path))
+                duckdb_connection = _connect_coordination_duckdb(duckdb, self.path)
                 duckdb_connection.execute("SET threads=1")
                 duckdb_connection.execute(
                     f"SET memory_limit='{COORDINATION_DUCKDB_MEMORY_LIMIT}'"

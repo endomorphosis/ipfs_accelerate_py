@@ -46,6 +46,27 @@ PROVIDER_EXECUTION_RECEIPT_INTERFACE: Final = "ProviderExecutionReceipt@1"
 PROVIDER_EXECUTION_RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/provider-execution-receipt@1"
 )
+# SCA-615 production wiring: the only model-assisted implement/review route.
+PRODUCTION_PROVIDER_ROUTE_INTERFACE: Final = "ProductionProviderRoute@1"
+PRODUCTION_PROVIDER_ROUTE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/production-provider-route@1"
+)
+PRODUCTION_PROVIDER_ROUTE_EVALUATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/production-provider-route-evaluation@1"
+)
+PRODUCTION_REVIEW_CHAIN_BINDING_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/production-review-chain-binding@1"
+)
+SCAEV615ROUTE: Final = "SCAEV615ROUTE"
+SCAEV615ROUTE_COVERAGE: Final = (
+    "typed-packet-route-only",
+    "grok-cannot-self-review",
+    "codex-bounded-proposal-evidence-slice",
+    "apply-and-merge-bound-to-admitted-review-chain",
+    "absent-degraded-stale-cross-task-receipts-remain-pending",
+    "deterministic-only-invokes-no-model",
+    "no-provider-receives-repository-corpus",
+)
 
 # These are protocol limits, not provider suggestions.  Size checks are over
 # UTF-8 bytes and are inclusive at the boundary.
@@ -60,7 +81,9 @@ REDACTION_MARKER: Final = "[REDACTED]"
 
 class ProviderRole(str, Enum):
     GROK_IMPLEMENT = "grok-implement"
+    CODEX_QUOTA_IMPLEMENT = "codex-quota-fallback-implement"
     CODEX_REVIEW = "codex-independent-review"
+    NON_CODEX_REVIEW = "non-codex-independent-review"
     DETERMINISTIC_LOCAL = "deterministic-local"
 
 
@@ -86,6 +109,11 @@ class ProviderReason(str, Enum):
     ROUTED = "bounded_provider_route"
     LOCAL_ONLY = "deterministic_local_route"
     GROK_QUOTA_EXHAUSTED = "grok_quota_exhausted"
+    GROK_BUILD_QUOTA_EXHAUSTED = "grok_build_balance_exhausted"
+    CODEX_QUOTA_IMPLEMENTED_REVIEW_PENDING = (
+        "codex_quota_implemented_non_codex_review_pending"
+    )
+    NON_CODEX_REVIEW_REQUIRED = "non_codex_independent_review_required"
     CODEX_QUOTA_EXHAUSTED = "codex_quota_exhausted_grok_fallback"
     GROK_UNAVAILABLE = "grok_unavailable"
     CODEX_UNAVAILABLE = "codex_unavailable_grok_fallback"
@@ -113,6 +141,26 @@ class ProviderReason(str, Enum):
     WRITER_NOT_CONFIGURED = "writer_not_configured"
     WRITE_FAILED = "admitted_write_failed"
     NO_FALLBACK = "no_deterministic_fallback"
+    # Production admission dispositions (SCA-615): remain pending, never complete.
+    RECEIPT_ABSENT = "provider_receipt_absent"
+    RECEIPT_DEGRADED = "provider_receipt_degraded"
+    RECEIPT_STALE = "provider_receipt_stale"
+    RECEIPT_CROSS_TASK = "provider_receipt_cross_task"
+    REVIEW_CHAIN_UNBOUND = "admitted_review_chain_unbound"
+    RAW_MODEL_COMMAND_FORBIDDEN = "raw_model_command_forbidden_for_production_route"
+
+
+class ProductionReceiptDisposition(str, Enum):
+    """Disposition of a production provider receipt for completion/merge gates."""
+
+    ADMITTED = "admitted"
+    PENDING_ABSENT = "pending_absent"
+    PENDING_DEGRADED = "pending_degraded"
+    PENDING_STALE = "pending_stale"
+    PENDING_CROSS_TASK = "pending_cross_task"
+    PENDING_DECLINED = "pending_declined"
+    PENDING_NOT_ADMITTED = "pending_not_admitted"
+    REJECTED = "rejected"
 
 
 class ProviderRoutingError(ValueError):
@@ -134,6 +182,22 @@ class ProviderQuotaError(RuntimeError):
     ) -> None:
         super().__init__(message)
         self.reason_code = str(reason_code or ProviderReason.PROVIDER_QUOTA_EXHAUSTED.value)
+
+
+class VerifiedGrokQuotaExhaustion(ProviderQuotaError):
+    """Supervisor-observed, exact Grok Build balance-exhaustion signal.
+
+    Only the native transport adapter may construct this signal after checking
+    the CLI exit status and its structured transport event.  Provider/model
+    response text and generic quota exceptions deliberately cannot authorize
+    the Codex Terra implementation fallback.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value,
+            reason_code=ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -490,6 +554,7 @@ class ProviderRequest(Mapping[str, Any]):
     bounds: ProviderBounds
     prompt: bytes
     prompt_tokens: int
+    response_contract: Mapping[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -501,6 +566,7 @@ class ProviderRequest(Mapping[str, Any]):
             "task_id": self.task_id,
             "provider_input": dict(self.payload),
             "bounds": self.bounds.to_dict(),
+            "response_contract": dict(self.response_contract),
             "authority": {
                 "provider_output_tier": "proposal",
                 "repository_write_allowed": False,
@@ -620,6 +686,15 @@ class ProviderAttempt:
     response_bytes: int = 0
     prompt_digest: str = ""
     response_digest: str = ""
+    execution_schema: str = ""
+    execution_policy_id: str = ""
+    execution_request_id: str = ""
+    configured_provider: str = ""
+    effective_provider: str = ""
+    configured_model: str = ""
+    child_result_schema: str = ""
+    child_result_status: str = ""
+    child_exit_code: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -631,6 +706,15 @@ class ProviderAttempt:
             "response_bytes": self.response_bytes,
             "prompt_digest": self.prompt_digest,
             "response_digest": self.response_digest,
+            "execution_schema": self.execution_schema,
+            "execution_policy_id": self.execution_policy_id,
+            "execution_request_id": self.execution_request_id,
+            "configured_provider": self.configured_provider,
+            "effective_provider": self.effective_provider,
+            "configured_model": self.configured_model,
+            "child_result_schema": self.child_result_schema,
+            "child_result_status": self.child_result_status,
+            "child_exit_code": self.child_exit_code,
             "prompt_embedded": False,
             "response_embedded": False,
         }
@@ -776,6 +860,7 @@ def _bounded_evidence_slice(
             expansion = provider_input[key]
             break
     goal = provider_input.get("goal")
+    context_slice = provider_input.get("context_slice")
     goal_ids: dict[str, Any] = {}
     if isinstance(goal, Mapping):
         for key in (
@@ -787,7 +872,7 @@ def _bounded_evidence_slice(
         ):
             if key in goal:
                 goal_ids[key] = goal[key]
-    return {
+    evidence = {
         "packet_id": packet_id,
         "snapshot_id": snapshot_id,
         "task_id": task_id,
@@ -803,6 +888,50 @@ def _bounded_evidence_slice(
             "proof_authoritative": False,
             "completion_authoritative": False,
         },
+    }
+    # A reviewer cannot independently assess a patch against source it never
+    # saw.  Production packets may attach the supervisor-built, CID-addressed
+    # bounded context manifest; Codex receives that same exact manifest.  The
+    # completed Codex envelope is still measured against the hard 4096-token
+    # provider bound in ``_request``.
+    if isinstance(context_slice, Mapping):
+        evidence["context_slice"] = dict(context_slice)
+    return evidence
+
+
+def _provider_response_contract(role: ProviderRole) -> dict[str, Any]:
+    """Return the exact authority-free JSON shape requested from one role."""
+
+    if role in {
+        ProviderRole.GROK_IMPLEMENT,
+        ProviderRole.CODEX_QUOTA_IMPLEMENT,
+    }:
+        shape: dict[str, Any] = {
+            "proposal": {
+                "declared_paths": ["repo/relative/path"],
+                "files": [
+                    {
+                        "path": "repo/relative/path",
+                        "content": "complete replacement text",
+                    }
+                ],
+                "patch": "optional unified diff instead of files",
+            }
+        }
+    elif role is ProviderRole.CODEX_REVIEW:
+        shape = {
+            "decision": "approve|reject",
+            "findings": [],
+            "proposal": "forbidden; Codex is an independent reviewer only",
+        }
+    else:
+        shape = {"proposal": {}}
+    return {
+        "format": "canonical-json-object-only",
+        "markdown_fences_allowed": False,
+        "prose_outside_json_allowed": False,
+        "authority_claims_allowed": False,
+        "expected_shape": shape,
     }
 
 
@@ -928,12 +1057,12 @@ class ImplementationRoutingResult:
     @property
     def review_presence(self) -> str:
         if self.status is RouteStatus.SUCCEEDED and self.review_proposal is not None:
-            decision = str(
-                self.review_proposal.payload.get("decision") or "approve"
-            ).strip().casefold()
-            if decision in {"reject", "decline", "changes_required"}:
+            decision = self.review_proposal.payload.get("decision")
+            if decision == "reject":
                 return ReviewPresence.DECLINED.value
-            return ReviewPresence.INDEPENDENT.value
+            if decision in {"approve", "repair", "replace"}:
+                return ReviewPresence.INDEPENDENT.value
+            return ReviewPresence.DEGRADED.value
         if self.reason_code in {
             ProviderReason.REVIEW_DECLINED.value,
             ProviderReason.REVIEW_REJECTED.value,
@@ -952,6 +1081,8 @@ class ImplementationRoutingResult:
         if self.reason_code in {
             ProviderReason.CODEX_UNAVAILABLE.value,
             ProviderReason.CODEX_QUOTA_EXHAUSTED.value,
+            ProviderReason.CODEX_QUOTA_IMPLEMENTED_REVIEW_PENDING.value,
+            ProviderReason.NON_CODEX_REVIEW_REQUIRED.value,
             ProviderReason.REVIEW_ABSENT.value,
         }:
             return ReviewPresence.ABSENT.value
@@ -1050,6 +1181,57 @@ class ImplementationRoutingResult:
                 reason_code=default_reason,
                 admitted=False,
             )
+
+        terra_assisted = any(
+            item.role is ProviderRole.CODEX_QUOTA_IMPLEMENT
+            for item in self.attempts
+        ) or (
+            self.implementation_proposal is not None
+            and self.implementation_proposal.role
+            is ProviderRole.CODEX_QUOTA_IMPLEMENT
+        )
+        if terra_assisted:
+            steps.append(
+                _step_from_proposal(
+                    None,
+                    ProviderRole.GROK_IMPLEMENT,
+                    default_status="failed",
+                    default_reason=ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value,
+                )
+            )
+            terra_proposal = (
+                self.implementation_proposal
+                if self.implementation_proposal is not None
+                and self.implementation_proposal.role
+                is ProviderRole.CODEX_QUOTA_IMPLEMENT
+                else None
+            )
+            terra_admitted = bool(terra_proposal and terra_proposal.admitted)
+            steps.append(
+                _step_from_proposal(
+                    terra_proposal,
+                    ProviderRole.CODEX_QUOTA_IMPLEMENT,
+                    default_status="succeeded" if terra_admitted else "failed",
+                    default_reason=(
+                        ProviderReason.CODEX_QUOTA_IMPLEMENTED_REVIEW_PENDING.value
+                        if terra_admitted
+                        else self.reason_code
+                    ),
+                )
+            )
+            steps.append(
+                _step_from_proposal(
+                    None,
+                    ProviderRole.NON_CODEX_REVIEW,
+                    default_status="absent" if terra_admitted else "not_applicable",
+                    default_reason=(
+                        ProviderReason.NON_CODEX_REVIEW_REQUIRED.value
+                        if terra_admitted
+                        else self.reason_code
+                    ),
+                )
+            )
+            return tuple(steps)
 
         if (
             self.implementation_proposal is not None
@@ -1343,6 +1525,11 @@ class ImplementationProviderRouter:
     codex_quota: ProviderQuotaLatch = field(default_factory=ProviderQuotaLatch)
     deterministic_quota: ProviderQuotaLatch = field(default_factory=ProviderQuotaLatch)
     token_counter: TokenCounter = _default_token_count
+    codex_implementation_fallback_provider: ProviderCallable | None = None
+    codex_implementation_fallback_quota: ProviderQuotaLatch = field(
+        default_factory=ProviderQuotaLatch
+    )
+    enforce_provider_identity: bool = False
     _writer_lock: threading.Lock = field(
         default_factory=threading.Lock,
         init=False,
@@ -1354,7 +1541,12 @@ class ImplementationProviderRouter:
             if not isinstance(self.bounds, Mapping):
                 raise TypeError("bounds must be ProviderBounds or a mapping")
             self.bounds = ProviderBounds(**dict(self.bounds))
-        for name in ("grok_quota", "codex_quota", "deterministic_quota"):
+        for name in (
+            "grok_quota",
+            "codex_quota",
+            "deterministic_quota",
+            "codex_implementation_fallback_quota",
+        ):
             value = getattr(self, name)
             if isinstance(value, int) and not isinstance(value, bool):
                 setattr(self, name, ProviderQuotaLatch(remaining_calls=value))
@@ -1362,6 +1554,8 @@ class ImplementationProviderRouter:
                 raise TypeError(f"{name} must be ProviderQuotaLatch or an integer")
         if not callable(self.token_counter):
             raise TypeError("token_counter must be callable")
+        if not isinstance(self.enforce_provider_identity, bool):
+            raise TypeError("enforce_provider_identity must be a boolean")
 
     @property
     def quota_state(self) -> Mapping[str, Mapping[str, Any]]:
@@ -1372,6 +1566,9 @@ class ImplementationProviderRouter:
                 ),
                 ProviderRole.CODEX_REVIEW.value: MappingProxyType(
                     self.codex_quota.to_dict()
+                ),
+                ProviderRole.CODEX_QUOTA_IMPLEMENT.value: MappingProxyType(
+                    self.codex_implementation_fallback_quota.to_dict()
                 ),
                 ProviderRole.DETERMINISTIC_LOCAL.value: MappingProxyType(
                     self.deterministic_quota.to_dict()
@@ -1483,6 +1680,7 @@ class ImplementationProviderRouter:
                     "proof_authoritative": False,
                     "completion_authoritative": False,
                 }
+        response_contract = _provider_response_contract(role)
         envelope = {
             "schema": IMPLEMENTATION_PROVIDER_REQUEST_SCHEMA,
             "interface": IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
@@ -1492,6 +1690,7 @@ class ImplementationProviderRouter:
             "task_id": task_id,
             "provider_input": payload,
             "bounds": self.bounds.to_dict(),
+            "response_contract": response_contract,
             "authority": {
                 "provider_output_tier": "proposal",
                 "repository_write_allowed": False,
@@ -1535,6 +1734,7 @@ class ImplementationProviderRouter:
             bounds=self.bounds,
             prompt=prompt,
             prompt_tokens=prompt_tokens,
+            response_contract=MappingProxyType(response_contract),
         )
 
     def _invoke(
@@ -1570,6 +1770,8 @@ class ImplementationProviderRouter:
         _check_structure(raw_payload, forbid_broad_context=False)
         _reject_provider_authority(raw_payload)
         payload = redact_provider_data(raw_payload)
+        execution = payload.get("supervisor_provider_execution")
+        execution = dict(execution) if isinstance(execution, Mapping) else {}
         proposal = ProviderProposal(
             role=request.role,
             packet_id=request.packet_id,
@@ -1588,6 +1790,20 @@ class ImplementationProviderRouter:
             response_bytes=len(encoded),
             prompt_digest=_sha256(request.prompt),
             response_digest=proposal.response_digest,
+            execution_schema=str(execution.get("schema") or ""),
+            execution_policy_id=str(execution.get("policy_id") or ""),
+            execution_request_id=str(execution.get("request_id") or ""),
+            configured_provider=str(execution.get("configured_provider") or ""),
+            effective_provider=str(execution.get("effective_provider") or ""),
+            configured_model=str(execution.get("configured_model") or ""),
+            child_result_schema=str(execution.get("child_result_schema") or ""),
+            child_result_status=str(execution.get("child_result_status") or ""),
+            child_exit_code=(
+                execution.get("child_exit_code")
+                if isinstance(execution.get("child_exit_code"), int)
+                and not isinstance(execution.get("child_exit_code"), bool)
+                else None
+            ),
         )
         return proposal, attempt
 
@@ -1659,6 +1875,35 @@ class ImplementationProviderRouter:
             prompt_tokens=request.prompt_tokens if request else 0,
             prompt_digest=_sha256(request.prompt) if request else "",
         )
+
+    @staticmethod
+    def _bound_provider_identity(provider: ProviderCallable | None) -> str:
+        """Return a normalized supervisor-bound provider-family identity."""
+
+        if provider is None:
+            return ""
+        return str(getattr(provider, "provider_name", "") or "").strip().casefold()
+
+    def _verify_attempt_provider_identity(
+        self,
+        provider: ProviderCallable,
+        attempt: ProviderAttempt,
+    ) -> str:
+        """Fail closed when production execution provenance is absent/aliased."""
+
+        if not self.enforce_provider_identity:
+            return str(
+                attempt.effective_provider or attempt.configured_provider or ""
+            ).strip().casefold()
+        expected = self._bound_provider_identity(provider)
+        configured = str(attempt.configured_provider or "").strip().casefold()
+        effective = str(attempt.effective_provider or "").strip().casefold()
+        if not expected or configured != expected or effective != expected:
+            raise ProviderRoutingError(
+                "production provider execution identity is absent or mismatched",
+                reason_code=ProviderReason.PROVIDERS_NOT_INDEPENDENT,
+            )
+        return effective
 
     def _local_fallback(
         self,
@@ -1767,6 +2012,103 @@ class ImplementationProviderRouter:
                 packet=packet_identity,
                 attempts=attempts,
             )
+
+    def _codex_quota_implementation_fallback(
+        self,
+        *,
+        packet_id: str,
+        snapshot_id: str,
+        task_id: str,
+        payload: Mapping[str, Any],
+        packet: PacketIdentity,
+        attempts: list[ProviderAttempt],
+    ) -> ImplementationRoutingResult:
+        """Collect a Terra-authored proposal that still needs non-Codex review.
+
+        The fallback shares the ``codex_cli`` provider family with the normal
+        Codex reviewer.  Its output is therefore evidence only: this branch
+        never invokes that reviewer, never calls the writer, and never creates
+        a review-chain binding.
+        """
+
+        provider = self.codex_implementation_fallback_provider
+        if provider is None:
+            return self._result(
+                status=RouteStatus.DEFERRED,
+                reason_code=ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value,
+                packet_id=packet_id,
+                packet=packet,
+                attempts=attempts,
+            )
+        request: ProviderRequest | None = None
+        try:
+            request = self._request(
+                role=ProviderRole.CODEX_QUOTA_IMPLEMENT,
+                packet_id=packet_id,
+                snapshot_id=snapshot_id,
+                task_id=task_id,
+                provider_input=payload,
+            )
+            proposal, attempt = self._invoke(
+                provider,
+                self.codex_implementation_fallback_quota,
+                request,
+            )
+            self._verify_attempt_provider_identity(provider, attempt)
+            attempts.append(attempt)
+            proposal = self._admit(proposal)
+        except ProviderQuotaError as exc:
+            attempts.append(
+                self._error_attempt(
+                    ProviderRole.CODEX_QUOTA_IMPLEMENT,
+                    exc.reason_code,
+                    request,
+                )
+            )
+            return self._result(
+                status=RouteStatus.DEFERRED,
+                reason_code=exc.reason_code,
+                packet_id=packet_id,
+                packet=packet,
+                attempts=attempts,
+            )
+        except ProviderRoutingError as exc:
+            attempts.append(
+                self._error_attempt(
+                    ProviderRole.CODEX_QUOTA_IMPLEMENT,
+                    exc.reason_code,
+                    request,
+                )
+            )
+            return self._result(
+                status=RouteStatus.REJECTED,
+                reason_code=exc.reason_code,
+                packet_id=packet_id,
+                packet=packet,
+                attempts=attempts,
+            )
+        if not proposal.admitted:
+            return self._result(
+                status=RouteStatus.REJECTED,
+                reason_code=(
+                    proposal.admission_reason
+                    or ProviderReason.PROPOSAL_REJECTED.value
+                ),
+                packet_id=packet_id,
+                packet=packet,
+                implementation_proposal=proposal,
+                attempts=attempts,
+            )
+        return self._result(
+            status=RouteStatus.DEFERRED,
+            reason_code=ProviderReason.NON_CODEX_REVIEW_REQUIRED.value,
+            packet_id=packet_id,
+            packet=packet,
+            implementation_proposal=proposal,
+            attempts=attempts,
+            write_performed=False,
+            writer_lease_id="",
+        )
 
     def _packet_identity(
         self,
@@ -1882,6 +2224,20 @@ class ImplementationProviderRouter:
                 packet_id=packet_id,
                 packet=packet_identity,
             )
+        if self.enforce_provider_identity and self.codex_provider is not None:
+            grok_identity = self._bound_provider_identity(self.grok_provider)
+            codex_identity = self._bound_provider_identity(self.codex_provider)
+            if (
+                not grok_identity
+                or not codex_identity
+                or grok_identity == codex_identity
+            ):
+                return self._result(
+                    status=RouteStatus.REJECTED,
+                    reason_code=ProviderReason.PROVIDERS_NOT_INDEPENDENT.value,
+                    packet_id=packet_id,
+                    packet=packet_identity,
+                )
 
         grok_request: ProviderRequest | None = None
         try:
@@ -1895,8 +2251,38 @@ class ImplementationProviderRouter:
             grok, attempt = self._invoke(
                 self.grok_provider, self.grok_quota, grok_request
             )
+            grok_effective_identity = self._verify_attempt_provider_identity(
+                self.grok_provider,
+                attempt,
+            )
             attempts.append(attempt)
             grok = self._admit(grok)
+        except VerifiedGrokQuotaExhaustion as exc:
+            attempts.append(
+                self._error_attempt(
+                    ProviderRole.GROK_IMPLEMENT, exc.reason_code, grok_request
+                )
+            )
+            if self.codex_implementation_fallback_provider is not None:
+                return self._codex_quota_implementation_fallback(
+                    packet_id=packet_id,
+                    snapshot_id=snapshot_id,
+                    task_id=task_id,
+                    payload=payload,
+                    packet=packet_identity,
+                    attempts=attempts,
+                )
+            return self._local_fallback(
+                packet_id=packet_id,
+                snapshot_id=snapshot_id,
+                task_id=task_id,
+                payload=payload,
+                packet=packet_identity,
+                attempts=attempts,
+                fallback_reason=ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value,
+                apply=apply,
+                writer_lease_id=writer_lease_id,
+            )
         except ProviderQuotaError as exc:
             attempts.append(
                 self._error_attempt(
@@ -1961,6 +2347,18 @@ class ImplementationProviderRouter:
             review, attempt = self._invoke(
                 self.codex_provider, self.codex_quota, codex_request
             )
+            codex_effective_identity = self._verify_attempt_provider_identity(
+                self.codex_provider,
+                attempt,
+            )
+            if (
+                self.enforce_provider_identity
+                and codex_effective_identity == grok_effective_identity
+            ):
+                raise ProviderRoutingError(
+                    "implementation and review effective providers match",
+                    reason_code=ProviderReason.PROVIDERS_NOT_INDEPENDENT,
+                )
             attempts.append(attempt)
             review = self._admit(review)
         except ProviderQuotaError as exc:
@@ -2006,8 +2404,23 @@ class ImplementationProviderRouter:
                 review=review,
             )
 
-        decision = str(review.payload.get("decision") or "approve").strip().casefold()
-        if decision in {"reject", "decline", "changes_required"}:
+        decision = review.payload.get("decision")
+        if not isinstance(decision, str) or decision not in {
+            "approve",
+            "repair",
+            "replace",
+            "reject",
+        }:
+            return self._result(
+                status=RouteStatus.REJECTED,
+                reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
+                packet_id=packet_id,
+                packet=packet_identity,
+                implementation_proposal=grok,
+                review_proposal=review,
+                attempts=attempts,
+            )
+        if decision == "reject":
             return self._result(
                 status=RouteStatus.REJECTED,
                 reason_code=ProviderReason.REVIEW_DECLINED.value,
@@ -2017,31 +2430,43 @@ class ImplementationProviderRouter:
                 review_proposal=review,
                 attempts=attempts,
             )
-        selected = grok
         if decision in {"repair", "replace"}:
-            repaired = review.payload.get("proposal")
-            if not isinstance(repaired, Mapping):
-                return self._result(
-                    status=RouteStatus.REJECTED,
-                    reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
-                    packet_id=packet_id,
-                    packet=packet_identity,
-                    implementation_proposal=grok,
-                    review_proposal=review,
-                    attempts=attempts,
-                )
-            # The admitted review envelope is the authority-free provenance for
-            # its nested repaired proposal.
-            selected = ProviderProposal(
-                role=ProviderRole.CODEX_REVIEW,
-                packet_id=review.packet_id,
-                snapshot_id=review.snapshot_id,
-                task_id=review.task_id,
-                payload=MappingProxyType(dict(repaired)),
-                response_bytes=review.response_bytes,
-                response_digest=review.response_digest,
-                admitted=True,
-                admission_reason=review.admission_reason,
+            # Codex-authored replacement bytes have not been independently
+            # reviewed.  Preserve both proposals as non-authoritative evidence
+            # and require a new implementation/review round before any write.
+            return self._result(
+                status=RouteStatus.REJECTED,
+                reason_code=ProviderReason.REVIEW_REJECTED.value,
+                packet_id=packet_id,
+                packet=packet_identity,
+                implementation_proposal=grok,
+                review_proposal=review,
+                attempts=attempts,
+            )
+        # An approving review cannot simultaneously report findings.  Keep
+        # this defense at the writer boundary as well as in the production
+        # provider adapter so an injected/custom provider cannot turn a
+        # contradictory review into an admitted repository mutation.
+        if decision == "approve" and review.payload.get("findings") != []:
+            return self._result(
+                status=RouteStatus.REJECTED,
+                reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
+                packet_id=packet_id,
+                packet=packet_identity,
+                implementation_proposal=grok,
+                review_proposal=review,
+                attempts=attempts,
+            )
+        selected = grok
+        if review.payload.get("proposal") not in (None, {}):
+            return self._result(
+                status=RouteStatus.REJECTED,
+                reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
+                packet_id=packet_id,
+                packet=packet_identity,
+                implementation_proposal=grok,
+                review_proposal=review,
+                attempts=attempts,
             )
         wrote, write_reason = self._write(
             selected,
@@ -2083,22 +2508,10 @@ class ImplementationProviderRouter:
         writer_lease_id: str,
         review: ProviderProposal | None = None,
     ) -> ImplementationRoutingResult:
-        wrote, write_reason = self._write(
-            grok,
-            apply=apply,
-            writer_lease_id=writer_lease_id,
-        )
-        if apply and not wrote:
-            return self._result(
-                status=RouteStatus.REJECTED,
-                reason_code=write_reason,
-                packet_id=grok.packet_id,
-                packet=packet,
-                selected_proposal=grok,
-                implementation_proposal=grok,
-                review_proposal=review,
-                attempts=attempts,
-            )
+        # A Grok proposal is deliberately evidence-only until an independent
+        # Codex review is present, well formed, admitted, and approving.  In
+        # particular, review quota/error/degradation must never turn the
+        # implementation proposal into a write-capable fallback.
         return self._result(
             status=RouteStatus.FALLBACK,
             reason_code=reason_code,
@@ -2108,9 +2521,461 @@ class ImplementationProviderRouter:
             implementation_proposal=grok,
             review_proposal=review,
             attempts=attempts,
-            write_performed=wrote,
-            writer_lease_id=writer_lease_id if wrote else "",
+            write_performed=False,
+            writer_lease_id="",
         )
+
+
+@dataclass(frozen=True, slots=True)
+class ProductionContractPacket:
+    """Bounded production contract packet for model-assisted implement/review.
+
+    Never embeds repository corpus, full source, or expansion bodies.  Providers
+    receive only :attr:`provider_input_payload` (Grok) or the admitted proposal
+    plus evidence slice (Codex).
+    """
+
+    packet_id: str
+    snapshot_id: str
+    task_id: str
+    implementable: bool = True
+    payload: Mapping[str, Any] = field(default_factory=dict)
+
+    def assert_current(self, current_snapshot_id: str) -> None:
+        if str(current_snapshot_id or "") != self.snapshot_id:
+            raise ValueError("production contract packet is stale")
+
+    @property
+    def provider_input_payload(self) -> Mapping[str, Any]:
+        return MappingProxyType(dict(self.payload))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "packet_id": self.packet_id,
+            "snapshot_id": self.snapshot_id,
+            "task_id": self.task_id,
+            "implementable": self.implementable,
+            "payload": dict(self.payload),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ProductionReviewChainBinding:
+    """Binds an applied patch and optional merge to one admitted review chain.
+
+    A lane label, raw exit code, or admission boolean is not a binding.
+    """
+
+    receipt_id: str
+    task_id: str
+    packet_id: str
+    packet_cid: str
+    snapshot_id: str
+    review_chain_digest: str
+    selected_proposal_digest: str
+    implementation_proposal_digest: str
+    review_proposal_digest: str
+    writer_lease_id: str
+    write_performed: bool
+    review_presence: str
+    provider_result_admitted: bool
+    implementation_commit: str = ""
+    merge_commit: str = ""
+    disposition: str = ProductionReceiptDisposition.ADMITTED.value
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": PRODUCTION_REVIEW_CHAIN_BINDING_SCHEMA,
+            "interface": PRODUCTION_PROVIDER_ROUTE_INTERFACE,
+            "receipt_id": self.receipt_id,
+            "task_id": self.task_id,
+            "packet_id": self.packet_id,
+            "packet_cid": self.packet_cid,
+            "snapshot_id": self.snapshot_id,
+            "review_chain_digest": self.review_chain_digest,
+            "selected_proposal_digest": self.selected_proposal_digest,
+            "implementation_proposal_digest": self.implementation_proposal_digest,
+            "review_proposal_digest": self.review_proposal_digest,
+            "writer_lease_id": self.writer_lease_id if self.write_performed else "",
+            "write_performed": self.write_performed,
+            "review_presence": self.review_presence,
+            "provider_result_admitted": self.provider_result_admitted,
+            "implementation_commit": self.implementation_commit,
+            "merge_commit": self.merge_commit,
+            "disposition": self.disposition,
+            "completion_authoritative": False,
+            "proof_authoritative": False,
+        }
+
+
+def review_chain_content_digest(
+    review_chain: Sequence[ReviewChainStep | Mapping[str, Any]],
+) -> str:
+    """Content identity of an ordered review chain (roles, digests, admission)."""
+
+    steps: list[dict[str, Any]] = []
+    for step in review_chain:
+        if isinstance(step, ReviewChainStep):
+            steps.append(step.to_dict())
+        elif isinstance(step, Mapping):
+            steps.append(dict(step))
+        else:
+            raise TypeError("review chain steps must be ReviewChainStep or mapping")
+    return _packet_content_id({"review_chain": steps})
+
+
+def evaluate_production_provider_receipt(
+    receipt: ProviderExecutionReceipt | Mapping[str, Any] | None,
+    *,
+    expected_task_id: str,
+    expected_snapshot_id: str,
+    current_snapshot_id: str = "",
+) -> tuple[ProductionReceiptDisposition, str]:
+    """Fail-closed production admission for apply/merge/completion gates.
+
+    Absent, degraded, stale, and cross-task receipts remain *pending* and never
+    satisfy authoritative completion.  Independent admitted review is required
+    for the ``ADMITTED`` disposition.
+    """
+
+    if receipt is None:
+        return (
+            ProductionReceiptDisposition.PENDING_ABSENT,
+            ProviderReason.RECEIPT_ABSENT.value,
+        )
+    if isinstance(receipt, ProviderExecutionReceipt):
+        payload = receipt.to_dict()
+    elif isinstance(receipt, Mapping):
+        payload = dict(receipt)
+    else:
+        return (
+            ProductionReceiptDisposition.REJECTED,
+            ProviderReason.PACKET_MALFORMED.value,
+        )
+
+    task_id = str(expected_task_id or "").strip()
+    if not task_id:
+        return (
+            ProductionReceiptDisposition.REJECTED,
+            ProviderReason.PACKET_MALFORMED.value,
+        )
+
+    packet = payload.get("packet")
+    packet_map = dict(packet) if isinstance(packet, Mapping) else {}
+    receipt_task = str(
+        packet_map.get("task_id") or payload.get("task_id") or ""
+    ).strip()
+    if receipt_task and receipt_task != task_id:
+        return (
+            ProductionReceiptDisposition.PENDING_CROSS_TASK,
+            ProviderReason.RECEIPT_CROSS_TASK.value,
+        )
+    if not receipt_task:
+        return (
+            ProductionReceiptDisposition.PENDING_CROSS_TASK,
+            ProviderReason.RECEIPT_CROSS_TASK.value,
+        )
+
+    receipt_snapshot = str(
+        packet_map.get("snapshot_id") or payload.get("snapshot_id") or ""
+    ).strip()
+    expected_snapshot = str(expected_snapshot_id or "").strip()
+    current = str(current_snapshot_id or expected_snapshot).strip()
+    if not receipt_snapshot or not expected_snapshot:
+        return (
+            ProductionReceiptDisposition.PENDING_STALE,
+            ProviderReason.RECEIPT_STALE.value,
+        )
+    if receipt_snapshot != expected_snapshot or (
+        current and receipt_snapshot != current
+    ):
+        return (
+            ProductionReceiptDisposition.PENDING_STALE,
+            ProviderReason.RECEIPT_STALE.value,
+        )
+
+    presence = str(
+        payload.get("review_presence")
+        or (payload.get("admission") or {}).get("review_presence")
+        or ""
+    )
+    if presence == ReviewPresence.ABSENT.value:
+        return (
+            ProductionReceiptDisposition.PENDING_ABSENT,
+            ProviderReason.RECEIPT_ABSENT.value,
+        )
+    if presence == ReviewPresence.DEGRADED.value:
+        return (
+            ProductionReceiptDisposition.PENDING_DEGRADED,
+            ProviderReason.RECEIPT_DEGRADED.value,
+        )
+    if presence == ReviewPresence.DECLINED.value:
+        return (
+            ProductionReceiptDisposition.PENDING_DECLINED,
+            ProviderReason.REVIEW_DECLINED.value,
+        )
+    if presence != ReviewPresence.INDEPENDENT.value:
+        return (
+            ProductionReceiptDisposition.PENDING_NOT_ADMITTED,
+            ProviderReason.REVIEW_CHAIN_UNBOUND.value,
+        )
+
+    admitted = bool(
+        payload.get("provider_result_admitted")
+        if "provider_result_admitted" in payload
+        else (payload.get("admission") or {}).get("provider_result_admitted")
+    )
+    if not admitted:
+        return (
+            ProductionReceiptDisposition.PENDING_NOT_ADMITTED,
+            ProviderReason.ADMISSION_REQUIRED.value,
+        )
+    if payload.get("completion_authoritative") is True:
+        return (
+            ProductionReceiptDisposition.REJECTED,
+            ProviderReason.PROVIDER_AUTHORITY_CLAIM.value,
+        )
+    return (
+        ProductionReceiptDisposition.ADMITTED,
+        ProviderReason.ROUTED.value,
+    )
+
+
+def bind_applied_patch_to_review_chain(
+    route_result: "ImplementationRoutingResult",
+    *,
+    writer_lease_id: str = "",
+    implementation_commit: str = "",
+    merge_commit: str = "",
+) -> ProductionReviewChainBinding | None:
+    """Bind apply/merge identity to the admitted independent review chain.
+
+    Returns ``None`` when the route did not produce an independent admitted
+    review chain.  Callers must leave merge/completion pending in that case.
+    """
+
+    if route_result is None:
+        return None
+    if not route_result.provider_result_admitted:
+        return None
+    if route_result.review_presence != ReviewPresence.INDEPENDENT.value:
+        return None
+    receipt = route_result.provider_receipt
+    packet = route_result.packet
+    packet_id = packet.packet_id if packet is not None else route_result.packet_id
+    packet_cid = packet.packet_cid if packet is not None else ""
+    snapshot_id = packet.snapshot_id if packet is not None else ""
+    task_id = packet.task_id if packet is not None else ""
+    chain_digest = review_chain_content_digest(route_result.review_chain)
+    lease = writer_lease_id or (
+        route_result.writer_lease_id if route_result.write_performed else ""
+    )
+    return ProductionReviewChainBinding(
+        receipt_id=receipt.receipt_id,
+        task_id=task_id,
+        packet_id=packet_id,
+        packet_cid=packet_cid,
+        snapshot_id=snapshot_id,
+        review_chain_digest=chain_digest,
+        selected_proposal_digest=receipt.selected_proposal_digest,
+        implementation_proposal_digest=receipt.implementation_proposal_digest,
+        review_proposal_digest=receipt.review_proposal_digest,
+        writer_lease_id=lease if route_result.write_performed else "",
+        write_performed=bool(route_result.write_performed),
+        review_presence=route_result.review_presence,
+        provider_result_admitted=True,
+        implementation_commit=str(implementation_commit or ""),
+        merge_commit=str(merge_commit or ""),
+        disposition=ProductionReceiptDisposition.ADMITTED.value,
+    )
+
+
+def build_production_contract_packet(
+    *,
+    task_id: str,
+    snapshot_id: str,
+    write_paths: Sequence[str],
+    read_paths: Sequence[str] | None = None,
+    validation_commands: Sequence[str] = (),
+    acceptance_criteria: str = "",
+    contract_ids: Sequence[str] = (),
+    obligation_ids: Sequence[str] = (),
+    expansion_handles: Sequence[Any] = (),
+    packet_id: str = "",
+    extra_goal: Mapping[str, Any] | None = None,
+) -> ProductionContractPacket:
+    """Build a bounded production packet that never embeds repository corpus."""
+
+    tid = str(task_id or "").strip()
+    snap = str(snapshot_id or "").strip()
+    if not tid or not snap:
+        raise ProviderRoutingError(
+            "task_id and snapshot_id are required for a production packet",
+            reason_code=ProviderReason.PACKET_MALFORMED,
+        )
+    writes = [str(path).strip() for path in write_paths if str(path).strip()]
+    reads = [
+        str(path).strip()
+        for path in (read_paths if read_paths is not None else writes)
+        if str(path).strip()
+    ]
+    if not writes:
+        raise ProviderRoutingError(
+            "production packet requires at least one write path",
+            reason_code=ProviderReason.PACKET_MALFORMED,
+        )
+    goal: dict[str, Any] = {
+        "contract_ids": list(contract_ids),
+        "obligation_ids": list(obligation_ids),
+        "task_id": tid,
+    }
+    if extra_goal:
+        for key, value in extra_goal.items():
+            normalized = _normalized_key(str(key))
+            if normalized in _BROAD_CONTEXT_KEYS or normalized.endswith("_body"):
+                raise ProviderRoutingError(
+                    f"goal.{key} would expose broad repository context",
+                    reason_code=ProviderReason.BROAD_CONTEXT_FORBIDDEN,
+                )
+            if key not in goal:
+                goal[key] = value
+    payload: dict[str, Any] = {
+        "goal": goal,
+        "authority": {
+            "provider_semantic_authority": False,
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        },
+        "scope": {
+            "read_paths": reads,
+            "write_paths": writes,
+        },
+        "acceptance": {
+            "validation_commands": [
+                str(command) for command in validation_commands if str(command)
+            ],
+            "criteria": str(acceptance_criteria or ""),
+        },
+        "expansion_handles": list(expansion_handles),
+    }
+    _check_structure(payload, forbid_broad_context=True)
+    pid = str(packet_id or "").strip() or f"packet:production:{tid}"
+    return ProductionContractPacket(
+        packet_id=pid,
+        snapshot_id=snap,
+        task_id=tid,
+        implementable=True,
+        payload=MappingProxyType(payload),
+    )
+
+
+def build_production_provider_route_evaluation(
+    *,
+    route_result: ImplementationRoutingResult | None = None,
+    binding: ProductionReviewChainBinding | None = None,
+    receipt_disposition: ProductionReceiptDisposition | str | None = None,
+    deterministic_only_model_calls: int = 0,
+    raw_model_command_invoked: bool = False,
+    corpus_exposed_to_provider: bool = False,
+    cases: Sequence[Mapping[str, Any]] = (),
+) -> dict[str, Any]:
+    """Build the SCA-615 evaluation artifact for the production provider route."""
+
+    disposition = (
+        str(getattr(receipt_disposition, "value", receipt_disposition) or "")
+        if receipt_disposition is not None
+        else ""
+    )
+    if not disposition and binding is not None:
+        disposition = binding.disposition
+    if not disposition and route_result is not None:
+        if route_result.provider_result_admitted:
+            disposition = ProductionReceiptDisposition.ADMITTED.value
+        elif route_result.review_presence == ReviewPresence.ABSENT.value:
+            disposition = ProductionReceiptDisposition.PENDING_ABSENT.value
+        elif route_result.review_presence == ReviewPresence.DEGRADED.value:
+            disposition = ProductionReceiptDisposition.PENDING_DEGRADED.value
+        else:
+            disposition = ProductionReceiptDisposition.PENDING_NOT_ADMITTED.value
+
+    route_payload = route_result.to_dict() if route_result is not None else {}
+    binding_payload = binding.to_dict() if binding is not None else {}
+    body = {
+        "schema": PRODUCTION_PROVIDER_ROUTE_EVALUATION_SCHEMA,
+        "interface": PRODUCTION_PROVIDER_ROUTE_INTERFACE,
+        "evidence": {
+            "requirement_ids": [SCAEV615ROUTE],
+            "coverage": list(SCAEV615ROUTE_COVERAGE),
+            "objective_id": "SCA-615",
+            "goal_id": "SCA-G177",
+        },
+        "production_route": {
+            "typed_packet_route_only": not raw_model_command_invoked,
+            "raw_model_command_invoked": bool(raw_model_command_invoked),
+            "raw_model_command_forbidden": True,
+            "router_interface": IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
+            "route_schema": IMPLEMENTATION_PROVIDER_ROUTE_SCHEMA,
+        },
+        "independence": {
+            "grok_self_review_forbidden": True,
+            "codex_receives_only_bounded_proposal_evidence_slice": True,
+            "providers_must_be_distinct_callables": True,
+        },
+        "apply_merge_binding": {
+            "requires_admitted_review_chain": True,
+            "binding": binding_payload,
+            "bound": bool(binding_payload),
+        },
+        "receipt_policy": {
+            "absent_degraded_stale_cross_task_remain_pending": True,
+            "disposition": disposition,
+            "completion_authoritative": False,
+        },
+        "deterministic_only": {
+            "invokes_no_model": deterministic_only_model_calls == 0,
+            "model_call_count": int(deterministic_only_model_calls),
+        },
+        "corpus_isolation": {
+            "provider_receives_repository_corpus": bool(corpus_exposed_to_provider),
+            "forbidden": True,
+            "broad_context_keys": sorted(_BROAD_CONTEXT_KEYS),
+        },
+        "route_result": {
+            "status": route_payload.get("status", ""),
+            "reason_code": route_payload.get("reason_code", ""),
+            "provider": route_payload.get("provider", ""),
+            "review_presence": route_payload.get("review_presence", ""),
+            "provider_result_admitted": bool(
+                route_payload.get("provider_result_admitted", False)
+            ),
+            "write_performed": bool(route_payload.get("write_performed", False)),
+            "completion_authoritative": False,
+            "proof_authoritative": False,
+        },
+        "cases": [dict(item) for item in cases],
+        "acceptance": {
+            "typed_packet_route_only": not raw_model_command_invoked,
+            "grok_cannot_self_review": True,
+            "codex_bounded_slice_only": True,
+            "apply_merge_bound_to_review_chain": bool(binding_payload)
+            or disposition
+            in {
+                ProductionReceiptDisposition.PENDING_ABSENT.value,
+                ProductionReceiptDisposition.PENDING_DEGRADED.value,
+                ProductionReceiptDisposition.PENDING_STALE.value,
+                ProductionReceiptDisposition.PENDING_CROSS_TASK.value,
+                ProductionReceiptDisposition.PENDING_DECLINED.value,
+                ProductionReceiptDisposition.PENDING_NOT_ADMITTED.value,
+            },
+            "pending_receipts_remain_pending": disposition
+            != ProductionReceiptDisposition.ADMITTED.value
+            or bool(binding_payload),
+            "deterministic_only_no_model": deterministic_only_model_calls == 0,
+            "no_repository_corpus": not corpus_exposed_to_provider,
+        },
+    }
+    body["evaluation_id"] = _packet_content_id(body)
+    return body
 
 
 def route_contract_packet(
@@ -2128,6 +2993,9 @@ def route_contract_packet(
     bounds: ProviderBounds | Mapping[str, Any] | None = None,
     grok_quota: ProviderQuotaLatch | int | None = None,
     codex_quota: ProviderQuotaLatch | int | None = None,
+    codex_implementation_fallback_provider: ProviderCallable | None = None,
+    codex_implementation_fallback_quota: ProviderQuotaLatch | int | None = None,
+    enforce_provider_identity: bool = False,
 ) -> ImplementationRoutingResult:
     """Functional facade for one bounded packet route."""
 
@@ -2144,6 +3012,15 @@ def route_contract_packet(
         codex_quota=(
             codex_quota if codex_quota is not None else ProviderQuotaLatch()
         ),
+        codex_implementation_fallback_provider=(
+            codex_implementation_fallback_provider
+        ),
+        codex_implementation_fallback_quota=(
+            codex_implementation_fallback_quota
+            if codex_implementation_fallback_quota is not None
+            else ProviderQuotaLatch()
+        ),
+        enforce_provider_identity=enforce_provider_identity,
     )
     return router.route(
         packet,
@@ -2177,6 +3054,13 @@ __all__ = [
     "MAX_PROVIDER_PROMPT_TOKENS",
     "MAX_PROVIDER_RESPONSE_BYTES",
     "MAX_PROVIDER_TIMEOUT_SECONDS",
+    "PRODUCTION_PROVIDER_ROUTE_EVALUATION_SCHEMA",
+    "PRODUCTION_PROVIDER_ROUTE_INTERFACE",
+    "PRODUCTION_PROVIDER_ROUTE_SCHEMA",
+    "PRODUCTION_REVIEW_CHAIN_BINDING_SCHEMA",
+    "ProductionContractPacket",
+    "ProductionReceiptDisposition",
+    "ProductionReviewChainBinding",
     "PROVIDER_EXECUTION_RECEIPT_INTERFACE",
     "PROVIDER_EXECUTION_RECEIPT_SCHEMA",
     "PacketIdentity",
@@ -2197,7 +3081,15 @@ __all__ = [
     "ReviewChainStep",
     "ReviewPresence",
     "RouteStatus",
+    "SCAEV615ROUTE",
+    "SCAEV615ROUTE_COVERAGE",
+    "VerifiedGrokQuotaExhaustion",
+    "bind_applied_patch_to_review_chain",
+    "build_production_contract_packet",
+    "build_production_provider_route_evaluation",
     "build_provider_execution_receipt",
+    "evaluate_production_provider_receipt",
     "redact_provider_data",
+    "review_chain_content_digest",
     "route_contract_packet",
 ]

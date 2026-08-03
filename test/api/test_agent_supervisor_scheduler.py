@@ -11,28 +11,31 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Barrier
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor import bundle_supervisor as bundle_supervisor_module
-from ipfs_accelerate_py.agent_supervisor.runtime.artifact_store import query_artifact
-from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import DynamicBundleScheduler
-from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import launch_bundle_lanes
-from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
-    materialize_bundle_lane_taskboard,
-)
-from ipfs_accelerate_py.agent_supervisor.runtime.event_log import append_jsonl_event
+from ipfs_accelerate_py.agent_supervisor import leased_lane as leased_lane_module
 from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
     LeaseCoordinator,
     profile_g_cid,
 )
-from ipfs_accelerate_py.agent_supervisor import leased_lane as leased_lane_module
 from ipfs_accelerate_py.agent_supervisor.merge.leased_lane import run_leased_lane_result
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
+    DynamicBundleScheduler,
+    launch_bundle_lanes,
+    materialize_bundle_lane_taskboard,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.artifact_store import query_artifact
+from ipfs_accelerate_py.agent_supervisor.runtime.event_log import append_jsonl_event
 from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import HostResourceSnapshot
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import pid_alive
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     TASK_ATTEMPT_LIMIT_IDLE_REASON,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.legacy_landed_review import (
+    EXACT_EIGHT_LEGACY_LANDED_POLICY_TEMPLATE,
 )
 
 _MANIFEST_GRAPH_FIELDS = {
@@ -131,6 +134,8 @@ def _scheduler(
     manifest_name: str = "manifest.json",
     external_task_state_paths: tuple[Path, ...] = (),
     bundle_index_refresher: Any = None,
+    task_prefix: str = "T-",
+    **lane_options: Any,
 ) -> DynamicBundleScheduler:
     repo = tmp_path / "repo"
     repo.mkdir(exist_ok=True)
@@ -168,7 +173,8 @@ def _scheduler(
         external_task_state_paths=external_task_state_paths,
         bundle_index_refresher=bundle_index_refresher,
         poll_interval=0,
-        task_prefix="T-",
+        task_prefix=task_prefix,
+        **lane_options,
     )
 
 
@@ -178,6 +184,301 @@ def _active_task_ids(manifest: dict[str, Any]) -> set[str]:
         for lane in manifest["lanes"]
         for task_id in lane.get("task_ids", [])
     }
+
+
+def _legacy_adoption_index(
+    path: Path,
+) -> tuple[Any, dict[str, str]]:
+    bindings = {
+        str(task["task_id"]): str(task["canonical_task_cid"])
+        for task in EXACT_EIGHT_LEGACY_LANDED_POLICY_TEMPLATE["tasks"]
+    }
+    task_keys = {
+        str(task["task_id"]): str(task["canonical_task_key"])
+        for task in EXACT_EIGHT_LEGACY_LANDED_POLICY_TEMPLATE["tasks"]
+    }
+    bundles = {
+        f"objective/legacy/{task_id.lower()}": {
+            "shard_path": f"bundles/{task_id.lower()}.todo.md",
+            "parallel_lane": f"legacy-{task_id.lower()}",
+            "conflict_policy": "bundle-local edits only",
+            "tasks": [
+                {
+                    "task_id": task_id,
+                    "canonical_task_cid": task_cid,
+                    "canonical_task_key": task_keys[task_id],
+                }
+            ],
+        }
+        for task_id, task_cid in bindings.items()
+    }
+    bundles["objective/ordinary/ase-010"] = {
+        "shard_path": "bundles/ase-010.todo.md",
+        "parallel_lane": "ordinary-ase-010",
+        "conflict_policy": "bundle-local edits only",
+        "tasks": [{"task_id": "ASE-010"}],
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {"source_todo": "tasks.todo.md", "bundles": bundles},
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    policy = SimpleNamespace(
+        enabled=True,
+        policy_id="baguqeera" + "f" * 52,
+        max_leaf_tokens=int(
+            EXACT_EIGHT_LEGACY_LANDED_POLICY_TEMPLATE["max_leaf_tokens"]
+        ),
+        tasks=tuple(
+            SimpleNamespace(
+                task_id=task_id,
+                canonical_task_cid=task_cid,
+            )
+            for task_id, task_cid in bindings.items()
+        ),
+    )
+    return policy, bindings
+
+
+def _legacy_completion_receipts(
+    bindings: dict[str, str],
+    task_ids: list[str],
+) -> dict[str, dict[str, str]]:
+    return {
+        bindings[task_id]: {
+            "task_id": task_id,
+            "canonical_task_cid": bindings[task_id],
+            "status": "succeeded",
+        }
+        for task_id in task_ids
+    }
+
+
+def test_legacy_adoption_plan_allows_only_missing_exact_policy_cid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    policy, bindings = _legacy_adoption_index(index)
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "load_legacy_landed_review_policy",
+        lambda _path: policy,
+    )
+    policy_ids = list(bindings)
+    missing_task_id = policy_ids[-1]
+    receipts = _legacy_completion_receipts(bindings, policy_ids[:-1])
+    # An exact-CID receipt with a mismatched display ID is rejected rather
+    # than upgrading stale/foreign evidence into migration completion.
+    receipts[bindings[missing_task_id]] = {
+        "task_id": "ASE-OLD",
+        "canonical_task_cid": bindings[missing_task_id],
+        "status": "succeeded",
+    }
+    lanes = bundle_supervisor_module.plan_bundle_lanes(
+        bundle_index_path=index,
+        repo_root=repo,
+        state_root=repo / "state",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        legacy_landed_review_policy_path=repo / "legacy-policy.json",
+        legacy_landed_review_key_path=repo / "legacy-policy.key",
+        completion_receipts=receipts,
+        optimize_bundles=False,
+    )
+    by_declared_id = {
+        str(lane.queue_payload["tasks"][0]["task_id"]): lane
+        for lane in lanes
+    }
+
+    assert [lane.task_ids for lane in lanes if lane.task_ids] == [
+        [missing_task_id]
+    ]
+    missing_lane = by_declared_id[missing_task_id]
+    assert missing_lane.expected_task_cids_by_id == {
+        missing_task_id: bindings[missing_task_id]
+    }
+    ordinary = by_declared_id["ASE-010"]
+    assert ordinary.task_ids == []
+    assert ordinary.claimable is False
+    assert ordinary.queue_payload["blocked_reason"] == (
+        bundle_supervisor_module.LEGACY_ADOPTION_BARRIER_REASON
+    )
+    barrier = ordinary.queue_payload["legacy_adoption_barrier"]
+    assert barrier["remaining_task_ids"] == [missing_task_id]
+    assert barrier["invalid_receipt_task_ids"] == [missing_task_id]
+    assert "--execution-slice-task-id" not in ordinary.command
+
+    all_receipts = _legacy_completion_receipts(bindings, policy_ids)
+    released = bundle_supervisor_module.plan_bundle_lanes(
+        bundle_index_path=index,
+        repo_root=repo,
+        state_root=repo / "state",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        legacy_landed_review_policy_path=repo / "legacy-policy.json",
+        legacy_landed_review_key_path=repo / "legacy-policy.key",
+        completion_receipts=all_receipts,
+        optimize_bundles=False,
+    )
+    released_ordinary = next(
+        lane
+        for lane in released
+        if lane.queue_payload["tasks"][0]["task_id"] == "ASE-010"
+    )
+    assert released_ordinary.task_ids == ["ASE-010"]
+    assert released_ordinary.queue_payload["legacy_adoption_barrier"][
+        "active"
+    ] is False
+
+    incomplete_index = json.loads(index.read_text(encoding="utf-8"))
+    incomplete_index["bundles"].pop(
+        f"objective/legacy/{policy_ids[0].lower()}"
+    )
+    index.write_text(json.dumps(incomplete_index), encoding="utf-8")
+    with pytest.raises(ValueError, match="exact task inventory"):
+        bundle_supervisor_module.plan_bundle_lanes(
+            bundle_index_path=index,
+            repo_root=repo,
+            state_root=repo / "state",
+            worktree_root=repo / "worktrees",
+            log_dir=repo / "logs",
+            legacy_landed_review_policy_path=repo / "legacy-policy.json",
+            legacy_landed_review_key_path=repo / "legacy-policy.key",
+            completion_receipts=all_receipts,
+            optimize_bundles=False,
+        )
+
+
+def test_dynamic_legacy_barrier_precedes_claim_resource_and_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    policy, bindings = _legacy_adoption_index(index)
+    policy_ids = list(bindings)
+    missing_task_id = policy_ids[-1]
+    receipts = _legacy_completion_receipts(bindings, policy_ids[:-1])
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "load_legacy_landed_review_policy",
+        lambda _path: policy,
+    )
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "bundle_member_completion_receipts",
+        lambda _state_root: dict(receipts),
+    )
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "bundle_member_completion_source_revision",
+        lambda _state_root: (("legacy-receipts", len(receipts), 1),),
+    )
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(
+        tmp_path,
+        index,
+        launcher,
+        max_lanes=4,
+        task_prefix="ASE-",
+        legacy_landed_review_policy_path=repo / "legacy-policy.json",
+        legacy_landed_review_key_path=repo / "legacy-policy.key",
+    )
+
+    manifest = scheduler.reconcile_once()
+
+    assert [lane.task_ids for lane, _grant, _process in launcher.starts] == [
+        [missing_task_id]
+    ]
+    assert len(scheduler.resource_scheduler.active_leases) == 1
+    launched_lane, launched_grant, _process = launcher.starts[0]
+    assert launched_lane.expected_task_cids_by_id == {
+        missing_task_id: bindings[missing_task_id]
+    }
+    with LeaseCoordinator(scheduler.coordination_path) as coordinator:
+        accepted = [
+            item
+            for item in coordinator.list_tasks()
+            if item.get("state") == "accepted"
+        ]
+    assert [item["task_cid"] for item in accepted] == [
+        launched_grant.task_cid
+    ]
+    ordinary_decision = next(
+        decision
+        for decision in manifest["scheduler_decisions"]
+        if decision["bundle_key"] == "objective/ordinary/ase-010"
+    )
+    assert ordinary_decision["decision"] == "deferred"
+    assert ordinary_decision["reason"] == (
+        bundle_supervisor_module.LEGACY_ADOPTION_BARRIER_REASON
+    )
+
+
+def test_dynamic_legacy_release_launches_only_ordinary_not_drained_lanes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    policy, bindings = _legacy_adoption_index(index)
+    receipts = _legacy_completion_receipts(bindings, list(bindings))
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "load_legacy_landed_review_policy",
+        lambda _path: policy,
+    )
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "bundle_member_completion_receipts",
+        lambda _state_root: dict(receipts),
+    )
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "bundle_member_completion_source_revision",
+        lambda _state_root: (("legacy-receipts", len(receipts), 2),),
+    )
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(
+        tmp_path,
+        index,
+        launcher,
+        max_lanes=4,
+        task_prefix="ASE-",
+        optimize_bundles=False,
+        legacy_landed_review_policy_path=repo / "legacy-policy.json",
+        legacy_landed_review_key_path=repo / "legacy-policy.key",
+    )
+
+    scheduler.reconcile_once()
+
+    assert [lane.task_ids for lane, _grant, _process in launcher.starts] == [
+        ["ASE-010"]
+    ]
+    assert len(scheduler.resource_scheduler.active_leases) == 1
+    ordinary_grant = launcher.starts[0][1]
+    with LeaseCoordinator(scheduler.coordination_path) as coordinator:
+        accepted = [
+            item
+            for item in coordinator.list_tasks()
+            if item.get("state") == "accepted"
+        ]
+    assert [item["task_cid"] for item in accepted] == [
+        ordinary_grant.task_cid
+    ]
+    planned = scheduler._plan()  # noqa: SLF001
+    drained = [
+        lane
+        for lane in planned
+        if lane.queue_payload["tasks"][0]["task_id"] in bindings
+    ]
+    assert all(lane.task_ids == [] for lane in drained)
+    assert all(lane.claimable is False for lane in drained)
 
 
 def test_terminate_handle_kills_and_reaps_an_unresponsive_wrapper() -> None:
@@ -821,7 +1122,7 @@ def test_lane_command_carries_planner_proven_cross_bundle_dependencies(
 def test_plan_cache_observes_new_durable_completion_event(
     tmp_path: Path,
 ) -> None:
-    """An event-only completion must invalidate the cached execution slice."""
+    """An authoritative event completion invalidates the cached execution slice."""
 
     repo = tmp_path / "repo"
     index = repo / "index.json"
@@ -859,6 +1160,26 @@ def test_plan_cache_observes_new_durable_completion_event(
                 "canonical_task_cid": member["canonical_task_cid"],
                 "returncode": 0,
                 "merge_result": {"merged": True},
+                "acceptance_result": {
+                    "authoritatively_completed": True,
+                    "completion_authoritative": True,
+                    "pending_gates": [],
+                    "todo_update_result": {
+                        "updated": True,
+                        "updated_task_ids": ["T-1"],
+                        "already_completed_task_ids": [],
+                        "completion_receipts": [
+                            {
+                                "task_id": "T-1",
+                                "canonical_task_cid": member[
+                                    "canonical_task_cid"
+                                ],
+                                "canonical_task_key": "",
+                                "board_namespace": "test-board",
+                            }
+                        ],
+                    },
+                },
             }
         )
         + "\n",
@@ -1218,6 +1539,89 @@ def test_receipt_drained_slice_is_not_registered_or_relaunched(
     assert manifest["counts"]["active"] == 0
     with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
         assert coordinator.list_tasks() == []
+
+
+def test_receipt_drained_completion_settles_exhausted_blocked_bundle(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1")
+    shard = repo / "bundles" / "t-1.todo.md"
+    shard.parent.mkdir(parents=True)
+    shard.write_text(
+        "## T-1 Immutable source task\n\n"
+        "- Status: todo\n",
+        encoding="utf-8",
+    )
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher)
+    discovered = scheduler._plan()[0]
+    member = discovered.queue_payload["tasks"][0]
+    member_cid = str(member["canonical_task_cid"])
+
+    with LeaseCoordinator(scheduler.coordination_path) as coordinator:
+        registered = coordinator.register_bundle(discovered.queue_payload)
+        discovered = replace(
+            discovered,
+            task_cid=str(registered["task_cid"]),
+            goal_cid=str(registered["goal_cid"]),
+            subgoal_cid=str(registered["subgoal_cid"]),
+        )
+        for expected_attempt in range(1, 4):
+            grant = coordinator.claim_ready(
+                scheduler.claimant_did,
+                requested_lease_ms=5_000,
+                eligible_task_cids=(discovered.task_cid,),
+            )
+            assert grant is not None
+            assert grant.attempt == expected_attempt
+            coordinator.receipt(
+                grant,
+                status="failed",
+                failure_class="blocked",
+            )
+        assert coordinator.task_state(discovered.task_cid)["state"] == "blocked"
+
+    materialize_bundle_lane_taskboard(discovered, repo_root=repo)
+    assert discovered.runtime_todo_path is not None
+    runtime_text = discovered.runtime_todo_path.read_text(encoding="utf-8")
+    discovered.runtime_todo_path.write_text(
+        runtime_text.replace("- Status: todo", "- Status: completed"),
+        encoding="utf-8",
+    )
+    drained = replace(
+        discovered,
+        task_ids=[],
+        claimable=False,
+        queue_payload={
+            **discovered.queue_payload,
+            "completed_member_task_cids": [member_cid],
+            "completed_member_task_ids": ["T-1"],
+            "ready_member_task_cids": [],
+            "ready_member_task_ids": [],
+            "execution_slice_task_cids": [],
+            "execution_slice_task_ids": [],
+            "claimable": False,
+        },
+    )
+    scheduler._plan = lambda: [drained]  # type: ignore[method-assign]
+
+    manifest = scheduler.reconcile_once()
+
+    assert launcher.starts == []
+    assert manifest["counts"]["active"] == 0
+    assert manifest["counts"]["blocked"] == 0
+    assert manifest["counts"]["completed"] == 1
+    assert manifest["scheduler_decisions"][0]["decision"] == "settled"
+    assert manifest["scheduler_decisions"][0]["reason"] == "completed"
+    with LeaseCoordinator(scheduler.coordination_path) as coordinator:
+        state = coordinator.task_state(discovered.task_cid)
+        receipts = coordinator.list_receipts(discovered.task_cid)
+    assert state is not None
+    assert state["state"] == "completed"
+    assert len(receipts) == 4
+    assert receipts[-1]["receipt"]["status"] == "succeeded"
 
 
 def test_completed_bundle_reopens_when_authoritative_board_has_work(tmp_path: Path) -> None:
@@ -1865,6 +2269,149 @@ def test_manifest_excludes_superseded_bundle_revisions(tmp_path: Path) -> None:
         assert len(coordinator.list_tasks(task_cids={current["tasks"][0]["task_cid"]})) == 1
 
 
+def test_stop_manifest_excludes_superseded_bundle_revisions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Terminal projection must not resurrect every historical lease row."""
+
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    launcher = _FakeLauncher()
+    _write_index(index, "T-1")
+    scheduler = _scheduler(tmp_path, index, launcher)
+    current_task_cid = scheduler._plan()[0].task_cid
+    rows = [
+        {"task_cid": "historical-task-cid", "state": "completed"},
+        {"task_cid": current_task_cid, "state": "completed"},
+    ]
+    observed_queries: list[tuple[set[str] | None, bool]] = []
+
+    class _ProjectionCoordinator:
+        def __init__(self, _path: Path) -> None:
+            pass
+
+        def __enter__(self) -> Any:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def list_tasks(
+            self,
+            *,
+            task_cids: set[str] | None = None,
+            include_claimability: bool = False,
+        ) -> list[dict[str, Any]]:
+            observed_queries.append(
+                (
+                    set(task_cids) if task_cids is not None else None,
+                    include_claimability,
+                )
+            )
+            if task_cids is None:
+                return list(rows)
+            return [row for row in rows if row["task_cid"] in task_cids]
+
+    def project_manifest(
+        *,
+        discovered: Any,
+        task_projection: Any,
+        **_kwargs: Any,
+    ) -> dict[str, Any]:
+        projected = list(task_projection)
+        return {
+            "planned_count": len(discovered),
+            "completed_count": sum(
+                item.get("state") == "completed" for item in projected
+            ),
+            "tasks": projected,
+        }
+
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "LeaseCoordinator",
+        _ProjectionCoordinator,
+    )
+    monkeypatch.setattr(scheduler, "_write_live_manifest", project_manifest)
+
+    terminal = scheduler.stop()
+
+    assert terminal["planned_count"] == 1
+    assert terminal["completed_count"] == 1
+    assert terminal["tasks"] == [rows[1]]
+    assert observed_queries == [({current_task_cid}, True)]
+
+
+def test_run_preserves_primary_error_when_stop_cleanup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    launcher = _FakeLauncher()
+    _write_index(index, "T-1")
+    scheduler = _scheduler(tmp_path, index, launcher)
+    primary_error = RuntimeError("primary reconciliation failure")
+
+    def fail_reconciliation() -> dict[str, Any]:
+        raise primary_error
+
+    def fail_cleanup(*, grace_seconds: float = 5.0) -> dict[str, Any]:
+        del grace_seconds
+        raise OSError("secondary cleanup failure")
+
+    monkeypatch.setattr(scheduler, "reconcile_once", fail_reconciliation)
+    monkeypatch.setattr(scheduler, "stop", fail_cleanup)
+
+    with pytest.raises(RuntimeError, match="primary reconciliation failure") as error:
+        scheduler.run(max_cycles=1)
+
+    assert error.value is primary_error
+
+
+def test_stop_cleans_local_lane_before_coordination_open_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    launcher = _FakeLauncher()
+    _write_index(index, "T-1")
+    scheduler = _scheduler(tmp_path, index, launcher)
+    process = _FakeProcess(pid=12345)
+    resource_lease = object()
+    scheduler._running["task-cid"] = SimpleNamespace(
+        handle=process,
+        resource_lease=resource_lease,
+        grant=object(),
+    )
+    cancelled: list[tuple[object, str]] = []
+    monkeypatch.setattr(
+        scheduler.resource_scheduler,
+        "cancel",
+        lambda lease, *, reason: cancelled.append((lease, reason)),
+    )
+
+    class UnavailableCoordinator:
+        def __init__(self, _path: Path) -> None:
+            raise RuntimeError("coordination unavailable")
+
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "LeaseCoordinator",
+        UnavailableCoordinator,
+    )
+
+    with pytest.raises(RuntimeError, match="coordination unavailable"):
+        scheduler.stop(grace_seconds=0)
+
+    assert process.terminate_calls == 1
+    assert process.wait_calls == 1
+    assert cancelled == [(resource_lease, "scheduler_stopped")]
+    assert scheduler._running == {}
+
+
 def test_live_bundle_revision_blocks_replacement_with_the_same_bundle_key(
     tmp_path: Path,
 ) -> None:
@@ -2491,7 +3038,7 @@ def test_leased_lane_signal_terminates_detached_descendants(tmp_path: Path) -> N
         [
             sys.executable,
             "-m",
-            "ipfs_accelerate_py.agent_supervisor.leased_lane",
+            "ipfs_accelerate_py.agent_supervisor.merge.leased_lane",
             "--coordination-path",
             str(coordination),
             "--grant-json",

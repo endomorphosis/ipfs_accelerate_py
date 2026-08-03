@@ -5,6 +5,8 @@ import logging
 import sys
 from pathlib import Path
 
+import pytest
+
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     ConfiguredDaemonBootstrapRunner,
     ConfiguredImplementationDaemonRunner,
@@ -254,6 +256,7 @@ def test_daemon_explicit_merge_resolver_overrides_default(tmp_path: Path, monkey
 
 
 def test_daemon_resolves_relative_worktree_root_for_runner_workspace(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER", "codex")
     monkeypatch.setattr(
         "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon.shutil.which",
         lambda name: "/usr/bin/codex" if name == "codex" else None,
@@ -560,6 +563,105 @@ def test_run_portal_implementation_daemon_loop_runs_hooks_once(caplog):
     assert calls == ["before:0", "after:0"]
     assert "before hook: ['before-result']" in caplog.text
     assert "after hook: ['after-result']" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("wake_kind", "blocked", "expected_level", "payload_visible"),
+    (
+        ("lease", False, logging.DEBUG, False),
+        ("lease", True, logging.INFO, True),
+        ("repository", False, logging.INFO, True),
+    ),
+)
+def test_run_portal_implementation_daemon_loop_only_compacts_safe_noop_wakes(
+    caplog,
+    wake_kind,
+    blocked,
+    expected_level,
+    payload_visible,
+):
+    class StopLoop(RuntimeError):
+        pass
+
+    class FakeDaemon:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "unchanged": True,
+                "write_count": 0,
+                "state_written": False,
+                "wake_kinds": [wake_kind],
+                "blocked": blocked,
+                "merge_reconciliation": [],
+                "next_wake_after_seconds": 17.0,
+                "large_payload": "must-not-appear-in-the-log" * 100,
+            }
+
+        def wait_for_wake(self, *, timeout: float) -> None:
+            assert timeout == 17.0
+            raise StopLoop
+
+    context = ImplementationDaemonRunContext(
+        parsed=argparse.Namespace(once=False, interval=999),
+        state_path=Path("state.json"),
+        strategy_path=Path("strategy.json"),
+        events_path=Path("events.jsonl"),
+    )
+    logger = logging.getLogger("test-daemon-runner-recurring-noop")
+
+    with caplog.at_level(logging.DEBUG, logger=logger.name):
+        with pytest.raises(StopLoop):
+            run_portal_implementation_daemon_loop(
+                FakeDaemon(),
+                context,
+                logger=logger,
+                pass_complete_message="recurring pass complete: %s",
+            )
+
+    pass_records = [
+        record
+        for record in caplog.records
+        if "recurring pass complete" in record.getMessage()
+    ]
+    assert [record.levelno for record in pass_records] == [expected_level]
+    assert "recurring pass complete" in caplog.text
+    assert ("must-not-appear-in-the-log" in caplog.text) is payload_visible
+    if expected_level == logging.DEBUG:
+        assert "'state_written': False" in caplog.text
+        assert "'next_wake_after_seconds': 17.0" in caplog.text
+
+
+def test_run_portal_implementation_daemon_loop_keeps_once_noop_at_info(caplog):
+    class FakeDaemon:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "unchanged": True,
+                "write_count": 0,
+                "state_written": False,
+                "large_payload": "once-pass-remains-observable",
+            }
+
+    context = ImplementationDaemonRunContext(
+        parsed=argparse.Namespace(once=True, interval=999),
+        state_path=Path("state.json"),
+        strategy_path=Path("strategy.json"),
+        events_path=Path("events.jsonl"),
+    )
+    logger = logging.getLogger("test-daemon-runner-once-noop")
+
+    with caplog.at_level(logging.INFO, logger=logger.name):
+        run_portal_implementation_daemon_loop(
+            FakeDaemon(),
+            context,
+            logger=logger,
+            pass_complete_message="once pass complete: %s",
+        )
+
+    info_records = [
+        record for record in caplog.records if record.levelno == logging.INFO
+    ]
+    assert len(info_records) == 1
+    assert "once pass complete" in info_records[0].getMessage()
+    assert "once-pass-remains-observable" in info_records[0].getMessage()
 
 
 def test_run_configured_portal_implementation_daemon_builds_and_runs_once(tmp_path: Path):

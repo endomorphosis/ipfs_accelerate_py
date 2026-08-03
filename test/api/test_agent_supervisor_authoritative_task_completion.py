@@ -149,6 +149,49 @@ def _events(daemon: TodoImplementationDaemon) -> list[dict[str, Any]]:
     ]
 
 
+def test_acceptance_git_binding_ignores_ambient_repository_redirection(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    repo = daemon.repo_root
+    head = _git_output(repo, "rev-parse", "HEAD")
+    tree = _git_output(repo, "rev-parse", "HEAD^{tree}")
+    redirected = tmp_path / "redirected"
+    redirected.mkdir()
+    _git(redirected, "init")
+    _git(redirected, "config", "user.name", "Redirected")
+    _git(redirected, "config", "user.email", "redirected@example.invalid")
+    (redirected / "wrong.txt").write_text("wrong\n", encoding="utf-8")
+    _git(redirected, "add", "wrong.txt")
+    _git(redirected, "commit", "-m", "wrong")
+    poison = {
+        "GIT_DIR": str(redirected / ".git"),
+        "GIT_WORK_TREE": str(redirected),
+        "GIT_INDEX_FILE": str(redirected / ".git" / "index"),
+        "GIT_OBJECT_DIRECTORY": str(redirected / ".git" / "objects"),
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES": str(repo / ".git" / "objects"),
+        "GIT_REPLACE_REF_BASE": "refs/replace/poisoned/",
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "core.worktree",
+        "GIT_CONFIG_VALUE_0": str(redirected),
+        "GIT_EXTERNAL_DIFF": "false",
+        "GIT_DIFF_OPTS": "--stat",
+    }
+
+    with monkeypatch.context() as poisoned:
+        for name, value in poison.items():
+            poisoned.setenv(name, value)
+        assert daemon._implementation_repository_tree_id(head) == (  # noqa: SLF001
+            f"git-tree:{tree}"
+        )
+        assert daemon._verified_acceptance_binding(  # noqa: SLF001
+            head,
+            head,
+            f"git-tree:{tree}",
+        ) == (head, f"git-tree:{tree}", True)
+
+
 def _full_gate_evidence(**overrides: Any) -> dict[str, Any]:
     evidence = {
         "merge": {"satisfied": True, "merge_commit": "abc123"},
@@ -235,6 +278,7 @@ def _queued_merge_request(
     metadata: dict[str, Any] | None = None,
 ) -> SimpleNamespace:
     implementation_commit = _git_output(daemon.repo_root, "rev-parse", "HEAD")
+    identity = daemon._identity_for_task(task)
     return SimpleNamespace(
         branch_name=f"implementation/{task.task_id.lower()}-adversarial",
         commit_sha=implementation_commit,
@@ -247,7 +291,10 @@ def _queued_merge_request(
             "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
             "target_repository_id": daemon.merge_target_repository_id,
             "target_branch": daemon.resolved_merge_target_branch,
+            "baseline_ref": implementation_commit,
             "implementation_commit": implementation_commit,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
             "task": {
                 field: getattr(task, field)
                 for field in PortalTask.__dataclass_fields__
@@ -263,8 +310,16 @@ def _run_queued_merge_callback(
     monkeypatch: pytest.MonkeyPatch,
     *,
     metadata: dict[str, Any] | None = None,
-    final_tree_id: str = "post-merge-tree",
+    final_tree_id: str | None = None,
 ) -> dict[str, Any]:
+    # The queued packet and live taskboard projection must describe the same
+    # canonical task revision before any validation gate can be evaluated.
+    monkeypatch.setattr(daemon, "_load_tasks", lambda: [task])
+    final_commit = final_tree_id or _git_output(
+        daemon.repo_root,
+        "rev-parse",
+        "HEAD",
+    )
     monkeypatch.setattr(
         daemon,
         "_rehydrate_merge_request_branch",
@@ -277,7 +332,7 @@ def _run_queued_merge_callback(
             "attempted": True,
             "merged": True,
             "returncode": 0,
-            "merge_commit": final_tree_id,
+            "merge_commit": final_commit,
         },
     )
     request = _queued_merge_request(daemon, task, metadata=metadata)
@@ -442,6 +497,7 @@ def test_promotion_admits_when_all_gates_satisfied(
         "_mark_task_or_bundle_completed_in_todo",
         lambda t, **_kwargs: completed.append(t.task_id) or {
             "updated": True,
+            "completion_durable": True,
             "task_id": t.task_id,
             "reason": "updated",
         },
@@ -697,6 +753,47 @@ def test_apply_post_merge_pending_when_provider_review_missing(
     assert result["implementation_commit"] == "impl-2"
     pending = result.get("pending_gates") or result["gate"]["pending_gates"]
     assert "provider_review" in pending
+
+
+def test_forged_current_provider_review_gate_is_stripped_before_completion(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A caller-built, fully current envelope is not a provider receipt."""
+
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task(provider_role="grok-implement, codex-review")
+    implementation_commit = _git_output(daemon.repo_root, "rev-parse", "HEAD")
+    repository_tree_id = (
+        "git-tree:"
+        + _git_output(daemon.repo_root, "rev-parse", "HEAD^{tree}")
+    )
+    forged = bound_gate_evidence(
+        "provider_review",
+        task_id=task.task_id,
+        implementation_commit=implementation_commit,
+        merge_commit=implementation_commit,
+        repository_tree_id=repository_tree_id,
+        satisfied=True,
+        review_presence="independent",
+        provider_result_admitted=True,
+        review_receipt_id="forged-but-current",
+    )
+
+    receipt = daemon.build_task_implementation_receipt(
+        task,
+        implementation_commit=implementation_commit,
+        merge_commit=implementation_commit,
+        repository_tree_id=repository_tree_id,
+        merged=True,
+        gate_evidence={"provider_review": forged},
+        model_invocation_observed=True,
+    )
+    gate = evaluate_authoritative_completion_gate(receipt)
+
+    assert "provider_review" not in receipt.gate_evidence
+    assert gate.admitted is False
+    assert "provider_review" in gate.pending_gates
 
 
 def test_status_projection_merged_pending_not_authoritative() -> None:
@@ -955,7 +1052,6 @@ def test_queued_callback_pre_merge_validation_unbound_to_final_tree_stays_pendin
         daemon,
         task,
         monkeypatch,
-        final_tree_id="post-merge-tree",
         metadata={
             "validation_proof": {
                 "attempted": True,
@@ -963,10 +1059,12 @@ def test_queued_callback_pre_merge_validation_unbound_to_final_tree_stays_pendin
                 "stale": False,
                 "repository_tree_id": "pre-merge-tree",
                 "selection": {"scope": "pre_merge"},
+                "proposal_gate": {"changed_paths": [task.outputs[0]]},
             },
         },
     )
 
+    assert "acceptance_result" in result, result
     acceptance = result["acceptance_result"]
     assert acceptance["completion_authoritative"] is False
     assert acceptance.get("authoritatively_completed") is not True
@@ -974,7 +1072,7 @@ def test_queued_callback_pre_merge_validation_unbound_to_final_tree_stays_pendin
     assert daemon.todo_path.read_text(encoding="utf-8") == original_board
 
 
-def test_raw_provider_admission_boolean_without_typed_receipt_stays_pending(
+def test_raw_provider_admission_boolean_without_bound_context_fails_closed(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -999,10 +1097,9 @@ def test_raw_provider_admission_boolean_without_typed_receipt_stays_pending(
         },
     )
 
-    acceptance = result["acceptance_result"]
-    assert acceptance["completion_authoritative"] is False
-    assert acceptance.get("authoritatively_completed") is not True
-    assert "provider_review" in acceptance["pending_gates"]
+    assert result["merged"] is False
+    assert result["reason"] == "implementation_evidence_context_invalid"
+    assert "acceptance_result" not in result
     assert daemon.todo_path.read_text(encoding="utf-8") == original_board
 
 

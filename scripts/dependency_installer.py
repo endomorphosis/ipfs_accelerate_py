@@ -18,6 +18,49 @@ import importlib.util
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("dependency_installer")
 
+
+_PACKAGING_FILES = ("pyproject.toml", "setup.py", "setup.cfg")
+_WORKSPACE_SIBLING_ALIASES = {
+    "ipfs_datasets_py": "ipfs_datasets",
+    "ipfs_kit_py": "ipfs_kit",
+}
+
+
+def _has_packaging_metadata(package_path: Path) -> bool:
+    """Return whether a directory is an installable Python package root."""
+
+    return package_path.is_dir() and any(
+        (package_path / name).is_file() for name in _PACKAGING_FILES
+    )
+
+
+def _resolve_local_package_path(repo_root: Path, package: str) -> Path:
+    """Resolve an installable local package without replacing existing paths.
+
+    Valid package roots are preferred in root, legacy, then workspace-sibling
+    order. If none are installable, return the first existing candidate so the
+    caller fails closed instead of cloning over it. New clones use the root.
+    """
+
+    root_path = repo_root / package
+    legacy_path = repo_root / "external" / package
+    candidates = [root_path, legacy_path]
+
+    sibling_name = _WORKSPACE_SIBLING_ALIASES.get(package)
+    if sibling_name:
+        candidates.append(repo_root.parent / sibling_name)
+
+    for candidate in candidates:
+        if _has_packaging_metadata(candidate):
+            return candidate
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    return root_path
+
+
 class DependencyInstaller:
     """Comprehensive dependency installer with graceful failure handling."""
     
@@ -27,15 +70,19 @@ class DependencyInstaller:
         self.failed_installations = []
         self.successful_installations = []
         self.repo_root = Path(__file__).resolve().parents[1]
-        self.external_dir = self.repo_root / "external"
         self.local_packages = [
             "ipfs_kit_py",
+            "ipfs_datasets_py",
             "ipfs_model_manager_py",
             "ipfs_transformers_py",
         ]
         self.git_sources = {
             "ipfs_kit_py": {
                 "repo": "https://github.com/endomorphosis/ipfs_kit_py.git",
+                "branch": "main",
+            },
+            "ipfs_datasets_py": {
+                "repo": "https://github.com/endomorphosis/ipfs_datasets_py.git",
                 "branch": "main",
             },
             "ipfs_model_manager_py": {
@@ -242,72 +289,43 @@ class DependencyInstaller:
     def install_local_packages(self) -> Dict[str, bool]:
         """Install bundled local packages from root directory when present."""
         results: Dict[str, bool] = {}
-        if not self.external_dir.exists():
-            logger.info("No external directory found; skipping local package installs")
-            return results
 
         for package in self.local_packages:
-            if package in self.git_sources:
+            package_path = _resolve_local_package_path(self.repo_root, package)
+            if package in self.git_sources and not package_path.exists():
                 source = self.git_sources[package]
-                target_path = self.external_dir / package
+                target_path = package_path
                 try:
-                    if target_path.exists() and (target_path / ".git").exists():
-                        logger.info(f"Updating {package} to {source['branch']} in {target_path}")
-                        subprocess.run(
-                            ["git", "-C", str(target_path), "fetch", "origin"],
-                            capture_output=True,
-                            text=True,
-                            timeout=300,
-                            check=False,
-                        )
-                        subprocess.run(
-                            ["git", "-C", str(target_path), "checkout", source["branch"]],
-                            capture_output=True,
-                            text=True,
-                            timeout=300,
-                            check=False,
-                        )
-                        subprocess.run(
-                            ["git", "-C", str(target_path), "reset", "--hard", f"origin/{source['branch']}"] ,
-                            capture_output=True,
-                            text=True,
-                            timeout=300,
-                            check=False,
-                        )
-                    else:
-                        if target_path.exists():
-                            logger.warning(f"{target_path} exists but is not a git repo; reinstalling from git")
-                        logger.info(f"Cloning {package} ({source['branch']}) into {target_path}")
-                        clone_result = subprocess.run(
-                            [
-                                "git",
-                                "clone",
-                                "--depth",
-                                "1",
-                                "--branch",
-                                source["branch"],
-                                source["repo"],
-                                str(target_path),
-                            ],
-                            capture_output=True,
-                            text=True,
-                            timeout=300,
-                        )
-                        if clone_result.returncode != 0:
-                            error_msg = clone_result.stderr.strip() if clone_result.stderr else "Unknown error"
-                            self.failed_installations.append(package)
-                            self.installation_log.append(f"❌ {package} clone failed: {error_msg}")
-                            logger.error(f"❌ {package} clone failed: {error_msg}")
-                            results[package] = False
-                            continue
+                    logger.info(f"Cloning {package} ({source['branch']}) into {target_path}")
+                    clone_result = subprocess.run(
+                        [
+                            "git",
+                            "clone",
+                            "--depth",
+                            "1",
+                            "--branch",
+                            source["branch"],
+                            source["repo"],
+                            str(target_path),
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=300,
+                    )
+                    if clone_result.returncode != 0:
+                        error_msg = clone_result.stderr.strip() if clone_result.stderr else "Unknown error"
+                        self.failed_installations.append(package)
+                        self.installation_log.append(f"❌ {package} clone failed: {error_msg}")
+                        logger.error(f"❌ {package} clone failed: {error_msg}")
+                        results[package] = False
+                        continue
                 except Exception as e:
                     self.failed_installations.append(package)
-                    self.installation_log.append(f"❌ {package} git sync error: {str(e)}")
-                    logger.error(f"❌ {package} git sync error: {str(e)}")
+                    self.installation_log.append(f"❌ {package} clone error: {str(e)}")
+                    logger.error(f"❌ {package} clone error: {str(e)}")
                     results[package] = False
                     continue
 
-            package_path = self.external_dir / package
             if not package_path.exists():
                 results[package] = False
                 continue
@@ -319,6 +337,7 @@ class DependencyInstaller:
                 self.installation_log.append(
                     f"⚠️ {package} skipped (missing packaging metadata)"
                 )
+                results[package] = False
                 continue
 
             try:
@@ -346,7 +365,7 @@ class DependencyInstaller:
     @staticmethod
     def _has_packaging_files(package_path: Path) -> bool:
         """Return True when a local path has Python packaging metadata."""
-        return any((package_path / name).exists() for name in ("pyproject.toml", "setup.py", "setup.cfg"))
+        return _has_packaging_metadata(package_path)
     
     def run_comprehensive_installation(self) -> Dict[str, Any]:
         """

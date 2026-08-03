@@ -261,6 +261,13 @@ class PersistentTaskQueue:
         priority: str | None = None,
         track: str | None = None,
     ) -> TaskQueueEntry:
+        """Return an entry without overwriting scheduling metadata by default.
+
+        Outcome-recording helpers call this method with only a task ID.  Their
+        updates must not implicitly reset a registered task's priority or
+        track; those fields change only when a caller supplies them.
+        """
+
         key = self.resolve_key(task_id)
         if key not in self.entries:
             self.entries[key] = TaskQueueEntry(

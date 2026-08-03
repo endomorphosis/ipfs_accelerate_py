@@ -6,12 +6,16 @@ Materializes a single-snapshot, zero-LLM shadow baseline over SwissKnife:
 2. expected-contract extraction and catalog normalization
 3. mandatory symbolic-contract graph projection
 4. expected-versus-actual MCP++ invocation tracing
-5. proof / cache verification (or explicit withhold)
+5. proof / cache verification via McpContractProver + TrustAwareProofCache
+   (SCAEV071PROOFCACHE end-to-end orchestration)
 6. mismatch classification and vulnerability rule evaluation
 7. bounded artifact publication (coverage, findings, summary)
 
 Unhealthy or incomplete stages never grant exhaustive, no-drift, or no-findings
-claims. Empty findings under partial health are not parity evidence.
+claims. Empty findings under partial health are not parity evidence. Cache hits
+revalidate exact snapshot, graph, policy, solver, kernel, and toolchain roots;
+counterexamples flow into mismatch/vulnerability records; missing evidence
+withholds downstream authority.
 """
 
 from __future__ import annotations
@@ -21,15 +25,40 @@ import json
 import os
 import tempfile
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final
 
-from ..proof.formal_verification_contracts import content_identity
+from ..proof.formal_verification_contracts import (
+    AssuranceLevel,
+    ResourceBudget,
+    content_identity,
+)
+from ..proof.mcp_contract_obligations import (
+    McpContractObligation,
+    McpContractObligationError,
+    compile_contract_claim,
+)
+from ..proof.mcp_contract_proof_cache import (
+    IdentityBinding,
+    ProofCacheKey,
+    TrustAwareProofCache,
+)
+from ..proof.mcp_contract_prover import (
+    MCP_LOCAL_GRAPH_CHECKER_ID,
+    MCP_LOCAL_SCHEMA_CHECKER_ID,
+    MCP_NO_KERNEL_ID,
+    MCP_PROVIDER_TRANSLATOR_ID,
+    ContractProofOutcome,
+    ContractProofRoute,
+    McpContractProofResult,
+    McpContractProver,
+)
 from .analyzer_health import AnalyzerHealthStatus
+from .content_identity_bridge import identify_strict_artifact
 from .contract_mismatch_analyzer import (
     ContractFinding,
     ContractMismatchAnalyzer,
@@ -42,6 +71,7 @@ from .contract_vulnerability_rules import (
     ContractVulnerabilityRuleEngine,
 )
 from .mcp_contract_analysis import (
+    ContractParityClaim,
     McpContractAnalysis,
     McpContractAnalyzer,
     ParityState,
@@ -78,6 +108,10 @@ from .symbolic_contract_graph import (
 CONTRACT_ASSURANCE_BASELINE_INTERFACE: Final = "ContractAssuranceBaseline@1"
 CONTRACT_ASSURANCE_BASELINE_VERSION: Final = "1"
 
+# SCA-G071 / SCA-218 end-to-end proof/cache orchestration evidence term.
+PROOF_PIPELINE_EVIDENCE: Final = "SCAEV071PROOFCACHE"
+PROOF_PIPELINE_INTERFACE: Final = "ContractAssuranceProofPipeline@1"
+
 BASELINE_FINDINGS_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/sca-baseline-contract-findings@1"
 )
@@ -92,6 +126,9 @@ BASELINE_STAGE_SCHEMA: Final = (
 )
 BASELINE_CONTRACT_ROW_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/sca-baseline-contract-row@1"
+)
+PROOF_PIPELINE_OUTCOME_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/sca-baseline-proof-pipeline-outcome@1"
 )
 
 TERMINAL_STATUS_DOMAIN: Final[tuple[str, ...]] = (
@@ -112,6 +149,15 @@ DEFAULT_REPRODUCTION_COMMAND: Final = (
 
 # Hard envelope for published baseline artifacts (bytes).
 DEFAULT_MAX_ARTIFACT_BYTES: Final = 4_000_000
+
+# Stable root identities for local-checker receipts that omit registry IDs.
+BASELINE_THEOREM_REGISTRY_ID: Final = "mcp-baseline-theorem-registry@1"
+BASELINE_CAPABILITY_REPORT_ID: Final = "mcp-baseline-capability@1"
+DEFAULT_PROOF_REPOSITORY_ID: Final = "repository:swissknife-contract-assurance"
+DEFAULT_PROOF_TOOLCHAIN_ID: Final = "toolchain:mcp-contract-assurance@1"
+DEFAULT_PROOF_POLICY_ID: Final = "policy:mcp-contract-assurance@1"
+DEFAULT_PROOF_ASSUMPTION_ID: Final = "assumption:closed-world-catalog"
+DEFAULT_PROOF_SCOPE_ID: Final = "scope:reviewed-mcp-surface"
 
 
 class ContractAssuranceBaselineError(ValueError):
@@ -311,6 +357,561 @@ def _status_from_mismatch(state: MismatchState | str | None) -> TerminalContract
     return TerminalContractStatus.UNKNOWN
 
 
+def _status_from_proof_outcome(
+    outcome: ContractProofOutcome | str | None,
+) -> TerminalContractStatus:
+    """Map a closed prover outcome onto the baseline terminal domain."""
+
+    if outcome is None:
+        return TerminalContractStatus.UNKNOWN
+    value = (
+        outcome
+        if isinstance(outcome, ContractProofOutcome)
+        else ContractProofOutcome(str(outcome))
+    )
+    if value is ContractProofOutcome.PROVED:
+        return TerminalContractStatus.PROVED
+    if value is ContractProofOutcome.REFUTED:
+        return TerminalContractStatus.REFUTED
+    if value is ContractProofOutcome.UNSUPPORTED:
+        return TerminalContractStatus.UNSUPPORTED
+    # inconclusive / timed_out remain unknown (not proved authority).
+    return TerminalContractStatus.UNKNOWN
+
+
+def _identity_binding(logical_id: str, *, component: str, **fields: Any) -> IdentityBinding:
+    """Build a CID-bound identity with a stable logical id for cache keys."""
+
+    payload = {
+        "component": component,
+        "logical_id": logical_id,
+        **fields,
+    }
+    return IdentityBinding.from_identity(
+        identify_strict_artifact(payload),
+        logical_id=logical_id,
+    )
+
+
+def _default_resource_budget() -> ResourceBudget:
+    return ResourceBudget(
+        wall_time_ms=0,
+        cpu_time_ms=0,
+        memory_bytes=0,
+        max_processes=0,
+        max_premises=0,
+        network_allowed=False,
+    )
+
+
+def _facts_from_claim(claim: ContractParityClaim) -> dict[str, Any]:
+    """Project analyzer observations into local-checker premise facts.
+
+    Satisfied claims supply complete positive premises and schema_valid=True.
+    Refuted claims mark premises failed so the local checker emits a
+    counterexample. Partial/unknown claims leave premises incomplete so the
+    prover returns inconclusive rather than forging a proof.
+    """
+
+    premise_ids = tuple(claim.premise_ids)
+    if claim.state is ParityState.SATISFIED:
+        return {
+            "premise_results": {item: True for item in premise_ids},
+            "schema_valid": True,
+            "graph_valid": True,
+            "required_edges": (),
+            "observed_edges": (),
+        }
+    if claim.state is ParityState.REFUTED:
+        failed = {item: False for item in premise_ids}
+        if not failed and claim.claim_id:
+            failed = {claim.claim_id: False}
+        return {
+            "premise_results": failed,
+            "schema_valid": False,
+            "graph_valid": False,
+            "required_edges": (("expected", "handler"),),
+            "observed_edges": (),
+            "failed_edges": (("expected", "handler"),),
+        }
+    # unsupported / ambiguous / unknown — incomplete evidence
+    return {
+        "premise_results": {},
+        "schema_valid": None,
+        "graph_valid": None,
+        "required_edges": (),
+        "observed_edges": (),
+    }
+
+
+def _align_proof_result_for_cache(
+    result: McpContractProofResult,
+) -> McpContractProofResult:
+    """Bind the empty local-checker theorem registry slot to a stable identity.
+
+    Local graph/schema receipts omit ``theorem_registry_id``.  TrustAwareProofCache
+    requires a non-empty logical id on every key dimension, so the baseline binds
+    the empty slot to :data:`BASELINE_THEOREM_REGISTRY_ID` without changing
+    assurance, verdict, or independent evidence.
+    """
+
+    receipt = result.receipt
+    registry_id = receipt.theorem_registry_id or BASELINE_THEOREM_REGISTRY_ID
+    if (
+        receipt.theorem_registry_id == registry_id
+        and result.outcome is not ContractProofOutcome.PROVED
+    ):
+        return result
+    aligned_receipt = replace(receipt, theorem_registry_id=registry_id)
+    return McpContractProofResult(
+        obligation_id=result.obligation_id,
+        outcome=result.outcome,
+        route=result.route,
+        reason_codes=result.reason_codes,
+        receipt=aligned_receipt,
+        counterexample=result.counterexample,
+        capability=result.capability,
+        fallback_used=result.fallback_used,
+    )
+
+
+def _route_execution_ids(
+    route: ContractProofRoute,
+) -> tuple[str, str, str]:
+    """Return (translator_id, solver_id, kernel_id) matching McpContractProver receipts."""
+
+    if route is ContractProofRoute.LOCAL_GRAPH:
+        checker = MCP_LOCAL_GRAPH_CHECKER_ID
+        return checker, route.value, checker
+    if route is ContractProofRoute.LOCAL_SCHEMA:
+        checker = MCP_LOCAL_SCHEMA_CHECKER_ID
+        return checker, route.value, checker
+    if route is ContractProofRoute.NONE:
+        return MCP_NO_KERNEL_ID, route.value, MCP_NO_KERNEL_ID
+    return MCP_PROVIDER_TRANSLATOR_ID, route.value, MCP_NO_KERNEL_ID
+
+
+def _build_baseline_proof_cache_key(
+    *,
+    obligation: McpContractObligation,
+    route: ContractProofRoute,
+    catalog: McpContractCatalog,
+    graph: SymbolicContractGraph | None,
+    capability_root: str,
+    resource_budget: ResourceBudget | None = None,
+) -> ProofCacheKey:
+    """Construct a TrustAwareProofCache key bound to exact pipeline roots."""
+
+    budget = resource_budget or _default_resource_budget()
+    scope_ids = tuple(obligation.scope_ids) or (DEFAULT_PROOF_SCOPE_ID,)
+    premise_ids = tuple(obligation.premise_ids) or (obligation.obligation_id,)
+    assumption_ids = tuple(obligation.assumption_ids) or (
+        DEFAULT_PROOF_ASSUMPTION_ID,
+    )
+    translator_id, solver_id, kernel_id = _route_execution_ids(route)
+    toolchain_id = obligation.toolchain_id
+    policy_id = obligation.policy_id
+    registry_id = BASELINE_THEOREM_REGISTRY_ID
+    capability_id = capability_root or BASELINE_CAPABILITY_REPORT_ID
+    # Graph root is recorded in capability material so cache keys change when
+    # mandatory graph closure changes without detaching receipt scope ids.
+    capability_payload = {
+        "capability_id": capability_id,
+        "graph_root": graph.graph_root if graph is not None else "",
+        "catalog_id": catalog.catalog_id,
+        "route": route.value,
+    }
+    return ProofCacheKey(
+        snapshot=_identity_binding(
+            obligation.snapshot_id,
+            component="snapshot",
+            snapshot_id=obligation.snapshot_id,
+        ),
+        scope=tuple(
+            _identity_binding(item, component="scope", scope_id=item)
+            for item in scope_ids
+        ),
+        property_catalog=_identity_binding(
+            catalog.catalog_id,
+            component="property_catalog",
+            catalog_id=catalog.catalog_id,
+        ),
+        obligation=_identity_binding(
+            obligation.obligation_id,
+            component="obligation",
+            obligation_id=obligation.obligation_id,
+            property_id=obligation.property_id,
+        ),
+        premises=tuple(
+            _identity_binding(item, component="premise", premise_id=item)
+            for item in premise_ids
+        ),
+        assumptions=tuple(
+            _identity_binding(item, component="assumption", assumption_id=item)
+            for item in assumption_ids
+        ),
+        provider=_identity_binding(
+            solver_id, component="provider", provider_id=solver_id
+        ),
+        translator=_identity_binding(
+            translator_id, component="translator", translator_id=translator_id
+        ),
+        solver=_identity_binding(solver_id, component="solver", solver_id=solver_id),
+        kernel=_identity_binding(kernel_id, component="kernel", kernel_id=kernel_id),
+        toolchain=_identity_binding(
+            toolchain_id, component="toolchain", toolchain_id=toolchain_id
+        ),
+        theorem_registry=_identity_binding(
+            registry_id, component="theorem_registry", registry_id=registry_id
+        ),
+        policy=_identity_binding(policy_id, component="policy", policy_id=policy_id),
+        capability_report=_identity_binding(
+            capability_id,
+            component="capability_report",
+            **capability_payload,
+        ),
+        resource_budget=budget,
+        required_assurance=obligation.required_assurance,
+        route=route,
+    )
+
+
+def _revalidate_cached_roots(
+    *,
+    key: ProofCacheKey,
+    receipt: Any,
+    graph: SymbolicContractGraph | None,
+    snapshot_id: str,
+) -> tuple[str, ...]:
+    """Re-check exact roots on a cache hit; return rejection reason codes."""
+
+    reasons: list[str] = []
+    if receipt.repository_tree_id != snapshot_id:
+        reasons.append("snapshot_root_mismatch")
+    if receipt.repository_tree_id != key.snapshot.logical_id:
+        reasons.append("cache_snapshot_binding_mismatch")
+    if receipt.policy_id != key.policy.logical_id:
+        reasons.append("policy_root_mismatch")
+    if receipt.solver_id != key.solver.logical_id:
+        reasons.append("solver_root_mismatch")
+    if receipt.kernel_id != key.kernel.logical_id:
+        reasons.append("kernel_root_mismatch")
+    if receipt.toolchain_id != key.toolchain.logical_id:
+        reasons.append("toolchain_root_mismatch")
+    if graph is not None:
+        expected_graph = graph.graph_root
+        # Capability report encodes the graph root used at store time.
+        try:
+            capability_bytes = key.capability_report.canonical_bytes
+            capability = json.loads(capability_bytes.decode("utf-8"))
+            stored_graph = str(capability.get("graph_root") or "")
+        except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+            stored_graph = ""
+        if stored_graph and stored_graph != expected_graph:
+            reasons.append("graph_root_mismatch")
+    return tuple(sorted(set(reasons)))
+
+
+@dataclass(frozen=True)
+class ProofPipelineOutcome:
+    """One obligation discharged (or withheld) through the baseline pipeline."""
+
+    contract_id: str
+    claim_family: str
+    operation_id: str
+    obligation_id: str
+    outcome: str
+    terminal_status: str
+    route: str
+    cache_hit: bool
+    reason_codes: tuple[str, ...]
+    receipt_content_id: str = ""
+    counterexample_id: str = ""
+    roots: Mapping[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "contract_id", _text(self.contract_id, "contract_id")
+        )
+        object.__setattr__(
+            self, "claim_family", _text(self.claim_family, "claim_family")
+        )
+        object.__setattr__(
+            self, "operation_id", _text(self.operation_id, "operation_id")
+        )
+        object.__setattr__(
+            self,
+            "obligation_id",
+            _text(self.obligation_id, "obligation_id", required=False),
+        )
+        object.__setattr__(self, "outcome", _text(self.outcome, "outcome"))
+        object.__setattr__(
+            self,
+            "terminal_status",
+            _text(self.terminal_status, "terminal_status"),
+        )
+        if self.terminal_status not in TERMINAL_STATUS_DOMAIN:
+            raise ContractAssuranceBaselineError(
+                f"illegal proof pipeline terminal: {self.terminal_status}"
+            )
+        object.__setattr__(
+            self, "route", _text(self.route, "route", required=False)
+        )
+        if not isinstance(self.cache_hit, bool):
+            raise ContractAssuranceBaselineError("cache_hit must be boolean")
+        object.__setattr__(
+            self,
+            "reason_codes",
+            tuple(
+                sorted(
+                    {
+                        _text(item, "reason_code")
+                        for item in self.reason_codes
+                        if str(item).strip()
+                    }
+                )
+            ),
+        )
+        object.__setattr__(
+            self,
+            "receipt_content_id",
+            _text(self.receipt_content_id, "receipt_content_id", required=False),
+        )
+        object.__setattr__(
+            self,
+            "counterexample_id",
+            _text(self.counterexample_id, "counterexample_id", required=False),
+        )
+        object.__setattr__(
+            self,
+            "roots",
+            MappingProxyType(
+                {
+                    str(key): _text(value, f"roots.{key}", required=False)
+                    for key, value in dict(self.roots or {}).items()
+                }
+            ),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": PROOF_PIPELINE_OUTCOME_SCHEMA,
+            "evidence_id": PROOF_PIPELINE_EVIDENCE,
+            "contract_id": self.contract_id,
+            "claim_family": self.claim_family,
+            "operation_id": self.operation_id,
+            "obligation_id": self.obligation_id,
+            "outcome": self.outcome,
+            "terminal_status": self.terminal_status,
+            "route": self.route,
+            "cache_hit": self.cache_hit,
+            "reason_codes": list(self.reason_codes),
+            "receipt_content_id": self.receipt_content_id,
+            "counterexample_id": self.counterexample_id,
+            "roots": dict(self.roots),
+        }
+
+
+def run_contract_proof_pipeline(
+    *,
+    analyses: Sequence[McpContractAnalysis],
+    catalog: McpContractCatalog,
+    snapshot_id: str,
+    graph: SymbolicContractGraph | None = None,
+    proof_cache: TrustAwareProofCache | None = None,
+    proof_cache_dir: str | Path | None = None,
+    prover: McpContractProver | None = None,
+    repository_id: str = "",
+    toolchain_id: str = "",
+    policy_id: str = "",
+    capability_root: str = "",
+    required_assurance: AssuranceLevel | str = AssuranceLevel.KERNEL_VERIFIED,
+) -> tuple[ProofPipelineOutcome, ...]:
+    """Wire claims through obligations, prover, kernel policy, and proof cache.
+
+    ``TrustAwareProofCache`` remains the sole receipt cache.  Analyzer parity
+    states never mint assurance: only independently accepted receipts (local
+    kernel-grade checkers or trusted validators) establish proved terminals.
+    """
+
+    if proof_cache is None:
+        cache_path = (
+            Path(proof_cache_dir)
+            if proof_cache_dir is not None
+            else None
+        )
+        proof_cache = TrustAwareProofCache(cache_path)
+    active_prover = prover or McpContractProver()
+    repo_id = _text(
+        repository_id or DEFAULT_PROOF_REPOSITORY_ID, "repository_id"
+    )
+    tool_id = _text(
+        toolchain_id or DEFAULT_PROOF_TOOLCHAIN_ID, "toolchain_id"
+    )
+    pol_id = _text(policy_id or DEFAULT_PROOF_POLICY_ID, "policy_id")
+    assurance = (
+        required_assurance
+        if isinstance(required_assurance, AssuranceLevel)
+        else AssuranceLevel(str(required_assurance))
+    )
+    outcomes: list[ProofPipelineOutcome] = []
+
+    for analysis in analyses:
+        contract_id = analysis.expected_contract_id or (
+            f"contract:{analysis.operation_id}"
+        )
+        for claim in analysis.claims:
+            reasons: list[str] = []
+            try:
+                obligation = compile_contract_claim(
+                    claim,
+                    catalog=catalog,
+                    contract=contract_id,
+                    repository_id=repo_id,
+                    snapshot_id=snapshot_id,
+                    scope_ids=tuple(claim.premise_ids)
+                    or (DEFAULT_PROOF_SCOPE_ID,),
+                    assumption_ids=(DEFAULT_PROOF_ASSUMPTION_ID,),
+                    toolchain_id=tool_id,
+                    policy_id=pol_id,
+                    required_assurance=assurance,
+                )
+            except (McpContractObligationError, TypeError, ValueError) as exc:
+                outcomes.append(
+                    ProofPipelineOutcome(
+                        contract_id=contract_id,
+                        claim_family=claim.family.value,
+                        operation_id=analysis.operation_id,
+                        obligation_id="",
+                        outcome=ContractProofOutcome.UNSUPPORTED.value,
+                        terminal_status=TerminalContractStatus.UNSUPPORTED.value,
+                        route=ContractProofRoute.NONE.value,
+                        cache_hit=False,
+                        reason_codes=(
+                            "obligation_compile_failed",
+                            type(exc).__name__,
+                        ),
+                        roots={
+                            "snapshot": snapshot_id,
+                            "graph": graph.graph_root if graph is not None else "",
+                            "policy": pol_id,
+                            "toolchain": tool_id,
+                        },
+                    )
+                )
+                continue
+
+            facts = _facts_from_claim(claim)
+            route = active_prover.route(obligation)
+            cache_key = _build_baseline_proof_cache_key(
+                obligation=obligation,
+                route=route,
+                catalog=catalog,
+                graph=graph,
+                capability_root=capability_root or BASELINE_CAPABILITY_REPORT_ID,
+                resource_budget=_default_resource_budget(),
+            )
+
+            def _prove() -> McpContractProofResult:
+                raw = active_prover.prove(
+                    obligation,
+                    facts=facts,
+                    resource_budget=_default_resource_budget(),
+                )
+                return _align_proof_result_for_cache(raw)
+
+            # Sole authoritative cache: exact-key lookup, then single-flight prove.
+            cache_hit = False
+            try:
+                cached = proof_cache.get_or_prove(cache_key, _prove)
+                proof_result = cached.result
+                cache_hit = bool(cached.cache_hit)
+                reasons.extend(cached.reason_codes)
+            except Exception as exc:  # noqa: BLE001 - typed pipeline terminal
+                # Detached/invalid provider results fail closed to unknown.
+                provisional = _prove()
+                proof_result = provisional
+                reasons.extend(
+                    (
+                        "proof_cache_coordination_failed",
+                        type(exc).__name__,
+                        *provisional.reason_codes,
+                    )
+                )
+            else:
+                if cache_hit and proof_result.receipt is not None:
+                    root_failures = _revalidate_cached_roots(
+                        key=cache_key,
+                        receipt=proof_result.receipt,
+                        graph=graph,
+                        snapshot_id=snapshot_id,
+                    )
+                    if root_failures:
+                        reasons.extend(root_failures)
+                        reasons.append("cache_hit_rejected_stale_roots")
+                        proof_result = _prove()
+                        cache_hit = False
+                        if proof_result.outcome is ContractProofOutcome.PROVED:
+                            stored = proof_cache.put(cache_key, proof_result)
+                            if not stored.stored:
+                                reasons.extend(stored.reason_codes)
+
+            reasons.extend(proof_result.reason_codes)
+            terminal = _status_from_proof_outcome(proof_result.outcome)
+            counterexample_id = ""
+            if proof_result.counterexample is not None:
+                counterexample_id = str(
+                    getattr(
+                        proof_result.counterexample,
+                        "counterexample_id",
+                        "",
+                    )
+                    or content_identity(proof_result.counterexample.to_dict())
+                )
+            receipt_id = ""
+            try:
+                receipt_id = str(
+                    getattr(proof_result.receipt, "content_id", "")
+                    or content_identity(proof_result.receipt.to_dict())
+                )
+            except (TypeError, ValueError):
+                receipt_id = ""
+            outcomes.append(
+                ProofPipelineOutcome(
+                    contract_id=contract_id,
+                    claim_family=claim.family.value,
+                    operation_id=analysis.operation_id,
+                    obligation_id=obligation.obligation_id,
+                    outcome=proof_result.outcome.value,
+                    terminal_status=terminal.value,
+                    route=proof_result.route.value,
+                    cache_hit=cache_hit,
+                    reason_codes=tuple(sorted(set(reasons))),
+                    receipt_content_id=receipt_id,
+                    counterexample_id=counterexample_id,
+                    roots={
+                        "snapshot": proof_result.receipt.repository_tree_id,
+                        "graph": graph.graph_root if graph is not None else "",
+                        "policy": proof_result.receipt.policy_id,
+                        "solver": proof_result.receipt.solver_id,
+                        "kernel": proof_result.receipt.kernel_id,
+                        "toolchain": proof_result.receipt.toolchain_id,
+                        "catalog": catalog.catalog_id,
+                    },
+                )
+            )
+    return tuple(
+        sorted(
+            outcomes,
+            key=lambda item: (
+                item.contract_id,
+                item.claim_family,
+                item.obligation_id,
+            ),
+        )
+    )
+
+
 @dataclass(frozen=True)
 class BaselineStageReceipt:
     """Typed receipt for one pipeline stage bound to a single snapshot."""
@@ -454,6 +1055,7 @@ class ContractAssuranceBaselineResult:
     llm_call_count: int = 0
     mismatch_analysis: MismatchAnalysis | None = None
     vulnerability_findings: tuple[ContractVulnerabilityFinding, ...] = ()
+    proof_pipeline_outcomes: tuple[ProofPipelineOutcome, ...] = ()
     graph: SymbolicContractGraph | None = None
     extraction: SwissKnifeContractExtraction | None = None
     catalog: McpContractCatalog | None = None
@@ -486,6 +1088,11 @@ class ContractAssuranceBaselineResult:
             self,
             "vulnerability_findings",
             tuple(self.vulnerability_findings),
+        )
+        object.__setattr__(
+            self,
+            "proof_pipeline_outcomes",
+            tuple(self.proof_pipeline_outcomes),
         )
         payload = self._identity_payload()
         derived = content_identity(payload)
@@ -760,6 +1367,9 @@ def _contract_terminals_from_catalog(
     *,
     analysis_by_contract: Mapping[str, McpContractAnalysis] = MappingProxyType({}),
     mismatch_by_contract: Mapping[str, ContractFinding] = MappingProxyType({}),
+    proof_by_contract: Mapping[str, Sequence[ProofPipelineOutcome]] = MappingProxyType(
+        {}
+    ),
     health_partial: bool,
     measurement_complete: bool,
     stale: bool,
@@ -770,9 +1380,31 @@ def _contract_terminals_from_catalog(
         status = TerminalContractStatus.UNKNOWN
         finding = mismatch_by_contract.get(contract.contract_id)
         analysis = analysis_by_contract.get(contract.contract_id)
+        proof_outcomes = tuple(proof_by_contract.get(contract.contract_id) or ())
         if stale:
             status = TerminalContractStatus.STALE
             reasons.append("snapshot_stale")
+        elif proof_outcomes:
+            # Prefer the worst authoritative proof outcome across claim families.
+            ranked = {
+                TerminalContractStatus.REFUTED: 0,
+                TerminalContractStatus.UNSUPPORTED: 1,
+                TerminalContractStatus.STALE: 2,
+                TerminalContractStatus.UNKNOWN: 3,
+                TerminalContractStatus.PROVED: 4,
+            }
+            status = TerminalContractStatus.PROVED
+            for item in proof_outcomes:
+                candidate = TerminalContractStatus(item.terminal_status)
+                if ranked[candidate] < ranked[status]:
+                    status = candidate
+                reasons.extend(item.reason_codes)
+                if item.counterexample_id:
+                    reasons.append(f"counterexample:{item.counterexample_id}")
+                if item.cache_hit:
+                    reasons.append("proof_cache_hit")
+            if not reasons:
+                reasons.append(f"proof_{status.value}")
         elif finding is not None:
             status = _status_from_mismatch(finding.state)
             for revision in finding.evidence:
@@ -1080,17 +1712,31 @@ def materialize_contract_assurance_baseline(
     project_graph: bool = True,
     run_traces: bool = True,
     run_parity: bool = True,
+    run_proof_pipeline: bool = True,
     run_mismatch: bool = True,
     run_vulnerability: bool = True,
+    proof_cache: TrustAwareProofCache | None = None,
+    proof_cache_dir: str | Path | None = None,
+    prover: McpContractProver | None = None,
+    repository_id: str = "",
+    toolchain_id: str = "",
+    policy_id: str = "",
     output_root: str | Path | None = None,
     max_file_bytes: int = DEFAULT_MAX_ARTIFACT_BYTES,
     capability_root: str = "",
     scope_policy_root: str = "",
+    allow_proof_without_healthy_index: bool = False,
 ) -> ContractAssuranceBaselineResult:
     """Run the complete zero-LLM baseline pipeline over one exact snapshot.
 
     Stages that cannot complete under partial health still emit typed terminals
     and withhold no-drift claims. Model call count is always zero.
+
+    When ``run_proof_pipeline`` is true, reviewed parity claims are compiled into
+    obligations, discharged through ``McpContractProver`` (including kernel
+    policy for non-local routes), and memoized in the sole
+    ``TrustAwareProofCache`` under exact snapshot/graph/policy/solver/kernel/
+    toolchain roots (SCAEV071PROOFCACHE).
     """
 
     llm_call_count = 0
@@ -1452,14 +2098,18 @@ def materialize_contract_assurance_baseline(
                 )
             )
 
-    # --- Stage: proof / cache ----------------------------------------------
+    # --- Stage: proof / cache (SCAEV071PROOFCACHE) -------------------------
     proof_attempted = 0
     proof_proved = 0
     proof_refuted = 0
+    proof_cache_hits = 0
+    proof_pipeline_outcomes: tuple[ProofPipelineOutcome, ...] = ()
+    proof_by_contract: dict[str, list[ProofPipelineOutcome]] = {}
     analyses: list[McpContractAnalysis] = []
     analysis_by_contract: dict[str, McpContractAnalysis] = {}
     measurement_complete = False
     health_partial = not _index_healthy(repository_index)
+    proof_health_gate = health_partial and not allow_proof_without_healthy_index
 
     # Index observed contracts by operation_id, tool name, package:tool, and
     # bound contract_ids so catalog subjects join without name-only synthesis.
@@ -1479,7 +2129,7 @@ def materialize_contract_assurance_baseline(
         run_parity
         and catalog is not None
         and observed_index
-        and not health_partial
+        and not proof_health_gate
     ):
         analyzer = McpContractAnalyzer()
         for contract in catalog.contracts:
@@ -1521,11 +2171,55 @@ def materialize_contract_assurance_baseline(
                 continue
             analyses.append(analysis)
             analysis_by_contract[contract.contract_id] = analysis
-            proof_attempted += 1
-            if analysis.state is ParityState.SATISFIED:
-                proof_proved += 1
-            elif analysis.state is ParityState.REFUTED:
-                proof_refuted += 1
+
+        if run_proof_pipeline and analyses:
+            active_cache = proof_cache
+            if active_cache is None and proof_cache_dir is not None:
+                active_cache = TrustAwareProofCache(Path(proof_cache_dir))
+            if active_cache is None and output_root is not None:
+                active_cache = TrustAwareProofCache(
+                    Path(output_root) / "proof-cache"
+                )
+            if active_cache is None:
+                # Ephemeral sole cache for this baseline run.
+                active_cache = TrustAwareProofCache()
+            proof_pipeline_outcomes = run_contract_proof_pipeline(
+                analyses=analyses,
+                catalog=catalog,
+                snapshot_id=snapshot_id,
+                graph=graph,
+                proof_cache=active_cache,
+                prover=prover,
+                repository_id=repository_id
+                or (
+                    repository_index.snapshot_id
+                    if repository_index is not None
+                    else DEFAULT_PROOF_REPOSITORY_ID
+                ),
+                toolchain_id=toolchain_id or DEFAULT_PROOF_TOOLCHAIN_ID,
+                policy_id=policy_id
+                or scope_policy_root
+                or DEFAULT_PROOF_POLICY_ID,
+                capability_root=capability_root or BASELINE_CAPABILITY_REPORT_ID,
+            )
+            for item in proof_pipeline_outcomes:
+                proof_by_contract.setdefault(item.contract_id, []).append(item)
+                proof_attempted += 1
+                if item.terminal_status == TerminalContractStatus.PROVED.value:
+                    proof_proved += 1
+                elif item.terminal_status == TerminalContractStatus.REFUTED.value:
+                    proof_refuted += 1
+                if item.cache_hit:
+                    proof_cache_hits += 1
+        else:
+            # Parity-only fallback when proof pipeline is disabled.
+            for analysis in analyses:
+                proof_attempted += 1
+                if analysis.state is ParityState.SATISFIED:
+                    proof_proved += 1
+                elif analysis.state is ParityState.REFUTED:
+                    proof_refuted += 1
+
         # Measurement is complete only when every tool-bearing reviewed contract
         # has an observed counterpart; interface-only contracts are optional.
         tool_contracts = [
@@ -1534,33 +2228,49 @@ def materialize_contract_assurance_baseline(
             if item.tool_name
         ]
         measured_targets = tool_contracts or list(catalog.contracts)
-        measurement_complete = proof_attempted > 0 and proof_attempted >= len(
+        measured_count = len(analysis_by_contract) or proof_attempted
+        measurement_complete = measured_count > 0 and measured_count >= len(
             measured_targets
+        )
+        stage_reasons: list[str] = []
+        if not measurement_complete:
+            stage_reasons.append("observed_contract_coverage_incomplete")
+        if health_partial:
+            stage_reasons.append("partial_analyzer_health")
+        if run_proof_pipeline and not proof_pipeline_outcomes and analyses:
+            stage_reasons.append("proof_pipeline_produced_no_outcomes")
+        completeness = (
+            StageCompleteness.COMPLETE
+            if measurement_complete
+            and not health_partial
+            and (not run_proof_pipeline or bool(proof_pipeline_outcomes))
+            else StageCompleteness.PARTIAL
         )
         stages.append(
             BaselineStageReceipt(
                 name=BaselineStageName.PROOF_CACHE,
-                completeness=(
-                    StageCompleteness.COMPLETE
-                    if measurement_complete
-                    else StageCompleteness.PARTIAL
-                ),
-                reason_codes=(
-                    ()
-                    if measurement_complete
-                    else ("observed_contract_coverage_incomplete",)
-                ),
+                completeness=completeness,
+                reason_codes=tuple(stage_reasons),
+                root_id=PROOF_PIPELINE_EVIDENCE,
                 details={
+                    "evidence_id": PROOF_PIPELINE_EVIDENCE,
+                    "interface": PROOF_PIPELINE_INTERFACE,
                     "attempted": proof_attempted,
                     "proved": proof_proved,
                     "refuted": proof_refuted,
-                    "cache_status": "computed",
+                    "cache_hits": proof_cache_hits,
+                    "parity_analyses": len(analyses),
+                    "cache_status": (
+                        "computed_degraded" if health_partial else "computed"
+                    ),
+                    "sole_cache": "TrustAwareProofCache",
+                    "prover": "McpContractProver",
                 },
             )
         )
     else:
         reasons = []
-        if health_partial:
+        if proof_health_gate:
             reasons.append("partial_analyzer_health_proof_not_started")
         if not observed_map:
             reasons.append("observed_contracts_unavailable")
@@ -1573,13 +2283,19 @@ def materialize_contract_assurance_baseline(
                 name=BaselineStageName.PROOF_CACHE,
                 completeness=StageCompleteness.WITHHELD,
                 reason_codes=tuple(reasons),
+                root_id=PROOF_PIPELINE_EVIDENCE,
                 details={
+                    "evidence_id": PROOF_PIPELINE_EVIDENCE,
+                    "interface": PROOF_PIPELINE_INTERFACE,
                     "attempted": 0,
                     "proved": 0,
                     "refuted": 0,
+                    "cache_hits": 0,
                     "cache_status": (
                         "published_unhealthy" if health_partial else "not_started"
                     ),
+                    "sole_cache": "TrustAwareProofCache",
+                    "prover": "McpContractProver",
                 },
             )
         )
@@ -1588,20 +2304,65 @@ def materialize_contract_assurance_baseline(
     mismatch_findings: list[ContractFinding] = []
     mismatch_by_contract: dict[str, ContractFinding] = {}
     mismatch_analysis: MismatchAnalysis | None = None
-    if run_mismatch and analyses and not health_partial:
+    # Mismatch classifies analyzer refutations and proof-pipeline counterexamples.
+    # Partial health withholds authority via claims projection, not classification.
+    if run_mismatch and analyses and (
+        not proof_health_gate or allow_proof_without_healthy_index
+    ):
         mismatch_analyzer = ContractMismatchAnalyzer()
         for analysis in analyses:
-            contract_id = analysis.expected_contract_id
+            contract_id = (
+                analysis.expected_contract_id
+                or f"contract:{analysis.operation_id}"
+            )
             for claim in analysis.claims:
-                if claim.state is ParityState.SATISFIED:
+                proof_for_claim = [
+                    item
+                    for item in proof_pipeline_outcomes
+                    if item.contract_id == contract_id
+                    and item.claim_family == claim.family.value
+                ]
+                proof_refuted = any(
+                    item.terminal_status == TerminalContractStatus.REFUTED.value
+                    for item in proof_for_claim
+                )
+                claim_for_mismatch = claim
+                if claim.state is ParityState.SATISFIED and not proof_refuted:
                     continue
+                if claim.state is ParityState.SATISFIED and proof_refuted:
+                    # Analyzer observed parity but the proof pipeline refuted;
+                    # only promote when a compact counterexample already exists
+                    # on the claim (mismatch analyzer requires one for REFUTED).
+                    if not claim.counterexamples:
+                        continue
+                    try:
+                        claim_for_mismatch = ContractParityClaim(
+                            family=claim.family,
+                            state=ParityState.REFUTED,
+                            operation_id=claim.operation_id,
+                            premise_ids=claim.premise_ids,
+                            reason_codes=tuple(
+                                sorted(
+                                    set(claim.reason_codes)
+                                    | {"proof_pipeline_refuted"}
+                                )
+                            ),
+                            counterexamples=claim.counterexamples,
+                        )
+                    except Exception:  # noqa: BLE001
+                        continue
+                obligation_ids = tuple(
+                    item.obligation_id
+                    for item in proof_for_claim
+                    if item.obligation_id
+                )
                 produced = mismatch_analyzer.analyze_claim(
-                    claim,
+                    claim_for_mismatch,
                     snapshot_id=snapshot_id,
-                    contract_id=contract_id or f"contract:{analysis.operation_id}",
+                    contract_id=contract_id,
                     affected_symbols=(f"operation:{analysis.operation_id}",),
                     affected_paths=(),
-                    obligation_ids=(),
+                    obligation_ids=obligation_ids,
                     cas_handles=(analysis.analysis_id,),
                     reproduction_commands=(DEFAULT_REPRODUCTION_COMMAND,),
                 )
@@ -1704,6 +2465,7 @@ def materialize_contract_assurance_baseline(
                 catalog,
                 analysis_by_contract=analysis_by_contract,
                 mismatch_by_contract=mismatch_by_contract,
+                proof_by_contract=proof_by_contract,
                 health_partial=health_partial,
                 measurement_complete=measurement_complete,
                 stale=False,
@@ -1851,13 +2613,21 @@ def materialize_contract_assurance_baseline(
                 or 0
             ),
             "cache_hit_ratio": 1 if repository_index is not None else 0,
+            "proof_cache_hits": proof_cache_hits,
+            "sole_cache": "TrustAwareProofCache",
         },
         "proof_outcomes": {
+            "evidence_id": PROOF_PIPELINE_EVIDENCE,
+            "interface": PROOF_PIPELINE_INTERFACE,
             "attempted": proof_attempted,
             "proved": proof_proved,
             "refuted": proof_refuted,
             "unknown": max(0, len(terminals_tuple) - proof_proved - proof_refuted),
+            "cache_hits": proof_cache_hits,
             "reason_code": proof_reason,
+            "pipeline_outcomes": [
+                item.to_dict() for item in proof_pipeline_outcomes
+            ],
         },
         "contract_population": {
             "contract_fields": [
@@ -1926,6 +2696,7 @@ def materialize_contract_assurance_baseline(
         llm_call_count=llm_call_count,
         mismatch_analysis=mismatch_analysis,
         vulnerability_findings=vulnerability_findings,
+        proof_pipeline_outcomes=proof_pipeline_outcomes,
         graph=graph,
         extraction=extraction,
         catalog=catalog,
@@ -1950,6 +2721,9 @@ def materialize_baseline_from_repository_index(
     | Mapping[str, Mapping[str, Any]] = (),
     runtime_catalog: RuntimeComponentCatalog | None = None,
     max_file_bytes: int = DEFAULT_MAX_ARTIFACT_BYTES,
+    proof_cache_dir: str | Path | None = None,
+    proof_cache: TrustAwareProofCache | None = None,
+    run_proof_pipeline: bool = True,
 ) -> ContractAssuranceBaselineResult:
     """Convenience entry used by ``index_repository_contracts``."""
 
@@ -1961,6 +2735,9 @@ def materialize_baseline_from_repository_index(
         observed_contracts=observed_contracts,
         runtime_catalog=runtime_catalog,
         max_file_bytes=max_file_bytes,
+        proof_cache_dir=proof_cache_dir,
+        proof_cache=proof_cache,
+        run_proof_pipeline=run_proof_pipeline,
     )
 
 
@@ -1972,17 +2749,21 @@ __all__ = [
     "CONTRACT_ASSURANCE_BASELINE_VERSION",
     "DEFAULT_MAX_ARTIFACT_BYTES",
     "DEFAULT_REPRODUCTION_COMMAND",
+    "PROOF_PIPELINE_EVIDENCE",
+    "PROOF_PIPELINE_INTERFACE",
     "TERMINAL_STATUS_DOMAIN",
     "BaselineContractTerminal",
     "BaselineStageName",
     "BaselineStageReceipt",
     "ContractAssuranceBaselineError",
     "ContractAssuranceBaselineResult",
+    "ProofPipelineOutcome",
     "StageCompleteness",
     "TerminalContractStatus",
     "materialize_baseline_from_repository_index",
     "materialize_contract_assurance_baseline",
     "publish_baseline_artifacts",
+    "run_contract_proof_pipeline",
     "compile_runtime_contract_evidence",
     "RuntimeContractEvidenceCompiler",
 ]

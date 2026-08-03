@@ -6,7 +6,6 @@ import json
 import subprocess
 
 import pytest
-
 from ipfs_accelerate_py import llm_router
 
 
@@ -27,6 +26,46 @@ def _successful_grok_result(cmd: list[str]) -> subprocess.CompletedProcess[str]:
         "usage": {"input_tokens": 3, "output_tokens": 2, "total_tokens": 5},
     }
     return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(payload), stderr="")
+
+
+def test_grok_cli_discovery_survives_systemd_minimal_path(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    fake_home = tmp_path / "home"
+    fake_grok = fake_home / ".local" / "bin" / "grok"
+    fake_grok.parent.mkdir(parents=True)
+    fake_grok.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    fake_grok.chmod(0o700)
+    auth_path = fake_home / ".grok" / "auth.json"
+    auth_path.parent.mkdir(parents=True)
+    auth_path.write_text("{}\n", encoding="utf-8")
+
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv(
+        "PATH",
+        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    )
+    for name in (
+        "ipfs_accelerate_py_GROK_CLI_CMD",
+        "IPFS_ACCELERATE_PY_GROK_CLI_CMD",
+        "IPFS_DATASETS_PY_GROK_CLI_CMD",
+        "IPFS_ACCELERATE_AGENT_GROK_BIN",
+        "GROK_CLI_CMD",
+        "GROK_BIN",
+        "GROK_HOME",
+        "XAI_API_KEY",
+        "ipfs_accelerate_py_XAI_API_KEY",
+        "IPFS_ACCELERATE_PY_XAI_API_KEY",
+        "IPFS_DATASETS_PY_XAI_API_KEY",
+        "GROK_AUTH_PROVIDER_COMMAND",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    assert llm_router.find_grok_cli() == str(fake_grok)
+    assert llm_router._grok_cli_command() == str(fake_grok)
+    assert llm_router._grok_cli_auth_available() is True
+    assert llm_router._get_grok_cli_provider() is not None
 
 
 def test_grok_cli_provider_uses_bounded_headless_json_mode(monkeypatch) -> None:

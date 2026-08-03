@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor import grok_cli_runner
@@ -14,7 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.llm import (
 )
 
 
-def test_supervisor_child_routes_grok_through_datasets_router(monkeypatch, tmp_path) -> None:
+def test_supervisor_child_routes_grok_through_canonical_router(monkeypatch, tmp_path) -> None:
     fake_grok = tmp_path / "grok"
     fake_grok.write_text(
         """#!/usr/bin/env python3
@@ -40,9 +41,44 @@ print(json.dumps({
     monkeypatch.setenv("IPFS_DATASETS_PY_GROK_CLI_CMD", str(fake_grok))
     monkeypatch.setenv("IPFS_DATASETS_PY_ROUTER_CACHE", "0")
     monkeypatch.setenv("IPFS_DATASETS_PY_ROUTER_RESPONSE_CACHE", "0")
+    hostile_pythonpath = tmp_path / "hostile-pythonpath"
+    hostile_pythonpath.mkdir()
+    sitecustomize_marker = tmp_path / "sitecustomize-executed"
+    (hostile_pythonpath / "sitecustomize.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(sitecustomize_marker)!r}).write_text('executed')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PYTHONPATH", str(hostile_pythonpath))
+    monkeypatch.setenv("PYTHONHOME", str(tmp_path / "hostile-python-home"))
+    hostile_script_root = tmp_path / "hostile-script-root"
+    hostile_script_root.mkdir()
+    script_root_marker = tmp_path / "script-root-imported"
+    (hostile_script_root / "inspect.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(script_root_marker)!r}).write_text('executed')\n"
+        "raise RuntimeError('hostile temporary script root executed')\n",
+        encoding="utf-8",
+    )
+    # Force the private child program into a directory containing a hostile
+    # stdlib shadow. Its implicit script path must not remain import authority.
+    monkeypatch.setattr(tempfile, "tempdir", str(hostile_script_root))
+    empty_child_cwd = tmp_path / "empty-child-cwd"
+    empty_child_cwd.mkdir()
+    (empty_child_cwd / "sitecustomize.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(sitecustomize_marker)!r}).write_text('executed')\n",
+        encoding="utf-8",
+    )
+    shadow_package = empty_child_cwd / "ipfs_accelerate_py"
+    shadow_package.mkdir()
+    (shadow_package / "__init__.py").write_text(
+        "raise RuntimeError('hostile checkout package executed')\n",
+        encoding="utf-8",
+    )
 
     config = LlmRouterInvocation(
-        repo_root=Path(__file__).resolve().parents[2],
+        repo_root=empty_child_cwd,
         provider="grok",
         model_name="grok-4.5",
         allow_local_fallback=False,
@@ -54,6 +90,8 @@ print(json.dumps({
     )
 
     assert call_llm_router("child-smoke", config) == "supervisor:grok-4.5:child-smoke"
+    assert sitecustomize_marker.exists() is False
+    assert script_root_marker.exists() is False
 
 
 def test_grok_agent_runner_forwards_resolved_launch_policy(

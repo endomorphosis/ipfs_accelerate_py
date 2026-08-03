@@ -185,6 +185,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.post_merge_review import (
     PostMergeReviewOutcome,
     VerifiedImplementerProvenance,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.post_merge_validation import (
+    verify_post_merge_validation_evidence,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     post_merge_review as post_merge_review_module,
 )
@@ -1763,65 +1766,10 @@ def test_implementation_daemon_default_prefers_grok_over_codex(
     )
 
 
-def test_unauthenticated_grok_falls_back_to_codex_unless_forced(
+def test_default_route_does_not_predispatch_codex_when_grok_is_unavailable(
     tmp_path,
     monkeypatch,
 ):
-    from ipfs_accelerate_py import llm_router as llm_router_module
-
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    monkeypatch.delenv(
-        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        raising=False,
-    )
-    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_grok_binary",
-        lambda: "/usr/local/bin/grok",
-    )
-    monkeypatch.setattr(
-        llm_router_module,
-        "_grok_cli_auth_available",
-        lambda: False,
-    )
-    monkeypatch.setattr(
-        llm_router_module,
-        "get_llm_provider",
-        lambda provider: object()
-        if provider == "grok_cli"
-        else None,
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module.shutil,
-        "which",
-        lambda name: (
-            "/usr/local/bin/codex"
-            if name == "codex"
-            else None
-        ),
-    )
-
-    command = daemon._build_implementation_command(repo)
-
-    assert command[:2] == ["/usr/local/bin/codex", "exec"]
-    monkeypatch.setenv(
-        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        "grok",
-    )
-    with pytest.raises(RuntimeError, match="requires the Grok Build CLI"):
-        daemon._build_implementation_command(repo)
-
-
-def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -1856,21 +1804,8 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
     )
     monkeypatch.setattr(implementation_daemon_module, "_copilot_has_auth", lambda: False)
 
-    command = daemon._build_implementation_command(repo)
-
-    assert command[:5] == [
-        "/usr/local/bin/codex",
-        "exec",
-        "--dangerously-bypass-approvals-and-sandbox",
-        "-C",
-        str(repo),
-    ]
-    assert command[-1] == "-"
-    assert ["-c", "model_context_window=200000"] == command[5:7]
-    assert "-c" in command
-    assert 'model_reasoning_effort="high"' in command
-    assert "agents.max_threads=10" in command
-    assert "agents.max_depth=2" in command
+    with pytest.raises(RuntimeError, match="verified Grok quota-exhaustion"):
+        daemon._build_implementation_command(repo)
 
 
 def test_task_provider_role_overrides_static_lane_provider(tmp_path, monkeypatch):
@@ -1898,6 +1833,10 @@ def test_task_provider_role_overrides_static_lane_provider(tmp_path, monkeypatch
     monkeypatch.setenv(
         implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
         "codex",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
     )
     monkeypatch.setattr(
         implementation_daemon_module,
@@ -3273,7 +3212,10 @@ def test_git_gc_first_run_establishes_baseline_without_aggressive_repack(
     assert reloaded.needs_aggressive_gc() is False
 
 
-def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, monkeypatch):
+def test_default_route_does_not_predispatch_authenticated_copilot(
+    tmp_path,
+    monkeypatch,
+):
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -3312,12 +3254,8 @@ def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, mon
     )
     monkeypatch.setattr(implementation_daemon_module, "_copilot_has_auth", lambda: True)
 
-    command = daemon._build_implementation_command(repo)
-
-    assert command[:2] == ["bash", "-lc"]
-    assert "falling back to copilot" in command[2]
-    assert command[3:7] == ["bash", "/usr/local/bin/codex", "/usr/local/bin/copilot", str(repo)]
-    assert command[7:] == ["", "200000", "high", "10", "2", "", "high", "long_context", "30"]
+    with pytest.raises(RuntimeError, match="verified Grok quota-exhaustion"):
+        daemon._build_implementation_command(repo)
 
 
 def test_implementation_daemon_links_shared_dependencies_only_in_managed_worktrees(tmp_path):
@@ -5796,9 +5734,11 @@ def test_repo_implementation_multi_supervisor_launcher_uses_packaged_resolver_de
 
 def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):
     codex_log = tmp_path / "codex.prompt"
+    codex_argv_log = tmp_path / "codex.argv"
     codex_bin = tmp_path / "codex"
     codex_bin.write_text(
         "#!/usr/bin/env bash\n"
+        f"printf '%s\\n' \"$@\" > {shlex.quote(str(codex_argv_log))}\n"
         "while (($#)); do\n"
         "  if [[ \"$1\" == \"-C\" ]]; then shift; workspace=\"$1\"; fi\n"
         "  shift || true\n"
@@ -5812,6 +5752,7 @@ def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):
         "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
         "CODEX_BIN": str(codex_bin),
         "COPILOT_BIN": "",
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "",
         "AGENT_RESOLVER_LOCK_BYPASS": "1",
     }
 
@@ -5831,6 +5772,8 @@ def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):
 
     assert completed.returncode == 0, completed.stderr
     assert codex_log.read_text(encoding="utf-8") == "resolve this conflict"
+    codex_argv = codex_argv_log.read_text(encoding="utf-8").splitlines()
+    assert codex_argv[codex_argv.index("-m") + 1] == "gpt-5.6-sol"
 
 
 def test_llm_merge_resolver_provider_defaults_fit_outer_budget(monkeypatch):
@@ -10244,11 +10187,18 @@ def test_merge_callback_runs_exact_post_merge_validation_before_acceptance(
     assert validation["target_commit"] == merge_commit
     assert validation["validated_commit"] == merge_commit
     assert validation["passed"] is True
-    receipt_material = dict(validation)
-    receipt_id = receipt_material.pop("validation_receipt_id")
-    assert receipt_id == implementation_daemon_module.content_identity(
-        receipt_material
+    verified_receipt, receipt_reasons = (
+        verify_post_merge_validation_evidence(
+            validation,
+            expected_task_id="REF-043",
+            expected_target_commit=merge_commit,
+            expected_repository_tree_id=str(
+                validation["repository_tree_id"]
+            ),
+        )
     )
+    assert verified_receipt is True
+    assert receipt_reasons == ()
     assert result["completion_authoritative"] is expected_authoritative
     updated = todo_path.read_text(encoding="utf-8")
     if expected_authoritative:
@@ -20215,11 +20165,18 @@ def test_post_merge_validation_fails_closed_on_submodule_init_failure(
         "post_merge_submodule_initialization_failed"
     )
     assert evidence["submodule_init_failures"][0]["path"] == "libs/child"
-    receipt_material = dict(evidence)
-    receipt_id = receipt_material.pop("validation_receipt_id")
-    assert receipt_id == implementation_daemon_module.content_identity(
-        receipt_material
+    verified_receipt, receipt_reasons = (
+        verify_post_merge_validation_evidence(
+            evidence,
+            expected_task_id="REF-044",
+            expected_target_commit=merge_commit,
+            expected_repository_tree_id=str(
+                evidence["repository_tree_id"]
+            ),
+        )
     )
+    assert verified_receipt is True
+    assert receipt_reasons == ()
 
 
 def test_post_merge_validation_resolves_gitlink_without_parent_commit_object(
@@ -24043,11 +24000,16 @@ def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(
     todo_path = repo / "todo.md"
     todo_path.write_text("# Todos\n", encoding="utf-8")
     quota_script = repo / "quota.sh"
+    secret = "provider-account-secret-must-not-reach-events"
     quota_script.write_text(
-        "printf \"ERROR: You've hit your usage limit.\\n\"\n"
+        f"printf \"ERROR: You've hit your usage limit. token={secret}\\n\"\n"
         "printf \"You've reached your additional usage limit.\\n\"\n"
         "exit 1\n",
         encoding="utf-8",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
     )
     state_path = repo / "state" / "task_state.json"
     daemon = TodoImplementationDaemon(
@@ -24077,14 +24039,24 @@ def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(
     assert first["reason"] == "provider_capacity_exhausted"
     assert first["providers"] == ["codex", "copilot", "grok"]
     assert first["attempt_consumed"] is False
+    assert first["evidence"] == [
+        "provider_capacity_pattern:codex",
+        "provider_capacity_pattern:copilot",
+        "provider_capacity_pattern:grok",
+    ]
+    assert secret not in json.dumps(first)
     assert persisted.implementation_attempts == {}
     assert daemon._find_live_inflight_implementation() is None
     assert second["skipped"] is True
+    assert second["deferred"] is True
     assert second["reason"] == "provider_capacity_backoff"
+    assert second["attempt_consumed"] is False
+    assert second["provider_call_allowed"] is False
     events = [
         json.loads(line)
         for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()
     ]
+    assert secret not in json.dumps(events)
     assert any(event["type"] == "implementation_provider_exhausted" for event in events)
     assert not any(event["type"] == "implementation_finished" for event in events)
 
@@ -24117,12 +24089,18 @@ def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
         "printf \"ERROR: You've hit your usage limit.\\n\"\nexit 1\n",
         encoding="utf-8",
     )
+    lease_manifest_path = repo / "lease-heartbeat.json"
+    lease_manifest_path.write_text('{"revision":0}\n', encoding="utf-8")
     state_dir = repo / "state"
     state_path = state_dir / "task_state.json"
     events_path = state_dir / "events.jsonl"
     monkeypatch.setenv(
         "IPFS_ACCELERATE_AGENT_PROVIDER_CAPACITY_BACKOFF_SECONDS",
         "600",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
     )
     daemon = TodoImplementationDaemon(
         todo_path=todo_path,
@@ -24133,12 +24111,17 @@ def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
         task_header_prefix="## ACCEL-",
         implement=True,
         implementation_command="bash quota.sh",
+        external_reservation_manifest_paths=(lease_manifest_path,),
     )
 
     first = daemon.run_once()
     first_retry_at = first["implementation_result"]["retry_at"]
     state_after_failure = state_path.read_bytes()
     events_after_failure = events_path.read_bytes()
+    queue_path = state_dir / "task_queue.json"
+    queue_after_failure = queue_path.read_bytes()
+    queue_key = daemon.task_queue.resolve_key("ACCEL-001")
+    assert daemon.task_queue.entries[queue_key].attempt_count == 0
 
     second = daemon.run_once()
 
@@ -24149,6 +24132,7 @@ def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
     assert second["write_count"] == 0
     assert state_path.read_bytes() == state_after_failure
     assert events_path.read_bytes() == events_after_failure
+    assert queue_path.read_bytes() == queue_after_failure
 
     third = daemon.run_once()
 
@@ -24158,6 +24142,126 @@ def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
     assert 0 < third["next_wake_after_seconds"] <= second["next_wake_after_seconds"]
     assert state_path.read_bytes() == state_after_failure
     assert events_path.read_bytes() == events_after_failure
+    assert queue_path.read_bytes() == queue_after_failure
+
+    load_calls = 0
+    source_head_calls = 0
+    original_load_tasks = daemon._load_tasks
+    original_runtime_source_head = daemon._runtime_source_head
+
+    def counted_load_tasks():
+        nonlocal load_calls
+        load_calls += 1
+        return original_load_tasks()
+
+    def counted_runtime_source_head():
+        nonlocal source_head_calls
+        source_head_calls += 1
+        return original_runtime_source_head()
+
+    monkeypatch.setattr(daemon, "_load_tasks", counted_load_tasks)
+    monkeypatch.setattr(
+        daemon,
+        "_runtime_source_head",
+        counted_runtime_source_head,
+    )
+
+    # Lease sources also carry merge, fencing, claim, maintenance, and external
+    # reservation state.  They therefore remain actionable even while the
+    # provider latch is active, but must not manufacture another attempt or
+    # grow the task/event/queue streams when the resulting projection is idle.
+    for revision in range(1, 6):
+        previous_load_calls = load_calls
+        previous_source_head_calls = source_head_calls
+        lease_manifest_path.write_text(
+            json.dumps({"revision": revision}) + "\n",
+            encoding="utf-8",
+        )
+        daemon._pending_runtime_wake_events.append({"kind": "lease"})
+        lease_wake = daemon.run_once()
+        assert lease_wake["wake_kinds"] == ["lease"]
+        assert load_calls > previous_load_calls
+        assert source_head_calls > previous_source_head_calls
+        assert lease_wake["implementation_result"]["deferred"] is True
+        assert (
+            lease_wake["implementation_result"]["reason"]
+            == "provider_capacity_backoff"
+        )
+        assert lease_wake["unchanged"] is True
+        assert state_path.read_bytes() == state_after_failure
+        assert events_path.read_bytes() == events_after_failure
+        assert queue_path.read_bytes() == queue_after_failure
+
+    # An observation wake must reconcile a selectable task whose cooldown is
+    # already due; otherwise typed/local work could starve behind an unrelated
+    # provider-capacity latch.
+    previous_load_calls = load_calls
+    previous_source_head_calls = source_head_calls
+    daemon._pending_runtime_wake_events.append(
+        {"kind": "observation_window"}
+    )
+    observation = daemon.run_once()
+    assert observation["implementation_result"]["deferred"] is True
+    assert observation["unchanged"] is True
+    assert load_calls > previous_load_calls
+    assert source_head_calls > previous_source_head_calls
+
+    # Repository, validation, task-board, policy, provider-capacity, and child
+    # wakes remain actionable. A no-op reconciliation of the same deferred
+    # task may report the latch in its return value, but cannot manufacture a
+    # selection attempt or duplicate durable event.
+    actionable_kinds = (
+        "repository",
+        "validation",
+        "task_board",
+        "policy",
+        "provider_capacity",
+        "child_process",
+        "objective",
+    )
+    for kind in actionable_kinds:
+        previous_load_calls = load_calls
+        previous_source_head_calls = source_head_calls
+        daemon._pending_runtime_wake_events.append({"kind": kind})
+        actionable = daemon.run_once()
+        assert load_calls > previous_load_calls
+        assert source_head_calls > previous_source_head_calls
+        assert actionable["wake_kinds"] == [kind]
+        assert actionable["implementation_result"]["deferred"] is True
+        assert (
+            actionable["implementation_result"]["reason"]
+            == "provider_capacity_backoff"
+        )
+        assert actionable["implementation_result"]["attempt_consumed"] is False
+        assert (
+            actionable["implementation_result"]["provider_call_allowed"]
+            is False
+        )
+        assert actionable["unchanged"] is True
+        assert queue_path.read_bytes() == queue_after_failure
+
+    # The normal unchanged-head shortcut must not disable the independent
+    # safety pass.
+    daemon._last_safety_reconciliation_monotonic = (
+        time.monotonic()
+        - implementation_daemon_module.DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS
+        - 1.0
+    )
+    daemon._pending_runtime_wake_events.append(
+        {"kind": "observation_window"}
+    )
+    previous_load_calls = load_calls
+    previous_source_head_calls = source_head_calls
+    safety_reconciliation = daemon.run_once()
+    assert load_calls > previous_load_calls
+    assert source_head_calls > previous_source_head_calls
+    assert safety_reconciliation["implementation_result"]["deferred"] is True
+    assert safety_reconciliation["unchanged"] is True
+
+    assert daemon.task_queue.entries[queue_key].attempt_count == 0
+    assert state_path.read_bytes() == state_after_failure
+    assert events_path.read_bytes() == events_after_failure
+    assert queue_path.read_bytes() == queue_after_failure
 
 
 def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(
@@ -24173,11 +24277,17 @@ def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(
     todo_path = repo / "todo.md"
     todo_path.write_text("# Todos\n", encoding="utf-8")
     (repo / "quota.sh").write_text(
-        "printf \"ERROR: You've hit your usage limit.\\n\"\nexit 1\n",
+        "printf 'partial provider work\\n' > partial.txt\n"
+        "printf \"ERROR: You've hit your usage limit.\\n\"\n"
+        "exit 1\n",
         encoding="utf-8",
     )
     _git(repo, "add", "todo.md", "quota.sh")
     _git(repo, "commit", "-m", "seed")
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
+    )
     state_path = repo / "state" / "task_state.json"
     daemon = TodoImplementationDaemon(
         todo_path=todo_path,
@@ -24209,6 +24319,97 @@ def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(
     assert result["attempt_consumed"] is False
     assert persisted.implementation_attempts == {}
     assert daemon._find_live_inflight_implementation() is None
+    preservation = result["provider_capacity_preservation"]
+    assert preservation["preserved"] is True
+    rescue_branch = preservation["rescue_branch"]
+    assert rescue_branch.startswith("rescue/")
+    assert _git(repo, "show", f"{rescue_branch}:partial.txt") == (
+        "partial provider work"
+    )
+    assert result["cleanup_result"]["lifecycle_finalize"]["finalized"] is True
+
+
+def test_missing_ephemeral_workspace_capacity_signal_finalizes_lifecycle(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed")
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
+    )
+    state_path = repo / "state" / "task_state.json"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Recover a disappeared provider workspace",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+    )
+
+    def remove_workspace(command, *, cwd, stdout, **_kwargs):
+        stdout.write("workspace is not a directory\n")
+        stdout.flush()
+        _git(repo, "worktree", "remove", "--force", str(cwd))
+        return subprocess.CompletedProcess(command, 1)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        remove_workspace,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["deferred"] is True
+    assert result["reason"] == "provider_capacity_exhausted"
+    assert result["providers"] == ["infrastructure"]
+    assert result["attempt_consumed"] is False
+    assert result["cleanup_result"]["cleaned"] is True
+    assert result["cleanup_result"]["lifecycle_finalize"]["finalized"] is True
+    assert daemon.worktree_lifecycle.load_task_attempt(
+        canonical_task_cid=daemon._canonical_ref(task),
+        task_id=task.task_id,
+        attempt=1,
+    ) is None
 
 
 def test_implementation_repair_round_is_relative_to_latest_verified_base(
@@ -26535,6 +26736,10 @@ def test_implementation_daemon_records_non_ephemeral_setup_exception(
         encoding="utf-8",
     )
     state_dir = repo / "state"
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
+    )
     daemon = TodoImplementationDaemon(
         todo_path=todo_path,
         state_path=state_dir / "task_state.json",
@@ -26565,6 +26770,10 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
     repo = tmp_path / "repo"
     repo.mkdir()
     state_dir = repo / "state"
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
+    )
     daemon = TodoImplementationDaemon(
         todo_path=repo / "todo.md",
         state_path=state_dir / "task_state.json",
@@ -27575,6 +27784,10 @@ def test_implementation_daemon_promotes_fully_validated_timeout_work(
     repo = tmp_path / "repo"
     repo.mkdir()
     state_dir = repo / "state"
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
+    )
     daemon = TodoImplementationDaemon(
         todo_path=repo / "todo.md",
         state_path=state_dir / "task_state.json",
@@ -31857,6 +32070,10 @@ def test_task_llm_context_budget_caps_codex_window_without_widening_operator_lim
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
         "codex",
     )
+    monkeypatch.setenv(
+        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
+        "1",
+    )
     monkeypatch.setattr(
         implementation_daemon_module.shutil,
         "which",
@@ -31870,7 +32087,10 @@ def test_task_llm_context_budget_caps_codex_window_without_widening_operator_lim
     assert resolution.provider_context_window == 6_000
     assert resolution.effective_input_limit == 4_500
     assert result.capsule.budget.max_input_tokens == 4_500
-    assert ["-c", "model_context_window=6000"] == command[5:7]
+    context_index = command.index("model_context_window=6000")
+    assert ["-c", "model_context_window=6000"] == command[
+        context_index - 1 : context_index + 1
+    ]
     assert "model_context_window=200000" not in command
 
 
@@ -34483,7 +34703,7 @@ def test_objective_daemon_refines_missing_evidence_into_child_goals(tmp_path):
     assert "Prove missing_gesture_policy for Meta display control bridge" in todo_text
 
 
-def test_bundle_member_completion_receipts_use_terminal_canonical_evidence(tmp_path):
+def test_bundle_member_completion_receipts_require_authoritative_terminal_evidence(tmp_path):
     state_dir = tmp_path / "objective-runtime" / "state"
     state_dir.mkdir(parents=True)
     event_path = state_dir / "agent_objective_runtime_events.jsonl"
@@ -34511,7 +34731,7 @@ def test_bundle_member_completion_receipts_use_terminal_canonical_evidence(tmp_p
                         "type": "implementation_finished",
                         "timestamp": "2026-07-22T12:01:00+00:00",
                         "task_id": "ACCEL-002",
-                        "canonical_task_cid": "cid-completed-from-merge",
+                        "canonical_task_cid": "cid-merged-without-authority",
                         "returncode": 0,
                         "merge_result": {"merged": True},
                     }
@@ -34536,6 +34756,35 @@ def test_bundle_member_completion_receipts_use_terminal_canonical_evidence(tmp_p
                 ),
                 json.dumps(
                     {
+                        "type": "implementation_finished",
+                        "timestamp": "2026-07-22T12:03:30+00:00",
+                        "task_id": "ACCEL-006",
+                        "returncode": 0,
+                        "merge_result": {"merged": True},
+                        "acceptance_result": {
+                            "authoritatively_completed": True,
+                            "completion_authoritative": True,
+                            "pending_gates": [],
+                            "todo_update_result": {
+                                "updated": True,
+                                "updated_task_ids": ["ACCEL-006"],
+                                "already_completed_task_ids": [],
+                                "completion_receipts": [
+                                    {
+                                        "task_id": "ACCEL-006",
+                                        "canonical_task_cid": (
+                                            "cid-completed-from-merge"
+                                        ),
+                                        "canonical_task_key": "task/v1/merge",
+                                        "board_namespace": "test-board",
+                                    }
+                                ],
+                            },
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
                         "type": "todo_status_updated",
                         "timestamp": "2026-07-22T12:04:00+00:00",
                         "task_id": "ACCEL-005",
@@ -34556,7 +34805,8 @@ def test_bundle_member_completion_receipts_use_terminal_canonical_evidence(tmp_p
 
     assert set(receipts) == {"cid-completed-from-status", "cid-completed-from-merge"}
     assert receipts["cid-completed-from-status"]["event_path"] == str(rotated_path)
-    assert receipts["cid-completed-from-merge"]["task_id"] == "ACCEL-002"
+    assert receipts["cid-completed-from-merge"]["task_id"] == "ACCEL-006"
+    assert "cid-merged-without-authority" not in receipts
 
 
 def test_goal_packet_aggregate_releases_every_covered_member_dependency(

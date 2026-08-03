@@ -43,6 +43,73 @@ def bounded_daemon_wait_timeout(
     return min(timeout, max(0.0, retry_after))
 
 
+def implementation_daemon_result_is_proven_noop(
+    result: Mapping[str, Any],
+) -> bool:
+    """Return whether a coalescible wake proves that it performed no work."""
+
+    write_count = result.get("write_count")
+    basic_noop = (
+        result.get("unchanged") is True
+        and isinstance(write_count, int)
+        and not isinstance(write_count, bool)
+        and write_count == 0
+        and result.get("state_written") is False
+    )
+    raw_wake_kinds = result.get("wake_kinds")
+    if (
+        not basic_noop
+        or not isinstance(raw_wake_kinds, (list, tuple, set, frozenset))
+        or not raw_wake_kinds
+        or any(not isinstance(kind, str) for kind in raw_wake_kinds)
+        or not set(raw_wake_kinds).issubset({"lease", "observation_window"})
+        or result.get("blocked") is True
+        or bool(result.get("error"))
+        or bool(result.get("merge_reconciliation"))
+    ):
+        return False
+
+    implementation_result = result.get("implementation_result")
+    if implementation_result is None:
+        return True
+    if not isinstance(implementation_result, Mapping):
+        return False
+    return (
+        implementation_result.get("reason") == "provider_capacity_backoff"
+        and implementation_result.get("skipped") is True
+        and implementation_result.get("deferred") is True
+        and implementation_result.get("provider_call_allowed") is False
+        and implementation_result.get("attempt_consumed") is False
+    )
+
+
+def log_portal_implementation_daemon_pass_complete(
+    logger: logging.Logger,
+    message: str,
+    result: Mapping[str, Any],
+    *,
+    once: bool,
+) -> None:
+    """Log meaningful passes at INFO and recurring proven no-ops compactly."""
+
+    if once or not implementation_daemon_result_is_proven_noop(result):
+        logger.info(message, result)
+        return
+
+    summary: dict[str, Any] = {
+        "unchanged": True,
+        "write_count": 0,
+        "state_written": False,
+        "wake_kinds": sorted(result["wake_kinds"]),
+    }
+    implementation_result = result.get("implementation_result")
+    if isinstance(implementation_result, Mapping):
+        summary["implementation_reason"] = implementation_result.get("reason")
+    if "next_wake_after_seconds" in result:
+        summary["next_wake_after_seconds"] = result["next_wake_after_seconds"]
+    logger.debug(message, summary)
+
+
 class DaemonHookTimeoutError(TimeoutError):
     """Raised when a daemon before/after hook exceeds its bounded runtime."""
 
@@ -1231,7 +1298,12 @@ def run_portal_implementation_daemon_loop(
             _run_hooks(hooks, phase="before", context=pass_context, logger=logger)
             result = daemon.run_once()
             _run_hooks(hooks, phase="after", context=pass_context, logger=logger)
-            logger.info(pass_complete_message, result)
+            log_portal_implementation_daemon_pass_complete(
+                logger,
+                pass_complete_message,
+                result,
+                once=bool(parsed.once),
+            )
             if parsed.once:
                 break
             pass_index += 1

@@ -21,6 +21,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_ro
     ProviderReason,
     ProviderRole,
     RouteStatus,
+    VerifiedGrokQuotaExhaustion,
     redact_provider_data,
     route_contract_packet,
 )
@@ -161,7 +162,8 @@ def test_no_provider_receives_repository_path_corpus_or_expansion_bodies() -> No
     router = ImplementationProviderRouter(
         grok_provider=capture,
         codex_provider=lambda request: (
-            seen.append(request.to_dict()) or {"decision": "approve"}
+            seen.append(request.to_dict())
+            or {"decision": "approve", "findings": []}
         ),
         admission_gate=_accept,
     )
@@ -182,6 +184,7 @@ def test_no_provider_receives_repository_path_corpus_or_expansion_bodies() -> No
         "task_id",
         "provider_input",
         "bounds",
+        "response_contract",
         "authority",
     }
     assert seen[0]["authority"]["repository_write_allowed"] is False
@@ -243,7 +246,7 @@ def test_provider_cannot_change_proof_or_completion(
     assert writes == []
 
 
-def test_review_repair_must_be_admitted_before_the_single_write() -> None:
+def test_review_repair_requires_a_further_review_and_never_writes() -> None:
     admissions = []
     writes = []
 
@@ -270,10 +273,56 @@ def test_review_repair_must_be_admitted_before_the_single_write() -> None:
         ProviderRole.GROK_IMPLEMENT,
         ProviderRole.CODEX_REVIEW,
     ]
-    assert len(writes) == 1
-    assert writes[0][0].role is ProviderRole.CODEX_REVIEW
-    assert writes[0][0].payload["patch"] == "codex repair"
-    assert result.selected_proposal is writes[0][0]
+    assert writes == []
+    assert result.status is RouteStatus.REJECTED
+    assert result.reason_code == ProviderReason.REVIEW_REJECTED.value
+    assert result.selected_proposal is None
+    assert not result.write_performed
+
+
+def test_approve_with_findings_is_rejected_before_writer() -> None:
+    writes = []
+    result = ImplementationProviderRouter(
+        grok_provider=_grok,
+        codex_provider=lambda _request: {
+            "decision": "approve",
+            "findings": ["the proposal is unsafe"],
+        },
+        admission_gate=_accept,
+        writer=lambda proposal, lease: writes.append((proposal, lease)),
+    ).route(
+        _Packet(),
+        current_snapshot_id=SNAPSHOT,
+        apply=True,
+        writer_lease_id="lease:contradictory-review",
+    )
+
+    assert result.status is RouteStatus.REJECTED
+    assert result.reason_code == ProviderReason.PROVIDER_RESPONSE_MALFORMED.value
+    assert result.selected_proposal is None
+    assert result.write_performed is False
+    assert writes == []
+
+
+def test_approve_without_findings_is_rejected_before_writer() -> None:
+    writes = []
+    result = ImplementationProviderRouter(
+        grok_provider=_grok,
+        codex_provider=lambda _request: {"decision": "approve"},
+        admission_gate=_accept,
+        writer=lambda proposal, lease: writes.append((proposal, lease)),
+    ).route(
+        _Packet(),
+        current_snapshot_id=SNAPSHOT,
+        apply=True,
+        writer_lease_id="lease:missing-review-findings",
+    )
+
+    assert result.status is RouteStatus.REJECTED
+    assert result.reason_code == ProviderReason.PROVIDER_RESPONSE_MALFORMED.value
+    assert result.selected_proposal is None
+    assert result.write_performed is False
+    assert writes == []
 
 
 def test_missing_admission_or_writer_lease_never_writes() -> None:
@@ -333,7 +382,103 @@ def test_grok_quota_without_fallback_defers_with_typed_reason() -> None:
     assert result.reason_code == ProviderReason.GROK_QUOTA_EXHAUSTED.value
 
 
-def test_codex_quota_falls_back_to_already_admitted_grok_independently() -> None:
+def test_verified_grok_balance_exhaustion_routes_to_terra_pending_review() -> None:
+    calls: list[str] = []
+    writes: list[object] = []
+
+    def exhausted_grok(_request):
+        calls.append("grok")
+        raise VerifiedGrokQuotaExhaustion()
+
+    def terra(request):
+        calls.append("terra")
+        assert request.role is ProviderRole.CODEX_QUOTA_IMPLEMENT
+        assert "contract_packet" in request.payload
+        return {
+            "proposal": {
+                "patch": "terra proposal",
+                "declared_paths": [PATH],
+            }
+        }
+
+    result = ImplementationProviderRouter(
+        grok_provider=exhausted_grok,
+        codex_implementation_fallback_provider=terra,
+        codex_provider=lambda _request: calls.append("codex-review"),
+        admission_gate=_accept,
+        writer=lambda proposal, lease: writes.append((proposal, lease)),
+    ).route(
+        _Packet(),
+        current_snapshot_id=SNAPSHOT,
+        apply=True,
+        writer_lease_id="lease:must-not-write",
+    )
+
+    assert calls == ["grok", "terra"]
+    assert writes == []
+    assert result.status is RouteStatus.DEFERRED
+    assert result.reason_code == ProviderReason.NON_CODEX_REVIEW_REQUIRED.value
+    assert result.provider == ProviderRole.CODEX_QUOTA_IMPLEMENT.value
+    assert result.review_presence == "review_absent"
+    assert result.provider_result_admitted is False
+    assert result.selected_proposal is None
+    assert result.implementation_proposal is not None
+    assert result.implementation_proposal.admitted is True
+    assert result.write_performed is False
+    assert [item.role for item in result.attempts] == [
+        ProviderRole.GROK_IMPLEMENT,
+        ProviderRole.CODEX_QUOTA_IMPLEMENT,
+    ]
+    assert [item.role for item in result.review_chain] == [
+        ProviderRole.GROK_IMPLEMENT.value,
+        ProviderRole.CODEX_QUOTA_IMPLEMENT.value,
+        ProviderRole.NON_CODEX_REVIEW.value,
+    ]
+    assert [item.status for item in result.review_chain] == [
+        "failed",
+        "succeeded",
+        "absent",
+    ]
+
+
+@pytest.mark.parametrize(
+    "grok_result",
+    [
+        ProviderQuotaError(
+            "unverified quota text",
+            reason_code=ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value,
+        ),
+        {
+            "status": "quota_exhausted",
+            "reason_code": ProviderReason.GROK_BUILD_QUOTA_EXHAUSTED.value,
+        },
+    ],
+)
+def test_unverified_or_model_authored_quota_claim_never_routes_to_terra(
+    grok_result: object,
+) -> None:
+    calls: list[str] = []
+
+    def grok(_request):
+        calls.append("grok")
+        if isinstance(grok_result, BaseException):
+            raise grok_result
+        return grok_result
+
+    result = ImplementationProviderRouter(
+        grok_provider=grok,
+        codex_implementation_fallback_provider=lambda _request: calls.append(
+            "terra"
+        ),
+        admission_gate=_accept,
+    ).route(_Packet(), current_snapshot_id=SNAPSHOT)
+
+    assert calls == ["grok"]
+    assert result.status is RouteStatus.DEFERRED
+    assert result.reason_code == ProviderReason.GROK_QUOTA_EXHAUSTED.value
+
+
+def test_codex_quota_preserves_grok_as_evidence_without_writing() -> None:
     writes = []
     router = ImplementationProviderRouter(
         grok_provider=_grok,
@@ -352,8 +497,8 @@ def test_codex_quota_falls_back_to_already_admitted_grok_independently() -> None
 
     assert result.status is RouteStatus.FALLBACK
     assert result.reason_code == ProviderReason.CODEX_QUOTA_EXHAUSTED.value
-    assert result.write_performed and len(writes) == 1
-    assert writes[0][0].role is ProviderRole.GROK_IMPLEMENT
+    assert not result.write_performed
+    assert writes == []
     assert router.grok_quota.attempts == 1
     assert router.codex_quota.attempts == 0
 

@@ -758,6 +758,13 @@ def test_cross_lane_completion_reuses_the_bound_non_main_target(
         worktree_path=None,
         task=task,
         attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
     )
     request.metadata["validation_proof"] = {
         "passed": True,
