@@ -2,6 +2,8 @@
 
 **Status:** Current
 
+**Owner:** MCP maintainers
+
 **Audience:** Operators, integrators, and agents selecting or embedding the MCP
 runtime
 
@@ -14,10 +16,15 @@ internals beyond operator-needed maps (see
 [MCP runtime architecture](architecture/MCP_RUNTIME.md)); agent-supervisor
 control-plane design
 
-**Last verified:** `49c76b69f` (2026-08-03); entrypoints, extras, env keys, and
-side-effect notes checked against `ipfs_accelerate_py/mcp_server/`,
-`ipfs_accelerate_py/mcp/`, `pyproject.toml`, and
-`docs/architecture/MCP_RUNTIME.md`
+**Sources:** `requirements.txt`; `pyproject.toml`;
+`ipfs_accelerate_py/mcp_server/`; `ipfs_accelerate_py/mcp/`;
+`ipfs_accelerate_py/cli.py`; `docs/architecture/MCP_RUNTIME.md`
+
+**Last-verified:** 2026-08-03 @ `d5f3aa5c6`; entrypoints, dependency metadata,
+fixed HTTP routes, tests, environment keys, and side-effect notes rechecked
+
+**Freshness triggers:** changes to base dependencies or MCP extras; MCP route,
+configuration, transport, CLI, compatibility, or catalog-test changes
 
 ## Package identity
 
@@ -40,15 +47,28 @@ are in the [canonical server README](../ipfs_accelerate_py/mcp_server/README.md)
 
 ## Install extras
 
-MCP is optional. Base `ipfs-accelerate-py` does not install an MCP host.
+Running an MCP service is optional, but the current packaging metadata does
+**not** isolate its core dependencies from the base install. `pyproject.toml`
+loads base dependencies from `requirements.txt`, which already names FastMCP,
+Flask, Flask-CORS, Werkzeug, and PyGithub. The canonical server code is also
+part of the package. The `mcp` extra repeats those dependencies and adds
+`async-timeout`; it is an explicit feature-selection signal, not the boundary
+that first installs the MCP host.
 
 ```bash
 python -m pip install "ipfs-accelerate-py[mcp]"
 ```
 
+The canonical FastAPI entrypoint imports FastAPI and Uvicorn. They are not
+listed directly in the current `mcp` extra, although a resolver may install
+them transitively through FastMCP. For a locked environment, verify those two
+imports or install/pin them explicitly. This packaging mismatch is code-owned;
+documentation must not imply that `[mcp]` is a complete isolation boundary.
+
 | Extra | What it adds | What it does **not** prove |
 | --- | --- | --- |
-| `mcp` | FastMCP, Flask/Werkzeug, related HTTP helpers, PyGithub | A live peer, GPU, IPFS node, or auth boundary |
+| Base dependencies | Currently include FastMCP, Flask/Werkzeug, Flask-CORS, and PyGithub | That an MCP process is running or configured |
+| `mcp` | Repeats the base MCP/Flask set and adds `async-timeout` | A complete dependency boundary, live peer, GPU, IPFS node, or auth boundary |
 | `mcp-p2p` / `libp2p` | libp2p, protobuf, multihash, dnspython | Reachable mesh, queue durability, or tool authority |
 | `all` | Broad application deps including FastMCP, **without** native P2P by default | Full production readiness |
 
@@ -65,7 +85,6 @@ not require the historical `mcp` CLI.
 ```bash
 export IPFS_MCP_HOST=127.0.0.1
 export IPFS_MCP_PORT=8000
-export IPFS_MCP_MOUNT_PATH=/mcp
 # Optional: attach hierarchical meta-tools and MCP++ services
 export IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP=1
 python -m ipfs_accelerate_py.mcp_server.fastapi_service
@@ -78,9 +97,13 @@ Health endpoints on this host:
 | `GET /healthz` | Process liveness |
 | `GET /mcp/health` | MCP service + tool-count summary |
 
-MCP protocol routes mount under `IPFS_MCP_MOUNT_PATH` (default `/mcp`). Keep
-development servers on localhost unless authentication, TLS, firewall, and
-resource limits are configured.
+The canonical FastAPI service currently defines its JSON-RPC and tool routes at
+the fixed `/mcp` prefix. `IPFS_MCP_MOUNT_PATH` only controls where the wrapper's
+minimal sub-application is mounted; it does **not** relocate `/mcp`,
+`/mcp/health`, or `/mcp/tools/*`. Leave the default in place unless you are
+embedding and have tested that wrapper mount separately. Keep development
+servers on localhost unless authentication, TLS, firewall, and resource limits
+are configured.
 
 ### 2. Programmatic construction
 
@@ -146,7 +169,7 @@ transport is not currently implemented under `mcp_server`.
 | --- | --- | --- |
 | `IPFS_MCP_HOST` | `0.0.0.0` | Bind host |
 | `IPFS_MCP_PORT` | `8000` | Bind port |
-| `IPFS_MCP_MOUNT_PATH` | `/mcp` | MCP mount path |
+| `IPFS_MCP_MOUNT_PATH` | `/mcp` | Wrapper sub-app mount; does not relocate the fixed canonical `/mcp` routes |
 | `IPFS_MCP_NAME` | `ipfs-accelerate-mcp` | Service name |
 | `IPFS_MCP_DESCRIPTION` | `IPFS Accelerate MCP Server` | Service description |
 | `IPFS_MCP_VERBOSE` | off | Verbose logging (`1`/`true`/`yes`/`on`) |
@@ -414,6 +437,18 @@ python -m pytest \
   test/test_mcplusplus_ai_catalog.py \
   test/test_ai_catalog_conformance.py -q
 ```
+
+**Known test-owned mismatch at 2026-08-03 @ `d5f3aa5c6`:** on Linux with
+Python 3.12.3 and pytest 9.0.3, that exact command reports 82 passed, 5 skipped,
+and 3 failed. The failures are
+`test_descriptor_round_trip_and_cid_are_stable`,
+`test_existing_descriptor_cid_and_registry_behavior_are_unchanged`, and
+`test_unknown_version_and_operation_include_upgrade_metadata` in
+`test/test_mcplusplus_ai_catalog_idl.py`. The implementation emits real
+multibase CIDv1 values beginning `bafkrei`, while those stale golden assertions
+still require the historical synthetic `cidv1-sha256-...` form. Do not cite the
+full command as green rollout evidence until the code/test contract is aligned;
+the remaining passes are still useful focused evidence.
 
 Usage control tools (`model_catalog_usage`, `model_catalog_usage_metrics`,
 `route_preview`) share reason codes and authorities with the Python control

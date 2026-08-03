@@ -1,6 +1,7 @@
 # P2P and Distributed Workflows
 
 **Status:** Current
+**Owner:** package maintainers / distributed-runtime maintainers
 **Audience:** Operators and integrators enabling optional IPFS, libp2p,
 TaskQueue, or workflow scheduling
 **Scope:** P2POperatorJourney@1 — prerequisites, install extras, MCP-backed
@@ -9,16 +10,20 @@ to architecture and historical guides
 **Non-goals:** Claiming a global peer mesh; treating process liveness as
 queue health; treating synthetic `bafy…` cache keys as multiformats CIDs;
 rewriting historical infrastructure fix notes
-**Last verified:** `73fd7229111c0553a42d0f11d2370ba1e6e95a45` (2026-08-03);
-`p2p_tasks/`, workflow modules, MCP CLI flags, and distributed-runtime guide
-aligned with this tree
-**Source anchors:** `ipfs_accelerate_py/p2p_tasks/` (`task_queue`, `protocol`,
+**Last-verified:** 2026-08-03 @ `d5f3aa5c6`; TaskQueue environment gate,
+autoscaler flag semantics, P2P modules, and distributed-runtime guide checked
+against this tree
+**Sources:** `ipfs_accelerate_py/cli.py` (`run_mcp_start`,
+`_maybe_start_taskqueue_p2p_from_env`, `--no-p2p`);
+`ipfs_accelerate_py/p2p_tasks/` (`task_queue`, `protocol`,
 `peer_trust`, `libp2p_runtime`, `mcp_p2p*`), `ipfs_accelerate_py/p2p_workflow_scheduler.py`,
 `ipfs_accelerate_py/p2p_workflow_discovery.py`,
 `ipfs_accelerate_py/mcp_server/`, `ipfs_accelerate_py/mcp/tools/`,
 `pyproject.toml` extras `mcp-p2p` and `libp2p`,
 `docs/architecture/DISTRIBUTED_RUNTIME.md`,
 `docs/architecture/INTEGRATION_BOUNDARIES.md`
+**Freshness triggers:** MCP CLI, TaskQueue enablement/auth, P2P environment,
+protocol, workflow-monitoring, or distributed-runtime contract changes
 
 IPFS, libp2p, TaskQueue, and distributed workflow support are **optional**.
 They sit **beside** the local inference path. Core CPU/local inference does
@@ -35,7 +40,7 @@ package ownership lives in
 ## 1. P2POperatorJourney@1 (end-to-end)
 
 ```text
-0. Prove CPU/local baseline without P2P
+0. Prove side-effect-minimized CPU/local baseline without P2P
         |
 1. Install optional extras (mcp-p2p and/or libp2p)
         |
@@ -52,7 +57,7 @@ package ownership lives in
 
 | Step | Success evidence | Failure / non-evidence |
 | --- | --- | --- |
-| 0 Baseline | Import + capability report without P2P extras | Skipping baseline and debugging only the mesh |
+| 0 Baseline | Heavy-core-skipped import + direct hardware report, with TaskQueue gate off | Skipping baseline and debugging only the mesh |
 | 1 Install | Extras resolve; modules import | Import alone ≠ mesh ready |
 | 2 Configure | Documented env (token, ports, bootstrap) present | Empty defaults in production |
 | 3 Start | Configured listener; MCP status when using MCP | PID or Docker import healthcheck alone |
@@ -91,24 +96,40 @@ The canonical MCP runtime owns the current server and P2P integration boundary:
 
 ```bash
 ipfs-accelerate mcp --help
+
+# TaskQueue P2P is opt-in. Use a real secret source instead of this placeholder.
+export IPFS_ACCELERATE_PY_MCP_P2P_SERVICE=1
+export IPFS_ACCELERATE_PY_TASK_P2P_TOKEN="<shared-token>"
+export IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT=9100
 ipfs-accelerate mcp start --host 127.0.0.1 --port 9000
 ipfs-accelerate mcp status --host 127.0.0.1 --port 9000
 ```
+
+Without `IPFS_ACCELERATE_PY_MCP_P2P_SERVICE=1`, the product MCP start path does
+not start the TaskQueue P2P service. Configure queue path, bootstrap/discovery,
+listen address, and trust policy for the deployment as needed; the three
+variables above are only the minimum enable/auth/listen shape.
 
 Useful controls:
 
 - Keep development listeners on `127.0.0.1` until authentication and network
   policy exist.
-- Use `--no-p2p` when the optional P2P service must stay disabled.
+- To keep TaskQueue P2P disabled, leave
+  `IPFS_ACCELERATE_PY_MCP_P2P_SERVICE` unset or set it to `0`.
+- `mcp start --no-p2p` disables only P2P workflow monitoring in the GitHub
+  autoscaler. It does **not** override the TaskQueue environment gate and does
+  not stop a service enabled with `IPFS_ACCELERATE_PY_MCP_P2P_SERVICE=1`.
 - Inspect direct module help when embedding:
 
 ```bash
 python -m ipfs_accelerate_py.mcp.cli --help
-python - <<'PY'
-from ipfs_accelerate_py import get_instance
-print(get_instance().get_capabilities(detail=True).get("mcp", {}))
-PY
 ```
+
+Do not use `get_instance().get_capabilities(detail=True)` as an offline P2P
+preflight. Constructing that singleton initializes storage/API adapters and can
+touch files, contact configured storage/IPFS endpoints, or attempt optional
+daemon initialization. Use MCP status/manifest inspection plus an authenticated
+queue claim/complete as the live proof.
 
 There is **no** general-purpose `ipfs-accelerate p2p start` top-level command
 in the current product CLI. Older examples using that command are historical.
@@ -173,7 +194,8 @@ Details: [Distributed runtime](../../architecture/DISTRIBUTED_RUNTIME.md).
 
 ## 6. Operational checklist
 
-- [ ] Prove local inference with P2P **disabled**.
+- [ ] Prove local inference with
+      `IPFS_ACCELERATE_PY_MCP_P2P_SERVICE` unset or `0`.
 - [ ] Pin optional dependency versions; record peer/runtime versions.
 - [ ] Configure peer identity, bootstrap addresses, queue limits, and timeouts.
 - [ ] Keep control-plane and data-plane ports private until authenticated.

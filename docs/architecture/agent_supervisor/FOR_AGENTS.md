@@ -1,5 +1,22 @@
 # Agent capsule: working inside the agent supervisor
 
+**Status:** Current
+
+**Owner:** agent-supervisor maintainers
+
+**Audience:** Implementation agents and developers reviewing agent work
+
+**Sources:** `ipfs_accelerate_py/agent_supervisor/control/`;
+`ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py`;
+`ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py`;
+`ipfs_accelerate_py/agent_supervisor/prompt/prompt_workflow.py`
+
+**Last-verified:** 2026-08-03 @ `d5f3aa5c6`; invariants, operations, module
+paths, and default provider route rechecked
+
+**Freshness triggers:** control authority, task identity, provider routing,
+prompt workflow, package-layout, or completion-policy changes
+
 Short, fail-closed guidance for implementation agents. Prefer this over dumping
 entire objective heaps into context.
 
@@ -40,14 +57,21 @@ entire objective heaps into context.
 | Sealed `*_PLAN.md` | Human design; often protected |
 | Architecture hub docs | CONTROL_PLANE, EXECUTION_AND_RECOVERY, PACKAGE_MAP |
 
-## Default implementation providers
+## Default implementation route
 
-When launching or diagnosing lanes (ops may override):
+When launching or diagnosing lanes:
 
-| Path | Default |
+| Stage | Current contract |
 | --- | --- |
-| Grok Build | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok`, model `grok-4.5` |
-| Codex | `IPFS_ACCELERATE_AGENT_CODEX_MODEL` set to the operator-chosen model |
+| Provider selection | Leave `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER` unset or use `auto` |
+| Primary | Authenticated Grok Build, exact model `grok-4.5` |
+| Allowed fallback | Exact `gpt-5.6-terra`, reasoning `medium`, only after native typed Grok `usage_pool_exhausted` / `usage_limit_reached` |
+| All other failures | Fail closed; do not fall back |
+
+Explicit `provider=grok` forces Grok with **no** fallback. Explicit
+`provider=codex` / `provider=openai` is a direct provider selection, not the
+quota-only fallback. Do not turn a generic error string, authentication error,
+or missing Grok binary into fallback authority.
 
 ## Control and prompt surfaces (do not invent ops)
 

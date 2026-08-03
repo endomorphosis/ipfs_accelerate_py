@@ -2,6 +2,8 @@
 
 **Status:** Current
 
+**Owner:** MCP maintainers
+
 **Audience:** Operators and developers starting a local or embedded MCP server
 
 **Scope:** Install extras, choose a canonical entrypoint, configure host/bootstrap
@@ -10,9 +12,15 @@ flags, run health checks, and recognize compatibility/auto-install pitfalls
 **Non-goals:** Full tool catalog contracts (see [MCP server reference](../MCP_SERVER.md));
 MCP++ chapter evidence (`mcpplusplus/`); production auth product design
 
-**Last verified:** `49c76b69f` (2026-08-03); commands and flags checked against
-`pyproject.toml`, `ipfs_accelerate_py/mcp_server/`, `ipfs_accelerate_py/cli.py`,
-and `docs/architecture/MCP_RUNTIME.md`
+**Sources:** `requirements.txt`; `pyproject.toml`;
+`ipfs_accelerate_py/mcp_server/`; `ipfs_accelerate_py/mcp/`;
+`ipfs_accelerate_py/cli.py`; `docs/architecture/MCP_RUNTIME.md`
+
+**Last-verified:** 2026-08-03 @ `d5f3aa5c6`; install metadata, commands, fixed
+routes, transports, and flags rechecked
+
+**Freshness triggers:** MCP dependency, route, transport, configuration,
+entrypoint, compatibility, or auto-install changes
 
 The canonical MCP runtime is `ipfs_accelerate_py.mcp_server`. Start there.
 The `ipfs_accelerate_py.mcp` package is a **compatibility facade** for older
@@ -34,6 +42,14 @@ worker flags. Bare `python -m ipfs_accelerate_py.mcp_server` without
 `fastapi_service` instead.
 
 ## 2. Install
+
+The MCP runtime is optional to start, but current base packaging already names
+FastMCP, Flask, Flask-CORS, Werkzeug, and PyGithub through `requirements.txt`.
+The `mcp` extra repeats those dependencies and adds `async-timeout`; use it to
+state deployment intent, not as evidence that the base package excludes MCP.
+FastAPI and Uvicorn are imported by the preferred HTTP entrypoint but are not
+direct members of the `mcp` extra, so locked deployments must verify or pin
+them explicitly.
 
 Published package:
 
@@ -58,7 +74,8 @@ python -m pip install "ipfs-accelerate-py[mcp-p2p]"
 
 | Extra | Installs | Does not prove |
 | --- | --- | --- |
-| `mcp` | FastMCP, Flask stack, related helpers | Live providers, GPUs, or auth |
+| Base dependencies | Currently include FastMCP and the Flask/PyGithub stack | A configured or running MCP service |
+| `mcp` | Repeats that MCP/Flask set and adds `async-timeout` | A complete isolation boundary, live providers, GPUs, or auth |
 | `mcp-p2p` / `libp2p` | libp2p and related wire deps | Reachable mesh or durable queue |
 | `all` | Broad app deps (no native P2P by default) | Production readiness |
 
@@ -70,7 +87,6 @@ environments. See [Auto-install caveats](#6-auto-install-caveats).
 ```bash
 export IPFS_MCP_HOST=127.0.0.1
 export IPFS_MCP_PORT=8000
-export IPFS_MCP_MOUNT_PATH=/mcp
 export IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP=1
 python -m ipfs_accelerate_py.mcp_server.fastapi_service
 ```
@@ -79,8 +95,12 @@ python -m ipfs_accelerate_py.mcp_server.fastapi_service
 | --- | --- | --- |
 | `IPFS_MCP_HOST` | `0.0.0.0` | Bind host — use `127.0.0.1` for local-only |
 | `IPFS_MCP_PORT` | `8000` | Bind port |
-| `IPFS_MCP_MOUNT_PATH` | `/mcp` | MCP mount path |
+| `IPFS_MCP_MOUNT_PATH` | `/mcp` | Wrapper sub-app mount only; does **not** relocate fixed canonical `/mcp` protocol/tool routes |
 | `IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP` | off | Attach hierarchical meta-tools and MCP++ services |
+
+The canonical FastAPI service hardcodes JSON-RPC and tool endpoints at `/mcp`,
+`/mcp/health`, and `/mcp/tools/*`. A custom `IPFS_MCP_MOUNT_PATH` only moves
+the wrapper's minimal sub-application and is not a protocol-prefix setting.
 
 Without the bootstrap flag, `create_server` still builds a base server, but the
 unified meta-tool control plane is not attached.
@@ -222,25 +242,25 @@ band of the Python extra install.
 
 ## 9. VS Code and other clients
 
-Configure the client with a command that uses a **canonical** module when
-possible:
+Start the canonical HTTP host as a separate process, then configure an
+HTTP/Streamable HTTP client endpoint. For clients using the VS Code-style
+`mcp.json` shape, the transport pairing is:
 
 ```json
 {
-  "command": "python",
-  "args": ["-m", "ipfs_accelerate_py.mcp_server.fastapi_service"],
-  "env": {
-    "IPFS_MCP_HOST": "127.0.0.1",
-    "IPFS_MCP_PORT": "8000",
-    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-    "IPFS_ACCEL_AUTO_INSTALL": "0"
+  "servers": {
+    "ipfs-accelerate": {
+      "type": "http",
+      "url": "http://127.0.0.1:8000/mcp"
+    }
   }
 }
 ```
 
-Use an absolute working directory. Do not commit credentials. If a client only
-supports the product CLI, point it at `python -m ipfs_accelerate_py.cli mcp start`
-with localhost binding and document the port mismatch with the FastAPI defaults.
+Client configuration wrappers vary, but the transport URL is the fixed
+`http://127.0.0.1:8000/mcp` endpoint for the startup example above. Do not
+commit credentials. If a client cannot connect to an HTTP MCP URL, it cannot
+use `mcp_server.fastapi_service` as a command/stdio substitute.
 
 Note: a full MCP **stdio** transport is not currently implemented under
 `mcp_server`. HTTP hosts and product CLI paths are the supported local
@@ -251,13 +271,13 @@ startup surfaces today.
 | Symptom | Check |
 | --- | --- |
 | `ipfs-accelerate` missing on PATH | Use `python -m ipfs_accelerate_py.cli …` or install the package so console scripts are available |
-| `mcp` extra import fails | `pip install "ipfs-accelerate-py[mcp]"` and inspect the first traceback |
+| MCP dependency import fails | Inspect base plus `[mcp]` resolution and verify FastAPI/Uvicorn explicitly; inspect the first traceback |
 | Unexpected package install on import | Compatibility auto-install; set `IPFS_ACCEL_AUTO_INSTALL=0` |
 | Status cannot connect | Confirm the process is up and you used the same host/port (CLI **9000** vs FastAPI **8000**) |
 | Tools missing | Enable `IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP=1`; query the capability report / meta-tools |
 | Only `/healthz` works | Switch to `fastapi_service` or `--fastapi`; bare module entry is incomplete for MCP clients |
 | P2P startup fails | Install `mcp-p2p`, configure queue/ports/identity, verify firewall |
-| Browser dashboard fails | Start without browser open first; confirm Flask/dashboard deps from the `mcp` extra |
+| Browser dashboard fails | Start without browser open first; confirm the Flask/dashboard dependencies (currently present in the base set) |
 | Forced onto legacy runtime | Unset `IPFS_MCP_FORCE_LEGACY_ROLLBACK` / dry-run flags, or import `mcp_server` directly |
 
 ## Related documentation

@@ -1,6 +1,7 @@
 # Hardware and Runtime Capability Guide
 
 **Status:** Current
+**Owner:** package maintainers
 **Audience:** Developers and operators selecting devices and diagnosing
 accelerator availability
 **Scope:** Runtime capability discovery, CPU baseline, optional accelerators
@@ -10,10 +11,11 @@ what does **not** count as hardware proof
 browser backend; packaging extras named `cuda`/`rocm`/`openvino` (they do not
 exist); full deployment process management (see
 [deployment README](../deployment/README.md))
-**Last verified:** `73fd7229111c0553a42d0f11d2370ba1e6e95a45` (2026-08-03);
-`get_capabilities`, hardware detector import path, and install torch helper
-paths checked against this tree
-**Source anchors:** `ipfs_accelerate_py/ipfs_accelerate.py`
+**Last-verified:** 2026-08-03 @ `d5f3aa5c6`; core constructor behavior, direct
+hardware detector, full capability report, and install helper paths checked
+against this tree
+**Sources:** `ipfs_accelerate_py/__init__.py` (`IPFS_ACCEL_SKIP_CORE`,
+`get_instance`); `ipfs_accelerate_py/ipfs_accelerate.py`
 (`get_capabilities`, `hwtest`),
 `ipfs_accelerate_py/hf_model_server/hardware/detector.py` (`HardwareDetector`),
 `ipfs_accelerate_py/kit/hardware_kit.py`, `install/requirements_torch_*.txt`,
@@ -21,6 +23,8 @@ paths checked against this tree
 `install/requirements_apple.txt`, `install/requirements_qualcomm.txt`,
 `pyproject.toml` (extras; no dedicated CUDA packaging extra),
 `test/hardware/`, `test/hardware_detection/`
+**Freshness triggers:** core constructor, hardware detector, capability-report,
+backend extra, vendor helper, or hardware-test changes
 
 Hardware support is **discovered at runtime**. The package can import on a host
 without CUDA, ROCm, OpenVINO, MPS, WebNN, WebGPU, or Qualcomm support.
@@ -36,30 +40,35 @@ CIDs) are never hardware proof.
 
 ## 1. Discover capabilities
 
-```bash
-python - <<'PY'
-from ipfs_accelerate_py import get_instance
+For a bounded hardware-only probe, skip the heavy core and call the direct
+detector:
 
-report = get_instance().get_capabilities(detail=True)
-print("available accelerators:", (report.get("hardware") or {}).get("available", []))
-print("hardware details:", report.get("hardware", {}))
-print("hwtest (coarse/internal; may be optimistic):", report.get("hwtest", {}))
-print("task_types:", report.get("task_types", []))
-print("models registered:", report.get("models", []))
-print("mcp counts:", (report.get("mcp") or {}).get("counts"))
+```bash
+IPFS_ACCEL_SKIP_CORE=1 python - <<'PY'
+from ipfs_accelerate_py.hf_model_server.hardware.detector import HardwareDetector
+
+detector = HardwareDetector()
+print("available accelerators:", detector.get_available_hardware())
+for name, capability in detector.capabilities.items():
+    print(name, capability)
 PY
 ```
 
 | Field | Meaning | Caveat |
 | --- | --- | --- |
-| `hardware` (detail) | Best-effort platform + accelerator map from `HardwareDetector` when importable | May be partial if optional detectors or frameworks are missing |
-| `hardware.available` | Names currently flagged available | Not a throughput SLA |
-| `hwtest` | Coarse internal flags | Can be optimistic; **do not** treat alone as proof |
-| `models` / endpoints | Registered handlers in this process | Empty until endpoints are configured |
-| `mcp` | Manifest summary when a server instance is visible | Absence is normal without MCP |
+| `HardwareDetector.capabilities` | Best-effort CPU/platform and optional accelerator map | May be partial if detectors or frameworks are missing |
+| `HardwareDetector.get_available_hardware()` | Names currently flagged available | Not a throughput SLA or model proof |
 
-The report is JSON-friendly and intended for CLI, MCP, and planners. It is a
-**discovery snapshot**, not a lease, receipt, or health certificate.
+The detector output is a **discovery snapshot**, not a lease, receipt, or
+health certificate.
+
+The broader `get_instance().get_capabilities(detail=True)` report also includes
+`hwtest`, registered models/endpoints, task types, and MCP counts. It is **not**
+a side-effect-free probe: `get_instance()` constructs the core runtime, which
+initializes the storage wrapper and API adapters and can touch files, contact
+configured storage/IPFS endpoints, or attempt optional daemon initialization.
+Run it only where those effects are permitted. No side-effect-free top-level
+equivalent for the complete report is proven at this revision.
 
 ---
 
@@ -73,17 +82,20 @@ and hosts without accelerators.
 export OMP_NUM_THREADS=8
 export MKL_NUM_THREADS=8
 
-python - <<'PY'
-from ipfs_accelerate_py import ipfs_accelerate_py
+IPFS_ACCEL_SKIP_CORE=1 python - <<'PY'
+from ipfs_accelerate_py.hf_model_server.hardware.detector import HardwareDetector
 
-# Prefer a small, already-cached or mock-friendly path in your environment.
-# Device selection must match what the provider actually supports.
-accelerator = ipfs_accelerate_py({}, {})
-# Example shape only — model availability is environment-specific:
-# result = accelerator.run_model("bert-base-uncased", {"input_ids": [[101, 2023, 2003, 102]]}, device="cpu")
-print("cpu path is the baseline; select models present in your environment")
+detector = HardwareDetector()
+assert detector.is_available("cpu")
+print("CPU detected; run a separate already-local model smoke for workload proof")
 PY
 ```
+
+Do not instantiate the full core merely to prove this baseline: construction
+has the side effects described above. For inference evidence, separately run a
+small model that is already present locally, with the provider and device
+explicitly pinned to CPU. Model availability is environment-specific, so this
+guide does not invent a universally cached model command.
 
 ### ARM and architecture notes
 
@@ -136,8 +148,10 @@ Helper requirement files (optional): `install/requirements_cuda.txt`,
 | **MPS** | Apple Silicon + compatible PyTorch | Only on supported Apple hardware |
 | **Qualcomm** | Vendor stack present | See `install/requirements_qualcomm.txt` and hardware_detection tests |
 
-Install the vendor runtime first, then re-run `get_capabilities(detail=True)`.
-Absence of a backend is a **capability report**, not a package defect.
+Install the vendor runtime first, then re-run the direct `HardwareDetector`
+probe. Run the full `get_capabilities(detail=True)` snapshot only when its
+constructor effects are acceptable. Absence of a backend is a **capability
+report**, not a package defect.
 
 ### WebNN and WebGPU (browser)
 
@@ -181,8 +195,8 @@ lane count does not necessarily increase throughput. See the
 | Synthetic content keys / cache tokens | Unrelated to device capability; not multiformats proof |
 | Historical “8 platforms” marketing text | Environment-specific; verify on the host |
 
-**Authoritative operator sequence:** capability report → framework device check
-→ small model smoke on the intended device → only then plan capacity.
+**Authoritative operator sequence:** direct hardware report → framework device
+check → small model smoke on the intended device → only then plan capacity.
 
 ---
 

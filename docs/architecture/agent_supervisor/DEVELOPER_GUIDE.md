@@ -1,5 +1,22 @@
 # Agent Supervisor developer guide
 
+**Status:** Current
+
+**Owner:** agent-supervisor maintainers
+
+**Audience:** Developers and implementation agents extending the supervisor
+
+**Sources:** `ipfs_accelerate_py/agent_supervisor/` domain packages and public
+exports; `ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py`;
+`ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py`; supervisor module
+`--help` output; `test/api/test_agent_supervisor_*.py`
+
+**Last-verified:** 2026-08-03 @ `d5f3aa5c6`; package placement, imports,
+entrypoints, tests, and provider routing rechecked
+
+**Freshness triggers:** package-layout, public-export, daemon/provider,
+entrypoint, control-contract, or supervisor-test changes
+
 Practical guide for engineers and agents who **build on or inside**
 `ipfs_accelerate_py.agent_supervisor`.
 
@@ -243,12 +260,18 @@ When debugging:
 Ops entrypoints: `scripts/ops/agent_supervisor/` and the
 [operator guide](../../guides/AGENT_SUPERVISOR_GUIDE.md).
 
-Default provider env (ops may override):
+Default provider route:
 
-| Path | Typical setting |
+| Stage | Setting / behavior |
 | --- | --- |
-| Grok | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok` |
-| Codex | `IPFS_ACCELERATE_AGENT_CODEX_MODEL=…` |
+| Router | Leave `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER` unset or use `auto` |
+| Primary | Authenticated Grok CLI with exact `grok-4.5` |
+| Fallback | Daemon-pinned `gpt-5.6-terra`, reasoning `medium`, only after a verified native Grok quota-exhaustion event |
+| Explicit Grok | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok`; forced Grok with no fallback |
+
+Direct `codex` / `openai` selection is not the fallback path. Missing auth,
+predispatch unavailability, and non-quota Grok failures fail closed on the
+default route.
 
 ---
 

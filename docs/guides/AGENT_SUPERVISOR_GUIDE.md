@@ -1,5 +1,23 @@
 # Agent Supervisor Guide
 
+**Status:** Current
+
+**Owner:** agent-supervisor maintainers
+
+**Audience:** Operators, integrators, developers, and implementation agents
+
+**Sources:** `ipfs_accelerate_py/agent_supervisor/control/`;
+`ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py`;
+`ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py`;
+`ipfs_accelerate_py/agent_supervisor/prompt/prompt_workflow.py`;
+`ipfs_accelerate_py/cli.py`; supervisor module `--help` output
+
+**Last-verified:** 2026-08-03 @ `d5f3aa5c6`; operation catalog, module paths,
+prompt workflows, and default provider routing rechecked
+
+**Freshness triggers:** operation-catalog, daemon/provider routing, prompt
+workflow, CLI/MCP adapter, package-layout, or authorization changes
+
 The agent supervisor is a bounded control plane for objective-driven software
 work. It turns reviewed objectives into typed tasks, runs implementation work
 in isolated lanes, records evidence, and exposes the same control contract to
@@ -79,21 +97,21 @@ Package placement and DAG:
 
 ## Implementation provider environment
 
-Implementation daemons select a code-edit provider from the environment.
-Defaults used by multi-lane programs in this repo:
+Implementation daemons select a code-edit provider from the environment. The
+default route is deliberately narrower than a general provider cascade:
 
 | Role | Variable | Recommended value |
 | --- | --- | --- |
-| Provider selection | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER` | `grok` (Grok Build CLI) |
-| Grok model | `IPFS_ACCELERATE_AGENT_GROK_MODEL` | `grok-4.5` |
+| Provider selection | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER` | Leave unset or set `auto` for the quota-gated default route |
+| Primary model | `IPFS_ACCELERATE_AGENT_GROK_MODEL` | Exact `grok-4.5` |
 | Grok binary | `IPFS_ACCELERATE_AGENT_GROK_BIN` | path to `grok` (e.g. `~/.local/bin/grok`) |
 | Grok permissions | `IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE` | `bypassPermissions` for unattended lanes |
-| Codex model (when Codex path is used) | `IPFS_ACCELERATE_AGENT_CODEX_MODEL` | operator-chosen Codex model |
+| Quota-only fallback | daemon-owned; not an operator model override | Exact `gpt-5.6-terra`, reasoning `medium` |
 
 Example `implementation.env` for a runtime directory:
 
 ```bash
-export IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok
+# Leave IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER unset (the default is auto).
 export IPFS_ACCELERATE_AGENT_GROK_MODEL=grok-4.5
 export IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE=bypassPermissions
 export IPFS_ACCELERATE_AGENT_GROK_BIN="${HOME}/.local/bin/grok"
@@ -101,11 +119,17 @@ export IPFS_ACCELERATE_AGENT_GROK_BIN="${HOME}/.local/bin/grok"
 
 Notes:
 
-- `provider=grok` forces the Grok Build path when the CLI is available.
-- Codex is used when the provider is `codex` / `openai`, or as a fallback when
-  Grok is not selected and `codex` is on `PATH`. Always set
-  `IPFS_ACCELERATE_AGENT_CODEX_MODEL` so fallback does not inherit an unrelated
-  interactive Codex default.
+- `auto` requires an installed, authenticated Grok CLI before dispatch and
+  requires the primary model to be exactly `grok-4.5` when the fallback is
+  attached. Predispatch unavailability fails closed.
+- The runner may invoke Codex only after a native typed Grok event reports
+  `usage_pool_exhausted` or `usage_limit_reached`, with no simultaneous
+  non-quota failure type. The fallback command is pinned to
+  `gpt-5.6-terra` with `medium` reasoning; general Codex model/reasoning
+  environment overrides do not redefine this fallback.
+- Explicit `provider=grok` forces Grok and deliberately omits fallback.
+  Explicit `provider=codex` or `provider=openai` selects Codex directly and is
+  not the quota-exhaustion fallback route.
 - Source the env **before** starting multi-supervisor / daemons; children
   inherit process environment and do not re-read files unless you wire that
   yourself.
