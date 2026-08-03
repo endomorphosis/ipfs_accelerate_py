@@ -16,20 +16,13 @@ import subprocess
 import sys
 import threading
 import time
-import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, fields, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from ..runtime.artifact_store import (
-    BUNDLE_INDEX_KIND,
-    read_artifact_fields,
-    write_scheduler_manifest_artifact,
-)
 from ..core.conflict_graph import materialize_task_conflict_graph
-from .bundle_optimizer import BundleOptimizationPolicy, optimize_task_bundles
 from ..merge.lease_coordination import (
     DistributedLaneDispatch,
     ImmutableLaneInputArtifact,
@@ -39,19 +32,18 @@ from ..merge.lease_coordination import (
     WorkerCapabilityReceipt,
     WorkerEnvironmentReceipt,
 )
-from .objective_graph import (
-    DEFAULT_TASK_PREFIX,
-    build_bundle_task_payloads,
-    repo_relative_path,
-    safe_bundle_key,
-    utc_now,
+from ..runtime.artifact_store import (
+    BUNDLE_INDEX_KIND,
+    read_artifact_fields,
+    write_scheduler_manifest_artifact,
 )
 from ..runtime.event_log import event_log_sources, read_jsonl_events
-from ..runtime.scheduler_metrics import (
-    SchedulerSnapshot,
-    scheduler_snapshot,
-    scheduler_state_events,
-    write_scheduler_snapshot,
+from ..runtime.provider_capacity_snapshot import (
+    DEFAULT_PROVIDER_CAPACITY_MAX_AGE_MS,
+    DUAL_REVIEW_PROVIDER_ID,
+    DUAL_REVIEW_REQUIRED_CAPABILITIES,
+    load_provider_capacity_snapshot,
+    synthesize_dual_review_provider_capacity,
 )
 from ..runtime.resource_scheduler import (
     ADAPTIVE_STAGES,
@@ -60,12 +52,17 @@ from ..runtime.resource_scheduler import (
     LaneResourceRequirements,
     ResourceAdmissionLease,
     ResourcePolicy,
-    ResourceScheduleSnapshot,
     ResourceScheduler,
+    ResourceScheduleSnapshot,
     normalize_adaptive_stage,
     sample_host_resources,
 )
-from ..todo_daemon.supervisor import active_codex_exec_workers
+from ..runtime.scheduler_metrics import (
+    SchedulerSnapshot,
+    scheduler_snapshot,
+    scheduler_state_events,
+    write_scheduler_snapshot,
+)
 from ..todo_daemon.legacy_landed_attestation import LegacyLandedReviewAuthority
 from ..todo_daemon.legacy_landed_review import load_legacy_landed_review_policy
 from ..todo_daemon.production_provider_attestation import (
@@ -73,9 +70,22 @@ from ..todo_daemon.production_provider_attestation import (
 )
 from ..todo_daemon.production_provider_cli import (
     DEFAULT_CONTEXT_BUDGET_TOKENS as DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS,
+)
+from ..todo_daemon.production_provider_cli import (
     DEFAULT_PROVIDER_TIMEOUT_SECONDS as DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS,
+)
+from ..todo_daemon.production_provider_cli import (
     PRODUCTION_CLI_POLICY_NAME,
     ProductionCLIProviderPolicy,
+)
+from ..todo_daemon.supervisor import active_codex_exec_workers
+from .bundle_optimizer import BundleOptimizationPolicy, optimize_task_bundles
+from .objective_graph import (
+    DEFAULT_TASK_PREFIX,
+    build_bundle_task_payloads,
+    repo_relative_path,
+    safe_bundle_key,
+    utc_now,
 )
 
 logger = logging.getLogger(__name__)
@@ -1980,6 +1990,123 @@ def _resource_lane_fields(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _dual_review_resource_fields(
+    resource_fields: Mapping[str, Any],
+    *,
+    context_budget_tokens: int,
+) -> dict[str, Any]:
+    """Bind one model-backed lane to both independent review providers."""
+
+    result = dict(resource_fields)
+    capabilities = [
+        *(
+            str(item)
+            for item in result.get("required_capabilities", ())
+            if str(item).strip()
+        ),
+        *DUAL_REVIEW_REQUIRED_CAPABILITIES,
+    ]
+    result.update(
+        {
+            "required_capabilities": list(dict.fromkeys(capabilities)),
+            "llm_provider": DUAL_REVIEW_PROVIDER_ID,
+            "required_context_tokens": max(
+                int(result.get("required_context_tokens") or 0),
+                max(1, int(context_budget_tokens)),
+            ),
+            # Both reviewed routes currently cap generated responses at 4096
+            # tokens. The synthetic pair reserves this value against the
+            # smaller of the two live token budgets.
+            "token_budget": max(
+                int(result.get("token_budget") or 0),
+                4_096,
+            ),
+        }
+    )
+    return result
+
+
+_TYPED_LOCAL_PROVIDER_ROLES = frozenset(
+    {
+        "deterministic-only",
+        "deterministic only",
+        "deterministic",
+        "operator-only",
+    }
+)
+_MODEL_ASSISTED_PROVIDER_ROLES = frozenset(
+    {
+        "grok",
+        "grok-implement",
+        "grok-draft",
+        "codex",
+        "codex-implement",
+        "codex-draft",
+        "codex-review",
+        "codex_independent_review",
+    }
+)
+
+
+def _task_provider_roles(task: Mapping[str, Any]) -> frozenset[str]:
+    """Read the same reviewed provider-role spellings as the child daemon."""
+
+    normalized: dict[str, str] = {}
+    nested = task.get("metadata")
+    sources = (
+        nested if isinstance(nested, Mapping) else {},
+        task,
+    )
+    for source in sources:
+        for raw_key, raw_value in source.items():
+            if isinstance(raw_value, Mapping):
+                continue
+            key = str(raw_key).strip().lower().replace("_", " ")
+            if key and str(raw_value or "").strip():
+                normalized[key] = str(raw_value).strip()
+    raw_roles = (
+        normalized.get("provider role")
+        or normalized.get("implementation provider")
+        or normalized.get("execution mode")
+        or ""
+    )
+    return frozenset(
+        item.strip().lower()
+        for item in raw_roles.replace(";", ",").split(",")
+        if item.strip()
+    )
+
+
+def _production_lane_requires_dual_review(
+    tasks: Sequence[Mapping[str, Any]],
+    resource_fields: Mapping[str, Any],
+) -> bool:
+    """Classify model-backed work without fencing typed-local-only lanes."""
+
+    role_sets = [_task_provider_roles(task) for task in tasks]
+    if role_sets and all(
+        roles and roles.issubset(_TYPED_LOCAL_PROVIDER_ROLES)
+        for roles in role_sets
+    ):
+        return False
+    if any(roles.intersection(_MODEL_ASSISTED_PROVIDER_ROLES) for roles in role_sets):
+        return True
+    if (
+        str(resource_fields.get("llm_provider") or "").strip()
+        or int(resource_fields.get("required_context_tokens") or 0) > 0
+        or int(resource_fields.get("token_budget") or 0) > 0
+        or any(
+            str(item).strip().lower().startswith("llm:")
+            for item in resource_fields.get("required_capabilities", ())
+        )
+    ):
+        return True
+    # An unclassified implementation task uses the daemon's configured
+    # production provider route. Only an explicit typed-local contract may
+    # bypass that route and its capacity reservation.
+    return True
+
+
 _TERMINAL_CONFLICT_TASK_STATUSES = frozenset(
     {"complete", "completed", "done", "merged", "success", "succeeded"}
 )
@@ -2863,6 +2990,19 @@ def plan_bundle_lanes(
         production_provider_review_authority_key_path = (
             state_root / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
         )
+    legacy_review_task_ids: frozenset[str] = frozenset()
+    legacy_review_context_tokens = 0
+    if legacy_landed_review_policy_path is not None:
+        legacy_review_policy = load_legacy_landed_review_policy(
+            legacy_landed_review_policy_path
+        )
+        if legacy_review_policy.enabled:
+            legacy_review_task_ids = frozenset(
+                item.task_id for item in legacy_review_policy.tasks
+            )
+            legacy_review_context_tokens = int(
+                legacy_review_policy.max_leaf_tokens
+            )
     if completion_receipts is None:
         completion_receipts = bundle_member_completion_receipts(state_root)
     if completion_receipts:
@@ -2957,6 +3097,32 @@ def plan_bundle_lanes(
         )
         profile_g = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
         resource_fields = _resource_lane_fields(payload)
+        legacy_dual_review = bool(
+            legacy_review_task_ids.intersection(task_ids)
+        )
+        production_dual_review = bool(
+            production_provider_policy
+            and _production_lane_requires_dual_review(
+                execution_tasks,
+                resource_fields,
+            )
+        )
+        if implement and (production_dual_review or legacy_dual_review):
+            dual_review_context_tokens = (
+                int(production_provider_context_budget_tokens)
+                or DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS
+                if production_provider_policy
+                else 0
+            )
+            if legacy_dual_review:
+                dual_review_context_tokens = max(
+                    dual_review_context_tokens,
+                    legacy_review_context_tokens,
+                )
+            resource_fields = _dual_review_resource_fields(
+                resource_fields,
+                context_budget_tokens=dual_review_context_tokens,
+            )
         command = implementation_supervisor_command(
             todo_path=runtime_todo_path,
             state_dir=state_dir,
@@ -3566,6 +3732,7 @@ class DynamicBundleScheduler:
         host_resource_source: Callable[..., HostResourceSnapshot | dict[str, Any]] | None = None,
         provider_capacity_source: Callable[..., Any] | None = None,
         provider_capacity_path: Path | None = None,
+        provider_capacity_max_age_ms: int = DEFAULT_PROVIDER_CAPACITY_MAX_AGE_MS,
         external_task_state_paths: Sequence[Path | str] = (),
         bundle_index_refresh_command: str = "",
         bundle_index_refresh_timeout_seconds: float = 60.0,
@@ -3593,6 +3760,20 @@ class DynamicBundleScheduler:
         self.capacity_millionths = int(capacity_millionths)
         self.poll_interval = max(0.0, float(poll_interval))
         self.lane_options = dict(lane_options)
+        self._private_dual_review_capacity_required = bool(
+            str(self.lane_options.get("production_provider_policy") or "").strip()
+        )
+        legacy_policy_path = self.lane_options.get(
+            "legacy_landed_review_policy_path"
+        )
+        if legacy_policy_path is not None:
+            legacy_policy = load_legacy_landed_review_policy(
+                Path(legacy_policy_path)
+            )
+            self._private_dual_review_capacity_required = bool(
+                self._private_dual_review_capacity_required
+                or legacy_policy.enabled
+            )
         self._launcher = launcher or self._default_launcher
         self._process_alive = process_alive or self._default_process_alive
         self._lane_disposition = lane_disposition or self._default_lane_disposition
@@ -3615,6 +3796,15 @@ class DynamicBundleScheduler:
         self._host_resource_source = host_resource_source or sample_host_resources
         self._provider_capacity_source = provider_capacity_source
         self.provider_capacity_path = Path(provider_capacity_path).resolve() if provider_capacity_path else None
+        if (
+            isinstance(provider_capacity_max_age_ms, bool)
+            or not isinstance(provider_capacity_max_age_ms, int)
+            or provider_capacity_max_age_ms <= 0
+        ):
+            raise ValueError(
+                "provider_capacity_max_age_ms must be a positive integer"
+            )
+        self.provider_capacity_max_age_ms = provider_capacity_max_age_ms
         self.external_task_state_paths = tuple(
             Path(path).resolve() for path in external_task_state_paths
         )
@@ -3679,45 +3869,74 @@ class DynamicBundleScheduler:
     def _provider_capacities(self, coordinator: LeaseCoordinator) -> Any:
         """Read injected/file/fenced-heartbeat provider telemetry in that order."""
 
-        if self._provider_capacity_source is not None:
-            try:
-                return self._provider_capacity_source()
-            except TypeError:
-                return self._provider_capacity_source(self)
-
-        configured_path = self.provider_capacity_path
-        if configured_path is None:
-            env_path = os.environ.get("IPFS_ACCELERATE_LLM_ROUTER_CAPACITY_PATH", "").strip()
-            if env_path:
-                configured_path = Path(env_path)
-        if configured_path is not None:
-            try:
-                payload = json.loads(configured_path.read_text(encoding="utf-8"))
-                if isinstance(payload, dict) and isinstance(payload.get("providers"), (dict, list)):
-                    return payload["providers"]
-                return payload
-            except (OSError, json.JSONDecodeError) as exc:
-                logger.warning("Could not read provider capacity %s: %s", configured_path, exc)
-                return ()
-
-        env_json = os.environ.get("IPFS_ACCELERATE_LLM_ROUTER_CAPACITY_JSON", "").strip()
-        if env_json:
-            try:
-                payload = json.loads(env_json)
-                return payload.get("providers", payload) if isinstance(payload, dict) else payload
-            except json.JSONDecodeError as exc:
-                logger.warning("Invalid IPFS_ACCELERATE_LLM_ROUTER_CAPACITY_JSON: %s", exc)
-                return ()
-
-        advertised: list[dict[str, Any]] = []
-        for heartbeat in coordinator.latest_heartbeats():
-            capacity = heartbeat.get("provider_capacity")
-            if not isinstance(capacity, dict):
-                continue
-            item = dict(capacity)
-            item.setdefault("provider_id", heartbeat.get("provider_id"))
-            advertised.append(item)
-        return advertised
+        raw_capacities: Any = ()
+        try:
+            if self._provider_capacity_source is not None:
+                try:
+                    raw_capacities = self._provider_capacity_source()
+                except TypeError:
+                    raw_capacities = self._provider_capacity_source(self)
+            else:
+                configured_path = self.provider_capacity_path
+                if (
+                    configured_path is None
+                    and not self._private_dual_review_capacity_required
+                ):
+                    env_path = os.environ.get(
+                        "IPFS_ACCELERATE_LLM_ROUTER_CAPACITY_PATH", ""
+                    ).strip()
+                    if env_path:
+                        configured_path = Path(env_path)
+                if configured_path is not None:
+                    raw_capacities = load_provider_capacity_snapshot(
+                        configured_path,
+                        max_age_ms=self.provider_capacity_max_age_ms,
+                    )
+                elif self._private_dual_review_capacity_required:
+                    # Production/legacy independent review accepts only an
+                    # explicitly named private snapshot (or an injected API
+                    # source). Ambient unsigned JSON and unrelated worker
+                    # heartbeats cannot rescue a missing authority file.
+                    raw_capacities = ()
+                else:
+                    env_json = os.environ.get(
+                        "IPFS_ACCELERATE_LLM_ROUTER_CAPACITY_JSON", ""
+                    ).strip()
+                    if env_json:
+                        payload = json.loads(env_json)
+                        raw_capacities = (
+                            payload.get("providers", payload)
+                            if isinstance(payload, dict)
+                            else payload
+                        )
+                    else:
+                        advertised: list[dict[str, Any]] = []
+                        for heartbeat in coordinator.latest_heartbeats():
+                            capacity = heartbeat.get("provider_capacity")
+                            if not isinstance(capacity, dict):
+                                continue
+                            item = dict(capacity)
+                            item.setdefault(
+                                "provider_id", heartbeat.get("provider_id")
+                            )
+                            item.setdefault(
+                                "observed_at_ms",
+                                heartbeat.get("created_at_ms"),
+                            )
+                            advertised.append(item)
+                        raw_capacities = advertised
+        except Exception as exc:
+            # Provider-dependent reviewed lanes still receive an explicit
+            # unhealthy pair below. This makes every telemetry failure close
+            # admission before a coordination claim is attempted.
+            logger.warning("Could not read provider capacity: %s", exc)
+            raw_capacities = ()
+        if not self._private_dual_review_capacity_required:
+            return raw_capacities
+        return synthesize_dual_review_provider_capacity(
+            raw_capacities,
+            max_age_ms=self.provider_capacity_max_age_ms,
+        )
 
     @staticmethod
     def _lane_resource_requirement(lane: BundleLaneSpec) -> LaneResourceRequirements:
@@ -5609,6 +5828,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--provider-token-reserve", type=int, default=0)
     parser.add_argument("--provider-capacity-path", type=Path, default=None)
     parser.add_argument(
+        "--provider-capacity-max-age-ms",
+        type=int,
+        default=DEFAULT_PROVIDER_CAPACITY_MAX_AGE_MS,
+        help=(
+            "Hard freshness TTL for both Grok and Codex capacity samples; "
+            "missing or older samples close dual-review admission"
+        ),
+    )
+    parser.add_argument(
         "--external-task-state-path",
         type=Path,
         action="append",
@@ -5751,6 +5979,11 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
             capacity_millionths=getattr(args, "capacity_millionths", 1_000_000),
             poll_interval=getattr(args, "poll_interval", 5.0),
             provider_capacity_path=getattr(args, "provider_capacity_path", None),
+            provider_capacity_max_age_ms=getattr(
+                args,
+                "provider_capacity_max_age_ms",
+                DEFAULT_PROVIDER_CAPACITY_MAX_AGE_MS,
+            ),
             external_task_state_paths=tuple(
                 getattr(args, "external_task_state_path", ()) or ()
             ),
