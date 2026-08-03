@@ -12,7 +12,7 @@
 `ipfs_accelerate_py/agent_supervisor/prompt/prompt_workflow.py`;
 `ipfs_accelerate_py/cli.py`; supervisor module `--help` output
 
-**Last-verified:** 2026-08-03 @ `c9d3b3c3b`; operation catalog, module paths,
+**Last-verified:** 2026-08-03 @ `8e940eb01`; operation catalog, module paths,
 prompt workflows, and default provider routing rechecked
 
 **Freshness triggers:** operation-catalog, daemon/provider routing, prompt
