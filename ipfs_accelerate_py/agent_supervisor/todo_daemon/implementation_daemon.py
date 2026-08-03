@@ -9397,9 +9397,48 @@ class PortalImplementationDaemon:
                     ),
                 )
             return {}
-        return self._provider_capacity_backoff_schedule_for_labels(
-            self._current_implementation_provider_labels(task)
-        )
+
+        # Preserve the legacy route's lazy provider discovery.  Provider
+        # probes can inspect local auth and installed CLIs, so do not perform
+        # them on ordinary passes that have no capacity event to interpret.
+        now = _provider_capacity_now()
+        current_labels: set[str] | None = None
+        for event in reversed(self._iter_events()):
+            event_type = str(event.get("type") or "")
+            if event_type == "implementation_provider_exhausted":
+                retry_at = parse_timestamp(str(event.get("retry_at") or ""))
+                if retry_at is None:
+                    return {}
+                exhausted = {
+                    str(item).strip().lower()
+                    for item in list(event.get("providers") or [])
+                    if str(item).strip()
+                }
+                if exhausted:
+                    if current_labels is None:
+                        current_labels = (
+                            self._current_implementation_provider_labels()
+                            if task is None
+                            else self._current_implementation_provider_labels(
+                                task
+                            )
+                        )
+                    if not (exhausted & current_labels):
+                        continue
+                return {
+                    "active": retry_at > now,
+                    "retry_at": retry_at.isoformat(),
+                    "retry_after_seconds": max(
+                        0.0, (retry_at - now).total_seconds()
+                    ),
+                    "providers": list(event.get("providers") or []),
+                }
+            if event_type in {
+                "implementation_started",
+                "implementation_finished",
+            }:
+                return {}
+        return {}
 
     def _active_provider_capacity_backoff(
         self,
