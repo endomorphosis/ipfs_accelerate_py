@@ -561,7 +561,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-023 Refresh MCP setup and server reference
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -586,7 +586,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-024 Refresh supervisor operator, developer and agent guides
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -611,7 +611,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-025 Refresh deployment, hardware, P2P and troubleshooting journeys
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -636,7 +636,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-026 Refresh testing and documentation maintenance guidance
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
