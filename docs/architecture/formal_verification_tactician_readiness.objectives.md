@@ -1585,3 +1585,136 @@ Program invariants:
 - Interfaces: RoleAwareFormalVerificationRelease@1
 - Submodules: ipfs_datasets_py
 - Resource class: cpu-validation
+
+## FVT-G215 Close formal-verification packaging and distribution coverage
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G090, FVT-G201
+- Fib priority: 121393
+- Priority: P0
+- Track: dependency-integrity
+- Bundle: formal-verification-tactician/packaging-distribution
+- Goal: Make every public formal-verification module, reviewed installer plugin, runtime asset, and optional dependency declaration survive both source and clean wheel installations.
+- Evidence: test/packaging/test_logic_verification_clean_install.py, test/packaging/test_formal_verification_distribution_contract.py
+- Outputs: setup.py, pyproject.toml, requirements.txt, ipfs_datasets_py/setup.py, ipfs_datasets_py/pyproject.toml, ipfs_datasets_py/requirements.txt, ipfs_datasets_py/requirements-lazy.txt, ipfs_datasets_py/requirements-theorem-provers.txt, test/packaging/test_formal_verification_distribution_contract.py
+- Validation: python -m pytest test/packaging/test_logic_verification_clean_install.py test/packaging/test_formal_verification_distribution_contract.py test/test_pip_install_simulation.py -q
+- Acceptance: Root and datasets setup.py, pyproject metadata, requirements files, and extras have one machine-checked dependency inventory; namespace-package discovery includes logic backends, software verification, installer plugins, and runtime assets in built wheels; every declared plugin module exists; a clean isolated wheel install imports and inventories the Logic API without network access, downloads, builds, user-site leakage, editable-source leakage, or installation side effects; optional native and external provers remain optional and are surfaced as unavailable rather than breaking base installation.
+- Conflict policy: Own packaging metadata and clean-install gates; do not make heavyweight prover binaries mandatory Python dependencies, hide missing wheel content with PYTHONPATH, or install anything during import and inventory.
+- Interfaces: FormalVerificationDistributionContract@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-validation
+
+## FVT-G216 Bind the public Logic API to transactional lazy installers
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G215
+- Fib priority: 196418
+- Priority: P0
+- Track: dependency-integrity
+- Bundle: formal-verification-tactician/lazy-installer-facade
+- Goal: Replace placeholder and stale installer dispatch with one explicit, platform-aware, transactional lazy-install lifecycle for every reviewed prover family.
+- Evidence: ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py, ipfs_datasets_py/tests/unit_tests/logic/external_provers/test_lazy_native_solver_installation.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, ipfs_datasets_py/ipfs_datasets_py/logic/external_provers/lazy_installer.py, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/registry.py, ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py ipfs_datasets_py/tests/unit/test_lazy_dependency_installation.py ipfs_datasets_py/tests/unit_tests/logic/external_provers/test_lazy_native_solver_installation.py test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py -q
+- Acceptance: LogicVerificationAPI.install_provider resolves reviewed family plugins for SMT, kernels, state models, authorization, protocols, ATP, hyperproperties, Runtime MTL, advisors, and ZKP; probe, inventory, import, dry-run, and offline certification execute no installer command and perform no network access; installation requires an explicit allow flag and produces a bounded plan before mutation; platform, dependency, license, checksum, artifact, executable, rollback, and post-install semantic-probe results are returned as structured evidence; interrupted or failed publication preserves the previous good installation and cannot promote capability or semantic authority.
+- Conflict policy: Own the public install facade, registry, and lifecycle; never infer permission from a probe, dispatch an unreviewed shell command, silently fall back to a shim, or let installation occur inside certification.
+- Interfaces: LogicVerificationLazyInstaller@1
+- Submodules: ipfs_datasets_py
+- Resource class: io-artifact
+
+## FVT-G217 Implement the genuine SecPAL external-toolchain path
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G209, FVT-G216
+- Fib priority: 121393
+- Priority: P0
+- Track: external-capability
+- Bundle: formal-verification-tactician/secpal-live-toolchain
+- Goal: Replace ambiguous SecPAL acquisition and adapter behavior with an official-artifact, license-aware, host-specific lazy installer and live semantic runner.
+- Evidence: test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_secpal_live_toolchain_contract.py test/integration/toolchains/test_external_authorization_vendor_certification.py test/integration/toolchains/test_external_authorization_toolchain_certification.py -q
+- Acceptance: Every supported SecPAL target binds an official publisher URL or operator-supplied reviewed artifact, immutable version and digest, redistribution and execution terms, architecture and OS, runtime dependencies, install plan, executable identity, and rollback behavior; unsupported hosts are derived from the reviewed lock and cannot install, certify, or count as complete; real allow, deny, unknown, delegation, conflict, rule/scope mutation, replay, malformed, timeout, and disagreement cases execute through the selected external engine; the in-process Datalog/SecPAL family and any hermetic adapter remain separately named and cannot impersonate the vendor tool.
+- Conflict policy: Own SecPAL artifact provenance, platform matrix, installer, and external semantics; never invent an upstream release, accept an unreviewed mirror, bypass license terms, or label the in-process engine as the external vendor binary.
+- Interfaces: SecPALLiveToolchainContract@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-validation
+
+## FVT-G218 Implement the genuine ErgoAI advisor-toolchain path
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G201, FVT-G216
+- Fib priority: 121393
+- Priority: P0
+- Track: external-capability
+- Bundle: formal-verification-tactician/ergoai-live-toolchain
+- Goal: Replace ErgoAI wrapper and proposal-only assumptions with a locked official distribution, dependency-complete lazy installer, and bounded live semantic adapter while preserving advisor authority ceilings.
+- Evidence: test/integration/toolchains/test_ergoai_live_toolchain_contract.py
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py, ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py, tools/logic/certification/advisors.py, test/integration/toolchains/test_ergoai_live_toolchain_contract.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_ergoai_live_toolchain_contract.py test/integration/toolchains/test_advisor_role_certification.py -q
+- Acceptance: The lock binds the official ErgoAI distribution or reviewed source revision, license and acquisition conditions, archive/source digests, XSB and every runtime/build dependency, supported OS/architecture matrix, entry point, and exact identity probe; explicit lazy installation is staged, checksum-verified, atomic, relocatable, and offline after acquisition; live entailment, non-entailment, contradiction, rule/query mutation, deterministic replay, malformed input, timeout, and resource-bound cases execute through ErgoAI; results remain proposal or candidate evidence until reconstructed or checked by an independent proof authority.
+- Conflict policy: Own ErgoAI provenance, dependencies, lazy installer, wrapper, and bounded semantics; never scrape an unauthoritative artifact, download during certification, treat wrapper fixtures as live execution, or elevate an advisor verdict to theorem authority.
+- Interfaces: ErgoAILiveToolchainContract@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-proof-solver
+
+## FVT-G219 Acquire authoritative SecPAL and ErgoAI live evidence
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G217, FVT-G218
+- Fib priority: 196418
+- Priority: P0
+- Track: external-authority
+- Bundle: formal-verification-tactician/vendor-live-authority
+- Goal: Execute SecPAL and ErgoAI on genuinely supported hosts with legally acquired official artifacts and publish replayable, content-addressed live evidence.
+- Evidence: docs/architecture/formal_verification_secpal_ergoai_live_receipt.json, test/integration/toolchains/test_secpal_ergoai_authoritative_live_evidence.py
+- Outputs: docs/architecture/formal_verification_secpal_ergoai_live_receipt.json, test/integration/toolchains/test_secpal_ergoai_authoritative_live_evidence.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_secpal_ergoai_authoritative_live_evidence.py -q
+- Acceptance: Independent positive, negative, mutation, replay, malformed, timeout, bound, and cross-engine disagreement cases run against exact official SecPAL and ErgoAI executables on hosts covered by their reviewed platform locks; receipts bind acquisition authority, license disposition without publishing restricted bytes, host OS and architecture, every runtime dependency, executable and artifact digests, sources, queries, bounds, raw-output digests, parser decisions, witnesses, timestamps, freshness, and deterministic replay; fixture, shim, parser-only, wrapper-only, proposed, identity-only, or unsupported-host results cannot satisfy this goal.
+- Conflict policy: Own only the externally executed evidence and its public-safe envelope; never commit restricted artifacts, credentials, private paths, or raw secrets and never convert missing external authority into local completion.
+- Interfaces: SecPALErgoAIAuthoritativeLiveEvidence@1
+- Completion authority: external
+- External authority blockers: legally acquired official SecPAL and ErgoAI artifacts, accepted license terms where required, and suitable supported execution hosts
+- Resource class: cpu-proof-solver
+
+## FVT-G220 Audit every deployment axis end to end
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G215, FVT-G216, FVT-G217, FVT-G218
+- Fib priority: 317811
+- Priority: P0
+- Track: certification-integrity
+- Bundle: formal-verification-tactician/end-to-end-assurance
+- Goal: Make dependency, capability, semantic, platform-binding, authority, packaging, installer-boundary, and public-surface readiness independently visible and jointly fail closed.
+- Evidence: test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py, docs/architecture/formal_verification_end_to_end_assurance_matrix.json
+- Outputs: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_end_to_end_assurance_matrix.json, test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py test/integration/test_formal_verification_real_tool_matrix.py test/packaging/test_logic_verification_clean_install.py -q
+- Acceptance: Each provider and host tuple reports separate dependency, packaging, installer, capability, semantic, platform, authority, freshness, and public-surface states with exact evidence references and reason codes; no axis inherits success from another; supported missing dependencies, missing wheel files, placeholder dispatch, stale locks, wrong-architecture artifacts, parser fixtures, advisor-only evidence, and unsupported hosts are distinguishable; SecPAL in-process and external identities and ErgoAI advisor and independent proof authority remain distinct; an adversarial test mutates every axis and proves that the joint readiness claim fails closed.
+- Conflict policy: Own the cross-axis matrix and aggregation policy; do not hardcode green states, collapse platform exceptions into success, or let one provider stand in for another.
+- Interfaces: FormalVerificationEndToEndAssuranceMatrix@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-validation
+
+## FVT-G221 Reissue deployment certification with authoritative vendor evidence
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G214, FVT-G219, FVT-G220
+- Fib priority: 514229
+- Priority: P0
+- Track: completion
+- Bundle: formal-verification-tactician/authoritative-vendor-release
+- Goal: Reissue the role-aware release and post-merge attestation only after packaging, lazy installers, every readiness axis, and genuine SecPAL and ErgoAI live evidence are closed.
+- Evidence: docs/architecture/formal_verification_authoritative_vendor_release.json, test/integration/test_formal_verification_authoritative_vendor_release.py
+- Outputs: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_authoritative_vendor_release.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json, test/integration/test_formal_verification_authoritative_vendor_release.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/test_formal_verification_authoritative_vendor_release.py test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py test/integration/toolchains/test_secpal_ergoai_authoritative_live_evidence.py -q
+- Acceptance: The release binds clean-wheel evidence, explicit lazy-install receipts, exact dependency and platform identities, complete specialized semantic cases, SecPAL and ErgoAI authoritative live receipts, authority ceilings, disagreement quarantines, public-safe envelopes, durable supervisor completion, source and merged trees, recursive gitlinks, and origin publication; every dependency is reachable and fresh; fixture, shim, unsupported, proposal-only, or externally blocked lanes remain disclosed and prevent deployment-ready status.
+- Conflict policy: Sole owner of the authoritative vendor release after every dependency closes; never manufacture external evidence, weaken a platform or authority gate, or attest the current task's future merge.
+- Interfaces: FormalVerificationAuthoritativeVendorRelease@1
+- Resource class: cpu-validation

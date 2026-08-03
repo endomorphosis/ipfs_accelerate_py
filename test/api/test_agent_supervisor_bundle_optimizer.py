@@ -36,6 +36,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
 )
 from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import (
     ConflictWaveProjection,
+    build_conflict_surface,
     build_task_work_contract,
     project_conflict_free_wave,
     rehydrate_task_work_contract_projection,
@@ -1281,6 +1282,52 @@ def test_bundle_supervisor_rebuilds_contract_for_derived_planning_projection():
         source["canonical_task_cid"]
     ]
     assert projected["work_contract_id"] == contract.work_contract_id
+
+
+def test_bundle_supervisor_rehydrates_stale_nested_contract_aliases():
+    source = _task("SUPERVISOR-NESTED-PROJECTION")
+    contract = build_task_work_contract(source)
+    projected = {
+        **source,
+        "work_contract": contract._material(),
+        "work_contract_id": contract.work_contract_id,
+        "task_work_contract": contract.to_dict(),
+        "task_work_contract_id": contract.task_work_contract_id,
+        "dependency_task_cids": ["cid-upstream"],
+        "metadata": {
+            "Depends on": ["cid-upstream"],
+            "Outputs": ["stale/generated-projection.py"],
+            "Acceptance": ["stale projected acceptance"],
+            "unrelated_audit_field": "preserved",
+        },
+    }
+
+    rehydrated = rehydrate_task_work_contract_projection(projected)
+
+    assert rehydrated["metadata"] == {"unrelated_audit_field": "preserved"}
+    assert rehydrated["dependency_task_cids"] == list(contract.dependencies)
+    assert (
+        build_task_work_contract(rehydrated).task_work_contract_id
+        == contract.task_work_contract_id
+    )
+
+
+def test_conflict_surface_prefers_canonical_cid_over_stale_compatibility_alias():
+    source = _task("SUPERVISOR-CANONICAL-CID")
+    contract = build_task_work_contract(source)
+    projected = {
+        **source,
+        "task_cid": "cid-stale-compatibility-projection",
+        "work_contract": contract._material(),
+        "work_contract_id": contract.work_contract_id,
+        "task_work_contract": contract.to_dict(),
+        "task_work_contract_id": contract.task_work_contract_id,
+    }
+
+    surface = build_conflict_surface(projected)
+
+    assert surface.task_cid == source["canonical_task_cid"]
+    assert surface.task_work_contract_id == contract.task_work_contract_id
 
 
 def test_bundle_optimizer_preserves_width_for_disjoint_managed_submodule_tasks():
