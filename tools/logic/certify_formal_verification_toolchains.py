@@ -28,10 +28,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Final, Mapping, Sequence
+from typing import Any, Final, Iterator, Mapping, Sequence
 
 try:  # pragma: no cover - script/package import paths vary by worktree
     from tools.logic.certification.public_evidence import (
@@ -55,9 +56,22 @@ LOCK_SCHEMA: Final = "offline-toolchain-lock/v1"
 # Role-aware reissue (FVT-G200 / FVT-053). Elevation is opt-in so the FVT-G060
 # hermetic matrix can still distinguish identity-only usability from full
 # semantic production certification; the role-aware receipt applies elevation.
+# FVT-083 is the objective validation repair that re-proves FVT-G200 and binds
+# the synthetic discovery term ``objective validation repair``.
 ROLE_AWARE_INTERFACE: Final = "RoleAwareFormalVerificationRelease@1"
 ROLE_AWARE_GOAL_ID: Final = "FVT-G200"
 ROLE_AWARE_TASK_ID: Final = "FVT-053"
+ROLE_AWARE_REPAIR_TASK_ID: Final = "FVT-083"
+ROLE_AWARE_OBJECTIVE_VALIDATION_EVIDENCE: Final = "objective validation repair"
+ROLE_AWARE_OBJECTIVE_VALIDATION_COMMAND: Final = (
+    "python -m pytest "
+    "test/integration/test_formal_verification_real_tool_matrix.py "
+    "test/integration/test_formal_verification_role_aware_completion.py "
+    "test/api/test_formal_verification_tactician_readiness_completion.py -q"
+)
+RUNTIME_MTL_TS_PACKAGE_RELATIVE: Final = Path(
+    "ipfs_datasets_py/typescript/logic-runtime-mtl"
+)
 
 # Pre-merge release candidate fan-in (FVT-G213 / FVT-066). The certificate
 # remains the bound matrix; the candidate artifact is assembled by the
@@ -939,6 +953,166 @@ def _managed_root_for_launcher(path: Path) -> Path:
 
     resolved = path.resolve()
     return resolved.parent.parent if resolved.parent.name == "bin" else resolved.parent
+
+
+def _managed_prover_roots_from_path(
+    env: Mapping[str, str] | None = None,
+) -> list[Path]:
+    """Collect managed prover roots reachable from PATH (no installs)."""
+
+    path_value = (env or os.environ).get("PATH", "")
+    roots: list[Path] = []
+    seen: set[str] = set()
+    for raw in path_value.split(os.pathsep):
+        if not raw:
+            continue
+        entry = Path(raw)
+        candidates = []
+        if entry.name == "bin":
+            candidates.append(entry.parent)
+        candidates.append(entry)
+        for candidate in candidates:
+            try:
+                resolved = candidate.resolve()
+            except OSError:
+                continue
+            key = str(resolved)
+            if key in seen or not resolved.is_dir():
+                continue
+            seen.add(key)
+            roots.append(resolved)
+    launcher = shutil.which("runtime-mtl", path=path_value or None)
+    if launcher:
+        try:
+            managed = _managed_root_for_launcher(Path(launcher))
+        except OSError:
+            managed = None
+        if managed is not None:
+            key = str(managed.resolve()) if managed.exists() else str(managed)
+            if key not in seen:
+                roots.insert(0, managed.resolve() if managed.exists() else managed)
+                seen.add(key)
+    return roots
+
+
+def _discover_matching_managed_runtime_mtl_dist(
+    package: Path,
+    *,
+    env: Mapping[str, str] | None = None,
+) -> Path | None:
+    """Locate a managed vendor TypeScript dist that matches package.json.
+
+    Offline role-aware certification must never build or npm-install the
+    in-tree TypeScript package. When the repository checkout lacks a prebuilt
+    ``dist/`` but the authoritative managed toolchain deployment already
+    retains a digest-matching vendor package, bind that prebuilt artifact for
+    parity only.
+    """
+
+    package_json = package / "package.json"
+    if not package_json.is_file():
+        return None
+    expected_package_digest = file_digest(package_json)
+    if not expected_package_digest:
+        return None
+    source_index = package / "src" / "index.ts"
+    expected_source_digest = file_digest(source_index) if source_index.is_file() else None
+
+    for root in _managed_prover_roots_from_path(env):
+        vendor_root = root / "runtime-mtl-vendor"
+        if not vendor_root.is_dir():
+            continue
+        for candidate_json in sorted(vendor_root.glob("**/package/package.json")):
+            if file_digest(candidate_json) != expected_package_digest:
+                continue
+            candidate_package = candidate_json.parent
+            if expected_source_digest is not None:
+                candidate_source = candidate_package / "src" / "index.ts"
+                if (
+                    not candidate_source.is_file()
+                    or file_digest(candidate_source) != expected_source_digest
+                ):
+                    continue
+            index = candidate_package / "dist" / "src" / "index.js"
+            if not index.is_file():
+                continue
+            return (candidate_package / "dist").resolve()
+    return None
+
+
+@contextmanager
+def _runtime_mtl_managed_prebuilt_bind(
+    repo_root: Path,
+    *,
+    env: Mapping[str, str] | None = None,
+) -> Iterator[dict[str, Any]]:
+    """Temporarily expose a managed prebuilt dist for offline TS parity.
+
+    Creates a directory symlink under the repository package only when:
+    - the in-tree package is present
+    - ``dist/`` is absent
+    - a managed vendor package with matching package.json (and source index)
+      digests is already installed under the sealed PATH
+
+    Never builds, installs, downloads, or mutates the managed root. The
+    symlink is always removed when the context exits.
+    """
+
+    package = (repo_root / RUNTIME_MTL_TS_PACKAGE_RELATIVE).resolve()
+    dist = package / "dist"
+    observation: dict[str, Any] = {
+        "package_path": RUNTIME_MTL_TS_PACKAGE_RELATIVE.as_posix(),
+        "bound": False,
+        "reason": "not_attempted",
+        "certification_builds_or_installs": False,
+        "source": None,
+        "package_json_sha256": file_digest(package / "package.json"),
+    }
+    if not package.is_dir():
+        observation["reason"] = "package_missing"
+        yield observation
+        return
+    if dist.exists():
+        observation["reason"] = "in_tree_prebuilt_present"
+        observation["source"] = "repository"
+        yield observation
+        return
+    vendor_dist = _discover_matching_managed_runtime_mtl_dist(package, env=env)
+    if vendor_dist is None:
+        observation["reason"] = "managed_prebuilt_unavailable"
+        yield observation
+        return
+    created = False
+    try:
+        dist.symlink_to(vendor_dist, target_is_directory=True)
+        created = True
+        observation["bound"] = True
+        observation["reason"] = "managed_vendor_prebuilt_bound"
+        # Keep the public observation portable: bind only digest identities and
+        # a managed-relative path suffix, never a host-absolute executable root.
+        observation["source"] = "managed_vendor_prebuilt"
+        managed_relative = None
+        for marker in ("runtime-mtl-vendor", "formal-toolchains"):
+            parts = vendor_dist.parts
+            if marker in parts:
+                idx = parts.index(marker)
+                managed_relative = Path(*parts[idx:]).as_posix()
+                break
+        observation["source_relative"] = managed_relative
+        observation["source_index_sha256"] = file_digest(
+            vendor_dist / "src" / "index.js"
+        )
+        yield observation
+    except OSError as exc:
+        observation["bound"] = False
+        observation["reason"] = f"symlink_failed:{type(exc).__name__}"
+        yield observation
+    finally:
+        if created and dist.is_symlink():
+            try:
+                dist.unlink()
+            except OSError:
+                pass
 
 
 def _matching_managed_release_archives(
@@ -4769,6 +4943,24 @@ def run_semantic_lane_certifiers(
 ) -> list[dict[str, Any]]:
     """Invoke focused semantic certifiers offline; never install or fetch."""
 
+    with _runtime_mtl_managed_prebuilt_bind(repo_root, env=env) as prebuilt_bind:
+        return _run_semantic_lane_certifiers_with_prebuilt(
+            repo_root=repo_root,
+            env=env,
+            tool_certs=tool_certs,
+            runtime_mtl_prebuilt_bind=prebuilt_bind,
+        )
+
+
+def _run_semantic_lane_certifiers_with_prebuilt(
+    *,
+    repo_root: Path,
+    env: Mapping[str, str],
+    tool_certs: Mapping[str, ToolCertification],
+    runtime_mtl_prebuilt_bind: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Inner semantic certifier loop after optional managed prebuilt bind."""
+
     results: list[dict[str, Any]] = []
     for spec in SEMANTIC_CERTIFIER_SPECS:
         module_path = repo_root / Path(spec["module_relative"])
@@ -4797,6 +4989,10 @@ def run_semantic_lane_certifiers(
             ),
             "certifier_module_sha256": file_digest(module_path),
         }
+        if lane_id == "runtime_mtl":
+            entry["managed_typescript_prebuilt_bind"] = dict(
+                runtime_mtl_prebuilt_bind
+            )
 
         if not module_path.is_file():
             entry["status"] = "certifier_missing"
@@ -6096,7 +6292,16 @@ def build_certificate(
             "enabled": bool(role_aware),
             "goal_id": ROLE_AWARE_GOAL_ID,
             "task_id": ROLE_AWARE_TASK_ID,
+            "repair_task_id": ROLE_AWARE_REPAIR_TASK_ID,
             "interface": ROLE_AWARE_INTERFACE,
+            # FVT-083 objective validation repair: re-prove FVT-G200 acceptance.
+            "objective_validation_evidence": (
+                ROLE_AWARE_OBJECTIVE_VALIDATION_EVIDENCE
+            ),
+            "objective_validation_repair": bool(role_aware),
+            "objective_validation_command": (
+                ROLE_AWARE_OBJECTIVE_VALIDATION_COMMAND
+            ),
             "elevations": public_elevations,
             "demotions": demotions,
             "elevated_tool_ids": sorted(
@@ -6137,6 +6342,16 @@ def build_certificate(
                 ).replace("\\", "/"),
                 "claims_merge": False,
                 "claims_deployment": False,
+            },
+            "acceptance": {
+                "objective_validation_repair": bool(role_aware),
+                "objective_validation_evidence": (
+                    ROLE_AWARE_OBJECTIVE_VALIDATION_EVIDENCE
+                ),
+                "repair_task_id": ROLE_AWARE_REPAIR_TASK_ID,
+                "goal_id": ROLE_AWARE_GOAL_ID,
+                "task_id": ROLE_AWARE_TASK_ID,
+                "role_aware_matrix_executed": bool(role_aware),
             },
         },
         "check_kinds_required": ["positive", "negative", "mutation", "replay"],
