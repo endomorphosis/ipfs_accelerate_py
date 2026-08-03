@@ -461,7 +461,7 @@ declared outputs. Shared navigation is reserved for the final fan-in tasks.
 
 ## DOC-019 Record mutable coordination versus immutable replication
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
