@@ -37,10 +37,26 @@ COORDINATION_UNAVAILABLE: Final = "coordination_unavailable"
 MAX_PUBLICATION_INTENTS: Final = 4096
 MAX_PACKET_BYTES: Final = 8 * 1024 * 1024
 MAX_RETAINED_PUBLIC_BYTES: Final = 2 * 1024 * 1024
+MAX_PUBLIC_PIN_CHARS: Final = 256
+MAX_PUBLIC_SCALAR_CHARS: Final = 4096
+# Required V2 pins that must never be silently truncated on the wire.
+REQUIRED_XDIST_CONTEXT_PIN_FIELDS: Final = (
+    "receipt_cid",
+    "execution_key_cid",
+    "candidate_context_cid",
+    "policy_cid",
+    "statement_cid",
+    "circuit_cid",
+    "verifying_key_cid",
+    "issuer_id",
+    "epoch",
+    "backend_id",
+)
 _RETAINED_PUBLIC_HEX_FIELDS: Final = frozenset(
     {
         "retained_receipt_bytes_hex",
         "retained_candidate_context_bytes_hex",
+        "retained_execution_key_bytes_hex",
     }
 )
 _HEX_CHARACTERS: Final = frozenset("0123456789abcdefABCDEF")
@@ -79,6 +95,9 @@ def _public_deferred_request(value: Any) -> Mapping[str, Any] | None:
     Known deferred identity fields are preferred, but additional scalar public
     metadata (for example disagreement markers) may travel as long as no
     private/witness key or nested body is present.
+
+    Present retained-hex or required pin fields that are oversized, malformed,
+    or non-hex fail closed (``None``) rather than silently omitting the field.
     """
 
     if value is None:
@@ -90,6 +109,53 @@ def _public_deferred_request(value: Any) -> Mapping[str, Any] | None:
             return None
     if not isinstance(value, Mapping):
         return None
+    # Prefer the receipt module's fail-closed public projection when the
+    # payload looks like a deferred/controller context envelope.
+    try:
+        from .receipt import public_deferred_mapping
+
+        known_markers = (
+            "receipt_cid",
+            "retained_receipt_bytes_hex",
+            "retained_candidate_context_bytes_hex",
+            "candidate_context_cid",
+            "backend_id",
+            "interface",
+        )
+        if any(marker in value for marker in known_markers):
+            projected = public_deferred_mapping(value)
+            if projected is None:
+                return None
+            # public_deferred_mapping only keeps known deferred fields; merge
+            # additional scalar public metadata for disagreement markers etc.
+            cleaned = dict(projected)
+            private_markers = (
+                "witness",
+                "private",
+                "secret",
+                "password",
+                "token",
+                "credential",
+                "api_key",
+                "authorization",
+                "cookie",
+                "session",
+            )
+            for raw_key, raw_value in value.items():
+                key = str(raw_key)
+                if key in cleaned:
+                    continue
+                lowered = key.lower()
+                if any(marker in lowered for marker in private_markers):
+                    continue
+                if isinstance(raw_value, (str, int, float, bool)) or raw_value is None:
+                    if isinstance(raw_value, str) and len(raw_value) > MAX_PUBLIC_SCALAR_CHARS:
+                        return None
+                    cleaned[key] = raw_value
+            return cleaned or None
+    except Exception:
+        pass
+
     private_markers = (
         "witness",
         "private",
@@ -111,21 +177,112 @@ def _public_deferred_request(value: Any) -> Mapping[str, Any] | None:
         if isinstance(raw_value, (str, int, float, bool)) or raw_value is None:
             if isinstance(raw_value, str):
                 if key in _RETAINED_PUBLIC_HEX_FIELDS:
+                    if not raw_value:
+                        continue
                     if (
-                        not raw_value
-                        or len(raw_value) % 2
+                        len(raw_value) % 2
                         or len(raw_value) > MAX_RETAINED_PUBLIC_BYTES * 2
                         or any(
                             character not in _HEX_CHARACTERS
                             for character in raw_value
                         )
                     ):
-                        continue
-                elif len(raw_value) > 4096:
+                        # Never silently drop a present retained-hex field.
+                        return None
+                    try:
+                        data = bytes.fromhex(raw_value)
+                    except ValueError:
+                        return None
+                    if len(data) > MAX_RETAINED_PUBLIC_BYTES:
+                        return None
+                    cleaned[key] = raw_value.lower()
                     continue
+                if key in REQUIRED_XDIST_CONTEXT_PIN_FIELDS or key.endswith("_cid"):
+                    if len(raw_value) > MAX_PUBLIC_PIN_CHARS:
+                        return None
+                elif len(raw_value) > MAX_PUBLIC_SCALAR_CHARS:
+                    return None
             cleaned[key] = raw_value
         # Nested maps/lists are never transported: they may hide witness data.
     return cleaned or None
+
+
+def _decode_retained_hex(value: str) -> bytes | None:
+    if not value:
+        return b""
+    if (
+        len(value) % 2
+        or len(value) > MAX_RETAINED_PUBLIC_BYTES * 2
+        or any(character not in _HEX_CHARACTERS for character in value)
+    ):
+        return None
+    try:
+        data = bytes.fromhex(value)
+    except ValueError:
+        return None
+    if len(data) > MAX_RETAINED_PUBLIC_BYTES:
+        return None
+    return data
+
+
+def reconstruct_controller_context_from_intent(
+    intent: "ProofReusePublicationIntent",
+    *,
+    require_complete: bool = False,
+) -> tuple[Any | None, str]:
+    """Reconstruct controller-owned V2 context from one publication intent.
+
+    Certificate fields on the intent never fill missing expected pins.  Shared
+    by serial/direct-node and xdist controller flush paths.
+    """
+
+    try:
+        from .candidate_publication import reconstruct_controller_owned_v2_context
+        from .receipt import DeferredIssuanceEnvelope
+
+        certificate = intent.certificate if isinstance(intent.certificate, Mapping) else None
+        envelope = DeferredIssuanceEnvelope.from_mapping(intent.deferred_request)
+        if envelope is None and intent.deferred_request is not None:
+            return None, "deferred_request_malformed"
+        if envelope is None:
+            # Receipt-only intent: pins from the admitted receipt only.
+            source = {
+                "receipt_cid": intent.receipt_cid,
+                "locator_cid": intent.locator_cid,
+                "execution_key_cid": str(
+                    intent.receipt.get("execution_key_cid") or ""
+                ),
+                "policy_cid": str(intent.receipt.get("policy_cid") or ""),
+                "source": "xdist_receipt_only",
+            }
+            return reconstruct_controller_owned_v2_context(
+                source,
+                certificate=certificate,
+                require_complete=require_complete,
+            )
+        retained_receipt = _decode_retained_hex(envelope.retained_receipt_bytes_hex)
+        retained_candidate = _decode_retained_hex(
+            envelope.retained_candidate_context_bytes_hex
+        )
+        retained_key = _decode_retained_hex(
+            getattr(envelope, "retained_execution_key_bytes_hex", "") or ""
+        )
+        if (
+            retained_receipt is None
+            or retained_candidate is None
+            or retained_key is None
+        ):
+            return None, "retained_public_bytes_invalid"
+        return reconstruct_controller_owned_v2_context(
+            envelope,
+            retained_receipt_bytes=retained_receipt,
+            retained_candidate_context_bytes=retained_candidate,
+            retained_execution_key_bytes=retained_key,
+            certificate=certificate,
+            require_complete=require_complete,
+        )
+    except Exception:
+        return None, "controller_context_intent_exception"
 
 
 def _controller_deferred_request(
@@ -135,8 +292,9 @@ def _controller_deferred_request(
 
     The worker carries only a bounded public envelope.  The controller opens
     and re-hashes its retained receipt/candidate bytes through the reviewed
-    datasets request parser when available.  A flattened mapping is only a
-    non-authoritative fallback; the transaction's verifier will defer it.
+    datasets request parser when available.  Certificate fields never fill
+    missing expected pins.  A flattened mapping is only a non-authoritative
+    fallback; the transaction's verifier will defer it.
     """
 
     try:
@@ -145,7 +303,16 @@ def _controller_deferred_request(
             reconstruct_deferred_request_from_public,
         )
 
+        certificate = (
+            intent.certificate if isinstance(intent.certificate, Mapping) else None
+        )
         envelope = DeferredIssuanceEnvelope.from_mapping(intent.deferred_request)
+        if envelope is None and intent.deferred_request is not None:
+            # Malformed/oversized deferred payload: receipt-only fallback.
+            return {
+                "receipt_cid": intent.receipt_cid,
+                "locator_cid": intent.locator_cid,
+            }
         if envelope is None and intent.receipt_cid:
             envelope = DeferredIssuanceEnvelope(
                 receipt_cid=intent.receipt_cid,
@@ -158,32 +325,61 @@ def _controller_deferred_request(
             )
         if envelope is None:
             return _public_deferred_request(intent.deferred_request)
-        retained_receipt = None
-        retained_candidate = None
-        if envelope.retained_receipt_bytes_hex:
-            try:
-                retained_receipt = bytes.fromhex(
-                    envelope.retained_receipt_bytes_hex
-                )
-            except ValueError:
-                retained_receipt = None
-        if envelope.retained_candidate_context_bytes_hex:
-            try:
-                retained_candidate = bytes.fromhex(
-                    envelope.retained_candidate_context_bytes_hex
-                )
-            except ValueError:
-                retained_candidate = None
+
+        # Reconstruct controller-owned context first (rehash + no cert fill-in).
+        context, context_reason = reconstruct_controller_context_from_intent(intent)
+        del context_reason
+        retained_receipt = _decode_retained_hex(envelope.retained_receipt_bytes_hex)
+        retained_candidate = _decode_retained_hex(
+            envelope.retained_candidate_context_bytes_hex
+        )
+        retained_key = _decode_retained_hex(
+            getattr(envelope, "retained_execution_key_bytes_hex", "") or ""
+        )
+        if (
+            retained_receipt is None
+            or retained_candidate is None
+            or retained_key is None
+        ):
+            return {
+                "receipt_cid": intent.receipt_cid,
+                "locator_cid": intent.locator_cid,
+            }
         reconstructed = reconstruct_deferred_request_from_public(
             envelope,
             retained_receipt_bytes=retained_receipt,
             retained_candidate_context_bytes=retained_candidate,
+            retained_execution_key_bytes=retained_key,
+            certificate=certificate,
         )
+        if reconstructed is None and context is not None:
+            reconstructed = context.to_deferred_public_mapping()
         public = _public_deferred_request(
             reconstructed or envelope.to_dict()
         )
         if public is None:
-            return None
+            return {
+                "receipt_cid": intent.receipt_cid,
+                "locator_cid": intent.locator_cid,
+            }
+        # Prefer controller-reconstructed complete pins when available.
+        if context is not None and context.is_complete:
+            for name in REQUIRED_XDIST_CONTEXT_PIN_FIELDS:
+                pin = context.pin_value(name)
+                if pin:
+                    public[name] = pin
+            if context.proof_system_id:
+                public["proof_system_id"] = context.proof_system_id
+            if context.locator_cid:
+                public["locator_cid"] = context.locator_cid
+            if context.retained_receipt_bytes:
+                public["retained_receipt_bytes_hex"] = (
+                    context.retained_receipt_bytes_hex()
+                )
+            if context.retained_candidate_context_bytes:
+                public["retained_candidate_context_bytes_hex"] = (
+                    context.retained_candidate_context_bytes_hex()
+                )
         try:
             from ipfs_datasets_py.logic.zkp.test_certificate_issuer import (
                 DEFERRED_TEST_CERTIFICATE_REQUEST_INTERFACE,
@@ -238,13 +434,17 @@ class ProofReusePublicationIntent:
     ) -> "ProofReusePublicationIntent":
         if not isinstance(receipt, TestPassReceipt):
             raise TypeError("receipt must be TestPassReceipt")
+        public_deferred = _public_deferred_request(deferred_request)
+        if deferred_request is not None and public_deferred is None:
+            # Present-but-invalid deferred context must not be silently dropped.
+            raise ValueError("deferred request must be a public mapping")
         return cls(
             receipt=receipt.to_dict(),
             receipt_cid=receipt.receipt_id,
             locator_cid=receipt.locator_cid,
             certificate=dict(certificate) if certificate is not None else None,
             certificate_cid=_bounded_token(certificate_cid),
-            deferred_request=_public_deferred_request(deferred_request),
+            deferred_request=public_deferred,
         ).validated()
 
     def validated(self) -> "ProofReusePublicationIntent":
@@ -840,13 +1040,19 @@ def force_real_execution(item: Any) -> None:
 
 __all__ = [
     "COORDINATION_UNAVAILABLE",
+    "MAX_PACKET_BYTES",
     "MAX_PUBLICATION_INTENTS",
+    "MAX_PUBLIC_PIN_CHARS",
+    "MAX_PUBLIC_SCALAR_CHARS",
+    "MAX_RETAINED_PUBLIC_BYTES",
     "PROOF_REUSE_XDIST_INTERFACE",
     "PROOF_REUSE_XDIST_SCHEMA",
+    "REQUIRED_XDIST_CONTEXT_PIN_FIELDS",
     "WORKER_INPUT_KEY",
     "WORKER_OUTPUT_KEY",
     "ProofReusePublicationIntent",
     "ProofReuseXdistCoordinator",
     "ProofReuseXdistRole",
     "force_real_execution",
+    "reconstruct_controller_context_from_intent",
 ]

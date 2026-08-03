@@ -36,6 +36,7 @@ CONFIG_COLLECTORS_ATTRIBUTE: Final = "_ipfs_proof_reuse_receipt_collectors"
 _PUBLIC_DEFERRED_FIELDS: Final = frozenset(
     {
         "interface",
+        "schema",
         "request_id",
         "receipt_cid",
         "execution_key_cid",
@@ -55,8 +56,42 @@ _PUBLIC_DEFERRED_FIELDS: Final = frozenset(
         "statement_digest",
         "retained_receipt_bytes_hex",
         "retained_candidate_context_bytes_hex",
+        "retained_execution_key_bytes_hex",
+        "receipt_bytes_cid",
+        "candidate_context_bytes_cid",
+        "execution_key_bytes_cid",
+        "source",
+        "reason_code",
+        "is_complete",
+        "may_authorize_skip",
+        "may_publish_candidate",
     }
 )
+# Required identity pins for complete controller-owned V2 reconstruction.
+REQUIRED_DEFERRED_CONTEXT_PINS: Final = (
+    "receipt_cid",
+    "execution_key_cid",
+    "candidate_context_cid",
+    "policy_cid",
+    "statement_cid",
+    "circuit_cid",
+    "verifying_key_cid",
+    "issuer_id",
+    "epoch",
+    "backend_id",
+)
+# Size bounds for retained public handoff material (never silently truncated).
+MAX_DEFERRED_RETAINED_PUBLIC_BYTES: Final = 2 * 1024 * 1024
+MAX_DEFERRED_PUBLIC_PIN_CHARS: Final = 256
+MAX_DEFERRED_PUBLIC_SCALAR_CHARS: Final = 4096
+_RETAINED_PUBLIC_HEX_FIELDS: Final = frozenset(
+    {
+        "retained_receipt_bytes_hex",
+        "retained_candidate_context_bytes_hex",
+        "retained_execution_key_bytes_hex",
+    }
+)
+_HEX_CHARACTERS: Final = frozenset("0123456789abcdefABCDEF")
 _PRIVATE_DEFERRED_MARKERS: Final = frozenset(
     {
         "access_token",
@@ -1345,8 +1380,39 @@ def _field_is_private(name: str) -> bool:
     return any(marker in lowered for marker in _PRIVATE_DEFERRED_MARKERS)
 
 
+def _validate_retained_hex_field(key: str, raw_value: str) -> str | None:
+    """Return cleaned hex, empty string for absent, or ``None`` on hard reject.
+
+    Oversized, odd-length, or non-hex retained material must never be silently
+    truncated or dropped when the field is present: callers treat ``None`` as a
+    transport failure so required context cannot be half-applied.
+    """
+
+    if not isinstance(raw_value, str):
+        return None
+    if not raw_value:
+        return ""
+    if (
+        len(raw_value) % 2
+        or len(raw_value) > MAX_DEFERRED_RETAINED_PUBLIC_BYTES * 2
+        or any(character not in _HEX_CHARACTERS for character in raw_value)
+    ):
+        return None
+    try:
+        data = bytes.fromhex(raw_value)
+    except ValueError:
+        return None
+    if len(data) > MAX_DEFERRED_RETAINED_PUBLIC_BYTES:
+        return None
+    return raw_value.lower()
+
+
 def public_deferred_mapping(value: Any) -> dict[str, Any] | None:
-    """Return only public deferred fields; reject private/witness keys."""
+    """Return only public deferred fields; reject private/witness keys.
+
+    Present-but-invalid retained hex fields fail closed (return ``None``)
+    rather than silently omitting the field.
+    """
 
     if value is None:
         return None
@@ -1362,9 +1428,25 @@ def public_deferred_mapping(value: Any) -> dict[str, Any] | None:
         key = str(raw_key)
         if _field_is_private(key):
             continue
-        if key not in _PUBLIC_DEFERRED_FIELDS:
+        if key not in _PUBLIC_DEFERRED_FIELDS and not key.startswith(
+            "component_cid:"
+        ):
             continue
         if isinstance(raw_value, (str, int, float, bool)) or raw_value is None:
+            if isinstance(raw_value, str):
+                if key in _RETAINED_PUBLIC_HEX_FIELDS:
+                    cleaned = _validate_retained_hex_field(key, raw_value)
+                    if cleaned is None:
+                        return None
+                    if cleaned:
+                        public[key] = cleaned
+                    continue
+                if key in REQUIRED_DEFERRED_CONTEXT_PINS or key.endswith("_cid"):
+                    if len(raw_value) > MAX_DEFERRED_PUBLIC_PIN_CHARS:
+                        # Required/identity pins are never silently truncated.
+                        return None
+                elif len(raw_value) > MAX_DEFERRED_PUBLIC_SCALAR_CHARS:
+                    return None
             public[key] = raw_value
         elif isinstance(raw_value, Mapping):
             # Nested maps are not accepted on the public envelope.
@@ -1384,7 +1466,8 @@ class DeferredIssuanceEnvelope:
 
     Workers may serialize this envelope.  Controllers reconstruct typed
     issuance requests from retained public receipt/candidate bytes instead of
-    trusting worker-supplied private material.
+    trusting worker-supplied private material.  Certificate fields never fill
+    missing expected pins.
     """
 
     receipt_cid: str
@@ -1401,6 +1484,7 @@ class DeferredIssuanceEnvelope:
     proof_system_id: str = ""
     retained_receipt_bytes_hex: str = ""
     retained_candidate_context_bytes_hex: str = ""
+    retained_execution_key_bytes_hex: str = ""
     statement_digest: str = ""
     content_profile: str = ""
     metadata: Mapping[str, Any] = field(default_factory=dict)
@@ -1408,6 +1492,38 @@ class DeferredIssuanceEnvelope:
     @property
     def interface(self) -> str:
         return DEFERRED_ISSUANCE_ENVELOPE_INTERFACE
+
+    def missing_required_pins(self) -> tuple[str, ...]:
+        missing: list[str] = []
+        for name in REQUIRED_DEFERRED_CONTEXT_PINS:
+            if not str(getattr(self, name, "") or ""):
+                missing.append(name)
+        return tuple(missing)
+
+    @property
+    def is_complete(self) -> bool:
+        return not self.missing_required_pins()
+
+    def retained_receipt_bytes(self) -> bytes | None:
+        if not self.retained_receipt_bytes_hex:
+            return b""
+        cleaned = _validate_retained_hex_field(
+            "retained_receipt_bytes_hex", self.retained_receipt_bytes_hex
+        )
+        if cleaned is None:
+            return None
+        return bytes.fromhex(cleaned) if cleaned else b""
+
+    def retained_candidate_context_bytes(self) -> bytes | None:
+        if not self.retained_candidate_context_bytes_hex:
+            return b""
+        cleaned = _validate_retained_hex_field(
+            "retained_candidate_context_bytes_hex",
+            self.retained_candidate_context_bytes_hex,
+        )
+        if cleaned is None:
+            return None
+        return bytes.fromhex(cleaned) if cleaned else b""
 
     def to_dict(self) -> dict[str, Any]:
         payload = {
@@ -1428,6 +1544,9 @@ class DeferredIssuanceEnvelope:
             "retained_candidate_context_bytes_hex": (
                 self.retained_candidate_context_bytes_hex
             ),
+            "retained_execution_key_bytes_hex": (
+                self.retained_execution_key_bytes_hex
+            ),
             "statement_digest": self.statement_digest,
             "content_profile": self.content_profile,
         }
@@ -1440,6 +1559,8 @@ class DeferredIssuanceEnvelope:
             return None
         receipt_cid = str(public.get("receipt_cid") or "")
         if not receipt_cid:
+            return None
+        if len(receipt_cid) > MAX_DEFERRED_PUBLIC_PIN_CHARS:
             return None
         return cls(
             receipt_cid=receipt_cid,
@@ -1460,6 +1581,9 @@ class DeferredIssuanceEnvelope:
             retained_candidate_context_bytes_hex=str(
                 public.get("retained_candidate_context_bytes_hex") or ""
             ),
+            retained_execution_key_bytes_hex=str(
+                public.get("retained_execution_key_bytes_hex") or ""
+            ),
             statement_digest=str(public.get("statement_digest") or ""),
             content_profile=str(public.get("content_profile") or ""),
         )
@@ -1475,10 +1599,17 @@ class DeferredIssuanceEnvelope:
         proof_system_id: str = "",
         retained_receipt_bytes: bytes | bytearray | None = None,
         retained_candidate_context_bytes: bytes | bytearray | None = None,
+        retained_execution_key_bytes: bytes | bytearray | None = None,
         extras: Mapping[str, Any] | None = None,
+        certificate: Mapping[str, Any] | None = None,
     ) -> "DeferredIssuanceEnvelope | None":
-        """Build a public envelope from an admitted pass receipt only."""
+        """Build a public envelope from an admitted pass receipt only.
 
+        ``certificate`` is accepted solely to document that it never fills
+        missing expected pins.
+        """
+
+        del certificate
         if receipt is None:
             return None
         try:
@@ -1517,11 +1648,25 @@ class DeferredIssuanceEnvelope:
             )
             retained_receipt_hex = ""
             if isinstance(retained_receipt_bytes, (bytes, bytearray)):
-                retained_receipt_hex = bytes(retained_receipt_bytes).hex()
+                data = bytes(retained_receipt_bytes)
+                if len(data) > MAX_DEFERRED_RETAINED_PUBLIC_BYTES:
+                    return None
+                retained_receipt_hex = data.hex()
             retained_candidate_hex = ""
             if isinstance(retained_candidate_context_bytes, (bytes, bytearray)):
-                retained_candidate_hex = bytes(retained_candidate_context_bytes).hex()
+                data = bytes(retained_candidate_context_bytes)
+                if len(data) > MAX_DEFERRED_RETAINED_PUBLIC_BYTES:
+                    return None
+                retained_candidate_hex = data.hex()
+            retained_key_hex = ""
+            if isinstance(retained_execution_key_bytes, (bytes, bytearray)):
+                data = bytes(retained_execution_key_bytes)
+                if len(data) > MAX_DEFERRED_RETAINED_PUBLIC_BYTES:
+                    return None
+                retained_key_hex = data.hex()
             extra = dict(extras or {})
+            # Certificate-origin keys in extras are allowed only when the
+            # caller explicitly placed them there as controller-owned pins.
             return cls(
                 receipt_cid=receipt_cid,
                 execution_key_cid=execution_key_cid,
@@ -1545,6 +1690,7 @@ class DeferredIssuanceEnvelope:
                 or str(extra.get("proof_system_id") or ""),
                 retained_receipt_bytes_hex=retained_receipt_hex,
                 retained_candidate_context_bytes_hex=retained_candidate_hex,
+                retained_execution_key_bytes_hex=retained_key_hex,
                 statement_digest=str(extra.get("statement_digest") or ""),
                 content_profile=str(extra.get("content_profile") or ""),
             )
@@ -1557,11 +1703,15 @@ def reconstruct_deferred_request_from_public(
     *,
     retained_receipt_bytes: bytes | bytearray | None = None,
     retained_candidate_context_bytes: bytes | bytearray | None = None,
+    retained_execution_key_bytes: bytes | bytearray | None = None,
+    certificate: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Controller-side reconstruction of a public deferred request.
 
     Workers are never trusted for private witness data.  The controller rebuilds
     the issuance envelope from public retained bytes plus identity bindings.
+    Certificate fields never fill or override missing expected pins.  Retained
+    bytes are size-limited and rehashed before use.
     """
 
     try:
@@ -1571,14 +1721,53 @@ def reconstruct_deferred_request_from_public(
             public = public_deferred_mapping(envelope)
         if not public:
             return None
-        if retained_receipt_bytes is not None:
-            public["retained_receipt_bytes_hex"] = bytes(
-                retained_receipt_bytes
-            ).hex()
-        if retained_candidate_context_bytes is not None:
-            public["retained_candidate_context_bytes_hex"] = bytes(
-                retained_candidate_context_bytes
-            ).hex()
+        # Certificate cannot fill missing expected pins.
+        if certificate is not None and isinstance(certificate, Mapping):
+            for name in REQUIRED_DEFERRED_CONTEXT_PINS:
+                if not str(public.get(name) or "") and str(certificate.get(name) or ""):
+                    public.pop(name, None)
+
+        def _apply_retained(field: str, data: bytes | bytearray | None) -> bool:
+            if data is None:
+                return True
+            raw = bytes(data)
+            if len(raw) > MAX_DEFERRED_RETAINED_PUBLIC_BYTES:
+                return False
+            public[field] = raw.hex()
+            return True
+
+        if not _apply_retained("retained_receipt_bytes_hex", retained_receipt_bytes):
+            return None
+        if not _apply_retained(
+            "retained_candidate_context_bytes_hex", retained_candidate_context_bytes
+        ):
+            return None
+        if not _apply_retained(
+            "retained_execution_key_bytes_hex", retained_execution_key_bytes
+        ):
+            return None
+
+        # Rehash retained public bytes before any controller consumption.
+        try:
+            from .candidate_publication import rehash_controller_owned_public_bytes
+
+            for field in (
+                "retained_receipt_bytes_hex",
+                "retained_candidate_context_bytes_hex",
+                "retained_execution_key_bytes_hex",
+            ):
+                hex_value = public.get(field)
+                if not isinstance(hex_value, str) or not hex_value:
+                    continue
+                cleaned = _validate_retained_hex_field(field, hex_value)
+                if cleaned is None:
+                    return None
+                if cleaned:
+                    rehash_controller_owned_public_bytes(bytes.fromhex(cleaned))
+                    public[field] = cleaned
+        except Exception:
+            return None
+
         # Prefer datasets typed reconstruction when available; fall back to the
         # public envelope itself so issuance remains deferred rather than lost.
         try:
@@ -1593,6 +1782,37 @@ def reconstruct_deferred_request_from_public(
             return public
     except Exception:
         return None
+
+
+def reconstruct_controller_context_from_receipt_public(
+    envelope: Any,
+    *,
+    retained_receipt_bytes: bytes | bytearray | None = None,
+    retained_candidate_context_bytes: bytes | bytearray | None = None,
+    retained_execution_key_bytes: bytes | bytearray | None = None,
+    certificate: Mapping[str, Any] | None = None,
+    require_complete: bool = False,
+) -> tuple[Any | None, str]:
+    """Reconstruct :class:`ControllerOwnedV2VerificationContext` from public bytes.
+
+    Shared by serial/direct-node and xdist controller paths so neither needs a
+    test-file registry.  Returns ``(context, reason)`` with context ``None`` on
+    miss/malform/oversize/stale/substitution.
+    """
+
+    try:
+        from .candidate_publication import reconstruct_controller_owned_v2_context
+
+        return reconstruct_controller_owned_v2_context(
+            envelope,
+            retained_receipt_bytes=retained_receipt_bytes,
+            retained_candidate_context_bytes=retained_candidate_context_bytes,
+            retained_execution_key_bytes=retained_execution_key_bytes,
+            certificate=certificate,
+            require_complete=require_complete,
+        )
+    except Exception:
+        return None, "controller_context_reconstruction_exception"
 
 
 __all__ = [
@@ -1619,9 +1839,13 @@ __all__ = [
     "DeferredIssuanceEnvelope",
     "ITEM_COLLECTOR_ATTRIBUTE",
     "ITEM_RECEIPT_RESULT_ATTRIBUTE",
+    "MAX_DEFERRED_PUBLIC_PIN_CHARS",
+    "MAX_DEFERRED_PUBLIC_SCALAR_CHARS",
+    "MAX_DEFERRED_RETAINED_PUBLIC_BYTES",
     "PHASES",
     "PROOF_REUSE_RECEIPT_INTERFACE",
     "PhaseCapture",
+    "REQUIRED_DEFERRED_CONTEXT_PINS",
     "ReceiptCaptureResult",
     "TEST_PASS_RECEIPT_COLLECTOR_INTERFACE",
     "TestPassReceiptCollector",
@@ -1635,6 +1859,7 @@ __all__ = [
     "map_report_to_phase_outcome",
     "public_deferred_mapping",
     "pytest_runtest_logreport",
+    "reconstruct_controller_context_from_receipt_public",
     "reconstruct_deferred_request_from_public",
     "register_collector",
 ]

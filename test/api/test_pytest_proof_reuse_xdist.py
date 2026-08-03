@@ -43,12 +43,18 @@ from ipfs_accelerate_py.testing.proof_reuse.reporting import (
     ProofReuseOutcome,
     ProofReuseSessionMetrics,
 )
+from ipfs_accelerate_py.testing.proof_reuse.candidate_publication import (
+    REQUIRED_CONTROLLER_V2_PIN_FIELDS,
+)
 from ipfs_accelerate_py.testing.proof_reuse.xdist import (
     COORDINATION_UNAVAILABLE,
+    MAX_RETAINED_PUBLIC_BYTES,
+    REQUIRED_XDIST_CONTEXT_PIN_FIELDS,
     WORKER_INPUT_KEY,
     ProofReusePublicationIntent,
     ProofReuseXdistCoordinator,
     ProofReuseXdistRole,
+    reconstruct_controller_context_from_intent,
 )
 
 
@@ -737,6 +743,220 @@ def test_observed_worker_crash_fences_controller_publication() -> None:
     assert coordinator.can_write is False
     assert coordinator.pending_publications == 0
     assert metrics.reasons["worker_crash"] == 1
+
+
+def _complete_deferred(
+    receipt: TestPassReceipt,
+    *,
+    retained_receipt: bytes | None = None,
+    retained_candidate: bytes | None = None,
+    **overrides: Any,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "receipt_cid": receipt.receipt_id,
+        "execution_key_cid": receipt.execution_key_cid,
+        "candidate_context_cid": "cid:candidate",
+        "policy_cid": "cid:policy",
+        "statement_cid": "cid:statement",
+        "circuit_cid": "cid:circuit",
+        "verifying_key_cid": "cid:vk",
+        "issuer_id": "issuer:test",
+        "epoch": "epoch:1",
+        "backend_id": "groth16",
+        "proof_system_id": "groth16",
+        "locator_cid": receipt.locator_cid,
+    }
+    if retained_receipt is not None:
+        payload["retained_receipt_bytes_hex"] = retained_receipt.hex()
+    if retained_candidate is not None:
+        payload["retained_candidate_context_bytes_hex"] = retained_candidate.hex()
+    payload.update(overrides)
+    return payload
+
+
+def test_xdist_required_context_pins_match_controller_contract() -> None:
+    assert REQUIRED_XDIST_CONTEXT_PIN_FIELDS == REQUIRED_CONTROLLER_V2_PIN_FIELDS
+
+
+def test_oversized_retained_hex_never_silently_truncates_required_field() -> None:
+    receipt = _receipt()
+    oversized = b"x" * (MAX_RETAINED_PUBLIC_BYTES + 16)
+    with pytest.raises(ValueError, match="deferred request"):
+        ProofReusePublicationIntent.from_receipt(
+            receipt,
+            deferred_request=_complete_deferred(
+                receipt,
+                retained_receipt=oversized,
+            ),
+        )
+
+
+def test_malformed_retained_hex_rejects_intent() -> None:
+    receipt = _receipt()
+    with pytest.raises(ValueError, match="deferred request"):
+        ProofReusePublicationIntent.from_receipt(
+            receipt,
+            deferred_request=_complete_deferred(
+                receipt,
+                retained_receipt_bytes_hex="not-hex",
+            ),
+        )
+
+
+def test_oversized_required_pin_rejects_intent() -> None:
+    receipt = _receipt()
+    with pytest.raises(ValueError, match="deferred request"):
+        ProofReusePublicationIntent.from_receipt(
+            receipt,
+            deferred_request=_complete_deferred(
+                receipt,
+                statement_cid="s" * 300,
+            ),
+        )
+
+
+def test_controller_reconstructs_complete_pins_from_xdist_handoff() -> None:
+    controller = ProofReuseXdistCoordinator.controller()
+    worker = _connected_worker(controller)
+    receipt = _receipt()
+    retained_receipt = receipt.canonical_bytes()
+    retained_candidate = json.dumps(
+        {"padding": "c" * 200},
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    deferred = _complete_deferred(
+        receipt,
+        retained_receipt=retained_receipt,
+        retained_candidate=retained_candidate,
+    )
+    assert worker.queue_publication(receipt, deferred_request=deferred) is True
+    assert controller.accept_worker_output(worker.worker_output()) is True
+    assert controller.pending_publications == 1
+    intent = next(iter(controller._intents.values()))
+    context, reason = reconstruct_controller_context_from_intent(intent)
+    assert reason == ""
+    assert context is not None
+    assert context.is_complete is True
+    for name in REQUIRED_CONTROLLER_V2_PIN_FIELDS:
+        assert context.pin_value(name)
+    assert context.retained_receipt_bytes == retained_receipt
+    assert context.retained_candidate_context_bytes == retained_candidate
+    assert context.may_publish_candidate is False
+    assert context.receipt_bytes_cid
+
+
+def test_certificate_on_intent_cannot_fill_missing_context_pins() -> None:
+    receipt = _receipt()
+    certificate = _certificate(receipt)
+    # Incomplete deferred: only receipt/execution/locator.
+    intent = ProofReusePublicationIntent.from_receipt(
+        receipt,
+        certificate=certificate.to_dict(),
+        certificate_cid=certificate.certificate_id,
+        deferred_request={
+            "receipt_cid": receipt.receipt_id,
+            "execution_key_cid": receipt.execution_key_cid,
+            "locator_cid": receipt.locator_cid,
+        },
+    )
+    context, reason = reconstruct_controller_context_from_intent(
+        intent,
+        require_complete=True,
+    )
+    assert context is None
+    assert "incomplete" in reason
+    context, reason = reconstruct_controller_context_from_intent(intent)
+    assert context is not None
+    assert reason == ""
+    assert context.statement_cid == ""
+    assert context.circuit_cid == ""
+    assert context.verifying_key_cid == ""
+    assert context.is_complete is False
+
+
+def test_substituted_or_stale_context_is_receipt_only_without_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    controller = ProofReuseXdistCoordinator.controller()
+    receipt = _receipt()
+    retained = json.dumps(
+        {"label": "stale"},
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    intent = ProofReusePublicationIntent.from_receipt(
+        receipt,
+        deferred_request=_complete_deferred(
+            receipt,
+            retained_receipt=retained,
+            candidate_context_cid="cid:stale-candidate",
+        ),
+    )
+    assert controller.queue_publication(intent) is True
+    store = _CandidateStore()
+
+    class _DeferredIssuer:
+        def issue(self, request: Any) -> Any:
+            return SimpleNamespace(status="certificate_deferred")
+
+        def verify_certificate_locally(self, *args: Any) -> Any:
+            raise AssertionError("must not verify without complete context join")
+
+    published = controller.flush_publications(store, _DeferredIssuer())
+    assert len(published) == 1
+    assert [name for name, _payload in store.calls] == ["put_receipt"]
+    assert controller.healthy is True
+
+
+def test_malformed_worker_deferred_context_stays_receipt_only() -> None:
+    controller = ProofReuseXdistCoordinator.controller()
+    worker = _connected_worker(controller)
+    receipt = _receipt()
+    # queue_publication fails closed on malformed retained hex.
+    assert (
+        worker.queue_publication(
+            receipt,
+            deferred_request={
+                "receipt_cid": receipt.receipt_id,
+                "retained_receipt_bytes_hex": "odd",
+            },
+        )
+        is False
+    )
+    packet = worker.worker_output()
+    assert packet["intents"] == []
+    assert controller.accept_worker_output(packet) is True
+    store = _CandidateStore()
+    assert controller.flush_publications(store) == ()
+    assert store.calls == []
+
+
+def test_direct_node_uses_same_context_contract_without_registry() -> None:
+    """Standalone/serial path reconstructs via the same intent helper."""
+
+    standalone = ProofReuseXdistCoordinator.standalone()
+    receipt = _receipt()
+    retained_receipt = receipt.canonical_bytes()
+    retained_candidate = b'{"direct":true}'
+    intent = ProofReusePublicationIntent.from_receipt(
+        receipt,
+        deferred_request=_complete_deferred(
+            receipt,
+            retained_receipt=retained_receipt,
+            retained_candidate=retained_candidate,
+        ),
+    )
+    assert standalone.queue_publication(intent) is True
+    context, reason = reconstruct_controller_context_from_intent(intent)
+    assert reason == ""
+    assert context is not None
+    assert context.is_complete is True
+    assert context.retained_receipt_bytes == retained_receipt
+    store = _CandidateStore()
+    published = standalone.flush_publications(store)
+    assert len(published) == 1
+    assert [name for name, _ in store.calls] == ["put_receipt"]
 
 
 @pytest.mark.skipif(

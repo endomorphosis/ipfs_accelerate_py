@@ -47,6 +47,13 @@ COMPLETED_EXECUTION_IDENTITY_INTERFACE: Final = "CompletedExecutionIdentity@1"
 COMPLETED_EXECUTION_IDENTITY_SCHEMA: Final = (
     "ipfs_accelerate_py/testing/proof-reuse/completed-execution-identity@1"
 )
+CONTROLLER_OWNED_V2_VERIFICATION_CONTEXT_INTERFACE: Final = (
+    "ControllerOwnedV2VerificationContext@1"
+)
+CONTROLLER_OWNED_V2_VERIFICATION_CONTEXT_SCHEMA: Final = (
+    "ipfs_accelerate_py/testing/proof-reuse/"
+    "controller-owned-v2-verification-context@1"
+)
 
 ITEM_CANDIDATE_PUBLICATION_ATTRIBUTE: Final = (
     "_ipfs_proof_reuse_candidate_publication"
@@ -54,9 +61,40 @@ ITEM_CANDIDATE_PUBLICATION_ATTRIBUTE: Final = (
 ITEM_COMPLETED_IDENTITY_ATTRIBUTE: Final = (
     "_ipfs_proof_reuse_completed_execution_identity"
 )
+ITEM_CONTROLLER_V2_CONTEXT_ATTRIBUTE: Final = (
+    "_ipfs_proof_reuse_controller_v2_context"
+)
 
 # Component keys required by TestCandidateContextStore@1.
 _REQUIRED = tuple(REQUIRED_COMPONENT_KEYS)
+
+# Exact V2 expected-public-input pins the controller must reconstruct.
+# Certificate metadata must never fill a missing pin.
+REQUIRED_CONTROLLER_V2_PIN_FIELDS: Final = (
+    "receipt_cid",
+    "execution_key_cid",
+    "candidate_context_cid",
+    "policy_cid",
+    "statement_cid",
+    "circuit_cid",
+    "verifying_key_cid",
+    "issuer_id",
+    "epoch",
+    "backend_id",
+)
+OPTIONAL_CONTROLLER_V2_PIN_FIELDS: Final = (
+    "proof_system_id",
+    "locator_cid",
+    "content_profile",
+    "statement_digest",
+    "statement_version",
+    "statement_interface",
+)
+# Per-field and aggregate bounds for controller-owned public handoff bytes.
+MAX_CONTROLLER_V2_PIN_CHARS: Final = 256
+MAX_CONTROLLER_V2_RETAINED_BYTES: Final = 2 * 1024 * 1024
+MAX_CONTROLLER_V2_CONTEXT_BYTES: Final = 4 * 1024 * 1024
+MAX_CONTROLLER_V2_COMPONENT_BYTES: Final = 2 * 1024 * 1024
 
 
 def _bounded_text(value: Any, *, max_chars: int = 256) -> str:
@@ -512,6 +550,89 @@ class CandidatePublicationEnvelope:
     def required_components_present(self) -> bool:
         return all(name in self.component_bytes for name in _REQUIRED)
 
+    def retained_component(self, name: str) -> bytes | None:
+        """Return exact retained component bytes when present and non-empty."""
+
+        data = self.component_bytes.get(name)
+        if isinstance(data, (bytes, bytearray)) and data:
+            return bytes(data)
+        return None
+
+    def controller_owned_v2_pins(
+        self,
+        *,
+        statement_cid: str = "",
+        circuit_cid: str = "",
+        verifying_key_cid: str = "",
+        issuer_id: str = "",
+        epoch: str = "",
+        backend_id: str = "",
+        proof_system_id: str = "",
+        statement_digest: str = "",
+        content_profile: str = "",
+    ) -> "ControllerOwnedV2VerificationContext":
+        """Project retained cold-pass components into controller-owned V2 pins.
+
+        Statement/circuit/key/issuer/epoch/backend pins are supplied by the
+        controller issuance path, never by an attached certificate.  Missing
+        optional pins leave the context incomplete (receipt-only / DEFERRED).
+        """
+
+        policy_cid = _bounded_text(
+            self.descriptor.policy_cid or self.component_cids.get("policy", ""),
+            max_chars=MAX_CONTROLLER_V2_PIN_CHARS,
+        )
+        retained_receipt = self.retained_component("pass_receipt") or b""
+        retained_key = self.retained_component("execution_key") or b""
+        retained_descriptor = (
+            self.retained_descriptor_bytes
+            if isinstance(self.retained_descriptor_bytes, (bytes, bytearray))
+            else b""
+        )
+        return ControllerOwnedV2VerificationContext(
+            receipt_cid=_bounded_text(
+                self.receipt_cid, max_chars=MAX_CONTROLLER_V2_PIN_CHARS
+            ),
+            execution_key_cid=_bounded_text(
+                self.execution_key_cid, max_chars=MAX_CONTROLLER_V2_PIN_CHARS
+            ),
+            candidate_context_cid=_bounded_text(
+                self.candidate_context_cid, max_chars=MAX_CONTROLLER_V2_PIN_CHARS
+            ),
+            policy_cid=policy_cid,
+            statement_cid=_bounded_text(
+                statement_cid, max_chars=MAX_CONTROLLER_V2_PIN_CHARS
+            ),
+            circuit_cid=_bounded_text(
+                circuit_cid, max_chars=MAX_CONTROLLER_V2_PIN_CHARS
+            ),
+            verifying_key_cid=_bounded_text(
+                verifying_key_cid, max_chars=MAX_CONTROLLER_V2_PIN_CHARS
+            ),
+            issuer_id=_bounded_text(issuer_id, max_chars=MAX_CONTROLLER_V2_PIN_CHARS),
+            epoch=_bounded_text(epoch, max_chars=MAX_CONTROLLER_V2_PIN_CHARS),
+            backend_id=_bounded_text(
+                backend_id, max_chars=MAX_CONTROLLER_V2_PIN_CHARS
+            ),
+            proof_system_id=_bounded_text(
+                proof_system_id, max_chars=MAX_CONTROLLER_V2_PIN_CHARS
+            ),
+            locator_cid=_bounded_text(
+                self.locator_cid, max_chars=MAX_CONTROLLER_V2_PIN_CHARS
+            ),
+            statement_digest=_bounded_text(
+                statement_digest, max_chars=MAX_CONTROLLER_V2_PIN_CHARS
+            ),
+            content_profile=_bounded_text(
+                content_profile, max_chars=MAX_CONTROLLER_V2_PIN_CHARS
+            ),
+            retained_receipt_bytes=bytes(retained_receipt),
+            retained_candidate_context_bytes=bytes(retained_descriptor),
+            retained_execution_key_bytes=bytes(retained_key),
+            component_cids=dict(self.component_cids),
+            source="candidate_publication_envelope",
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": CANDIDATE_PUBLICATION_ENVELOPE_SCHEMA,
@@ -880,17 +1001,600 @@ def publication_is_authoritative(value: Any) -> bool:
     return False
 
 
+def _pin_text(value: Any, *, max_chars: int = MAX_CONTROLLER_V2_PIN_CHARS) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        try:
+            value = str(value)
+        except Exception:
+            return ""
+    text = value.strip()
+    if not text or len(text) > max_chars:
+        return ""
+    if any(ord(character) < 32 for character in text):
+        return ""
+    return text
+
+
+def _bounded_retained_bytes(
+    value: Any,
+    *,
+    max_bytes: int = MAX_CONTROLLER_V2_RETAINED_BYTES,
+) -> bytes | None:
+    """Return exact retained public bytes, or ``None`` when oversized/malformed.
+
+    Oversized payloads are never truncated: callers treat ``None`` as a hard
+    rejection so xdist transport cannot silently drop required retained material.
+    """
+
+    if value is None:
+        return b""
+    if isinstance(value, (bytes, bytearray)):
+        data = bytes(value)
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return b""
+        if len(text) % 2 or len(text) > max_bytes * 2:
+            return None
+        try:
+            data = bytes.fromhex(text)
+        except ValueError:
+            return None
+    else:
+        return None
+    if len(data) > max_bytes:
+        return None
+    return data
+
+
+def rehash_controller_owned_public_bytes(
+    data: bytes | bytearray,
+    *,
+    max_bytes: int = MAX_CONTROLLER_V2_RETAINED_BYTES,
+) -> str:
+    """Rehash retained public bytes before controller use.
+
+    Prefer exact DAG-JSON re-canonicalization when the payload is a JSON
+    object/array; otherwise fall back to a labeled content identity over the
+    raw digest so non-JSON instrumented blobs remain addressable.
+    """
+
+    if not isinstance(data, (bytes, bytearray)):
+        raise ValueError("retained public bytes must be bytes")
+    payload = bytes(data)
+    if not payload:
+        raise ValueError("retained public bytes must be nonempty")
+    if len(payload) > max_bytes:
+        raise ValueError("retained public bytes exceed bound")
+    try:
+        from .activation_contracts import rehash_retained_canonical_bytes
+
+        return rehash_retained_canonical_bytes(payload)
+    except Exception:
+        import hashlib
+
+        return content_identity(
+            {
+                "schema": (
+                    "ipfs_accelerate_py/testing/proof-reuse/"
+                    "raw-controller-context-bytes@1"
+                ),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+                "byte_length": len(payload),
+            }
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ControllerOwnedV2VerificationContext:
+    """Bounded controller-owned expected V2 verification pins (PTR-154).
+
+    Workers and serial nodes may propose only public pin strings and retained
+    public bytes.  The controller reconstructs this object, rehashes retained
+    bytes, and refuses certificate fields as fillers for missing pins.  The
+    context never grants publication or skip authority by itself.
+    """
+
+    __test__: ClassVar[bool] = False
+
+    receipt_cid: str = ""
+    execution_key_cid: str = ""
+    candidate_context_cid: str = ""
+    policy_cid: str = ""
+    statement_cid: str = ""
+    circuit_cid: str = ""
+    verifying_key_cid: str = ""
+    issuer_id: str = ""
+    epoch: str = ""
+    backend_id: str = ""
+    proof_system_id: str = ""
+    locator_cid: str = ""
+    statement_digest: str = ""
+    content_profile: str = ""
+    retained_receipt_bytes: bytes = b""
+    retained_candidate_context_bytes: bytes = b""
+    retained_execution_key_bytes: bytes = b""
+    component_cids: Mapping[str, str] = field(default_factory=dict)
+    receipt_bytes_cid: str = ""
+    candidate_context_bytes_cid: str = ""
+    execution_key_bytes_cid: str = ""
+    source: str = ""
+    reason_code: str = "ok"
+    diagnostics: Mapping[str, Any] = field(default_factory=dict)
+
+    @property
+    def interface(self) -> str:
+        return CONTROLLER_OWNED_V2_VERIFICATION_CONTEXT_INTERFACE
+
+    @property
+    def may_authorize_skip(self) -> bool:
+        return False
+
+    @property
+    def may_publish_candidate(self) -> bool:
+        return False
+
+    def pin_value(self, name: str) -> str:
+        return _pin_text(getattr(self, name, ""))
+
+    def missing_required_pins(self) -> tuple[str, ...]:
+        missing: list[str] = []
+        for name in REQUIRED_CONTROLLER_V2_PIN_FIELDS:
+            if not self.pin_value(name):
+                missing.append(name)
+        return tuple(missing)
+
+    @property
+    def is_complete(self) -> bool:
+        return not self.missing_required_pins()
+
+    def retained_receipt_bytes_hex(self) -> str:
+        return self.retained_receipt_bytes.hex() if self.retained_receipt_bytes else ""
+
+    def retained_candidate_context_bytes_hex(self) -> str:
+        return (
+            self.retained_candidate_context_bytes.hex()
+            if self.retained_candidate_context_bytes
+            else ""
+        )
+
+    def retained_execution_key_bytes_hex(self) -> str:
+        return (
+            self.retained_execution_key_bytes.hex()
+            if self.retained_execution_key_bytes
+            else ""
+        )
+
+    def aggregate_byte_length(self) -> int:
+        return (
+            len(self.retained_receipt_bytes)
+            + len(self.retained_candidate_context_bytes)
+            + len(self.retained_execution_key_bytes)
+        )
+
+    def rehash_retained_bytes(self) -> "ControllerOwnedV2VerificationContext":
+        """Return a copy with CID rehash of every retained public blob."""
+
+        receipt_cid = self.receipt_bytes_cid
+        candidate_cid = self.candidate_context_bytes_cid
+        key_cid = self.execution_key_bytes_cid
+        diagnostics = dict(self.diagnostics)
+        if self.retained_receipt_bytes:
+            receipt_cid = rehash_controller_owned_public_bytes(
+                self.retained_receipt_bytes
+            )
+        if self.retained_candidate_context_bytes:
+            candidate_cid = rehash_controller_owned_public_bytes(
+                self.retained_candidate_context_bytes
+            )
+        if self.retained_execution_key_bytes:
+            key_cid = rehash_controller_owned_public_bytes(
+                self.retained_execution_key_bytes
+            )
+        if self.candidate_context_cid and candidate_cid:
+            # When both a declared pin and retained bytes exist, require match
+            # only when the declared pin equals a content identity of those
+            # bytes or the retained-bytes CID is recorded separately.
+            diagnostics["candidate_context_bytes_rehashed"] = True
+        return ControllerOwnedV2VerificationContext(
+            receipt_cid=self.receipt_cid,
+            execution_key_cid=self.execution_key_cid,
+            candidate_context_cid=self.candidate_context_cid,
+            policy_cid=self.policy_cid,
+            statement_cid=self.statement_cid,
+            circuit_cid=self.circuit_cid,
+            verifying_key_cid=self.verifying_key_cid,
+            issuer_id=self.issuer_id,
+            epoch=self.epoch,
+            backend_id=self.backend_id,
+            proof_system_id=self.proof_system_id,
+            locator_cid=self.locator_cid,
+            statement_digest=self.statement_digest,
+            content_profile=self.content_profile,
+            retained_receipt_bytes=self.retained_receipt_bytes,
+            retained_candidate_context_bytes=self.retained_candidate_context_bytes,
+            retained_execution_key_bytes=self.retained_execution_key_bytes,
+            component_cids=dict(self.component_cids),
+            receipt_bytes_cid=receipt_cid,
+            candidate_context_bytes_cid=candidate_cid,
+            execution_key_bytes_cid=key_cid,
+            source=self.source,
+            reason_code=self.reason_code,
+            diagnostics=diagnostics,
+        )
+
+    def to_public_mapping(self) -> dict[str, Any]:
+        """Public-only transport projection (no nested witness bodies)."""
+
+        payload: dict[str, Any] = {
+            "interface": self.interface,
+            "schema": CONTROLLER_OWNED_V2_VERIFICATION_CONTEXT_SCHEMA,
+            "receipt_cid": self.receipt_cid,
+            "execution_key_cid": self.execution_key_cid,
+            "candidate_context_cid": self.candidate_context_cid,
+            "policy_cid": self.policy_cid,
+            "statement_cid": self.statement_cid,
+            "circuit_cid": self.circuit_cid,
+            "verifying_key_cid": self.verifying_key_cid,
+            "issuer_id": self.issuer_id,
+            "epoch": self.epoch,
+            "backend_id": self.backend_id,
+            "proof_system_id": self.proof_system_id,
+            "locator_cid": self.locator_cid,
+            "statement_digest": self.statement_digest,
+            "content_profile": self.content_profile,
+            "may_authorize_skip": False,
+            "may_publish_candidate": False,
+            "is_complete": self.is_complete,
+            "reason_code": self.reason_code,
+            "source": self.source,
+        }
+        if self.retained_receipt_bytes:
+            payload["retained_receipt_bytes_hex"] = self.retained_receipt_bytes_hex()
+        if self.retained_candidate_context_bytes:
+            payload["retained_candidate_context_bytes_hex"] = (
+                self.retained_candidate_context_bytes_hex()
+            )
+        if self.retained_execution_key_bytes:
+            payload["retained_execution_key_bytes_hex"] = (
+                self.retained_execution_key_bytes_hex()
+            )
+        if self.receipt_bytes_cid:
+            payload["receipt_bytes_cid"] = self.receipt_bytes_cid
+        if self.candidate_context_bytes_cid:
+            payload["candidate_context_bytes_cid"] = self.candidate_context_bytes_cid
+        if self.execution_key_bytes_cid:
+            payload["execution_key_bytes_cid"] = self.execution_key_bytes_cid
+        if self.component_cids:
+            # Flatten only scalar CID strings for transport safety.
+            for name, cid in self.component_cids.items():
+                text = _pin_text(cid)
+                if text:
+                    payload[f"component_cid:{name}"] = text
+        return {key: value for key, value in payload.items() if value not in ("", None)}
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.to_public_mapping()
+
+    def to_deferred_public_mapping(self) -> dict[str, Any]:
+        """Project into the deferred-issuance public envelope shape."""
+
+        payload = {
+            "interface": "DeferredIssuanceEnvelope@1",
+            "receipt_cid": self.receipt_cid,
+            "execution_key_cid": self.execution_key_cid,
+            "candidate_context_cid": self.candidate_context_cid,
+            "policy_cid": self.policy_cid,
+            "statement_cid": self.statement_cid,
+            "circuit_cid": self.circuit_cid,
+            "verifying_key_cid": self.verifying_key_cid,
+            "issuer_id": self.issuer_id,
+            "epoch": self.epoch,
+            "backend_id": self.backend_id,
+            "proof_system_id": self.proof_system_id,
+            "locator_cid": self.locator_cid,
+            "statement_digest": self.statement_digest,
+            "content_profile": self.content_profile,
+            "retained_receipt_bytes_hex": self.retained_receipt_bytes_hex(),
+            "retained_candidate_context_bytes_hex": (
+                self.retained_candidate_context_bytes_hex()
+            ),
+        }
+        return {key: value for key, value in payload.items() if value not in ("", None)}
+
+    @classmethod
+    def from_mapping(
+        cls,
+        value: Any,
+        *,
+        certificate: Mapping[str, Any] | None = None,
+        rehash: bool = True,
+    ) -> "ControllerOwnedV2VerificationContext | None":
+        """Parse public pins; certificate is never used to fill missing values."""
+
+        del certificate  # Explicitly unused: certificates cannot fill pins.
+        if value is None:
+            return None
+        if isinstance(value, cls):
+            context = value
+        else:
+            if hasattr(value, "to_dict") and callable(value.to_dict):
+                try:
+                    value = value.to_dict()
+                except Exception:
+                    return None
+            if not isinstance(value, Mapping):
+                return None
+            retained_receipt = _bounded_retained_bytes(
+                value.get("retained_receipt_bytes_hex")
+                or value.get("retained_receipt_bytes")
+            )
+            retained_candidate = _bounded_retained_bytes(
+                value.get("retained_candidate_context_bytes_hex")
+                or value.get("retained_candidate_context_bytes")
+            )
+            retained_key = _bounded_retained_bytes(
+                value.get("retained_execution_key_bytes_hex")
+                or value.get("retained_execution_key_bytes")
+            )
+            if (
+                retained_receipt is None
+                or retained_candidate is None
+                or retained_key is None
+            ):
+                return None
+            component_cids: dict[str, str] = {}
+            raw_components = value.get("component_cids")
+            if isinstance(raw_components, Mapping):
+                for name, cid in raw_components.items():
+                    text = _pin_text(cid)
+                    if text:
+                        component_cids[str(name)[:64]] = text
+            for raw_key, raw_value in value.items():
+                key = str(raw_key)
+                if key.startswith("component_cid:"):
+                    text = _pin_text(raw_value)
+                    if text:
+                        component_cids[key[len("component_cid:") :][:64]] = text
+            context = cls(
+                receipt_cid=_pin_text(value.get("receipt_cid")),
+                execution_key_cid=_pin_text(value.get("execution_key_cid")),
+                candidate_context_cid=_pin_text(value.get("candidate_context_cid")),
+                policy_cid=_pin_text(value.get("policy_cid")),
+                statement_cid=_pin_text(value.get("statement_cid")),
+                circuit_cid=_pin_text(value.get("circuit_cid")),
+                verifying_key_cid=_pin_text(value.get("verifying_key_cid")),
+                issuer_id=_pin_text(value.get("issuer_id")),
+                epoch=_pin_text(value.get("epoch")),
+                backend_id=_pin_text(value.get("backend_id")),
+                proof_system_id=_pin_text(value.get("proof_system_id")),
+                locator_cid=_pin_text(value.get("locator_cid")),
+                statement_digest=_pin_text(value.get("statement_digest")),
+                content_profile=_pin_text(value.get("content_profile")),
+                retained_receipt_bytes=retained_receipt,
+                retained_candidate_context_bytes=retained_candidate,
+                retained_execution_key_bytes=retained_key,
+                component_cids=component_cids,
+                receipt_bytes_cid=_pin_text(value.get("receipt_bytes_cid")),
+                candidate_context_bytes_cid=_pin_text(
+                    value.get("candidate_context_bytes_cid")
+                ),
+                execution_key_bytes_cid=_pin_text(
+                    value.get("execution_key_bytes_cid")
+                ),
+                source=_pin_text(value.get("source") or "public_mapping"),
+                reason_code=_pin_text(value.get("reason_code") or "ok") or "ok",
+            )
+        if context.aggregate_byte_length() > MAX_CONTROLLER_V2_CONTEXT_BYTES:
+            return None
+        if not rehash:
+            return context
+        try:
+            return context.rehash_retained_bytes()
+        except Exception:
+            return None
+
+    @classmethod
+    def from_deferred_envelope(
+        cls,
+        envelope: Any,
+        *,
+        retained_receipt_bytes: bytes | bytearray | None = None,
+        retained_candidate_context_bytes: bytes | bytearray | None = None,
+        retained_execution_key_bytes: bytes | bytearray | None = None,
+        certificate: Mapping[str, Any] | None = None,
+        rehash: bool = True,
+    ) -> "ControllerOwnedV2VerificationContext | None":
+        """Build from a public deferred envelope without certificate fill-in."""
+
+        del certificate
+        try:
+            if hasattr(envelope, "to_dict") and callable(envelope.to_dict):
+                payload = dict(envelope.to_dict())
+            elif isinstance(envelope, Mapping):
+                payload = dict(envelope)
+            else:
+                return None
+            if retained_receipt_bytes is not None:
+                payload["retained_receipt_bytes_hex"] = bytes(
+                    retained_receipt_bytes
+                ).hex()
+            if retained_candidate_context_bytes is not None:
+                payload["retained_candidate_context_bytes_hex"] = bytes(
+                    retained_candidate_context_bytes
+                ).hex()
+            if retained_execution_key_bytes is not None:
+                payload["retained_execution_key_bytes_hex"] = bytes(
+                    retained_execution_key_bytes
+                ).hex()
+            payload.setdefault("source", "deferred_envelope")
+            return cls.from_mapping(payload, rehash=rehash)
+        except Exception:
+            return None
+
+    @classmethod
+    def from_candidate_publication(
+        cls,
+        envelope: "CandidatePublicationEnvelope",
+        **pins: Any,
+    ) -> "ControllerOwnedV2VerificationContext | None":
+        if not isinstance(envelope, CandidatePublicationEnvelope):
+            return None
+        try:
+            context = envelope.controller_owned_v2_pins(
+                statement_cid=str(pins.get("statement_cid") or ""),
+                circuit_cid=str(pins.get("circuit_cid") or ""),
+                verifying_key_cid=str(pins.get("verifying_key_cid") or ""),
+                issuer_id=str(pins.get("issuer_id") or ""),
+                epoch=str(pins.get("epoch") or ""),
+                backend_id=str(pins.get("backend_id") or ""),
+                proof_system_id=str(pins.get("proof_system_id") or ""),
+                statement_digest=str(pins.get("statement_digest") or ""),
+                content_profile=str(pins.get("content_profile") or ""),
+            )
+            return admit_controller_owned_v2_context(context)[0]
+        except Exception:
+            return None
+
+
+def admit_controller_owned_v2_context(
+    context: ControllerOwnedV2VerificationContext | Mapping[str, Any] | None,
+    *,
+    require_complete: bool = False,
+    require_retained_bytes: bool = False,
+    certificate: Mapping[str, Any] | None = None,
+    expected_pins: Mapping[str, str] | None = None,
+) -> tuple[ControllerOwnedV2VerificationContext | None, str]:
+    """Admit a controller-owned context after size/rehash/pin checks.
+
+    * ``certificate`` is accepted only to prove it is ignored for fill-in.
+    * Stale/substituted pins relative to *expected_pins* are rejected.
+    * Incomplete contexts are admitted only when ``require_complete`` is false
+      (receipt-only / DEFERRED paths still need the partial public envelope).
+    """
+
+    del certificate
+    try:
+        if isinstance(context, ControllerOwnedV2VerificationContext):
+            admitted = ControllerOwnedV2VerificationContext.from_mapping(
+                context.to_public_mapping(),
+                rehash=True,
+            )
+        else:
+            admitted = ControllerOwnedV2VerificationContext.from_mapping(
+                context,
+                rehash=True,
+            )
+        if admitted is None:
+            return None, "controller_context_invalid"
+        if admitted.aggregate_byte_length() > MAX_CONTROLLER_V2_CONTEXT_BYTES:
+            return None, "controller_context_oversized"
+        if require_retained_bytes and not (
+            admitted.retained_receipt_bytes or admitted.retained_candidate_context_bytes
+        ):
+            return None, "controller_context_retained_bytes_missing"
+        if require_complete and not admitted.is_complete:
+            return None, "controller_context_incomplete:" + ",".join(
+                admitted.missing_required_pins()
+            )
+        if expected_pins:
+            for name, expected in expected_pins.items():
+                actual = admitted.pin_value(str(name))
+                expected_text = _pin_text(expected)
+                if expected_text and actual and actual != expected_text:
+                    return None, f"controller_context_pin_mismatch:{name}"
+                if expected_text and not actual:
+                    return None, f"controller_context_pin_missing:{name}"
+        return admitted, ""
+    except Exception:
+        return None, "controller_context_exception"
+
+
+def reconstruct_controller_owned_v2_context(
+    source: Any,
+    *,
+    retained_receipt_bytes: bytes | bytearray | None = None,
+    retained_candidate_context_bytes: bytes | bytearray | None = None,
+    retained_execution_key_bytes: bytes | bytearray | None = None,
+    certificate: Mapping[str, Any] | None = None,
+    require_complete: bool = False,
+) -> tuple[ControllerOwnedV2VerificationContext | None, str]:
+    """Controller-side reconstruction used by serial and xdist paths alike.
+
+    Certificate fields never fill missing expected pins.  Missing, malformed,
+    oversized, stale or substituted context returns a typed miss reason so the
+    caller retains receipt-only RUN/DEFERRED behavior.
+    """
+
+    try:
+        if isinstance(source, CandidatePublicationEnvelope):
+            base = source.controller_owned_v2_pins()
+            payload = base.to_public_mapping()
+        elif isinstance(source, ControllerOwnedV2VerificationContext):
+            payload = source.to_public_mapping()
+        elif hasattr(source, "to_dict") and callable(source.to_dict):
+            payload = dict(source.to_dict())
+        elif isinstance(source, Mapping):
+            payload = dict(source)
+        else:
+            return None, "controller_context_unsupported_source"
+        # Explicitly refuse certificate fill-in even when supplied.
+        if certificate is not None and isinstance(certificate, Mapping):
+            for name in REQUIRED_CONTROLLER_V2_PIN_FIELDS:
+                if not _pin_text(payload.get(name)) and _pin_text(certificate.get(name)):
+                    # Leave the pin empty so incompleteness is preserved.
+                    payload.pop(name, None)
+        if retained_receipt_bytes is not None:
+            bounded = _bounded_retained_bytes(bytes(retained_receipt_bytes))
+            if bounded is None:
+                return None, "retained_receipt_bytes_oversized"
+            payload["retained_receipt_bytes_hex"] = bounded.hex()
+        if retained_candidate_context_bytes is not None:
+            bounded = _bounded_retained_bytes(bytes(retained_candidate_context_bytes))
+            if bounded is None:
+                return None, "retained_candidate_context_bytes_oversized"
+            payload["retained_candidate_context_bytes_hex"] = bounded.hex()
+        if retained_execution_key_bytes is not None:
+            bounded = _bounded_retained_bytes(bytes(retained_execution_key_bytes))
+            if bounded is None:
+                return None, "retained_execution_key_bytes_oversized"
+            payload["retained_execution_key_bytes_hex"] = bounded.hex()
+        payload.setdefault("source", "controller_reconstruction")
+        return admit_controller_owned_v2_context(
+            payload,
+            require_complete=require_complete,
+            certificate=certificate,
+        )
+    except Exception:
+        return None, "controller_context_reconstruction_exception"
+
+
 __all__ = [
     "CANDIDATE_PUBLICATION_ENVELOPE_INTERFACE",
     "CANDIDATE_PUBLICATION_ENVELOPE_SCHEMA",
     "COMPLETED_EXECUTION_IDENTITY_INTERFACE",
     "COMPLETED_EXECUTION_IDENTITY_SCHEMA",
+    "CONTROLLER_OWNED_V2_VERIFICATION_CONTEXT_INTERFACE",
+    "CONTROLLER_OWNED_V2_VERIFICATION_CONTEXT_SCHEMA",
     "CandidatePublicationEnvelope",
     "CompletedExecutionIdentity",
+    "ControllerOwnedV2VerificationContext",
     "ITEM_CANDIDATE_PUBLICATION_ATTRIBUTE",
     "ITEM_COMPLETED_IDENTITY_ATTRIBUTE",
+    "ITEM_CONTROLLER_V2_CONTEXT_ATTRIBUTE",
+    "MAX_CONTROLLER_V2_COMPONENT_BYTES",
+    "MAX_CONTROLLER_V2_CONTEXT_BYTES",
+    "MAX_CONTROLLER_V2_PIN_CHARS",
+    "MAX_CONTROLLER_V2_RETAINED_BYTES",
+    "OPTIONAL_CONTROLLER_V2_PIN_FIELDS",
+    "REQUIRED_CONTROLLER_V2_PIN_FIELDS",
+    "admit_controller_owned_v2_context",
     "assemble_candidate_publication",
     "build_completed_execution_identity",
     "finalize_cold_pass_publication",
     "publication_is_authoritative",
+    "reconstruct_controller_owned_v2_context",
+    "rehash_controller_owned_public_bytes",
 ]
