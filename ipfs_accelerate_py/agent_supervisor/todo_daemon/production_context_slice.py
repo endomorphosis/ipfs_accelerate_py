@@ -768,6 +768,24 @@ def _top_level_python_symbols(text: str) -> tuple[str, ...]:
     return tuple(sorted(set(names)))
 
 
+def _top_level_python_symbols_in_source_order(text: str) -> tuple[str, ...]:
+    """Return top-level definitions in source order (first appearance wins)."""
+
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return ()
+    names: list[str] = []
+    seen: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if node.name in seen:
+                continue
+            seen.add(node.name)
+            names.append(node.name)
+    return tuple(names)
+
+
 def _visible_slice_bytes(
     text: str,
     source: bytes,
@@ -790,6 +808,7 @@ def _budgeted_top_level_python_symbols(
     source: bytes,
     *,
     max_visible_bytes: int,
+    prefer_trailing: bool = False,
 ) -> tuple[str, ...]:
     """Select a deterministic top-level subset that fits the visible budget.
 
@@ -798,6 +817,10 @@ def _budgeted_top_level_python_symbols(
     hints, greedily keep the smallest top-level definitions first so more
     interface-adjacent types fit under ``max_visible_bytes``.  Ties break by
     name so the selection is stable across runs.
+
+    When ``prefer_trailing`` is true (effect paths), pin the last few
+    top-level definitions first so common append targets near EOF remain
+    write-covered under partial AST slices.
     """
 
     names = _top_level_python_symbols(text)
@@ -808,6 +831,7 @@ def _budgeted_top_level_python_symbols(
     header_cap = DEFAULT_WHOLE_FILE_BYTES
 
     sized: list[tuple[int, str]] = []
+    size_by_name: dict[str, int] = {}
     for name in names:
         try:
             body_bytes = _visible_slice_bytes(
@@ -819,13 +843,13 @@ def _budgeted_top_level_python_symbols(
         except ProductionContextSliceError:
             continue
         sized.append((body_bytes, name))
+        size_by_name[name] = body_bytes
     if not sized:
         return ()
-    # Prefer compact definitions so more names fit; stable name order on ties.
-    sized.sort(key=lambda item: (item[0], item[1]))
 
     selected: list[str] = []
-    for _size, name in sized:
+
+    def _try_add(name: str) -> bool:
         trial = tuple(sorted({*selected, name}))
         try:
             total = _visible_slice_bytes(
@@ -835,11 +859,27 @@ def _budgeted_top_level_python_symbols(
                 max_candidate_bytes=header_cap,
             )
         except ProductionContextSliceError:
-            continue
+            return False
         if total <= budget:
             selected.append(name)
-    return tuple(sorted(selected))
+            return True
+        return False
 
+    # Effect files often grow by appending new types at EOF.  Pin the last few
+    # top-level defs first so those write regions stay inside the visible slice.
+    if prefer_trailing:
+        ordered = _top_level_python_symbols_in_source_order(text)
+        trailing = [name for name in ordered if name in size_by_name][-3:]
+        for name in trailing:
+            _try_add(name)
+
+    # Prefer compact definitions so more names fit; stable name order on ties.
+    sized.sort(key=lambda item: (item[0], item[1]))
+    for _size, name in sized:
+        if name in selected:
+            continue
+        _try_add(name)
+    return tuple(sorted(selected))
 
 def _source_record(
     *,
@@ -884,10 +924,13 @@ def _source_record(
         if not normalized_symbols:
             # Budget-fit a deterministic subset of top-level definitions so
             # oversized modules remain implementable without operator hints.
+            # Effect paths pin trailing definitions first so EOF appends of new
+            # types (common for contracts modules) remain write-covered.
             normalized_symbols = _budgeted_top_level_python_symbols(
                 text,
                 source,
                 max_visible_bytes=max(4_096, whole_file_bytes // 2),
+                prefer_trailing=bool(effect),
             )
         if not normalized_symbols:
             _fail(
@@ -1783,6 +1826,7 @@ def verify_production_context_slice(
                         source_text,
                         baseline_bytes,
                         max_visible_bytes=max(4_096, budgeted_whole // 2),
+                        prefer_trailing=bool(record.get("effect")),
                     )
                 )
                 if symbols != auto_symbols:
