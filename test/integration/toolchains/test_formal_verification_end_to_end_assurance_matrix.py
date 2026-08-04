@@ -378,8 +378,36 @@ def test_stale_lock_digest_blocks_only_freshness_before_joint_recompute(
     )
     for row in rebuilt["provider_host_rows"]:
         assert row["axes"]["freshness"]["state"] == "blocked"
-        assert row["axes"]["freshness"]["reason_codes"] == ["stale_lock_digest"]
+        assert row["axes"]["freshness"]["reason_codes"] == [
+            "stale_lock",
+            "stale_lock_digest",
+        ]
         assert row["joint_ready"] is False
+
+
+def test_checked_matrix_surfaces_required_failure_class_tokens(
+    matrix: dict[str, Any],
+) -> None:
+    """Live rows must use the catalog tokens, not only synthetic adversarial cases."""
+
+    observed: set[str] = set()
+    for row in matrix["provider_host_rows"]:
+        for axis in row["axes"].values():
+            observed.update(axis.get("reason_codes") or ())
+    # Always-present fail-closed classes on the current blocked deployment.
+    for required in (
+        "supported_missing_dependencies",
+        "placeholder_dispatch",
+        "stale_lock",
+        "parser_fixture",
+        "advisor_only_evidence",
+        "unsupported_host",
+    ):
+        assert required in observed, f"missing live failure class token: {required}"
+    # Wheel-contract absence is encoded when packaging evidence is incomplete;
+    # architecture mismatch is encoded only when a wrong-arch artifact is bound.
+    for optional in ("missing_wheel_files", "wrong_architecture_artifact"):
+        assert optional in matrix["validation"]["required_failure_classes"]
 
 
 def test_validator_rejects_optimistic_claim_and_stale_repository_evidence(

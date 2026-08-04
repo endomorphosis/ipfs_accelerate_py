@@ -10273,7 +10273,10 @@ def _build_provider_host_assurance_row(
         dependency_axis = _assurance_axis(
             "blocked",
             required=True,
-            reason_codes=["supported_dependencies_unavailable_or_unbound"],
+            reason_codes=[
+                "supported_missing_dependencies",
+                "supported_dependencies_unavailable_or_unbound",
+            ],
             evidence_refs=base_refs,
             details={"availability": availability},
         )
@@ -10520,13 +10523,18 @@ def _build_provider_host_assurance_row(
                 "secpal_live_semantic_cli_unavailable",
             ]
             if tool_id == "secpal" and secpal_provenance_bound
-            else [
-                "advisor_only_evidence"
+            else (
+                ["advisor_only_evidence"]
                 if tool_id == "ergoai"
-                else "parser_fixture_not_semantic_evidence"
-                if semantic_unsafe
-                else "semantic_evidence_missing_or_incomplete"
-            ]
+                else (
+                    [
+                        "parser_fixture",
+                        "parser_fixture_not_semantic_evidence",
+                    ]
+                    if semantic_unsafe
+                    else ["semantic_evidence_missing_or_incomplete"]
+                )
+            )
         )
         semantic_axis = _assurance_axis(
             "ready" if semantic_ready else "blocked",
@@ -10555,7 +10563,10 @@ def _build_provider_host_assurance_row(
         platform_axis = _assurance_axis(
             "unsupported",
             required=True,
-            reason_codes=["vendor_supported_live_host_absent"],
+            reason_codes=[
+                "unsupported_host",
+                "vendor_supported_live_host_absent",
+            ],
             evidence_refs=[lock_ref],
             details={
                 **dict(platform_row),
@@ -10677,11 +10688,11 @@ def _build_provider_host_assurance_row(
         reason_codes=(
             ["lock_and_certificate_content_digests_current"]
             if freshness_ready
-            else [
-                "stale_lock_digest"
+            else (
+                ["stale_lock", "stale_lock_digest"]
                 if not certificate_lock_fresh
-                else "stale_or_mismatched_tool_identity"
-            ]
+                else ["stale_or_mismatched_tool_identity"]
+            )
         ),
         evidence_refs=base_refs,
         details={
