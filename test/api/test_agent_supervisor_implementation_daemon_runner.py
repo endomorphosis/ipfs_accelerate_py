@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import shlex
 import sys
 from pathlib import Path
 
@@ -86,6 +88,12 @@ def test_supervisor_propagates_explicit_merge_target_branch(tmp_path: Path):
     config = supervisor_config_from_args(parsed, repo_root=tmp_path)
     command = PortalImplementationSupervisor(config)._build_daemon_command()
 
+    assert command[:4] == [
+        sys.executable,
+        "-P",
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+    ]
     assert config.merge_target_branch == target_branch
     assert command[command.index("--merge-target-branch") + 1] == target_branch
 
@@ -225,8 +233,29 @@ def test_daemon_uses_explicit_merge_target_branch_and_rejects_missing_branch(tmp
 
 
 def test_daemon_uses_packaged_merge_resolver_by_default(tmp_path: Path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor import grok_cli_runner
+
     monkeypatch.delenv("IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND", raising=False)
-    expected = f"{sys.executable} -m ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback"
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "/usr/local/bin/codex",
+    )
+    expected = default_llm_merge_resolver_command()
+    route = shlex.split(expected)
+    assert route[:3] == [
+        sys.executable,
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+    ]
+    assert route[route.index("--model") + 1] == "grok-4.5"
+    fallback = json.loads(
+        route[route.index("--codex-fallback-command-json") + 1]
+    )
+    assert Path(fallback[0]).name == "codex"
+    assert fallback[fallback.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="medium"' in fallback
+    assert all("copilot" not in argument.casefold() for argument in route)
     daemon = PortalImplementationDaemon(
         todo_path=tmp_path / "tasks.todo.md",
         state_path=tmp_path / "state.json",
@@ -235,9 +264,29 @@ def test_daemon_uses_packaged_merge_resolver_by_default(tmp_path: Path, monkeypa
         repo_root=tmp_path,
     )
 
-    assert default_llm_merge_resolver_command() == expected
     assert daemon.llm_merge_resolver_command == expected
     assert parse_args([]).llm_merge_resolver_command == expected
+
+
+def test_packaged_merge_resolver_omits_fallback_without_trusted_codex(
+    monkeypatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor import grok_cli_runner
+
+    monkeypatch.delenv(
+        "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "resolve_codex_quota_fallback_executable",
+        lambda **_kwargs: "",
+    )
+
+    route = shlex.split(default_llm_merge_resolver_command())
+
+    assert route[route.index("--model") + 1] == "grok-4.5"
+    assert "--codex-fallback-command-json" not in route
 
 
 def test_daemon_explicit_merge_resolver_overrides_default(tmp_path: Path, monkeypatch):

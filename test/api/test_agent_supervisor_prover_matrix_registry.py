@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -20,6 +21,7 @@ from ipfs_accelerate_py.agent_supervisor.proof.prover_matrix_registry import (
     ProverMatrixRegistry,
     ProverState,
     SelfTestStatus,
+    _find_spec_without_import,
     load_documentation_claims,
     prover_matrix_paths,
     query_prover_matrix,
@@ -165,6 +167,128 @@ def test_default_registry_covers_the_complete_required_prover_matrix() -> None:
         assert set(entry.states) == {state.value for state in ProverState}
         assert entry.absent
         assert entry.highest_state is ProverState.ABSENT
+
+
+def test_default_discovery_resolves_nested_source_package_without_importing_wrapper(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    outer = tmp_path / "source_provider"
+    inner = outer / "source_provider"
+    backend_package = inner / "agent"
+    backend_package.mkdir(parents=True)
+    (outer / "__init__.py").write_text(
+        "raise RuntimeError('outer bootstrap executed')\n",
+        encoding="utf-8",
+    )
+    (inner / "__init__.py").write_text(
+        "raise RuntimeError('inner initializer executed')\n",
+        encoding="utf-8",
+    )
+    (backend_package / "__init__.py").write_text(
+        "raise RuntimeError('agent initializer executed')\n",
+        encoding="utf-8",
+    )
+    (backend_package / "proof_provider.py").write_text(
+        "CAPABLE = True\n",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    for module in ("source_provider", "source_provider.agent"):
+        sys.modules.pop(module, None)
+
+    spec = _find_spec_without_import("source_provider.agent.proof_provider")
+
+    assert spec is not None
+    assert spec.origin and spec.origin.endswith("agent/proof_provider.py")
+    assert "source_provider" not in sys.modules
+    assert "source_provider.agent" not in sys.modules
+
+
+def test_default_discovery_traverses_nested_namespace_packages_without_importing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    outer = tmp_path / "source_provider"
+    inner = outer / "source_provider"
+    provider = inner / "logic" / "backends" / "provider.py"
+    provider.parent.mkdir(parents=True)
+    (outer / "__init__.py").write_text(
+        "raise RuntimeError('outer bootstrap executed')\n",
+        encoding="utf-8",
+    )
+    (inner / "__init__.py").write_text(
+        "raise RuntimeError('inner initializer executed')\n",
+        encoding="utf-8",
+    )
+    provider.write_text("CAPABLE = True\n", encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    for module in (
+        "source_provider",
+        "source_provider.logic",
+        "source_provider.logic.backends",
+    ):
+        sys.modules.pop(module, None)
+
+    spec = _find_spec_without_import("source_provider.logic.backends.provider")
+
+    assert spec is not None
+    assert spec.origin and spec.origin.endswith("logic/backends/provider.py")
+    assert "source_provider" not in sys.modules
+
+
+def test_default_registry_resolves_repository_prover_matrix_documentation() -> None:
+    registry = ProverMatrixRegistry.default(
+        config=ProverMatrixProbeConfig(run_self_tests=False),
+        which=lambda _name: None,
+        find_spec=lambda _module: None,
+    )
+
+    documentation_path = registry._documentation_path()
+
+    expected = (
+        Path(__file__).resolve().parents[2]
+        / "ipfs_datasets_py"
+        / "docs"
+        / "security_verification"
+        / "prover_matrix.md"
+    )
+    assert documentation_path == expected
+    assert documentation_path.is_file()
+
+
+def test_default_registry_discovers_bundled_datalog_and_runtime_mtl_adapters() -> None:
+    bundled_modules = {
+        "ipfs_datasets_py.logic.backends.datalog.adapters",
+        "ipfs_datasets_py.logic.software_verification.monitoring.runtime_mtl",
+    }
+    registry = ProverMatrixRegistry.default(
+        config=ProverMatrixProbeConfig(run_self_tests=False),
+        which=lambda _name: None,
+        find_spec=lambda module: (
+            SimpleNamespace(origin=f"/packages/{module.replace('.', '/')}.py")
+            if module in bundled_modules
+            else None
+        ),
+        distribution_version=lambda distribution: (
+            "1.0" if distribution == "ipfs_datasets_py" else ""
+        ),
+    )
+
+    snapshot = registry.probe()
+
+    for prover_id, module in (
+        ("datalog_secpal", "ipfs_datasets_py.logic.backends.datalog.adapters"),
+        (
+            "runtime_mtl",
+            "ipfs_datasets_py.logic.software_verification.monitoring.runtime_mtl",
+        ),
+    ):
+        entry = snapshot.entry(prover_id)
+        assert entry.discovered and entry.versioned
+        assert entry.package_module == module
+        assert not entry.smoke_tested
+        assert not entry.authoritative_for
 
 
 def test_successful_bounded_self_test_binds_every_identity_and_promotes_only_allowlisted_authority(

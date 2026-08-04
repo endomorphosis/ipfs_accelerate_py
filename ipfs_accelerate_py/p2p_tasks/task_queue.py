@@ -7,6 +7,8 @@ Voice-job reliability (ABBY-VOICE-G016) depends on persisted attempt/backoff/lea
 state and owner heartbeats: claim ownership is recorded in DuckDB as ``attempt``,
 ``max_attempts``, ``next_attempt_at``, ``lease_until``, and ``heartbeat_at`` so a
 worker crash recovers without duplicate provider execution.
+An explicit ``max_attempts=0`` means no attempt ceiling; omitted values retain
+the historical finite default of three attempts.
 
 Environment:
 - IPFS_ACCELERATE_PY_TASK_QUEUE_PATH (preferred)
@@ -58,11 +60,22 @@ def _priority(value: Any) -> int:
         return 5
 
 
-def _positive_attempts(value: Any) -> int:
+def _attempt_limit(value: Any) -> int:
+    """Normalize retry limits, preserving zero as the unlimited sentinel."""
+
     try:
-        return max(1, min(1000, int(value)))
+        parsed = int(value)
     except (TypeError, ValueError):
         return 3
+    if parsed == 0:
+        return 0
+    return max(1, min(1000, parsed))
+
+
+_ATTEMPTS_AVAILABLE_SQL = (
+    "(coalesce(max_attempts, 3) = 0 "
+    "OR coalesce(attempt, 0) < coalesce(max_attempts, 3))"
+)
 
 
 def _queued_task_from_row(row: Any) -> QueuedTask:
@@ -322,7 +335,7 @@ class TaskQueue:
         payload_json = json.dumps(payload, sort_keys=True)
         identity = str(idempotency_key or payload.get("idempotency_key") or "").strip() or None
         task_priority = _priority(priority if priority is not None else payload.get("priority", 5))
-        attempts_limit = _positive_attempts(
+        attempts_limit = _attempt_limit(
             max_attempts if max_attempts is not None else payload.get("max_attempts", 3)
         )
         try:
@@ -777,8 +790,18 @@ class TaskQueue:
             """,
             (float(now), int(limit)),
         ).fetchall()
-        retry_ids = [str(row[0]) for row in rows if int(row[1] or 0) < int(row[2] or 3)]
-        exhausted_ids = [str(row[0]) for row in rows if int(row[1] or 0) >= int(row[2] or 3)]
+        retry_ids = [
+            str(row[0])
+            for row in rows
+            if int(row[2] if row[2] is not None else 3) == 0
+            or int(row[1] or 0) < int(row[2] if row[2] is not None else 3)
+        ]
+        exhausted_ids = [
+            str(row[0])
+            for row in rows
+            if int(row[2] if row[2] is not None else 3) > 0
+            and int(row[1] or 0) >= int(row[2] if row[2] is not None else 3)
+        ]
 
         if retry_ids:
             placeholders = ",".join("?" for _ in retry_ids)
@@ -898,7 +921,11 @@ class TaskQueue:
             row = conn.execute(
                 """
                 UPDATE tasks
-                SET status=CASE WHEN attempt < max_attempts THEN 'queued' ELSE 'failed' END,
+                SET status=CASE
+                        WHEN max_attempts = 0 OR attempt < max_attempts
+                        THEN 'queued'
+                        ELSE 'failed'
+                    END,
                     assigned_worker=NULL,
                     next_attempt_at=?,
                     lease_until=NULL,
@@ -984,7 +1011,7 @@ class TaskQueue:
                 where: list[str] = [
                     "status='queued'",
                     "coalesce(next_attempt_at, 0) <= ?",
-                    "coalesce(attempt, 0) < coalesce(max_attempts, 3)",
+                    _ATTEMPTS_AVAILABLE_SQL,
                 ]
                 params: list[object] = [now]
 
@@ -1026,7 +1053,7 @@ class TaskQueue:
                     f"attempt=coalesce(attempt, 0)+1, heartbeat_at=?, lease_until=? "
                     f"WHERE task_id=? AND status='queued' "
                     f"AND coalesce(next_attempt_at, 0) <= ? "
-                    f"AND coalesce(attempt, 0) < coalesce(max_attempts, 3) "
+                    f"AND {_ATTEMPTS_AVAILABLE_SQL} "
                     f"AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)"
                 )
                 update_params: list[object] = [
@@ -1153,7 +1180,7 @@ class TaskQueue:
                     where0: list[str] = [
                         "status='queued'",
                         "coalesce(next_attempt_at, 0) <= ?",
-                        "coalesce(attempt, 0) < coalesce(max_attempts, 3)",
+                        _ATTEMPTS_AVAILABLE_SQL,
                     ]
                     params0: list[object] = [now]
                     if task_types:
@@ -1186,7 +1213,7 @@ class TaskQueue:
                 where = [
                     "status='queued'",
                     "coalesce(next_attempt_at, 0) <= ?",
-                    "coalesce(attempt, 0) < coalesce(max_attempts, 3)",
+                    _ATTEMPTS_AVAILABLE_SQL,
                 ]
                 if task_types:
                     placeholders = ",".join(["?"] * len(task_types))
@@ -1229,7 +1256,7 @@ class TaskQueue:
                         "attempt=coalesce(attempt, 0)+1, heartbeat_at=?, lease_until=? "
                         f"WHERE task_id IN ({id_placeholders}) AND status='queued' "
                         "AND coalesce(next_attempt_at, 0) <= ? "
-                        "AND coalesce(attempt, 0) < coalesce(max_attempts, 3) "
+                        f"AND {_ATTEMPTS_AVAILABLE_SQL} "
                         f"AND ({sticky_expr} IS NULL OR {sticky_expr} = ?) "
                         f"AND ({required_expr} IS NULL OR {required_expr} = ?)"
                     )
@@ -1256,7 +1283,7 @@ class TaskQueue:
                         "attempt=coalesce(attempt, 0)+1, heartbeat_at=?, lease_until=? "
                         f"WHERE task_id IN ({id_placeholders}) AND status='queued' "
                         "AND coalesce(next_attempt_at, 0) <= ? "
-                        "AND coalesce(attempt, 0) < coalesce(max_attempts, 3) "
+                        f"AND {_ATTEMPTS_AVAILABLE_SQL} "
                         f"AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)"
                     )
                     update_params = [
@@ -1349,7 +1376,7 @@ class TaskQueue:
                         heartbeat_at=?, lease_until=?
                     WHERE task_id=? AND status='queued'
                       AND coalesce(next_attempt_at, 0) <= ?
-                      AND coalesce(attempt, 0) < coalesce(max_attempts, 3)
+                      AND {_ATTEMPTS_AVAILABLE_SQL}
                       AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)
                       AND ({required_expr} IS NULL OR {required_expr} = ?)
                     """,
@@ -1373,7 +1400,7 @@ class TaskQueue:
                         heartbeat_at=?, lease_until=?
                     WHERE task_id=? AND status='queued'
                       AND coalesce(next_attempt_at, 0) <= ?
-                      AND coalesce(attempt, 0) < coalesce(max_attempts, 3)
+                      AND {_ATTEMPTS_AVAILABLE_SQL}
                       AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)
                     """.strip(),
                     (

@@ -182,3 +182,12 @@ state/**/*.out
 # ---------------------------------------------------------------------------
 /test_dashboard_sdk.py
 /test_mcp_jsonrpc_conformance.py
+
+# Stable formal-verification deliverables are source artifacts, not run output.
+!config/formal_verification_toolchains.lock.json
+!docs/architecture/formal_verification_live_example_report.json
+!docs/architecture/formal_verification_readiness_baseline.json
+!docs/architecture/formal_verification_tactician_benchmark.json
+!docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
+!docs/architecture/formal_verification_toolchain_certificate.json
+!docs/architecture/formal_verification_role_aware_deployment_receipt.json

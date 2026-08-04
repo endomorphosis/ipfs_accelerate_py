@@ -220,6 +220,128 @@ _GROK_CLI_PROVIDER_ALIASES = {
     "grok_build_cli",
     "grok-build-cli",
 }
+_GROK_ALTERNATE_PROVIDER_ENV_EXACT = frozenset(
+    {
+        "CODEX_HOME",
+        "COPILOT_GITHUB_TOKEN",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "GNOME_KEYRING_CONTROL",
+        "GPG_AGENT_INFO",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "GOOGLE_API_KEY",
+        "HUGGINGFACEHUB_API_TOKEN",
+        "KUBECONFIG",
+        "MODEL_API_KEY",
+        "SSH_AUTH_SOCK",
+        "GH_ENTERPRISE_TOKEN",
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "OPENAI_API_KEY",
+    }
+)
+_GROK_ALTERNATE_PROVIDER_ENV_PREFIXES = (
+    "CODEX_",
+    "COPILOT_",
+    "GH_",
+    "GITHUB_",
+    "OPENAI_",
+    "AZURE_OPENAI_",
+    "OPENROUTER_",
+    "ANTHROPIC_",
+    "CLAUDE_",
+    "GEMINI_",
+    "GOOGLE_API_",
+    "GOOSE_",
+    "META_AI_",
+    "MISTRAL_",
+    "HUGGINGFACE_",
+    "HUGGINGFACEHUB_",
+    "HF_",
+    "DATABRICKS_",
+    "GROQ_",
+    "OLLAMA_",
+    "DOCKER_",
+    "PODMAN_",
+    "CONTAINER_",
+    "CONTAINERD_",
+    "BUILDAH_",
+    "IPFS_ACCELERATE_PY_CODEX_",
+    "IPFS_ACCELERATE_PY_COPILOT_",
+    "IPFS_ACCELERATE_PY_OPENAI_",
+    "IPFS_ACCELERATE_PY_AZURE_OPENAI_",
+    "IPFS_DATASETS_PY_CODEX_",
+    "IPFS_DATASETS_PY_COPILOT_",
+    "IPFS_DATASETS_PY_OPENAI_",
+    "IPFS_DATASETS_PY_AZURE_OPENAI_",
+    "IPFS_ACCELERATE_AGENT_CODEX_",
+    "IPFS_ACCELERATE_AGENT_COPILOT_",
+    "IPFS_ACCELERATE_AGENT_OPENAI_",
+    "IPFS_ACCELERATE_AGENT_GOOSE_",
+    "IPFS_ACCELERATE_AGENT_META_",
+    "IPFS_ACCELERATE_LLAMA_CPP_",
+)
+_GROK_ALTERNATE_PROVIDER_ENV_TOKENS = (
+    "ANTHROPIC",
+    "CLAUDE",
+    "CODEX",
+    "COPILOT",
+    "GEMINI",
+    "GOOSE",
+    "GOOGLE",
+    "HUGGINGFACE",
+    "HF_",
+    "DATABRICKS",
+    "GROQ",
+    "LLAMA_CPP",
+    "META_AI",
+    "MISTRAL",
+    "OLLAMA",
+    "OPENAI",
+    "OPENROUTER",
+)
+_GROK_CODEX_COMPATIBILITY_KILL_SWITCHES = {
+    "GROK_CODEX_AGENTS_ENABLED": "0",
+    "GROK_CODEX_HOOKS_ENABLED": "0",
+    "GROK_CODEX_MCPS_ENABLED": "0",
+    "GROK_CODEX_RULES_ENABLED": "0",
+    "GROK_CODEX_SESSIONS_ENABLED": "0",
+    "GROK_CODEX_SKILLS_ENABLED": "0",
+}
+_GROK_ROUTE_CONTROL_ENV_EXACT = frozenset(
+    {
+        "GROK_AUTH_PROVIDER_COMMAND",
+        "XAI_API_BASE_URL",
+        "GROK_XAI_API_BASE_URL",
+        "GROK_CLI_CHAT_PROXY_BASE_URL",
+        "GROK_WS_URL",
+        "GROK_WS_ORIGIN",
+        "GROK_MANAGED_CONFIG_URL",
+        "GROK_WORKSPACE_BUNDLED_SKILLS_DIR",
+        "GROK_SANDBOX_AUTO_ALLOW_BASH",
+        "GROK_SANDBOX",
+        "GROK_TOOLS",
+        "GROK_DISALLOWED_TOOLS",
+        "GROK_PERMISSION_MODE",
+        "GROK_AGENT",
+        "GROK_AGENTS",
+        "GROK_LEADER_SOCKET",
+    }
+)
+_GROK_SECRET_ENV_SUFFIXES = (
+    "_API_KEY",
+    "_TOKEN",
+    "_ACCESS_KEY",
+    "_SECRET_KEY",
+    "_CREDENTIAL",
+    "_CREDENTIALS",
+)
+_GROK_XAI_KEY_ALIASES = (
+    "XAI_API_KEY",
+    "GROK_CODE_XAI_API_KEY",
+    "ipfs_accelerate_py_XAI_API_KEY",
+    "IPFS_ACCELERATE_PY_XAI_API_KEY",
+    "IPFS_DATASETS_PY_XAI_API_KEY",
+)
 _XAI_API_PROVIDER_ALIASES = {
     "xai",
     "xai_api",
@@ -4155,6 +4277,8 @@ def build_grok_cli_command(
     always_approve: Optional[bool] = None,
     permission_mode: Optional[str] = None,
     tools: Optional[str] = None,
+    sandbox_profile: Optional[str] = None,
+    deny_rules: Optional[Sequence[str]] = None,
 ) -> list[str]:
     """Return argv for a Grok CLI invocation.
 
@@ -4231,6 +4355,14 @@ def build_grok_cli_command(
     if normalized_permission_mode:
         cmd.extend(["--permission-mode", normalized_permission_mode])
 
+    normalized_sandbox_profile = str(sandbox_profile or "").strip()
+    if normalized_sandbox_profile:
+        cmd.extend(["--sandbox", normalized_sandbox_profile])
+    for rule in deny_rules or ():
+        normalized_rule = str(rule or "").strip()
+        if normalized_rule:
+            cmd.extend(["--deny", normalized_rule])
+
     if normalized == "chat":
         # Match the generate() provider defaults for headless JSON text.
         cmd.extend(
@@ -4252,6 +4384,8 @@ def build_grok_cli_command(
         cmd.extend(["--tools", str(tools or "")])
     else:
         cmd.extend(["--output-format", "plain"])
+        if tools is not None:
+            cmd.extend(["--tools", str(tools)])
 
     if prompt_file is not None:
         cmd.extend(["--prompt-file", str(Path(prompt_file).expanduser())])
@@ -4261,10 +4395,49 @@ def build_grok_cli_command(
 def build_grok_cli_env(
     *,
     base_env: Optional[Mapping[str, str]] = None,
+    isolate_alternate_providers: bool = False,
 ) -> dict[str, str]:
-    """Environment for Grok CLI runs (propagates alternate XAI key names)."""
+    """Build a Grok environment, optionally withholding peer-provider authority.
 
-    env = dict(base_env or os.environ)
+    The isolation mode is for side-effecting Grok agents.  It strips Codex,
+    OpenAI, Copilot, and GitHub credential/configuration variables from the
+    Grok process while leaving the caller's environment untouched.  A parent
+    runner can therefore retain the separately quota-gated Codex fallback.
+    """
+
+    source_env = dict(base_env or os.environ)
+    if isolate_alternate_providers:
+        xai_api_key = next(
+            (
+                str(source_env.get(name) or "").strip()
+                for name in _GROK_XAI_KEY_ALIASES
+                if str(source_env.get(name) or "").strip()
+            ),
+            "",
+        )
+        basic_names = {
+            "COLORTERM",
+            "LANG",
+            "LOGNAME",
+            "NO_COLOR",
+            "TERM",
+            "TZ",
+            "USER",
+        }
+        env = {
+            name: value
+            for name, value in source_env.items()
+            if name in basic_names or name.startswith("LC_")
+        }
+        env["PATH"] = "/usr/bin:/bin"
+        if xai_api_key:
+            env["XAI_API_KEY"] = xai_api_key
+        # Do not let Grok discover or import Codex compatibility artifacts even
+        # if user-level defaults enabled those integrations.
+        env.update(_GROK_CODEX_COMPATIBILITY_KILL_SWITCHES)
+        return env
+
+    env = source_env
     if not str(env.get("XAI_API_KEY") or "").strip():
         alternate = _coalesce_env(
             "ipfs_accelerate_py_XAI_API_KEY",
@@ -8075,6 +8248,10 @@ def _set_last_generation_trace(
         "effective_model_name": str(model_name or "").strip(),
     }
     if route_trace:
+        for key in ("effective_provider_name", "effective_model_name"):
+            value = route_trace.get(key)
+            if isinstance(value, str) and value.strip():
+                payload[key] = value.strip()
         for key in _PINNED_SYMAI_TRACE_KEYS:
             value = route_trace.get(key)
             if isinstance(value, str) and value.strip():
@@ -8409,9 +8586,10 @@ def _llm_provider_display_name(
     requested: Optional[str] = None,
 ) -> str:
     if backend is not None:
-        name = getattr(backend, "router_provider_name", None)
-        if isinstance(name, str) and name.strip():
-            return _canonicalize_provider(name) or name.strip()
+        for attribute in ("router_provider_name", "provider_name", "name"):
+            name = getattr(backend, attribute, None)
+            if isinstance(name, str) and name.strip():
+                return _canonicalize_provider(name) or name.strip()
     if requested:
         return _canonicalize_provider(requested) or str(requested).strip()
     return ""
@@ -9636,7 +9814,7 @@ def generate_text(
             if isinstance(candidate_trace, dict):
                 route_trace = candidate_trace
         _set_last_generation_trace(
-            provider_name=effective_provider_name,
+            provider_name=provider_used_name,
             model_name=model_name,
             route_trace=route_trace,
         )

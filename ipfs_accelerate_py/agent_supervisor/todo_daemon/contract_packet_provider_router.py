@@ -3156,6 +3156,33 @@ def build_production_provider_route_evaluation(
     return body
 
 
+def _is_change_propagation_packet(packet: Any) -> bool:
+    """Detect ChangePropagationEditPacket@1 without a cold import."""
+
+    type_name = type(packet).__name__
+    if type_name == "ChangePropagationEditPacket":
+        return True
+    if isinstance(packet, Mapping):
+        schema = str(packet.get("schema") or "")
+        interface = str(packet.get("interface") or "")
+        return (
+            "change-propagation-edit-packet@1" in schema
+            or interface == "ChangePropagationEditPacket@1"
+        )
+    return False
+
+
+def _packet_is_pure_analytical(packet: Any) -> bool:
+    """True when a propagation packet has only analytical steps."""
+
+    analytical = tuple(getattr(packet, "analytical_step_ids", ()) or ())
+    model = tuple(getattr(packet, "model_required_step_ids", ()) or ())
+    if isinstance(packet, Mapping):
+        analytical = tuple(packet.get("analytical_step_ids") or analytical)
+        model = tuple(packet.get("model_required_step_ids") or model)
+    return bool(analytical) and not model
+
+
 def route_contract_packet(
     packet: Any,
     *,
@@ -3171,8 +3198,105 @@ def route_contract_packet(
     bounds: ProviderBounds | Mapping[str, Any] | None = None,
     grok_quota: ProviderQuotaLatch | int | None = None,
     codex_quota: ProviderQuotaLatch | int | None = None,
-) -> ImplementationRoutingResult:
-    """Functional facade for one bounded packet route."""
+    # Change-propagation-only knobs (ignored for legacy packets).
+    change_propagation_step_id: str = "",
+    analytical_non_success_reason: str = "unsupported_shape",
+    provider_identity: Any = None,
+    writer_lease: Any = None,
+    task_id: str = "",
+) -> ImplementationRoutingResult | Any:
+    """Functional facade for one bounded packet route.
+
+    Legacy ``CodeEditPacket@1`` / contract packets keep the existing Grok→Codex
+    route.  ``ChangePropagationEditPacket@1`` is feature-routed:
+
+    * pure analytical packets never invoke a provider;
+    * model-required steps use the canonical bounded
+      :class:`ChangePropagationProviderRouter` (lazy import).
+    """
+
+    if _is_change_propagation_packet(packet):
+        # Analytical success: no provider call.
+        if _packet_is_pure_analytical(packet) and not change_propagation_step_id:
+            return ImplementationRoutingResult(
+                status=RouteStatus.SUCCEEDED,
+                reason_code=ProviderReason.LOCAL_ONLY.value,
+                packet_id=str(
+                    getattr(packet, "packet_id", None)
+                    or (packet.get("packet_id") if isinstance(packet, Mapping) else "")
+                    or ""
+                ),
+                packet=None,
+                selected_proposal=None,
+                implementation_proposal=None,
+                review_proposal=None,
+                attempts=(),
+                write_performed=False,
+                writer_lease_id="",
+            )
+
+        # Model-required steps: canonical bounded provider router.
+        from .change_propagation_provider_router import (
+            ChangePropagationProviderRouter,
+            ProviderModelConfigIdentity,
+            PropagationProviderRoutingError,
+        )
+
+        if provider_identity is None:
+            raise ProviderRoutingError(
+                "change-propagation model steps require provider_identity",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        if not isinstance(provider_identity, ProviderModelConfigIdentity):
+            if isinstance(provider_identity, Mapping):
+                provider_identity = ProviderModelConfigIdentity(
+                    **dict(provider_identity)
+                )
+            else:
+                raise ProviderRoutingError(
+                    "provider_identity must be ProviderModelConfigIdentity",
+                    reason_code=ProviderReason.PACKET_MALFORMED,
+                )
+        step_id = change_propagation_step_id
+        if not step_id:
+            model_ids = tuple(
+                getattr(packet, "model_required_step_ids", ()) or ()
+            )
+            if isinstance(packet, Mapping):
+                model_ids = tuple(
+                    packet.get("model_required_step_ids") or model_ids
+                )
+            if not model_ids:
+                raise ProviderRoutingError(
+                    "change-propagation route requires a model step id",
+                    reason_code=ProviderReason.PACKET_MALFORMED,
+                )
+            step_id = model_ids[0]
+        try:
+            router = ChangePropagationProviderRouter(
+                identity=provider_identity,
+                grok_provider=grok_provider,
+                codex_provider=codex_provider,
+                deterministic_provider=deterministic_provider,
+                admission_gate=admission_gate,
+                writer=writer,
+            )
+            return router.route_step(
+                packet,
+                step_id=step_id,
+                analytical_non_success_reason=analytical_non_success_reason,
+                current_snapshot_id=current_snapshot_id,
+                task_id=task_id,
+                apply=apply,
+                writer_lease=writer_lease,
+                writer_lease_id=writer_lease_id,
+                local_only=local_only,
+            )
+        except PropagationProviderRoutingError as exc:
+            raise ProviderRoutingError(
+                str(exc),
+                reason_code=getattr(exc, "reason_code", ProviderReason.PROVIDER_FAILURE),
+            ) from exc
 
     router = ImplementationProviderRouter(
         grok_provider=grok_provider,

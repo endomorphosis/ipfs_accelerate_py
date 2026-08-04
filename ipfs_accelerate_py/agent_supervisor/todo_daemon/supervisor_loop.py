@@ -49,6 +49,9 @@ class SupervisorLoopDecision:
         return cls(action="stop", reason=reason, status=status)
 
 
+WatchdogQuiescentStatusPredicate = Callable[[Mapping[str, Any]], bool]
+
+
 @dataclass(frozen=True)
 class SupervisorLoopConfig:
     """Configuration for a reusable child-process supervisor loop."""
@@ -60,13 +63,18 @@ class SupervisorLoopConfig:
     heartbeat_seconds: float = 30.0
     poll_seconds: float = 1.0
     watchdog_stale_after_seconds: float = 180.0
+    watchdog_log_heartbeat_fallback: bool = False
     watchdog_startup_grace_seconds: float = 30.0
+    watchdog_accept_fresh_child_log: bool = False
     stop_grace_seconds: float = 10.0
     max_restarts: int = 0
     latest_log_path: Optional[Path] = None
     child_env: Mapping[str, str] = field(default_factory=dict)
     status_static_fields: Mapping[str, Any] = field(default_factory=dict)
     status_extra_fields: Mapping[str, Any] = field(default_factory=dict)
+    watchdog_quiescent_status_predicate: Optional[
+        WatchdogQuiescentStatusPredicate
+    ] = None
 
 
 @dataclass(frozen=True)
@@ -137,7 +145,14 @@ class SupervisorLoop:
                 "supervisor_heartbeat_seconds": config.heartbeat_seconds,
                 "supervisor_poll_seconds": config.poll_seconds,
                 "watchdog_stale_after_seconds": config.watchdog_stale_after_seconds,
+                "watchdog_log_heartbeat_fallback": (
+                    config.watchdog_log_heartbeat_fallback
+                ),
                 "watchdog_startup_grace_seconds": config.watchdog_startup_grace_seconds,
+                "watchdog_quiescent_log_fallback": (
+                    config.watchdog_quiescent_status_predicate is not None
+                ),
+                "watchdog_accept_fresh_child_log": config.watchdog_accept_fresh_child_log,
                 "stop_grace_seconds": config.stop_grace_seconds,
                 **dict(config.status_static_fields),
             },
@@ -247,16 +262,121 @@ class SupervisorLoop:
         except Exception:
             return False
 
+    def _quiescent_child_log_activity(
+        self,
+        child: SupervisedChild,
+    ) -> dict[str, Any]:
+        """Return bounded child-log evidence for a stale semantic projection."""
+
+        threshold = max(0.0, float(self.config.watchdog_stale_after_seconds))
+        checked: set[Path] = set()
+        for candidate in (child.latest_log_path, child.log_path):
+            if candidate is None:
+                continue
+            path = Path(candidate)
+            if path in checked:
+                continue
+            checked.add(path)
+            try:
+                if not path.is_file():
+                    continue
+                stat_result = path.stat()
+                age_seconds = max(0.0, time.time() - stat_result.st_mtime)
+            except OSError:
+                continue
+            child_alive = pid_alive(child.pid)
+            return {
+                "child_log_path": str(path),
+                "child_log_age_seconds": round(age_seconds, 3),
+                "child_log_size_bytes": stat_result.st_size,
+                "child_log_stale_after_seconds": threshold,
+                "child_log_fresh": bool(
+                    child_alive
+                    and stat_result.st_size > 0
+                    and threshold > 0.0
+                    and age_seconds <= threshold
+                ),
+                "daemon_pid": child.pid,
+                "daemon_pid_alive": child_alive,
+            }
+        return {
+            "child_log_path": "",
+            "child_log_age_seconds": None,
+            "child_log_size_bytes": None,
+            "child_log_stale_after_seconds": threshold,
+            "child_log_fresh": False,
+            "daemon_pid": child.pid,
+            "daemon_pid_alive": pid_alive(child.pid),
+        }
+
     def default_watchdog(self, child: SupervisedChild, current_status: Mapping[str, Any]) -> SupervisorLoopDecision:
         heartbeat = heartbeat_snapshot(
             current_status,
             stale_after_seconds=self.config.watchdog_stale_after_seconds,
         )
-        if heartbeat.stale or (heartbeat.heartbeat_at is None and self.config.watchdog_stale_after_seconds <= 0):
-            return SupervisorLoopDecision.recycle(
-                "stale_heartbeat",
-                detail=heartbeat.to_payload(),
+        heartbeat_failed = heartbeat.stale or (
+            heartbeat.heartbeat_at is None
+            and self.config.watchdog_stale_after_seconds <= 0
+        )
+        heartbeat_detail = heartbeat.to_payload()
+        predicate = self.config.watchdog_quiescent_status_predicate
+        if heartbeat_failed and predicate is not None:
+            try:
+                projection_quiescent = bool(predicate(current_status))
+            except Exception:
+                projection_quiescent = False
+            heartbeat_detail["projection_quiescent"] = projection_quiescent
+            if projection_quiescent:
+                log_activity = self._quiescent_child_log_activity(child)
+                heartbeat_detail.update(log_activity)
+                heartbeat_failed = not bool(log_activity["child_log_fresh"])
+            if heartbeat_failed:
+                return SupervisorLoopDecision.recycle(
+                    "stale_heartbeat",
+                    detail=heartbeat_detail,
+                )
+        elif heartbeat_failed:
+            log_fallback_enabled = self.config.watchdog_accept_fresh_child_log
+            raw_log_path = getattr(child, "log_path", None) if log_fallback_enabled else None
+            log_path = Path(raw_log_path) if raw_log_path else None
+            if log_path is not None and not log_path.is_absolute():
+                log_path = self.config.spec.repo_root / log_path
+            log_age_seconds: Optional[float] = None
+            if log_path is not None:
+                try:
+                    log_age_seconds = max(
+                        0.0,
+                        time.time() - log_path.stat().st_mtime,
+                    )
+                except OSError:
+                    pass
+            log_fresh = bool(
+                log_age_seconds is not None
+                and log_age_seconds <= self.config.watchdog_stale_after_seconds
             )
+            if (
+                not log_fresh
+                and heartbeat.stale
+                and self.config.watchdog_log_heartbeat_fallback
+            ):
+                log_fresh = self._child_log_heartbeat_is_fresh()
+            if not log_fresh:
+                heartbeat_detail.update(
+                    {
+                        "child_log_path": str(log_path) if log_path else "",
+                        "child_log_age_seconds": (
+                            None
+                            if log_age_seconds is None
+                            else round(log_age_seconds, 3)
+                        ),
+                        "child_log_fresh": False,
+                        "child_log_fallback_enabled": log_fallback_enabled,
+                    }
+                )
+                return SupervisorLoopDecision.recycle(
+                    "stale_heartbeat",
+                    detail=heartbeat_detail,
+                )
         try:
             threshold = float(
                 current_status.get("worktree_no_child_stall_seconds")
@@ -276,6 +396,24 @@ class SupervisorLoop:
                 detail=worker_status,
             )
         return SupervisorLoopDecision.keep_running()
+
+    def _child_log_heartbeat_is_fresh(self) -> bool:
+        """Use daemon-owned log activity as an explicit liveness fallback."""
+
+        # ``last_log_path`` is assigned from the exact current run before the
+        # child is launched or adopted. Do not consult a generic "latest"
+        # symlink here: a recently modified prior-run log must never extend the
+        # liveness lease of a different child.
+        if not self.last_log_path:
+            return False
+        path = Path(self.last_log_path)
+        if not path.is_absolute():
+            path = self.config.spec.repo_root / path
+        try:
+            age_seconds = max(0.0, time.time() - path.stat().st_mtime)
+        except OSError:
+            return False
+        return age_seconds <= self.config.watchdog_stale_after_seconds
 
     def _worker_status_with_disappearance_grace(
         self,

@@ -286,6 +286,18 @@ class AnalysisPipelinePolicy:
     require_local_completion: bool = True
     cache_negative_results: bool = True
     negative_ttl_seconds: int = 300
+    # Opt-in cutover for the proof-gated contract-repair decision path.
+    # When false (default), the pipeline never materializes @2 packets and
+    # legacy analysis/provider behavior is unchanged.
+    enable_proof_gated_contract_repair: bool = False
+    # Opt-in cutover for transactional change-propagation (RPR-044).
+    # When false (default), the pipeline never mutates via the propagation
+    # transaction path and legacy analysis/repair behavior is unchanged.
+    enable_change_propagation: bool = False
+    # Opt-in cutover for live logic-repair edge orchestration (LPR-017).
+    # When false (default), the pipeline never invokes the live controller and
+    # legacy artifact-supplied RPR / generic proposal flows are unchanged.
+    enable_live_logic_repair: bool = False
     consensus_policy: AnalysisConsensusPolicy = field(
         default_factory=AnalysisConsensusPolicy
     )
@@ -297,6 +309,9 @@ class AnalysisPipelinePolicy:
             "enable_datasets_provider",
             "require_local_completion",
             "cache_negative_results",
+            "enable_proof_gated_contract_repair",
+            "enable_change_propagation",
+            "enable_live_logic_repair",
         ):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be a boolean")
@@ -347,6 +362,11 @@ class AnalysisPipelinePolicy:
             "require_local_completion": self.require_local_completion,
             "cache_negative_results": self.cache_negative_results,
             "negative_ttl_seconds": self.negative_ttl_seconds,
+            "enable_proof_gated_contract_repair": (
+                self.enable_proof_gated_contract_repair
+            ),
+            "enable_change_propagation": self.enable_change_propagation,
+            "enable_live_logic_repair": self.enable_live_logic_repair,
             "consensus_policy": self.consensus_policy.to_dict(),
         }
 
@@ -3515,6 +3535,242 @@ class AnalysisPipeline:
     run = analyze
     execute = analyze
 
+    def run_proof_gated_contract_repair(
+        self,
+        request: "ProofGatedContractRepairRequest | Mapping[str, Any]",
+    ) -> "ProofGatedContractRepairResult":
+        """Feature-gated @2 route: retrieve/proof/admission before materialize.
+
+        This path is deliberately separate from :meth:`analyze`.  Optional
+        datasets providers are never consulted for target selection: admission
+        completes first, and only an admitted decision may materialize a
+        packet.  The feature flag defaults to off so legacy callers keep the
+        existing analysis pipeline semantics.
+        """
+
+        if not isinstance(request, ProofGatedContractRepairRequest):
+            if not isinstance(request, Mapping):
+                raise TypeError(
+                    "proof-gated contract repair request must be a mapping"
+                )
+            request = ProofGatedContractRepairRequest.from_mapping(request)
+        if not self.policy.enable_proof_gated_contract_repair:
+            return ProofGatedContractRepairResult(
+                enabled=False,
+                provider_invoked_before_admission=False,
+                stage="disabled",
+                disposition="disabled",
+                detail="enable_proof_gated_contract_repair is false",
+            )
+        # Hard invariant: no optional analysis provider may run before
+        # admission on this route.  Target selection is local and proof-gated.
+        provider_invoked_before_admission = False
+        if self.provider is not None and self.policy.enable_datasets_provider:
+            # Presence of a provider is fine; invoking it is not.  We never
+            # call analyze/build_request here.
+            provider_invoked_before_admission = False
+
+        from .contract_repair_contracts import DecisionDisposition
+        from ..planning.repair_target_admission import RepairTargetAdmission
+        from ..proof.contract_repair_edit_packet import (
+            ContractRepairEditPacketError,
+            materialize_contract_repair_edit_packet,
+        )
+
+        stage = "candidate_retrieval"
+        # Candidates are the product of the retrieval stage.  Callers supply
+        # the complete nominated set (or a prior receipt's candidates); this
+        # route never expands that set via a provider.
+        candidates = tuple(request.candidates)
+        if not candidates:
+            return ProofGatedContractRepairResult(
+                enabled=True,
+                provider_invoked_before_admission=provider_invoked_before_admission,
+                stage=stage,
+                disposition="rejected",
+                detail="candidate retrieval produced no candidates",
+                nomination_receipt_id=request.nomination_receipt_id,
+            )
+
+        stage = "proof"
+        # Proof references must already bind each candidate.  Reconstruction
+        # is owned by ContractRepairProver; this route only enforces that
+        # admission cannot proceed without proof refs when ranking requires them.
+        stage = "admission"
+        try:
+            admission = RepairTargetAdmission().admit(
+                candidates,
+                request.rerank_receipt,
+                request.authorities,
+                expiry=request.expiry,
+            )
+        except Exception as exc:  # fail-closed: any admission error abstains
+            return ProofGatedContractRepairResult(
+                enabled=True,
+                provider_invoked_before_admission=provider_invoked_before_admission,
+                stage=stage,
+                disposition="rejected",
+                detail=f"admission failed: {exc}",
+                nomination_receipt_id=request.nomination_receipt_id,
+            )
+
+        decision = admission.decision
+        if decision.disposition is not DecisionDisposition.ADMITTED:
+            disposition = (
+                "ambiguous"
+                if decision.strategy.value == "ambiguous"
+                else "rejected"
+            )
+            return ProofGatedContractRepairResult(
+                enabled=True,
+                provider_invoked_before_admission=provider_invoked_before_admission,
+                stage=stage,
+                disposition=disposition,
+                detail=(
+                    "target decision abstained; no packet materialization"
+                ),
+                admission=admission,
+                decision_id=decision.content_id,
+                nomination_receipt_id=request.nomination_receipt_id,
+            )
+
+        stage = "materialize"
+        try:
+            packet = materialize_contract_repair_edit_packet(
+                admission,
+                request.trace,
+                request.comparison,
+                roots=request.roots,
+                candidates=candidates,
+                rerank_receipt=request.rerank_receipt,
+                authorities=request.authorities,
+                now=request.now,
+                post_edit_obligation_ids=request.post_edit_obligation_ids,
+                validation_commands=request.validation_commands,
+                reproof_commands=request.reproof_commands,
+                counterexample_refs=request.counterexample_refs,
+                index_refs=request.index_refs,
+                expansion_handles=request.expansion_handles,
+            )
+        except ContractRepairEditPacketError as exc:
+            return ProofGatedContractRepairResult(
+                enabled=True,
+                provider_invoked_before_admission=provider_invoked_before_admission,
+                stage=stage,
+                disposition="rejected",
+                detail=f"packet materialization failed: {exc}",
+                admission=admission,
+                decision_id=decision.content_id,
+                nomination_receipt_id=request.nomination_receipt_id,
+            )
+
+        return ProofGatedContractRepairResult(
+            enabled=True,
+            provider_invoked_before_admission=provider_invoked_before_admission,
+            stage=stage,
+            disposition="admitted",
+            detail="admitted decision materialized into ContractRepairEditPacket@2",
+            admission=admission,
+            decision_id=decision.content_id,
+            packet=packet,
+            write_paths=packet.write_paths,
+            nomination_receipt_id=request.nomination_receipt_id,
+        )
+
+    def run_change_propagation(
+        self,
+        request: "Mapping[str, Any] | Any",
+    ) -> Any:
+        """Feature-gated change-propagation route (RPR-044).
+
+        Lazy-imports the versioned pipeline so cold analysis imports stay free
+        of transaction/validator/provider wiring.  Mutations always go through
+        :class:`ChangePropagationTransaction` and completion through
+        :class:`ChangePropagationValidator`; analytical success never invokes
+        an optional datasets provider.
+        """
+
+        # Hard invariant: this route never consults the optional analysis
+        # datasets provider for target selection or plan admission.
+        from .change_propagation_pipeline import (
+            ChangePropagationPipeline,
+            ChangePropagationPipelinePolicy,
+            ChangePropagationPipelineRequest,
+            ChangePropagationPipelineResult,
+        )
+
+        if not self.policy.enable_change_propagation:
+            return ChangePropagationPipelineResult(
+                enabled=False,
+                stage="disabled",
+                disposition="disabled",
+                detail="enable_change_propagation is false",
+                provider_invoked=False,
+            )
+
+        policy = ChangePropagationPipelinePolicy(
+            enable_change_propagation=True,
+        )
+        pipeline = ChangePropagationPipeline(policy=policy)
+        if not isinstance(request, ChangePropagationPipelineRequest):
+            if not isinstance(request, Mapping):
+                raise TypeError(
+                    "change propagation request must be a mapping or "
+                    "ChangePropagationPipelineRequest"
+                )
+            request = ChangePropagationPipelineRequest.from_mapping(request)
+        return pipeline.run(request)
+
+    def run_live_logic_repair(
+        self,
+        request: "Mapping[str, Any] | Any",
+    ) -> Any:
+        """Feature-gated live logic-repair route (LPR-017).
+
+        Lazy-imports the edge controller so cold analysis imports stay free of
+        the todo_daemon orchestration stack.  Analytical success never invokes
+        an optional datasets provider; model steps use only LPR-016 context
+        overlays projected through existing RPR packets.
+        """
+
+        # Hard invariant: this route never consults the optional analysis
+        # datasets provider for target selection or plan admission.
+        from ..todo_daemon.live_logic_repair_controller import (
+            LiveLogicRepairController,
+            LiveLogicRepairPolicy,
+            LiveLogicRepairRequest,
+            LiveLogicRepairResult,
+        )
+
+        if not self.policy.enable_live_logic_repair:
+            return LiveLogicRepairResult(
+                enabled=False,
+                mode=str(
+                    getattr(request, "mode", None)
+                    or (
+                        request.get("mode")
+                        if isinstance(request, Mapping)
+                        else "contract_repair"
+                    )
+                    or "contract_repair"
+                ),
+                stage="disabled",
+                disposition="disabled",
+                detail="enable_live_logic_repair is false",
+                provider_invoked=False,
+            )
+
+        policy = LiveLogicRepairPolicy(enable_live_logic_repair=True)
+        controller = LiveLogicRepairController(policy=policy)
+        if not isinstance(request, LiveLogicRepairRequest):
+            if not isinstance(request, Mapping):
+                raise TypeError(
+                    "live logic repair request must be a mapping or "
+                    "LiveLogicRepairRequest"
+                )
+            request = LiveLogicRepairRequest.from_mapping(request)
+        return controller.run(request)
+
     async def aanalyze(
         self,
         request: AnalysisPipelineRequest | Mapping[str, Any],
@@ -3532,6 +3788,80 @@ class AnalysisPipeline:
         return await asyncio.to_thread(self.analyze, request)
 
     arun = aanalyze
+
+
+@dataclass(frozen=True)
+class ProofGatedContractRepairRequest:
+    """Inputs for the feature-gated @2 decision path.
+
+    Stages are supplied as already-bound local artifacts so this route can
+    enforce *order* (retrieval → proof → admission → materialize) without
+    granting an optional provider any role in target selection.
+    """
+
+    roots: Any
+    trace: Any
+    comparison: Any
+    candidates: Sequence[Any]
+    rerank_receipt: Any
+    authorities: Sequence[Any]
+    expiry: Any
+    now: int
+    post_edit_obligation_ids: Sequence[str]
+    validation_commands: Sequence[str]
+    reproof_commands: Sequence[str]
+    counterexample_refs: Sequence[Any] = ()
+    index_refs: Sequence[str] = ()
+    expansion_handles: Sequence[Any] = ()
+    nomination_receipt_id: str = ""
+
+    @classmethod
+    def from_mapping(
+        cls, value: Mapping[str, Any]
+    ) -> "ProofGatedContractRepairRequest":
+        if not isinstance(value, Mapping):
+            raise TypeError("proof-gated request must be a mapping")
+        return cls(
+            roots=value["roots"],
+            trace=value["trace"],
+            comparison=value["comparison"],
+            candidates=tuple(value.get("candidates") or ()),
+            rerank_receipt=value["rerank_receipt"],
+            authorities=tuple(value.get("authorities") or ()),
+            expiry=value["expiry"],
+            now=int(value["now"]),
+            post_edit_obligation_ids=tuple(
+                value.get("post_edit_obligation_ids") or ()
+            ),
+            validation_commands=tuple(value.get("validation_commands") or ()),
+            reproof_commands=tuple(value.get("reproof_commands") or ()),
+            counterexample_refs=tuple(value.get("counterexample_refs") or ()),
+            index_refs=tuple(value.get("index_refs") or ()),
+            expansion_handles=tuple(value.get("expansion_handles") or ()),
+            nomination_receipt_id=str(
+                value.get("nomination_receipt_id") or ""
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class ProofGatedContractRepairResult:
+    """Outcome of the proof-gated route; packet is absent unless admitted."""
+
+    enabled: bool
+    provider_invoked_before_admission: bool
+    stage: str
+    disposition: str
+    detail: str = ""
+    admission: Any = None
+    decision_id: str = ""
+    packet: Any = None
+    write_paths: tuple[str, ...] = ()
+    nomination_receipt_id: str = ""
+
+    @property
+    def admitted(self) -> bool:
+        return self.disposition == "admitted" and self.packet is not None
 
 
 IntegratedAnalysisPipeline = AnalysisPipeline
@@ -3573,7 +3903,10 @@ __all__ = [
     "IntegratedAnalysisCompletionEvidence",
     "OptionalProviderFailure",
     "PipelineCacheStatus",
+    "ProofGatedContractRepairRequest",
+    "ProofGatedContractRepairResult",
     "SingleFlightCollapseEvidence",
     "SupervisorAnalysisPipeline",
     "make_analysis_stage_receipt",
 ]
+

@@ -4,6 +4,7 @@ import asyncio
 import os
 import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -501,6 +502,7 @@ def test_hammer_import_uses_managed_writable_environment(monkeypatch) -> None:
     from ipfs_accelerate_py.agent_supervisor import ipfs_datasets_logic_provider as logic_provider
 
     observed = {}
+    original_prefix = sys.prefix
 
     def fake_import(name):
         observed["name"] = name
@@ -514,10 +516,17 @@ def test_hammer_import_uses_managed_writable_environment(monkeypatch) -> None:
 
     assert logic_provider._load_hammer() is not None
     assert observed["name"] == "ipfs_datasets_py.logic.hammers"
-    assert observed["home"] == observed["prefix"]
-    assert observed["home"] != "/read-only-home"
+    # SymbolicAI is preloaded inside the loader's locked critical section with
+    # a managed config prefix.  The Hammer import itself must observe restored
+    # process globals rather than a temporary HOME/sys.prefix swap.
+    assert observed["home"] == "/read-only-home"
+    assert observed["prefix"] == original_prefix
+    managed_prefix = Path(os.environ["IPFS_DATASETS_PY_SYMAI_PREFIX"])
+    assert managed_prefix != Path("/usr")
+    assert managed_prefix.is_dir()
+    assert (managed_prefix / ".symai" / "symai.config.json").is_file()
     assert os.environ["HOME"] == "/read-only-home"
-    assert sys.prefix != observed["prefix"]
+    assert sys.prefix == original_prefix
 
 
 def test_batch_rejects_cross_tree_and_preserves_family_provenance() -> None:

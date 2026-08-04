@@ -1,0 +1,193 @@
+{
+  "acceptance": {
+    "authorization_decision_authority_only": true,
+    "categories": [
+      "allow",
+      "conflict",
+      "delegation",
+      "deny",
+      "malformed",
+      "negative",
+      "revocation",
+      "unknown"
+    ],
+    "counterexamples_replay_deterministically": true,
+    "forbids_theorem_authority": true,
+    "goal_id": "FVT-G102",
+    "mutation_kinds": [
+      "delegation",
+      "principal",
+      "rule",
+      "scope"
+    ],
+    "objective_validation_evidence": "objective validation repair",
+    "objective_validation_repair": true,
+    "receipts_bind_policy_and_engine": true,
+    "repair_task_id": "FVT-068",
+    "task_id": "FVT-038"
+  },
+  "authority_ceiling": "authorization",
+  "case_recipes": [
+    {
+      "base_fixture_id": "fixture:allow",
+      "case_id": "case:allow",
+      "category": "allow",
+      "expected_outcome": "allow",
+      "mutation_kind": "",
+      "notes": "Admin Alice may read sensitive payroll.",
+      "recipe": "default_fixture"
+    },
+    {
+      "base_fixture_id": "fixture:deny",
+      "case_id": "case:deny",
+      "category": "deny",
+      "expected_outcome": "deny",
+      "mutation_kind": "",
+      "notes": "Non-admin Bob is denied on sensitive payroll.",
+      "recipe": "default_fixture"
+    },
+    {
+      "base_fixture_id": "fixture:unknown",
+      "case_id": "case:unknown",
+      "category": "unknown",
+      "expected_outcome": "unknown",
+      "mutation_kind": "",
+      "notes": "No allow or deny evidence for delete.",
+      "recipe": "default_fixture"
+    },
+    {
+      "base_fixture_id": "fixture:conflict",
+      "case_id": "case:conflict",
+      "category": "conflict",
+      "expected_outcome": "conflict",
+      "mutation_kind": "",
+      "notes": "Explicit allow and deny evidence retained as conflict.",
+      "recipe": "default_fixture"
+    },
+    {
+      "base_fixture_id": "fixture:delegation",
+      "case_id": "case:delegation",
+      "category": "delegation",
+      "expected_outcome": "allow",
+      "mutation_kind": "",
+      "notes": "Scoped delegation permits Bob under docs/public/.",
+      "recipe": "default_fixture"
+    },
+    {
+      "base_fixture_id": "fixture:allow",
+      "case_id": "case:revocation",
+      "category": "revocation",
+      "expected_outcome": "deny",
+      "mutation_kind": "",
+      "notes": "Revoking Alice admin membership flips allow to deny.",
+      "recipe": "revoke_admin_membership"
+    },
+    {
+      "base_fixture_id": "fixture:allow",
+      "case_id": "case:negative",
+      "category": "negative",
+      "expected_outcome": "unknown",
+      "mutation_kind": "",
+      "notes": "Negative/out-of-policy write must not allow.",
+      "recipe": "non_admin_write_sensitive"
+    },
+    {
+      "base_fixture_id": "",
+      "case_id": "case:malformed",
+      "category": "malformed",
+      "expected_outcome": "error",
+      "mutation_kind": "",
+      "notes": "Malformed IR must fail closed (error/quarantine), never allow.",
+      "recipe": "invalid_authorization_ir_payload"
+    },
+    {
+      "base_fixture_id": "fixture:allow",
+      "case_id": "case:mutation.rule",
+      "category": "mutation",
+      "expected_outcome": "unknown",
+      "mutation_kind": "rule",
+      "notes": "Rule action mutation must change the allow verdict.",
+      "recipe": "mutate_rule_action_read_to_write"
+    },
+    {
+      "base_fixture_id": "fixture:allow",
+      "case_id": "case:mutation.principal",
+      "category": "mutation",
+      "expected_outcome": "deny",
+      "mutation_kind": "principal",
+      "notes": "Principal mutation must change the allow verdict.",
+      "recipe": "mutate_admin_principal_alice_to_carol"
+    },
+    {
+      "base_fixture_id": "fixture:delegation",
+      "case_id": "case:mutation.scope",
+      "category": "mutation",
+      "expected_outcome": "unknown",
+      "mutation_kind": "scope",
+      "notes": "Scope mutation must drop delegated allow.",
+      "recipe": "mutate_delegation_resource_scope"
+    },
+    {
+      "base_fixture_id": "fixture:delegation",
+      "case_id": "case:mutation.delegation",
+      "category": "mutation",
+      "expected_outcome": "unknown",
+      "mutation_kind": "delegation",
+      "notes": "Delegation removal must drop delegated allow.",
+      "recipe": "drop_delegations"
+    }
+  ],
+  "certification_surface": "tools.logic.certification.authorization",
+  "check_kinds": [
+    "malformed",
+    "mutation",
+    "negative",
+    "positive",
+    "replay"
+  ],
+  "engine_interfaces": {
+    "datalog-authorization": "DatalogAuthorizationBackend@1",
+    "secpal-authorization": "SecPALAuthorizationBackend@1"
+  },
+  "engines": [
+    "datalog-authorization",
+    "secpal-authorization"
+  ],
+  "forbids_theorem_authority": true,
+  "goal_id": "FVT-G102",
+  "handler_id": "authorization_semantic_certification@1",
+  "interface": "AuthorizationSemanticCertification@1",
+  "lane_id": "datalog_secpal",
+  "objective_validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_authorization_backends.py test/integration/toolchains/test_authorization_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'authorization or datalog or secpal' -q",
+  "objective_validation_evidence": "objective validation repair",
+  "objective_validation_repair": true,
+  "policy": {
+    "authorization_decision_authority_only": true,
+    "counterexamples_replay_deterministically": true,
+    "in_process_only": true,
+    "mutations_must_change_or_quarantine": true,
+    "no_central_certificate_edit": true,
+    "no_external_shadow_install": true,
+    "receipts_bind_policy_and_engine": true
+  },
+  "program": "formal-verification-tactician/authorization-certification",
+  "repair_task_id": "FVT-068",
+  "required_categories": [
+    "allow",
+    "conflict",
+    "delegation",
+    "deny",
+    "malformed",
+    "negative",
+    "revocation",
+    "unknown"
+  ],
+  "required_mutation_kinds": [
+    "delegation",
+    "principal",
+    "rule",
+    "scope"
+  ],
+  "schema_version": "authorization-semantic-certification-manifest/v1",
+  "task_id": "FVT-038"
+}

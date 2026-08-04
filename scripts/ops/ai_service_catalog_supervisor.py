@@ -29,6 +29,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     parse_task_file,
     task_implementation_protected_path_conflicts,
 )
+from ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback import (  # noqa: E402
+    llm_merge_resolver_fallback_command,
+)
 
 
 TODO_RELATIVE = Path("docs/architecture/ai_service_catalog.todo.md")
@@ -279,7 +282,7 @@ def _common_args(
         "--implementation-log-stall-seconds",
         "1200",
         "--llm-merge-resolver-command",
-        f"{python} -m ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback",
+        llm_merge_resolver_fallback_command(python_executable=python),
         "--llm-merge-resolver-timeout-seconds",
         "1800",
         "--worktree-reconciliation-max-merges",

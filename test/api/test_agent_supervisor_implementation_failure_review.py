@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.implementation_failure_review import (
     FAILURE_REVIEW_SCHEMA,
     FailureReviewDecision,
@@ -13,6 +10,9 @@ from ipfs_accelerate_py.agent_supervisor.implementation_failure_review import (
     ImplementationFailureReviewReceipt,
     compact_failure_review,
     review_implementation_failure,
+)
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    canonical_json,
 )
 
 
@@ -55,6 +55,65 @@ def test_guide_rescue_for_incomplete_expected_outputs() -> None:
     compact = compact_failure_review(review)
     assert compact["decision"] == "guide_rescue"
     assert compact["receipt_id"] == review.receipt_id
+
+
+def test_directory_output_is_satisfied_by_changed_descendants() -> None:
+    review = review_implementation_failure(
+        task_id="WALPROC-029",
+        attempt=1,
+        expected_outputs=(
+            "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/wallet_processor_tools",
+            "ipfs_datasets_py/tests/mcp/test_wallet_processor_tools.py",
+        ),
+        changed_paths=(
+            "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/wallet_processor_tools/__init__.py",
+            "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/wallet_processor_tools/ingest.py",
+            "ipfs_datasets_py/tests/mcp/test_wallet_processor_tools.py",
+        ),
+        validation_result={
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "validation_failed",
+            "failed_commands": [
+                "python -m pytest "
+                "ipfs_datasets_py/tests/mcp/test_wallet_processor_tools.py -q"
+            ],
+        },
+    )
+
+    assert review.missing_expected_outputs == ()
+    assert (
+        FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value
+        not in review.reason_codes
+    )
+
+
+def test_directory_output_does_not_admit_prefix_siblings() -> None:
+    review = review_implementation_failure(
+        task_id="WALPROC-029",
+        attempt=1,
+        expected_outputs=(
+            "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/wallet_processor_tools",
+        ),
+        changed_paths=(
+            "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/wallet_processor_tools_extra.py",
+        ),
+        validation_result={
+            "attempted": False,
+            "passed": False,
+            "returncode": 78,
+            "reason": "proposal_gate_failed",
+        },
+    )
+
+    assert review.missing_expected_outputs == (
+        "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/wallet_processor_tools",
+    )
+    assert (
+        FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value
+        in review.reason_codes
+    )
 
 
 def test_guide_rescue_for_out_of_scope_refactor_paths() -> None:
@@ -104,6 +163,140 @@ def test_guide_rescue_for_out_of_scope_refactor_paths() -> None:
     assert "Do not modify these out-of-scope paths" in (
         review.next_attempt_prompt_addendum
     )
+
+
+def test_unverifiable_validation_companion_requests_contract_revision() -> None:
+    fixture_path = (
+        "wallet_interface/ui/tests/fixtures/world-id-fixtures.ts"
+    )
+    panel_path = (
+        "wallet_interface/ui/src/shared/components/"
+        "WorldIdVerificationPanel.tsx"
+    )
+    api_path = (
+        "wallet_interface/ui/src/features/wallet/lib/walletApi.ts"
+    )
+    review = review_implementation_failure(
+        task_id="WALPROC-065",
+        attempt=1,
+        expected_outputs=(api_path, panel_path),
+        changed_paths=(api_path, panel_path, fixture_path),
+        validation_commands=(
+            "npm --prefix wallet_interface/ui test -- --runInBand",
+        ),
+        proposal_accepted=False,
+        scope_adjudication={
+            "accepted": False,
+            "justified_paths": [],
+            "denied_paths": [fixture_path],
+            "decisions": [
+                {
+                    "path": fixture_path,
+                    "verdict": "denied",
+                    "reason_codes": ["test_change_unverifiable"],
+                }
+            ],
+        },
+        validation_result={
+            "attempted": False,
+            "passed": False,
+            "returncode": 78,
+            "reason": "proposal_gate_failed",
+            "error": "proposal_validation_failed",
+            "proposal_gate": {
+                "reason_codes": ["path_outside_scope"],
+                "changed_paths": [api_path, panel_path, fixture_path],
+            },
+        },
+    )
+
+    assert review.decision is FailureReviewDecision.GUIDE_RESCUE
+    assert review.contract_gap_paths == (fixture_path,)
+    assert (
+        FailureReviewReason.TASK_SCOPE_CONTRACT_REVISION_REQUIRED.value
+        in review.reason_codes
+    )
+    assert "Task-scope contract revision required" in review.guidance_markdown
+    assert "protected-board authority" in review.guidance_markdown
+    assert fixture_path in review.next_attempt_prompt_addendum
+    assert "Do not modify these out-of-scope paths" not in (
+        review.next_attempt_prompt_addendum
+    )
+    restored = ImplementationFailureReviewReceipt.from_dict(
+        review.to_record()
+    )
+    assert restored == review
+    assert compact_failure_review(review)["contract_gap_paths"] == [
+        fixture_path
+    ]
+
+
+def test_validation_selection_impact_paths_are_not_candidate_changes() -> None:
+    expected_outputs = (
+        "data/validation/conformance-report.json",
+        "tests/contract/wallets/test_all_processors.py",
+        "tests/contract/wallets/test_worldcoin_differential.py",
+    )
+    review = review_implementation_failure(
+        task_id="WALPROC-027",
+        attempt=1,
+        expected_outputs=expected_outputs,
+        validation_result={
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "declared_validation_failed",
+            "proposal_gate": {
+                "accepted": True,
+                "changed_paths": list(expected_outputs),
+            },
+            "selection": {
+                "changed_files": [
+                    *expected_outputs,
+                    "tests/contract/wallets",
+                    "tests/unit/wallets",
+                ],
+            },
+            "failed_commands": [
+                "python -m pytest -q tests/unit/wallets "
+                "tests/contract/wallets"
+            ],
+        },
+    )
+
+    assert review.changed_paths == expected_outputs
+    assert review.out_of_scope_paths == ()
+    assert (
+        FailureReviewReason.SCOPE_EXPANSION_DENIED.value
+        not in review.reason_codes
+    )
+    assert (
+        FailureReviewReason.LARGE_OR_UNDECLARED_REFACTOR.value
+        not in review.reason_codes
+    )
+    assert (
+        FailureReviewReason.VALIDATION_COMMAND_FAILED.value
+        in review.reason_codes
+    )
+
+
+def test_validation_selection_paths_remain_legacy_fallback() -> None:
+    review = review_implementation_failure(
+        task_id="LEGACY-001",
+        attempt=1,
+        expected_outputs=("src/runtime.py",),
+        validation_result={
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "declared_validation_failed",
+            "selection": {"changed_files": ["src/runtime.py"]},
+            "failed_commands": ["python -m pytest -q tests/test_runtime.py"],
+        },
+    )
+
+    assert review.changed_paths == ("src/runtime.py",)
+    assert review.out_of_scope_paths == ()
 
 
 def test_reject_hard_deny_secret_findings() -> None:
@@ -271,6 +464,117 @@ def test_daemon_normalize_failure_keeps_review_projection() -> None:
     )
 
 
+def test_daemon_normalize_oversized_review_bounds_repeated_guidance() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+    )
+
+    guidance = (
+        "BEGIN: create src/prover.py and rerun the focused proof test. "
+        + ("diagnostic context " * 700)
+        + " END: keep tests/prover/test_goal.py green."
+    )
+    review = {
+        "receipt_id": "bafy-reviewed-failure",
+        "decision": "guide_rescue",
+        "accepted": False,
+        "reason_codes": ["incomplete_expected_outputs"],
+        "finding_codes": ["path_outside_scope"],
+        "missing_expected_outputs": ["src/prover.py"],
+        "denied_paths": ["src/undeclared_helper.py"],
+        "failed_commands": [
+            "python -m pytest tests/prover/test_goal.py -q"
+        ],
+        "next_attempt_prompt_addendum": guidance,
+        "policy_version": "deterministic-failure-review-v2",
+    }
+    normalized = PortalImplementationDaemon._normalize_implementation_failure(
+        {
+            "kind": "validation_failure",
+            "returncode": 78,
+            "failure_review": review,
+            "next_attempt_prompt_addendum": guidance,
+            "validation_environment_guidance": "sandbox contract " * 500,
+            "validation_result": {
+                "passed": False,
+                "returncode": 78,
+                "reason": "proposal_gate_failed",
+                "failed_commands": review["failed_commands"],
+                "failure_review": review,
+            },
+        }
+    )
+
+    assert len(canonical_json(normalized).encode("utf-8")) <= 16_384
+    assert normalized["failure_review"]["receipt_id"] == (
+        "bafy-reviewed-failure"
+    )
+    assert normalized["failure_review"]["decision"] == "guide_rescue"
+    assert normalized["failure_review"]["reason_codes"] == [
+        "incomplete_expected_outputs"
+    ]
+    assert normalized["failure_review"]["missing_expected_outputs"] == [
+        "src/prover.py"
+    ]
+    assert "test_goal.py" in normalized["failure_review"]["failed_commands"][0]
+    assert "BEGIN: create src/prover.py" in normalized[
+        "next_attempt_prompt_addendum"
+    ]
+    assert "END: keep tests/prover/test_goal.py green" in normalized[
+        "next_attempt_prompt_addendum"
+    ]
+    assert normalized["normalization"]["source_bytes"] > 16_384
+    assert normalized["normalization"]["truncated_field_count"] > 0
+
+
+def test_daemon_normalize_bounds_json_escapes_and_is_canonical() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+    )
+
+    guidance = "BEGIN retry\n" + ("\x00" * 20_000) + "\nEND retry"
+    forward_kind = {
+        "alpha": "a" * 10_000,
+        "omega": "z" * 10_000,
+    }
+    reverse_kind = dict(reversed(tuple(forward_kind.items())))
+
+    def normalize(kind: dict[str, str]) -> dict[str, object]:
+        return PortalImplementationDaemon._normalize_implementation_failure(
+            {
+                "kind": kind,
+                "reason": "reviewed validation failure",
+                "returncode": 10**3_000,
+                "failure_review": {
+                    "receipt_id": "bafy-control-review",
+                    "decision": "guide_rescue",
+                    "reason_codes": ["validation_command_failed"],
+                    "missing_expected_outputs": ["src/prover.py"],
+                    "failed_commands": [
+                        "python -m pytest tests/prover/test_goal.py -q"
+                    ],
+                    "next_attempt_prompt_addendum": guidance,
+                },
+                "next_attempt_prompt_addendum": guidance,
+            }
+        )
+
+    forward = normalize(forward_kind)
+    reverse = normalize(reverse_kind)
+
+    assert forward == reverse
+    assert len(canonical_json(forward).encode("utf-8")) <= 16_384
+    assert forward["normalization"]["source_failure_id"] == reverse[
+        "normalization"
+    ]["source_failure_id"]
+    assert "BEGIN retry" in forward["next_attempt_prompt_addendum"]
+    assert "END retry" in forward["next_attempt_prompt_addendum"]
+    assert forward["failure_review"]["decision"] == "guide_rescue"
+    assert forward["failure_review"]["missing_expected_outputs"] == [
+        "src/prover.py"
+    ]
+
+
 def test_directory_outputs_satisfied_by_descendant_changes() -> None:
     """Directory Outputs: are produced when any descendant path changes.
 
@@ -366,12 +670,24 @@ def test_directory_output_still_missing_without_descendant_changes() -> None:
     assert "Still required outputs" in review.next_attempt_prompt_addendum
 
 
-def test_implementation_prompt_policy_appendix_includes_admission_budgets() -> None:
+def test_implementation_prompt_policy_appendix_includes_admission_budgets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES,
         PortalImplementationDaemon,
         PortalTask,
     )
+    from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
+        VALIDATION_PATH_ENV,
+        canonical_validation_environment_contract,
+    )
 
+    monkeypatch.setenv(
+        "PATH",
+        "/home/test/.elan/bin:/home/test/.local/theorem-provers/bin",
+    )
+    monkeypatch.delenv(VALIDATION_PATH_ENV, raising=False)
     task = PortalTask(
         task_id="LIG-016",
         title="Integration test for end-to-end admissibility",
@@ -396,9 +712,53 @@ def test_implementation_prompt_policy_appendix_includes_admission_budgets() -> N
     assert "directory trees" in appendix
     assert "2000000" in appendix
     assert "2500000" in appendix
-    assert "1000000" in appendix
+    assert str(DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES) in appendix
     assert "tests/fixtures/logic/admissibility" in appendix
     assert "compact recipes" in appendix
+    contract = canonical_validation_environment_contract()
+    assert (
+        f'`PATH` is exactly "{contract["path"]}"'
+        in appendix
+    )
+    assert "/home/test/.elan/bin" not in appendix
+    assert "inherited `PATH` is ignored" in appendix
+    assert "ipfs-accelerate-validation-home-" in appendix
+    assert "`$HOME/.cache`" in appendix
+    assert "`~/.elan`" in appendix
+    assert "user-writable tool directories are rejected" in appendix
+    assert "never claim usability or weaken mandatory tests" in appendix
+
+
+def test_failure_review_binds_authoritative_validation_environment() -> None:
+    environment_guidance = (
+        "## Authoritative validation environment (fail-closed)\n"
+        '- `PATH` is exactly "/usr/bin:/bin"; inherited `PATH` is ignored.\n'
+        "- `HOME` is private and ephemeral; `XDG_CONFIG_HOME` is under it."
+    )
+    review = review_implementation_failure(
+        task_id="FVT-053",
+        attempt=2,
+        expected_outputs=("formal_verification_toolchain_certificate.json",),
+        changed_paths=("formal_verification_toolchain_certificate.json",),
+        validation_result={
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "declared_validation_failed",
+            "failed_commands": [
+                "python -m pytest tests/integration/logic/test_toolchain.py -q"
+            ],
+        },
+        validation_environment_guidance=environment_guidance,
+    )
+
+    assert environment_guidance in review.guidance_markdown
+    assert "Authoritative validation environment:" in (
+        review.next_attempt_prompt_addendum
+    )
+    assert '"/usr/bin:/bin"' in review.next_attempt_prompt_addendum
+    restored = ImplementationFailureReviewReceipt.from_dict(review.to_record())
+    assert restored.receipt_id == review.receipt_id
 
 
 def test_size_guidance_when_only_size_findings() -> None:

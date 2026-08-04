@@ -88,6 +88,105 @@ def build_grok_agent_command(
     return cmd
 
 
+def resolve_codex_quota_fallback_executable(
+    *,
+    workspace: str | Path,
+    configured: str = "",
+) -> str:
+    """Resolve a Codex executable the Grok workspace cannot replace.
+
+    Preference order: an absolute configured path, then ``PATH`` lookup.
+    Workspace-relative or workspace-contained candidates are rejected so an
+    implementation worktree cannot supply its own "codex" binary.
+    """
+
+    workspace_path = Path(workspace).expanduser().resolve()
+    codex_candidate = str(configured or shutil.which("codex") or "").strip()
+    if not codex_candidate:
+        return ""
+    candidate_path = Path(codex_candidate).expanduser()
+    if not candidate_path.is_absolute():
+        resolved_from_path = shutil.which(codex_candidate)
+        if not resolved_from_path:
+            return ""
+        candidate_path = Path(resolved_from_path)
+    try:
+        resolved_candidate = candidate_path.resolve(strict=True)
+    except OSError:
+        return ""
+    if (
+        not resolved_candidate.is_file()
+        or not os.access(resolved_candidate, os.X_OK)
+        or resolved_candidate.name.casefold() not in {"codex", "codex.exe"}
+        or resolved_candidate.is_relative_to(workspace_path)
+        or candidate_path.expanduser().resolve(strict=False).is_relative_to(
+            workspace_path
+        )
+    ):
+        return ""
+    return str(resolved_candidate)
+
+
+def build_grok_quota_routed_agent_command(
+    *,
+    workspace: str | Path = ".",
+    python_executable: str = "",
+    grok_bin: str = "",
+    codex_bin: str = "",
+    max_turns: int = 100_000,
+) -> list[str]:
+    """Build the canonical Grok-4.5 then typed-quota Terra/medium route.
+
+    The parent runner owns the Codex argv. Grok receives neither the
+    executable/auth authority nor any way to invoke this fallback directly.
+    """
+
+    workspace_text = str(workspace)
+    codex = resolve_codex_quota_fallback_executable(
+        workspace=workspace,
+        configured=codex_bin,
+    )
+    command = [
+        str(python_executable or sys.executable),
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+        "--workspace",
+        workspace_text,
+        "--model",
+        DEFAULT_GROK_MODEL,
+        "--max-turns",
+        str(max(1, int(max_turns))),
+        "--mode",
+        "agent",
+    ]
+    if codex:
+        fallback = [
+            codex,
+            "exec",
+            "--ignore-user-config",
+            "--ignore-rules",
+            "--ephemeral",
+            "-s",
+            "workspace-write",
+            "-C",
+            workspace_text,
+            "-m",
+            DEFAULT_CODEX_QUOTA_FALLBACK_MODEL,
+            "-c",
+            f'model_reasoning_effort="{DEFAULT_CODEX_QUOTA_FALLBACK_REASONING_EFFORT}"',
+            "-",
+        ]
+        command.extend(
+            [
+                "--codex-fallback-command-json",
+                json.dumps(fallback, separators=(",", ":")),
+            ]
+        )
+    if str(grok_bin).strip():
+        command.extend(["--grok-bin", str(grok_bin).strip()])
+    return command
+
+
 def _parse_codex_fallback_command(raw: str) -> list[str]:
     """Decode and pin the daemon-authored quota fallback without a shell."""
 

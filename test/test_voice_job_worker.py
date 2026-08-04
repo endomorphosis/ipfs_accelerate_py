@@ -12,6 +12,7 @@ import gzip
 import hashlib
 import io
 import json
+import subprocess
 import sys
 import types
 import wave
@@ -47,6 +48,7 @@ from ipfs_accelerate_py.voice_jobs.executor import (
     execute_voice_asr_job,
     execute_voice_audio_validation_job,
     execute_voice_tts_job,
+    validate_generated_audio_bytes,
 )
 
 
@@ -62,6 +64,25 @@ def _wav_bytes(
         wav.setsampwidth(2)
         wav.setframerate(sample_rate)
         wav.writeframes(b"\x00\x00" * frames * channels)
+    return output.getvalue()
+
+
+def _pcm16_wav_bytes(
+    samples: tuple[int, ...],
+    *,
+    sample_rate: int = 8_000,
+    channels: int = 1,
+) -> bytes:
+    output = io.BytesIO()
+    pcm = b"".join(
+        int(sample).to_bytes(2, byteorder="little", signed=True)
+        for sample in samples
+    )
+    with wave.open(output, "wb") as wav:
+        wav.setnchannels(channels)
+        wav.setsampwidth(2)
+        wav.setframerate(sample_rate)
+        wav.writeframes(pcm)
     return output.getvalue()
 
 
@@ -98,6 +119,7 @@ def _external_audio_descriptor(
     data: bytes,
     *,
     name: str = "audio.wav",
+    media_type: str = "audio/wav",
 ) -> ArtifactDescriptor:
     digest = hashlib.sha256(data).hexdigest()
     cid = "bafybeigdyrztexternalfixture"
@@ -106,7 +128,7 @@ def _external_audio_descriptor(
         cid=cid,
         sha256=digest,
         size_bytes=len(data),
-        media_type="audio/wav",
+        media_type=media_type,
     )
 
 
@@ -117,6 +139,7 @@ def _resolver(
     max_input_bytes: int = 1_000_000,
     max_decoded_bytes: int = 1_000_000,
     max_duration_ms: int = 60_000,
+    max_tts_trailing_silence_ms: int | None = 1_000,
     allowed_schemes: frozenset[str] = frozenset({"artifact", "file", "ipfs"}),
     fetcher: Any = None,
     source_task_resolver: Any = None,
@@ -130,6 +153,7 @@ def _resolver(
             max_input_bytes=max_input_bytes,
             max_decoded_bytes=max_decoded_bytes,
             max_duration_ms=max_duration_ms,
+            max_tts_trailing_silence_ms=max_tts_trailing_silence_ms,
         ),
         fetcher=fetcher,
         source_task_resolver=source_task_resolver,
@@ -246,6 +270,7 @@ def test_asr_execution_verifies_source_task_and_keeps_transcript_private(
         purpose="dataset_asr_validation",
         locale="en",
         decoding_settings={"beam_size": 1},
+        retention_policy="result",
     )
     result = execute_voice_asr_job(
         job,
@@ -283,6 +308,27 @@ def test_asr_execution_verifies_source_task_and_keeps_transcript_private(
     serialized = json.dumps(result, sort_keys=True)
     assert "private offline transcript" not in serialized
     assert str(tmp_path) not in serialized
+
+    non_retained_job = VoiceASRJob(
+        provider="fixture-asr",
+        model_name="fixture-whisper",
+        provider_version="fixture-1",
+        lineage=_lineage(),
+        source_audio=descriptor,
+        purpose="dataset_asr_validation",
+        locale="en",
+        retention_policy="none",
+    )
+    non_retained_result = execute_voice_asr_job(
+        non_retained_job,
+        resolver=resolver,
+        speech_to_text_fn=lambda data, **kwargs: "non-retained transcript",
+    )
+    assert non_retained_result["artifacts"] == []
+    assert non_retained_result["provider_receipt"]["response_id_sha256"] == (
+        hashlib.sha256(b"non-retained transcript").hexdigest()
+    )
+    assert "non-retained transcript" not in json.dumps(non_retained_result)
 
     runtime_job = VoiceASRJob(
         provider="fixture-asr",
@@ -361,13 +407,16 @@ def test_audio_validation_decodes_wav_and_enforces_job_duration_policy(
     )
     assert result["task_type"] == "voice.audio-validate"
     assert result["artifacts"] == [descriptor.to_dict()]
-    assert result["quality_metrics"] == {
-        "channels": 2,
-        "sample_rate_hz": 8_000,
-        "frames": 2_000,
-        "duration_ms": 250,
-        "decoded_bytes": 8_000,
-    }
+    metrics = result["quality_metrics"]
+    assert metrics["channels"] == 2
+    assert metrics["sample_rate_hz"] == 8_000
+    assert metrics["frames"] == 2_000
+    assert metrics["duration_ms"] == 250
+    assert metrics["decoded_bytes"] == 8_000
+    # WAV paths must emit acoustic ratios (silent fixture => 100% silence).
+    assert metrics["silence_ratio_bp"] == 10_000
+    assert metrics["clipping_ratio_bp"] == 0
+    assert metrics["trailing_silence_ms"] == 250
     assert VoiceJobResult.from_payload(result).to_payload() == result
 
     with pytest.raises(
@@ -382,6 +431,411 @@ def test_audio_validation_decodes_wav_and_enforces_job_duration_policy(
             ),
             resolver=resolver,
         )
+
+
+@pytest.mark.parametrize(
+    ("media_type", "name", "expected_format"),
+    [
+        ("audio/mpeg", "legacy.mp3", "mp3"),
+        ("audio/ogg", "legacy.ogg", "ogg"),
+        ("audio/flac", "legacy.flac", "flac"),
+    ],
+)
+def test_audio_validation_decodes_non_wav_and_emits_acoustic_metrics(
+    tmp_path: Path,
+    media_type: str,
+    name: str,
+    expected_format: str,
+) -> None:
+    encoded = f"bounded-{expected_format}-fixture".encode("ascii")
+    decoded = _pcm16_wav_bytes((0, 32_767, 1_000, -1_000))
+    descriptor = _external_audio_descriptor(
+        encoded,
+        name=name,
+        media_type=media_type,
+    )
+    resolver = _resolver(tmp_path, fetcher=lambda uri, limit: encoded)
+    calls: list[tuple[bytes, str, ArtifactPolicy]] = []
+
+    def decode(
+        data: bytes,
+        input_format: str,
+        policy: ArtifactPolicy,
+    ) -> bytes:
+        calls.append((data, input_format, policy))
+        return decoded
+
+    job = VoiceAudioValidationJob(
+        model_name="fixture-quality",
+        lineage=_lineage(),
+        source_audio=descriptor,
+    )
+    result = execute_voice_audio_validation_job(
+        job,
+        resolver=resolver,
+        audio_decoder_fn=decode,
+    )
+
+    assert calls == [(encoded, expected_format, resolver.policy)]
+    assert result["quality_metrics"] == {
+        "encoded_bytes": len(encoded),
+        "channels": 1,
+        "sample_rate_hz": 8_000,
+        "frames": 4,
+        "duration_ms": 1,
+        "decoded_bytes": 8,
+        "silence_ratio_bp": 2_500,
+        "clipping_ratio_bp": 2_500,
+        "trailing_silence_ms": 0,
+    }
+    assert VoiceJobResult.from_payload(result).to_payload() == result
+
+
+@pytest.mark.parametrize(
+    ("samples", "channels", "expected_trailing_silence_ms"),
+    [
+        ((1_000, 0, 0), 1, 2),
+        ((0, 0, 1_000), 1, 0),
+        ((0, 0, 0, 1_000, 0, 0, 0, 0), 2, 2),
+    ],
+    ids=("nonzero-suffix", "non-silent-ending", "multichannel-frame"),
+)
+def test_audio_validation_emits_contiguous_trailing_silence(
+    tmp_path: Path,
+    samples: tuple[int, ...],
+    channels: int,
+    expected_trailing_silence_ms: int,
+) -> None:
+    audio = _pcm16_wav_bytes(
+        samples,
+        sample_rate=1_000,
+        channels=channels,
+    )
+    descriptor = _external_audio_descriptor(audio, name="trailing-silence.wav")
+    resolver = _resolver(tmp_path, fetcher=lambda uri, limit: audio)
+
+    result = execute_voice_audio_validation_job(
+        VoiceAudioValidationJob(
+            model_name="fixture-quality",
+            lineage=_lineage(),
+            source_audio=descriptor,
+        ),
+        resolver=resolver,
+    )
+
+    assert (
+        result["quality_metrics"]["trailing_silence_ms"]
+        == expected_trailing_silence_ms
+    )
+
+
+def test_tts_artifact_policy_rejects_excessive_trailing_silence(
+    tmp_path: Path,
+) -> None:
+    audio = _pcm16_wav_bytes(
+        (1_000, 0, 0),
+        sample_rate=1_000,
+    )
+    resolver = _resolver(
+        tmp_path,
+        max_tts_trailing_silence_ms=1,
+    )
+
+    with pytest.raises(
+        VoiceJobExecutionError,
+        match="^audio_trailing_silence_exceeded$",
+    ):
+        execute_voice_tts_job(
+            VoiceTTSJob(
+                spoken_text="A response with a padded tail.",
+                locale="en-US",
+                provider="fixture-tts",
+                model_name="fixture-model",
+                voice="abby",
+                provider_version="fixture-1",
+                lineage=_lineage(),
+            ),
+            resolver=resolver,
+            text_to_speech_fn=lambda _text, **_kwargs: audio,
+        )
+
+    assert not list((tmp_path / "artifacts").glob("**/*"))
+
+
+def test_generated_audio_trailing_silence_gate_accepts_boundary() -> None:
+    audio = _pcm16_wav_bytes(
+        (1_000, 0),
+        sample_rate=1_000,
+    )
+
+    metrics = validate_generated_audio_bytes(
+        audio,
+        policy=ArtifactPolicy(max_tts_trailing_silence_ms=1),
+    )
+
+    assert metrics["trailing_silence_ms"] == 1
+
+
+def test_generated_audio_trailing_silence_gate_is_retryable() -> None:
+    audio = _pcm16_wav_bytes(
+        (1_000, 0, 0),
+        sample_rate=1_000,
+    )
+
+    with pytest.raises(VoiceJobExecutionError) as captured:
+        validate_generated_audio_bytes(
+            audio,
+            policy=ArtifactPolicy(max_tts_trailing_silence_ms=1),
+        )
+
+    assert captured.value.code == "audio_trailing_silence_exceeded"
+    assert captured.value.retryable is True
+
+
+def test_tts_trailing_silence_policy_does_not_reject_asr_source(
+    tmp_path: Path,
+) -> None:
+    audio = _pcm16_wav_bytes(
+        (1_000, 0, 0),
+        sample_rate=1_000,
+    )
+    descriptor = _external_audio_descriptor(
+        audio,
+        name="padded-asr-source.wav",
+    )
+    resolver = _resolver(
+        tmp_path,
+        max_tts_trailing_silence_ms=1,
+        fetcher=lambda _uri, _limit: audio,
+    )
+
+    result = execute_voice_asr_job(
+        VoiceASRJob(
+            locale="en-US",
+            provider="fixture-asr",
+            model_name="fixture-model",
+            provider_version="fixture-1",
+            lineage=_lineage(),
+            source_audio=descriptor,
+        ),
+        resolver=resolver,
+        speech_to_text_fn=lambda _audio, **_kwargs: "hello",
+    )
+
+    assert result["status"] == "completed"
+    assert result["quality_metrics"]["trailing_silence_ms"] == 2
+
+
+def test_audio_validation_job_enforces_trailing_silence_policy(
+    tmp_path: Path,
+) -> None:
+    audio = _pcm16_wav_bytes(
+        (1_000, 0, 0),
+        sample_rate=1_000,
+    )
+    descriptor = _external_audio_descriptor(
+        audio,
+        name="padded-tail.wav",
+    )
+    resolver = _resolver(tmp_path, fetcher=lambda _uri, _limit: audio)
+
+    with pytest.raises(
+        VoiceJobExecutionError,
+        match="^audio_trailing_silence_above_policy$",
+    ):
+        execute_voice_audio_validation_job(
+            VoiceAudioValidationJob(
+                model_name="fixture-quality",
+                lineage=_lineage(),
+                source_audio=descriptor,
+                validation_policy={
+                    "maximum_trailing_silence_ms": 1,
+                },
+            ),
+            resolver=resolver,
+        )
+
+
+def test_non_wav_ffmpeg_decoder_is_shell_free_and_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    encoded = b"fake-mp3"
+    decoded = _pcm16_wav_bytes((0, 1_000, -1_000))
+    descriptor = _external_audio_descriptor(
+        encoded,
+        name="legacy.mp3",
+        media_type="audio/mpeg",
+    )
+    resolver = _resolver(
+        tmp_path,
+        fetcher=lambda uri, limit: encoded,
+        max_decoded_bytes=1_000,
+        max_duration_ms=2_000,
+    )
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        calls.append((command, kwargs))
+        Path(command[-1]).write_bytes(decoded)
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.voice_jobs.executor.subprocess.run",
+        run,
+    )
+    result = execute_voice_audio_validation_job(
+        VoiceAudioValidationJob(
+            model_name="fixture-quality",
+            lineage=_lineage(),
+            source_audio=descriptor,
+        ),
+        resolver=resolver,
+    )
+
+    assert result["quality_metrics"]["decoded_bytes"] == 6
+    assert len(calls) == 1
+    command, kwargs = calls[0]
+    assert command[0] == "ffmpeg"
+    assert "-nostdin" in command
+    assert command[command.index("-f") + 1] == "mp3"
+    assert command[command.index("-fs") + 1] == str(1_000 + 64 * 1024)
+    assert command[command.index("-t") + 1] == "3.000"
+    assert "shell" not in kwargs
+    assert kwargs["input"] == encoded
+    assert kwargs["timeout"] == resolver.policy.decoder_timeout_seconds
+    assert kwargs["stdout"] == subprocess.DEVNULL
+    assert kwargs["stderr"] == subprocess.DEVNULL
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_code"),
+    [
+        ("missing", "audio_decoder_unavailable"),
+        ("timeout", "audio_decode_timeout"),
+        ("failed", "audio_decode_failed"),
+    ],
+)
+def test_non_wav_decoder_failures_are_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    case: str,
+    expected_code: str,
+) -> None:
+    encoded = b"untrusted-mp3"
+    descriptor = _external_audio_descriptor(
+        encoded,
+        name="untrusted.mp3",
+        media_type="audio/mpeg",
+    )
+    resolver = _resolver(tmp_path, fetcher=lambda uri, limit: encoded)
+    if case == "missing":
+        failure: Any = FileNotFoundError("ffmpeg")
+    elif case == "timeout":
+        failure = subprocess.TimeoutExpired(cmd=("ffmpeg",), timeout=1)
+    else:
+        failure = None
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        if failure is not None:
+            raise failure
+        return subprocess.CompletedProcess(command, 1)
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.voice_jobs.executor.subprocess.run",
+        run,
+    )
+    with pytest.raises(VoiceJobExecutionError, match=f"^{expected_code}$"):
+        execute_voice_audio_validation_job(
+            VoiceAudioValidationJob(
+                model_name="fixture-quality",
+                lineage=_lineage(),
+                source_audio=descriptor,
+            ),
+            resolver=resolver,
+        )
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_code"),
+    [
+        ("decoded", "audio_decoded_too_large"),
+        ("duration", "audio_duration_exceeded"),
+        ("malformed", "audio_decode_failed"),
+    ],
+)
+def test_non_wav_decoded_audio_enforces_post_decode_ceilings(
+    tmp_path: Path,
+    case: str,
+    expected_code: str,
+) -> None:
+    encoded = b"compressed-fixture"
+    descriptor = _external_audio_descriptor(
+        encoded,
+        name="untrusted.ogg",
+        media_type="audio/ogg",
+    )
+    if case == "decoded":
+        decoded = _pcm16_wav_bytes(tuple(range(11)))
+        resolver = _resolver(
+            tmp_path,
+            fetcher=lambda uri, limit: encoded,
+            max_decoded_bytes=20,
+        )
+    elif case == "duration":
+        decoded = _pcm16_wav_bytes(tuple(0 for _ in range(9)), sample_rate=8_000)
+        resolver = _resolver(
+            tmp_path,
+            fetcher=lambda uri, limit: encoded,
+            max_duration_ms=1,
+        )
+    else:
+        decoded = b"not-pcm-wav"
+        resolver = _resolver(tmp_path, fetcher=lambda uri, limit: encoded)
+
+    with pytest.raises(VoiceJobExecutionError, match=f"^{expected_code}$"):
+        execute_voice_audio_validation_job(
+            VoiceAudioValidationJob(
+                model_name="fixture-quality",
+                lineage=_lineage(),
+                source_audio=descriptor,
+            ),
+            resolver=resolver,
+            audio_decoder_fn=lambda data, input_format, policy: decoded,
+        )
+
+
+def test_non_wav_validation_rejects_unallowlisted_audio_before_decoder(
+    tmp_path: Path,
+) -> None:
+    encoded = b"untrusted-aac"
+    descriptor = _external_audio_descriptor(
+        encoded,
+        name="untrusted.aac",
+        media_type="audio/aac",
+    )
+    resolver = _resolver(tmp_path, fetcher=lambda uri, limit: encoded)
+    decoder_called = False
+
+    def decode(data: bytes, input_format: str, policy: ArtifactPolicy) -> bytes:
+        nonlocal decoder_called
+        decoder_called = True
+        return _wav_bytes()
+
+    with pytest.raises(
+        VoiceJobExecutionError,
+        match="^audio_decoder_unsupported_media$",
+    ):
+        execute_voice_audio_validation_job(
+            VoiceAudioValidationJob(
+                model_name="fixture-quality",
+                lineage=_lineage(),
+                source_audio=descriptor,
+            ),
+            resolver=resolver,
+            audio_decoder_fn=decode,
+        )
+    assert decoder_called is False
 
 
 @pytest.mark.parametrize(
@@ -603,8 +1057,8 @@ def test_worker_dispatches_voice_handlers_without_network(
 def test_backend_manager_voice_provider_uses_current_async_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from ipfs_accelerate_py.router_deps import RouterDeps
     import ipfs_accelerate_py.voice_router as voice_router
+    from ipfs_accelerate_py.router_deps import RouterDeps
 
     calls: list[dict[str, Any]] = []
 
@@ -672,20 +1126,23 @@ def test_huggingface_tts_and_stt_use_independent_device_settings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import numpy as np
+
     import ipfs_accelerate_py.voice_router as voice_router
 
     constructed: list[tuple[str, int]] = []
+    stt_calls: list[dict[str, object]] = []
 
     class FakePipeline:
         def __init__(self, task: str) -> None:
             self.task = task
 
-        def __call__(self, value: object, **_: object) -> dict[str, object]:
+        def __call__(self, value: object, **kwargs: object) -> dict[str, object]:
             if self.task == "text-to-speech":
                 return {
                     "audio": np.zeros(32, dtype=np.float32),
                     "sampling_rate": 8_000,
                 }
+            stt_calls.append(kwargs)
             return {"text": "device-isolated transcript"}
 
     def fake_pipeline(task: str, *, model: str, device: int) -> FakePipeline:
@@ -706,8 +1163,27 @@ def test_huggingface_tts_and_stt_use_independent_device_settings(
     provider = voice_router._get_huggingface_provider()
     assert provider is not None
     assert provider.synthesize("hello").startswith(b"RIFF")
-    assert provider.transcribe(_wav_bytes()) == "device-isolated transcript"
+    assert provider.transcribe(
+        _wav_bytes(),
+        model_name="openai/whisper-base",
+        language="en-US",
+    ) == "device-isolated transcript"
+    assert provider.transcribe(
+        _wav_bytes(),
+        model_name="openai/whisper-base.en",
+        language="en-US",
+    ) == "device-isolated transcript"
     assert constructed == [
         ("text-to-speech", 0),
         ("automatic-speech-recognition", -1),
+        ("automatic-speech-recognition", -1),
+    ]
+    assert stt_calls == [
+        {
+            "generate_kwargs": {"language": "en"},
+            "return_timestamps": True,
+        },
+        {
+            "return_timestamps": True,
+        },
     ]

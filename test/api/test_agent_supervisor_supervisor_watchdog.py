@@ -16,6 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.rescue.supervisor_watchdog import (
     check_lane_heartbeat,
     lifecycle_status_projection,
     pid_alive,
+    project_dynamic_manifest_lifecycle,
 )
 
 
@@ -97,6 +98,60 @@ def test_pid_probe_treats_permission_denial_as_alive_and_rejects_invalid_pids(
     assert pid_alive(101)
     assert not pid_alive(0)
     assert not pid_alive(-1)
+
+
+def test_dynamic_manifest_lifecycle_projects_expired_and_dead_supervisors() -> None:
+    manifest = {
+        "schema": "ipfs_accelerate_py.agent_supervisor.dynamic_bundle_scheduler@1",
+        "authoritative": True,
+        "scheduler_state": "running",
+        "supervisor_pid": 101,
+        "heartbeat_at": "2026-01-01T00:00:00+00:00",
+        "heartbeat_expires_at": "2026-01-01T00:01:00+00:00",
+    }
+
+    stale = project_dynamic_manifest_lifecycle(
+        manifest,
+        now_seconds=1_767_225_720.0,
+        pid_probe=lambda _pid: True,
+    )
+    stopped = project_dynamic_manifest_lifecycle(
+        manifest,
+        now_seconds=1_767_225_620.0,
+        pid_probe=lambda _pid: False,
+    )
+
+    assert stale["scheduler_state"] == "stale"
+    assert stale["scheduler_state_declared"] == "running"
+    assert stale["scheduler_state_reason"] == "heartbeat_expired"
+    assert stale["supervisor_pid_alive"] is True
+    assert stopped["scheduler_state"] == "stopped"
+    assert stopped["scheduler_state_declared"] == "running"
+    assert stopped["scheduler_state_reason"] == "supervisor_pid_not_running"
+    assert stopped["supervisor_pid_alive"] is False
+    assert manifest["scheduler_state"] == "running"
+
+
+def test_dynamic_manifest_lifecycle_preserves_fresh_and_legacy_manifests() -> None:
+    dynamic = {
+        "schema": "ipfs_accelerate_py.agent_supervisor.dynamic_bundle_scheduler@1",
+        "authoritative": True,
+        "scheduler_state": "running",
+        "supervisor_pid": 101,
+        "heartbeat_expires_at": "2026-01-01T00:01:00+00:00",
+    }
+    legacy = {"scheduler_state": "running", "supervisor_pid": 101}
+
+    fresh = project_dynamic_manifest_lifecycle(
+        dynamic,
+        now_seconds=1_767_225_620.0,
+        pid_probe=lambda _pid: True,
+    )
+
+    assert fresh["scheduler_state"] == "running"
+    assert fresh["supervisor_pid_alive"] is True
+    assert "scheduler_state_declared" not in fresh
+    assert project_dynamic_manifest_lifecycle(legacy) == legacy
 
 
 def test_heartbeat_uses_canonical_timestamp_and_projects_exact_status_schema(

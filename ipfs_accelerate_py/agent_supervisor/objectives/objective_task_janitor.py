@@ -900,6 +900,7 @@ def reconcile_objective_task_strategy(
     max_blocked_tasks: int = 50,
     max_deprioritized_tasks: int = 50,
     max_reopened_goals: int = 12,
+    reopen_missing_work_goals: bool = True,
 ) -> dict[str, Any]:
     """Return a strategy update that keeps todo work aligned with active goals."""
 
@@ -1410,11 +1411,15 @@ def reconcile_objective_task_strategy(
     deprioritize_receipts = deprioritize_receipts[: max(0, int(max_deprioritized_tasks))]
     blocked_task_ids = [receipt.task_id for receipt in block_receipts]
     deprioritized_task_ids = [receipt.task_id for receipt in deprioritize_receipts]
-    missing_work_goal_ids = [
-        goal_id
-        for goal_id in scheduled_goal_ids
-        if goal_id in critical_goal_ids and goal_id not in open_goal_ids
-    ][: max(0, int(max_reopened_goals))]
+    missing_work_goal_ids = (
+        [
+            goal_id
+            for goal_id in scheduled_goal_ids
+            if goal_id in critical_goal_ids and goal_id not in open_goal_ids
+        ][: max(0, int(max_reopened_goals))]
+        if reopen_missing_work_goals
+        else []
+    )
     reopened_goal_ids = _unique(
         [*effective_contradiction_reopened_goal_ids, *missing_work_goal_ids]
     )
@@ -1455,6 +1460,9 @@ def reconcile_objective_task_strategy(
     ]
     updated_strategy["objective_task_janitor_reopen_goal_ids"] = reopened_goal_ids
     updated_strategy["objective_task_janitor_force_goal_ids"] = reopened_goal_ids
+    updated_strategy["objective_task_janitor_missing_work_reopen_enabled"] = bool(
+        reopen_missing_work_goals
+    )
     updated_strategy["objective_task_janitor_validation_gate_goal_ids"] = validation_gate_goal_ids
     updated_strategy["objective_task_janitor_launch_playwright_validation_gate"] = {
         "evidence_term": LAUNCH_PLAYWRIGHT_VALIDATION_GATE_EVIDENCE,
@@ -1531,6 +1539,7 @@ def reconcile_objective_task_strategy(
         "heap_goal_retirement_receipt",
         "objective_task_janitor_reopen_goal_ids",
         "objective_task_janitor_force_goal_ids",
+        "objective_task_janitor_missing_work_reopen_enabled",
         "objective_task_janitor_validation_gate_goal_ids",
         "objective_task_janitor_launch_playwright_validation_gate",
         "objective_task_janitor_mission_terms",
@@ -1559,6 +1568,7 @@ def reconcile_objective_task_strategy(
         "unblocked_task_ids": unblocked_task_ids,
         "removed_task_ids": removed_task_ids,
         "reopened_goal_ids": reopened_goal_ids,
+        "missing_work_reopen_enabled": bool(reopen_missing_work_goals),
         "contradiction_reopened_goal_ids": contradiction_reopened_goal_ids,
         "effective_reopened_goal_ids": effective_contradiction_reopened_goal_ids,
         "recalculated_goal_ids": recalculated_goal_ids,

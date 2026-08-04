@@ -334,6 +334,38 @@ def test_default_discovery_resolves_nested_source_package_without_importing_wrap
     assert "source_provider.agent" not in sys.modules
 
 
+def test_default_discovery_traverses_nested_namespace_packages_without_importing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    outer = tmp_path / "source_provider"
+    inner = outer / "source_provider"
+    provider = inner / "logic" / "backends" / "provider.py"
+    provider.parent.mkdir(parents=True)
+    (outer / "__init__.py").write_text(
+        "raise RuntimeError('outer bootstrap executed')\n",
+        encoding="utf-8",
+    )
+    (inner / "__init__.py").write_text(
+        "raise RuntimeError('inner initializer executed')\n",
+        encoding="utf-8",
+    )
+    provider.write_text("CAPABLE = True\n", encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    for module in (
+        "source_provider",
+        "source_provider.logic",
+        "source_provider.logic.backends",
+    ):
+        sys.modules.pop(module, None)
+
+    spec = _find_spec_without_import("source_provider.logic.backends.provider")
+
+    assert spec is not None
+    assert spec.origin and spec.origin.endswith("logic/backends/provider.py")
+    assert "source_provider" not in sys.modules
+
+
 def test_leanstral_route_is_discoverable_through_accelerator_source_wrapper(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -341,18 +373,20 @@ def test_leanstral_route_is_discoverable_through_accelerator_source_wrapper(
     outer = tmp_path / "ipfs_accelerate_py"
     inner = outer / "ipfs_accelerate_py"
     supervisor = inner / "agent_supervisor"
-    supervisor.mkdir(parents=True)
+    proof = supervisor / "proof"
+    proof.mkdir(parents=True)
     for initializer in (
         outer / "__init__.py",
         inner / "__init__.py",
         supervisor / "__init__.py",
+        proof / "__init__.py",
     ):
         initializer.write_text(
             "raise RuntimeError('source package initializer executed')\n",
             encoding="utf-8",
         )
     (inner / "llm_router.py").write_text("ROUTER = True\n", encoding="utf-8")
-    (supervisor / "leanstral_proof_provider.py").write_text(
+    (proof / "leanstral_proof_provider.py").write_text(
         "PROVIDER = True\n",
         encoding="utf-8",
     )

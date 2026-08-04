@@ -1,0 +1,924 @@
+{
+  "schema_version": "formal-verification-readiness-baseline/v1",
+  "interface": "FormalVerificationReadinessBaseline@1",
+  "goal_id": "FVT-G005",
+  "task_id": "FVT-001",
+  "program": "formal-verification-tactician/readiness",
+  "description": "Current-tree, machine-specific production-readiness ledger for the formal verification tactician program. Distinguishes implemented, fixture-tested, live-tested, installed, usable, production-certified, unsupported, and unavailable capabilities using bounded probes only.",
+  "observed_at": "2026-07-30T20:00:00Z",
+  "binding_mode": "current_tree_bounded_probes",
+  "source": {
+    "parent_commit": "f3a4fb3da9076a7a6fd59c2d36f8de7a10257e46",
+    "parent_tree": "dd3155f425e7534d7b318e60c589ebaecfde6d98",
+    "datasets_gitlink": "7e554b3d0fb880d497e7a269f480c7ad8aa8d617",
+    "datasets_embedded_head": "7e554b3d0fb880d497e7a269f480c7ad8aa8d617",
+    "datasets_origin_main": "7e554b3d0fb880d497e7a269f480c7ad8aa8d617",
+    "binding_mode": "current_tree_content_identity"
+  },
+  "status_ladder": {
+    "implemented": "Checked-in source, adapter, or public surface exists for the capability.",
+    "fixture_tested": "At least one checked-in offline/fixture test exercises the surface without requiring live external tools.",
+    "live_tested": "A bounded live probe or live integration on this machine produced an exact tool identity and outcome under recorded bounds.",
+    "installed": "The required executable, package, or kernel is present with a probeable identity on this machine. PATH presence alone is insufficient; a successful identity probe is required.",
+    "usable": "Installed and identity-probed with no toolchain/shim mismatch, and a bounded offline invocation can complete without network install or download.",
+    "production_certified": "Usable plus hermetic offline certification receipt for the exact tool identity, corpus, and property class. Synthetic counters never qualify.",
+    "unsupported": "Repository intentionally does not claim the semantic fragment, language, or authority class; absence is an explicit product boundary.",
+    "unavailable": "Required tool, kernel, model, or environment dependency is missing or not probeable on this machine."
+  },
+  "inference_policy": {
+    "path_presence_is_not_usability": true,
+    "source_presence_is_not_usability": true,
+    "path_presence_is_not_installed": true,
+    "usability_requires": [
+      "installed",
+      "exact_executable_or_package_identity",
+      "no_toolchain_shim_mismatch",
+      "offline_bounded_probe_success"
+    ],
+    "production_certified_requires": [
+      "usable",
+      "live_tested",
+      "hermetic_offline_certificate",
+      "non_synthetic_outcome_evidence"
+    ],
+    "synthetic_evidence_cannot_certify_production": true,
+    "offline_fixture_evidence_is_not_live": true,
+    "lfv_completion_is_not_deployment_certificate": true,
+    "network_download_during_verification_forbidden": true
+  },
+  "tree_alignment": {
+    "description": "Parent commit, datasets gitlink, embedded HEAD, and origin/main are recorded as independent dimensions. Alignment of one never implies the others.",
+    "dimensions": [
+      "parent_commit",
+      "datasets_gitlink",
+      "datasets_embedded_head",
+      "datasets_origin_main",
+      "datasets_cleanliness"
+    ],
+    "parent": {
+      "path": ".",
+      "commit": "f3a4fb3da9076a7a6fd59c2d36f8de7a10257e46",
+      "tree": "dd3155f425e7534d7b318e60c589ebaecfde6d98"
+    },
+    "gitlink": {
+      "path": "ipfs_datasets_py",
+      "mode": "160000",
+      "commit": "7e554b3d0fb880d497e7a269f480c7ad8aa8d617"
+    },
+    "embedded_checkout": {
+      "path": "ipfs_datasets_py",
+      "head": "7e554b3d0fb880d497e7a269f480c7ad8aa8d617",
+      "clean": true,
+      "matches_gitlink": true
+    },
+    "origin_main": {
+      "ref": "origin/main",
+      "commit": "7e554b3d0fb880d497e7a269f480c7ad8aa8d617",
+      "matches_gitlink": true,
+      "matches_embedded_head": true,
+      "publication_note": "origin/main is a local remote-tracking ref only; this ledger never fetches. Publication lag, when present, is a separate gate from semantic implementation."
+    },
+    "aligned": true,
+    "diagnostics": []
+  },
+  "detection_rules": {
+    "lean_shim_toolchain_mismatch": {
+      "id": "lean_shim_toolchain_mismatch",
+      "severity": "high",
+      "description": "Elan/default selection names a Lean toolchain that is not fully installed offline, so `lean`/`lake` on PATH can still trigger a network download during reconstruction.",
+      "inputs": [
+        "selected_toolchain",
+        "installed_toolchains",
+        "lean_executable_path",
+        "lean_version_string"
+      ],
+      "predicate": "selected_toolchain is non-empty AND selected_toolchain not in installed_toolchains",
+      "effect_on_status": {
+        "installed": "may remain true when a partial shim or alternate toolchain is present",
+        "usable": false,
+        "production_certified": false
+      },
+      "audit_observation": "Audit host selected Lean 4.32.2 via elan while only toolchains through 4.32.1 were offline-installed; reconstruction attempts attempted a network download and failed. This class of mismatch must fail closed without install/fetch."
+    }
+  },
+  "tools": [
+    {
+      "tool_id": "z3",
+      "category": "smt_solver",
+      "repository_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/z3"
+      ],
+      "probe": {
+        "method": "bounded_version_argv",
+        "argv": ["--version"],
+        "timeout_seconds": 2,
+        "network": false
+      },
+      "identity": {
+        "executable_path": "/home/barberb/.local/bin/z3",
+        "version_string": "Z3 version 4.16.0 - 64 bit",
+        "package_or_toolchain": "z3-4.16.0"
+      },
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": true,
+        "live_tested": true,
+        "installed": true,
+        "usable": true,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": false
+      },
+      "evidence_class": "live",
+      "notes": "Live version probe succeeded. Production certification awaits hermetic offline toolchain lock and matrix receipt (FVT-006/FVT-030)."
+    },
+    {
+      "tool_id": "cvc5",
+      "category": "smt_solver",
+      "repository_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/cvc5"
+      ],
+      "probe": {
+        "method": "bounded_version_argv",
+        "argv": ["--version"],
+        "timeout_seconds": 2,
+        "network": false
+      },
+      "identity": {
+        "executable_path": "/home/barberb/.local/bin/cvc5",
+        "version_string": "This is cvc5 version 1.3.3 [git 8ff882e on branch HEAD]",
+        "package_or_toolchain": "cvc5-1.3.3"
+      },
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": true,
+        "live_tested": true,
+        "installed": true,
+        "usable": true,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": false
+      },
+      "evidence_class": "live",
+      "notes": "Live version probe succeeded. Not production-certified without hermetic lock certificate."
+    },
+    {
+      "tool_id": "lean",
+      "category": "proof_kernel",
+      "repository_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/kernel",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/hammers/reconstructors/lean.py"
+      ],
+      "probe": {
+        "method": "bounded_version_and_elan_toolchain_census",
+        "argv": ["--version"],
+        "timeout_seconds": 5,
+        "network": false,
+        "toolchain_source": "filesystem:~/.elan/toolchains"
+      },
+      "identity": {
+        "executable_path": "/home/barberb/.elan/bin/lean",
+        "version_string": "Lean (version 4.32.2, aarch64-unknown-linux-gnu, commit f3b06c705e6c85f5314019d5d3baab0fec5b580c, Release)",
+        "package_or_toolchain": "leanprover/lean4:v4.32.2",
+        "selected_toolchain": "leanprover/lean4:v4.32.2",
+        "installed_toolchains": [
+          "leanprover/lean4:v4.29.0",
+          "leanprover/lean4:v4.29.1",
+          "leanprover/lean4:v4.30.0",
+          "leanprover/lean4:v4.31.0",
+          "leanprover/lean4:v4.32.0",
+          "leanprover/lean4:v4.32.1",
+          "leanprover/lean4:v4.32.2"
+        ],
+        "shim_toolchain_mismatch": false
+      },
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": true,
+        "live_tested": true,
+        "installed": true,
+        "usable": true,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": false
+      },
+      "evidence_class": "live",
+      "notes": "Current host has selected toolchain offline-installed, so shim mismatch is false here. Detection rule lean_shim_toolchain_mismatch remains mandatory: selected-not-in-installed must force usable=false. Audit host previously observed mismatch (4.32.2 selected / only through 4.32.1 installed)."
+    },
+    {
+      "tool_id": "lake",
+      "category": "proof_build",
+      "repository_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/kernel"
+      ],
+      "probe": {
+        "method": "bounded_version_argv",
+        "argv": ["--version"],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "identity": {
+        "executable_path": "/home/barberb/.elan/bin/lake",
+        "version_string": "Lake version 5.0.0-src+f3b06c7 (Lean version 4.32.2)",
+        "package_or_toolchain": "lake-5.0.0+lean-4.32.2"
+      },
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": true,
+        "live_tested": true,
+        "installed": true,
+        "usable": true,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": false
+      },
+      "evidence_class": "live",
+      "notes": "Coupled to lean toolchain selection; inherits shim-mismatch fail-closed policy."
+    },
+    {
+      "tool_id": "java",
+      "category": "runtime",
+      "repository_paths": [],
+      "probe": {
+        "method": "bounded_version_argv",
+        "argv": ["-version"],
+        "timeout_seconds": 2,
+        "network": false
+      },
+      "identity": {
+        "executable_path": "/usr/bin/java",
+        "version_string": "openjdk version \"1.8.0_482\"",
+        "package_or_toolchain": "openjdk-1.8.0_482"
+      },
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": false,
+        "live_tested": true,
+        "installed": true,
+        "usable": true,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": false
+      },
+      "evidence_class": "live",
+      "notes": "Present as host runtime support for optional JVM tools; not a proof authority."
+    },
+    {
+      "tool_id": "tlc",
+      "category": "model_checker",
+      "repository_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/tla"
+      ],
+      "probe": {
+        "method": "bounded_which_and_version",
+        "argv": ["-help"],
+        "timeout_seconds": 2,
+        "network": false
+      },
+      "identity": {
+        "executable_path": null,
+        "version_string": null,
+        "package_or_toolchain": null
+      },
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": true,
+        "live_tested": false,
+        "installed": false,
+        "usable": false,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": true
+      },
+      "evidence_class": "offline",
+      "notes": "Adapter source present; executable absent. Source/PATH absence reported as unavailable, not usable."
+    },
+    {
+      "tool_id": "coqc",
+      "category": "proof_kernel",
+      "repository_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/hammers/reconstructors/coq.py"
+      ],
+      "probe": {
+        "method": "bounded_which_and_version",
+        "argv": ["--version"],
+        "timeout_seconds": 2,
+        "network": false
+      },
+      "identity": {
+        "executable_path": null,
+        "version_string": null,
+        "package_or_toolchain": null
+      },
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": true,
+        "live_tested": false,
+        "installed": false,
+        "usable": false,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": true
+      },
+      "evidence_class": "offline",
+      "notes": "Rocq/Coq reconstructor declared; coqc not installed on this host."
+    },
+    {
+      "tool_id": "isabelle",
+      "category": "proof_kernel",
+      "repository_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/hammers/reconstructors/isabelle.py"
+      ],
+      "probe": {
+        "method": "bounded_which_and_version",
+        "argv": ["version"],
+        "timeout_seconds": 2,
+        "network": false
+      },
+      "identity": {
+        "executable_path": null,
+        "version_string": null,
+        "package_or_toolchain": null
+      },
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": true,
+        "live_tested": false,
+        "installed": false,
+        "usable": false,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": true
+      },
+      "evidence_class": "offline",
+      "notes": "Isabelle reconstructor declared; executable unavailable."
+    },
+    {
+      "tool_id": "vampire",
+      "category": "atp",
+      "repository_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/atp",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/CEC/provers/vampire_adapter.py"
+      ],
+      "probe": {
+        "method": "bounded_which_and_version",
+        "argv": ["--version"],
+        "timeout_seconds": 2,
+        "network": false
+      },
+      "identity": {
+        "executable_path": null,
+        "version_string": null,
+        "package_or_toolchain": null
+      },
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": true,
+        "live_tested": false,
+        "installed": false,
+        "usable": false,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": true
+      },
+      "evidence_class": "offline",
+      "notes": "ATP adapter present; Vampire binary unavailable."
+    },
+    {
+      "tool_id": "eprover",
+      "category": "atp",
+      "repository_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/atp"
+      ],
+      "probe": {
+        "method": "bounded_which_and_version",
+        "argv": ["--version"],
+        "timeout_seconds": 2,
+        "network": false
+      },
+      "identity": {
+        "executable_path": null,
+        "version_string": null,
+        "package_or_toolchain": null
+      },
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": false,
+        "live_tested": false,
+        "installed": false,
+        "usable": false,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": true
+      },
+      "evidence_class": "offline",
+      "notes": "E Prover not present; availability must not be inferred from ATP source packages."
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "capability.smt.z3",
+      "component": "Z3 backend adapter and public solver route",
+      "tool_ids": ["z3"],
+      "repository_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/z3",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py"
+      ],
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": true,
+        "live_tested": true,
+        "installed": true,
+        "usable": true,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": false
+      },
+      "evidence_class": "live",
+      "evidence": {
+        "fixture_tests": [
+          "ipfs_datasets_py/tests/fixtures/logic/software_verification/capability_matrix.json"
+        ],
+        "live_probes": ["tool:z3"],
+        "synthetic": false
+      },
+      "notes": "Live SMT foundation is real; production certification deferred to hermetic toolchain matrix."
+    },
+    {
+      "id": "capability.smt.cvc5",
+      "component": "CVC5 backend adapter and public solver route",
+      "tool_ids": ["cvc5"],
+      "repository_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/cvc5",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py"
+      ],
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": true,
+        "live_tested": true,
+        "installed": true,
+        "usable": true,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": false
+      },
+      "evidence_class": "live",
+      "evidence": {
+        "fixture_tests": [
+          "ipfs_datasets_py/tests/fixtures/logic/software_verification/capability_matrix.json"
+        ],
+        "live_probes": ["tool:cvc5"],
+        "synthetic": false
+      },
+      "notes": "Same readiness posture as Z3."
+    },
+    {
+      "id": "capability.kernel.lean",
+      "component": "Lean reconstruction / kernel path",
+      "tool_ids": ["lean", "lake"],
+      "repository_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/kernel",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/hammers/reconstructors/lean.py"
+      ],
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": true,
+        "live_tested": true,
+        "installed": true,
+        "usable": true,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": false
+      },
+      "evidence_class": "live",
+      "evidence": {
+        "fixture_tests": [
+          "ipfs_datasets_py/tests/fixtures/logic/software_verification/capability_matrix.json"
+        ],
+        "live_probes": ["tool:lean", "tool:lake", "detection:lean_shim_toolchain_mismatch"],
+        "synthetic": false
+      },
+      "notes": "Usability is gated by lean_shim_toolchain_mismatch detection, never by PATH alone."
+    },
+    {
+      "id": "capability.model_checker.tla",
+      "component": "TLA-family model checking adapters",
+      "tool_ids": ["tlc"],
+      "repository_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/tla"
+      ],
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": true,
+        "live_tested": false,
+        "installed": false,
+        "usable": false,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": true
+      },
+      "evidence_class": "offline",
+      "evidence": {
+        "fixture_tests": [
+          "ipfs_datasets_py/tests/fixtures/logic/software_verification/capability_matrix.json"
+        ],
+        "live_probes": [],
+        "synthetic": false
+      },
+      "notes": "Repository declares TLA adapters; host lacks TLC. Unavailable, not usable."
+    },
+    {
+      "id": "capability.atp.external",
+      "component": "External ATP backends (Vampire/E)",
+      "tool_ids": ["vampire", "eprover"],
+      "repository_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/atp"
+      ],
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": true,
+        "live_tested": false,
+        "installed": false,
+        "usable": false,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": true
+      },
+      "evidence_class": "offline",
+      "evidence": {
+        "fixture_tests": [],
+        "live_probes": [],
+        "synthetic": false
+      },
+      "notes": "ATP sources exist; binaries unavailable on this machine."
+    },
+    {
+      "id": "capability.pipeline.source_vc_smt",
+      "component": "Source snapshot to VC to SMT vertical slice",
+      "tool_ids": ["z3", "cvc5"],
+      "repository_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/vc.py",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/source_adapters.py"
+      ],
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": true,
+        "live_tested": false,
+        "installed": true,
+        "usable": false,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": false
+      },
+      "evidence_class": "offline",
+      "evidence": {
+        "fixture_tests": [],
+        "live_probes": [],
+        "synthetic": false
+      },
+      "notes": "Leaves exist (source adapters, VC generation, SMT compilers) without a production bridge that generates its own witness end-to-end (FVT-010)."
+    },
+    {
+      "id": "capability.receipt.verify_and_attest",
+      "component": "Receipt verification and attestation authority boundary",
+      "tool_ids": [],
+      "repository_paths": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/receipts.py"
+      ],
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": true,
+        "live_tested": false,
+        "installed": true,
+        "usable": false,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": false
+      },
+      "evidence_class": "offline",
+      "evidence": {
+        "fixture_tests": [
+          "ipfs_datasets_py/tests/unit/logic/test_verification_receipt_adversarial.py",
+          "test/api/test_logic_receipt_authority_boundary.py"
+        ],
+        "live_probes": [],
+        "synthetic": false
+      },
+      "notes": "FVT-003 replaced permissive structural acceptance with typed fail-closed dispatch and adversarial binding tests. This offline baseline does not itself claim live or production certification."
+    },
+    {
+      "id": "capability.counterexample.public_boundary",
+      "component": "Secret-safe public counterexample envelope",
+      "tool_ids": [],
+      "repository_paths": [
+        "ipfs_accelerate_py/agent_supervisor/proof/formal_counterexamples.py",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py"
+      ],
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": true,
+        "live_tested": false,
+        "installed": true,
+        "usable": false,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": false
+      },
+      "evidence_class": "offline",
+      "evidence": {
+        "fixture_tests": [
+          "ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py",
+          "test/api/test_counterexample_cross_repository_contract.py"
+        ],
+        "live_probes": [],
+        "synthetic": false
+      },
+      "notes": "FVT-002 unified datasets projections with the supervisor semantic boundary and strips raw, hidden-witness, credential, and private channels. This offline baseline does not itself claim live or production certification."
+    },
+    {
+      "id": "capability.replanner.verifier_backed_closure",
+      "component": "Formal replanner counterexample closure",
+      "tool_ids": [],
+      "repository_paths": [
+        "ipfs_accelerate_py/agent_supervisor/planning/formal_replanner.py"
+      ],
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": true,
+        "live_tested": false,
+        "installed": true,
+        "usable": false,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": false
+      },
+      "evidence_class": "offline",
+      "evidence": {
+        "fixture_tests": [
+          "test/api/test_agent_supervisor_formal_replanner_verifier_closure.py"
+        ],
+        "live_probes": [],
+        "synthetic": false
+      },
+      "notes": "FVT-009 keeps structural repair distinct from closure and requires a fresh verifier receipt bound to the repaired tree, property, assumptions, bounds, tool, policy, and plan. This offline baseline does not itself claim live or production certification."
+    },
+    {
+      "id": "capability.examples.software_verification",
+      "component": "Runnable software-verification examples",
+      "tool_ids": [],
+      "repository_paths": [
+        "ipfs_datasets_py/examples/logic/software_verification/manifest.json"
+      ],
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": true,
+        "live_tested": false,
+        "installed": true,
+        "usable": false,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": false
+      },
+      "evidence_class": "synthetic",
+      "evidence": {
+        "fixture_tests": [
+          "ipfs_datasets_py/examples/logic/software_verification/manifest.json"
+        ],
+        "live_probes": [],
+        "synthetic": true
+      },
+      "notes": "Manifest and some readiness metrics still rely on synthetic or missing sources; labeled synthetic and cannot production-certify."
+    },
+    {
+      "id": "capability.lfv.completion_receipt",
+      "component": "LFV program completion receipt",
+      "tool_ids": [],
+      "repository_paths": [
+        "docs/architecture/logic_formal_verification_expansion_completion_receipt.json"
+      ],
+      "statuses": {
+        "implemented": true,
+        "fixture_tested": true,
+        "live_tested": false,
+        "installed": true,
+        "usable": true,
+        "production_certified": false,
+        "unsupported": false,
+        "unavailable": false
+      },
+      "evidence_class": "offline",
+      "evidence": {
+        "fixture_tests": [
+          "test/api/test_logic_formal_verification_completion.py"
+        ],
+        "live_probes": [],
+        "synthetic": false
+      },
+      "notes": "LFV completion certifies repository artifacts and contracts, not machine-specific production deployment of every external prover."
+    },
+    {
+      "id": "capability.frontend.rust",
+      "component": "Rust source frontend",
+      "tool_ids": [],
+      "repository_paths": [],
+      "statuses": {
+        "implemented": false,
+        "fixture_tested": false,
+        "live_tested": false,
+        "installed": false,
+        "usable": false,
+        "production_certified": false,
+        "unsupported": true,
+        "unavailable": false
+      },
+      "evidence_class": "offline",
+      "evidence": {
+        "fixture_tests": [],
+        "live_probes": [],
+        "synthetic": false
+      },
+      "notes": "Explicit unsupported semantic boundary until a frontend with declared profile lands (FVT-016 family)."
+    }
+  ],
+  "evidence_labels": {
+    "synthetic": [
+      "capability.examples.software_verification",
+      "synthetic_benchmark_outcome_distributions",
+      "hard_zero_security_counters_without_live_receipts"
+    ],
+    "offline": [
+      "capability.model_checker.tla",
+      "capability.atp.external",
+      "capability.receipt.verify_and_attest",
+      "capability.counterexample.public_boundary",
+      "capability.lfv.completion_receipt",
+      "capability_matrix.runtime_probed_rows"
+    ],
+    "live": [
+      "tool:z3",
+      "tool:cvc5",
+      "tool:lean",
+      "tool:lake",
+      "tool:java"
+    ]
+  },
+  "known_findings": [
+    {
+      "id": "lean_shim_toolchain_mismatch",
+      "severity": "high",
+      "status": "detection_required",
+      "summary": "Selected Lean toolchain may not match offline-installed toolchains; PATH presence of lean/lake is not usability.",
+      "detection_rule": "detection_rules.lean_shim_toolchain_mismatch",
+      "current_host_mismatch": false
+    },
+    {
+      "id": "receipt_verification_fail_open",
+      "severity": "p0",
+      "status": "resolved",
+      "summary": "verify_receipt rejected empty, unknown-schema, forged-authority, stale, and binding-mismatched receipts after FVT-003.",
+      "capability_id": "capability.receipt.verify_and_attest",
+      "resolution_evidence": {
+        "schema_version": "formal-verification-p0-resolution-evidence/v1",
+        "implementation_commits": [
+          {
+            "repository": "root",
+            "commit": "2296a8a1e7cb7335c7d5417eab74d41044d3dcc1"
+          },
+          {
+            "repository": "ipfs_datasets_py",
+            "commit": "a36437445a9ee2352de04a26eff0de5c802eb8d5"
+          },
+          {
+            "repository": "ipfs_datasets_py",
+            "commit": "89539f135b226826673fcae2e0845c1227c3f715"
+          }
+        ],
+        "implementation_artifacts": [
+          {
+            "repository": "ipfs_datasets_py",
+            "path": "ipfs_datasets_py/logic/verification_api.py",
+            "commit": "89539f135b226826673fcae2e0845c1227c3f715",
+            "content_identity": "sha256:5e1c931c3ff4eaecdb255eaacd0e0f5bed444fe31f7ac77039a83dc02ee91d3b"
+          }
+        ],
+        "validation_tests": [
+          {
+            "repository": "ipfs_datasets_py",
+            "path": "tests/unit/logic/test_verification_receipt_adversarial.py",
+            "commit": "a36437445a9ee2352de04a26eff0de5c802eb8d5",
+            "content_identity": "sha256:86d003c9598f2344d5c2b352795600194e2c99f722aa922e563bc67e44aed5a4"
+          },
+          {
+            "repository": "root",
+            "path": "test/api/test_logic_receipt_authority_boundary.py",
+            "commit": "2296a8a1e7cb7335c7d5417eab74d41044d3dcc1",
+            "content_identity": "sha256:8d07842785c02ff120edc28e2a05d60210d6e8e16c1ba8f329e04da3418dbd72"
+          }
+        ]
+      }
+    },
+    {
+      "id": "public_counterexample_raw_leak",
+      "severity": "p0",
+      "status": "resolved",
+      "summary": "Public datasets and supervisor projections now share a secret-safe semantic boundary and do not re-emit private channels.",
+      "capability_id": "capability.counterexample.public_boundary",
+      "resolution_evidence": {
+        "schema_version": "formal-verification-p0-resolution-evidence/v1",
+        "implementation_commits": [
+          {
+            "repository": "root",
+            "commit": "d024bb38fe123f79a0e6327545b09755c89e476a"
+          },
+          {
+            "repository": "ipfs_datasets_py",
+            "commit": "194f9cbcc64bb07cf4849485a7665e9285ee71c9"
+          },
+          {
+            "repository": "ipfs_datasets_py",
+            "commit": "89539f135b226826673fcae2e0845c1227c3f715"
+          }
+        ],
+        "implementation_artifacts": [
+          {
+            "repository": "ipfs_datasets_py",
+            "path": "ipfs_datasets_py/logic/verification_api.py",
+            "commit": "89539f135b226826673fcae2e0845c1227c3f715",
+            "content_identity": "sha256:5e1c931c3ff4eaecdb255eaacd0e0f5bed444fe31f7ac77039a83dc02ee91d3b"
+          },
+          {
+            "repository": "ipfs_datasets_py",
+            "path": "ipfs_datasets_py/logic/software_verification/counterexamples/contracts.py",
+            "commit": "194f9cbcc64bb07cf4849485a7665e9285ee71c9",
+            "content_identity": "sha256:a42e976923b854724a4585f108e4272586d8a22c9694551412bd12055cc0b4d7"
+          }
+        ],
+        "validation_tests": [
+          {
+            "repository": "ipfs_datasets_py",
+            "path": "tests/unit/logic/test_counterexample_public_boundary.py",
+            "commit": "194f9cbcc64bb07cf4849485a7665e9285ee71c9",
+            "content_identity": "sha256:115c75ce3c35239d7f1de9df984f5a68c2481fae8ce90dcb31a006383a776712"
+          },
+          {
+            "repository": "root",
+            "path": "test/api/test_counterexample_cross_repository_contract.py",
+            "commit": "d024bb38fe123f79a0e6327545b09755c89e476a",
+            "content_identity": "sha256:4b850fae71f8d43cad2325e6c94a1d9149b878e363a9a8928d7b1fe2840d2fab"
+          }
+        ]
+      }
+    },
+    {
+      "id": "structural_repair_as_closure",
+      "severity": "p0",
+      "status": "resolved",
+      "summary": "Formal replanning now requires a fresh, fully bound verifier receipt before counterexample closure.",
+      "capability_id": "capability.replanner.verifier_backed_closure",
+      "resolution_evidence": {
+        "schema_version": "formal-verification-p0-resolution-evidence/v1",
+        "implementation_commits": [
+          {
+            "repository": "root",
+            "commit": "a98029cfd178f814ce23c2a0027ba425ee8b0719"
+          }
+        ],
+        "implementation_artifacts": [
+          {
+            "repository": "root",
+            "path": "ipfs_accelerate_py/agent_supervisor/planning/formal_replanner.py",
+            "commit": "a98029cfd178f814ce23c2a0027ba425ee8b0719",
+            "content_identity": "sha256:e2dc95be602210b2afd6f2c80a45f42f097342d5222b613f4afb61cf3a16ba89"
+          }
+        ],
+        "validation_tests": [
+          {
+            "repository": "root",
+            "path": "test/api/test_agent_supervisor_formal_replanner_verifier_closure.py",
+            "commit": "a98029cfd178f814ce23c2a0027ba425ee8b0719",
+            "content_identity": "sha256:666580020f916ce3b6503d9ca2f75adb4a1cdf426ac078f2cbb9ce1ca1941653"
+          }
+        ]
+      }
+    },
+    {
+      "id": "synthetic_examples_and_metrics",
+      "severity": "medium",
+      "status": "open",
+      "summary": "Examples and some readiness metrics remain synthetic/offline and must stay labeled.",
+      "capability_id": "capability.examples.software_verification"
+    }
+  ],
+  "summary": {
+    "tool_count": 10,
+    "capability_count": 12,
+    "usable_tools": ["z3", "cvc5", "lean", "lake", "java"],
+    "unavailable_tools": ["tlc", "coqc", "isabelle", "vampire", "eprover"],
+    "production_certified_count": 0,
+    "synthetic_capability_ids": ["capability.examples.software_verification"],
+    "alignment_aligned": true,
+    "lean_shim_mismatch_on_host": false,
+    "never_infer_usability_from_path_or_source": true
+  }
+}

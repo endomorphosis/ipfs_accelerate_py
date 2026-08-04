@@ -16,7 +16,7 @@ identifier is unchanged (stale-slot regression test).
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from hashlib import sha256
 import json
@@ -434,6 +434,14 @@ class PrecomputedVoiceAudioResolver:
                 # Refuse to index rows whose declared text hash does not match
                 # the spoken text — exact resolver integrity gate.
                 continue
+            metadata = (
+                dict(row["metadata"])
+                if isinstance(row.get("metadata"), Mapping)
+                else {}
+            )
+            for key in ("segment_kind", "slot_name", "slot_value"):
+                if row.get(key) is not None:
+                    metadata[key] = row.get(key)
             artifact = PrecomputedAudioArtifact(
                 audio_id=str(row.get("audio_id") or content_sha),
                 spoken_text=spoken,
@@ -451,11 +459,7 @@ class PrecomputedVoiceAudioResolver:
                 ),
                 template_id=str(row["template_id"]) if row.get("template_id") else None,
                 response_id=str(row["response_id"]) if row.get("response_id") else None,
-                metadata={
-                    "segment_kind": row.get("segment_kind"),
-                    "slot_name": row.get("slot_name"),
-                    "slot_value": row.get("slot_value"),
-                },
+                metadata=metadata,
             )
             resolver.index_artifact(artifact)
         return resolver
@@ -468,6 +472,29 @@ class PrecomputedVoiceAudioResolver:
         self._by_text_sha.setdefault(artifact.spoken_text_sha256, []).append(artifact)
         if artifact.template_id:
             self._by_template_id.setdefault(artifact.template_id, []).append(artifact)
+
+    @property
+    def artifact_count(self) -> int:
+        """Return the number of exact synthesis keys currently indexed."""
+
+        return len(self._by_match_key)
+
+    @property
+    def default_synthesis_identity(self) -> SynthesisIdentity | None:
+        """Return the one shared identity when every indexed artifact agrees.
+
+        Runtime-manifest consumers can use this value to fill omitted request
+        defaults without weakening exact matching.  Mixed-identity releases
+        deliberately return ``None`` so the caller must choose explicitly.
+        """
+
+        identities = {
+            artifact.synthesis_identity.identity_digest(): artifact.synthesis_identity
+            for artifact in self._by_match_key.values()
+        }
+        if len(identities) != 1:
+            return None
+        return next(iter(identities.values()))
 
     def resolve(
         self,

@@ -10,6 +10,7 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
     DELTA_RETRY_EVIDENCE_ID,
     ContextCompiler,
+    ContextDeltaBudgetError,
     ContextDeltaError,
     ContextDeltaReceipt,
     ChangedTreeContextError,
@@ -426,7 +427,7 @@ def test_delta_rejects_requiredness_downgrade_and_full_context_overflow() -> Non
         100 - base_only + 1,
         required=True,
     )
-    with pytest.raises(ContextDeltaError, match="full context exceeds"):
+    with pytest.raises(ContextDeltaBudgetError, match="full context exceeds"):
         tight.compile_delta(
             tight_parent,
             evidence=(base_required, overflowing),
@@ -825,6 +826,97 @@ def test_implementation_daemon_dispatches_delta_and_reuses_diagnostic(
     assert repeated.receipt_id == diagnostic.receipt_id
     with pytest.raises(ImplementationRetryDeferred, match="backoff"):
         restarted._build_implementation_prompt(task, attempt=3)
+
+
+def test_implementation_retry_compacts_oversized_diagnostic_projection(
+    tmp_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Context Test"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("fixture\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True)
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    task = PortalTask(
+        task_id="ASI-007",
+        title="Compact a verbose retry diagnosis",
+        status="ready",
+        completion="manual",
+        priority="P1",
+        track="token-efficiency",
+        outputs=["src/context.py"],
+        validation=["pytest test_context.py"],
+        acceptance="Retry evidence remains actionable.",
+    )
+    budget = ContextBudget(
+        max_input_tokens=4_096,
+        reserved_output_tokens=100,
+        reserved_tool_tokens=20,
+        max_items=64,
+    )
+    tokenizer = lambda text: max(1, len(text.encode("utf-8")) // 4)
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implementation_log_dir=state_dir / "logs",
+        implementation_context_budget=budget,
+        implementation_context_tokenizer=tokenizer,
+        implementation_provider_context_window=4_500,
+    )
+
+    daemon._build_implementation_prompt(task, attempt=1)
+    daemon._persist_implementation_context_receipt(task, attempt=1)
+    denied_paths = [
+        f"denied-{index:03d}-" + ("x" * 260)
+        for index in range(50)
+    ]
+    diagnostic = daemon.record_implementation_failure_context(
+        task,
+        {
+            "kind": "validation_failure",
+            "returncode": 78,
+            "failure_review": {
+                "accepted": False,
+                "denied_paths": denied_paths,
+            },
+        },
+        changed_files=("src/context.py",),
+    )
+    restarted = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "restarted-state.json",
+        strategy_path=state_dir / "restarted-strategy.json",
+        events_path=state_dir / "restarted-events.jsonl",
+        repo_root=repo,
+        implementation_log_dir=state_dir / "logs",
+        implementation_context_budget=budget,
+        implementation_context_tokenizer=tokenizer,
+        implementation_provider_context_window=4_500,
+    )
+
+    retry_prompt = restarted._build_implementation_prompt(task, attempt=2)
+    wire = json.loads(retry_prompt)
+
+    assert wire["schema"].endswith("retry-context-capsule@1")
+    assert wire["diagnostic_receipt_id"] == diagnostic.receipt_id
+    assert "denied-000-" in retry_prompt
+    assert "denied-049-" not in retry_prompt
+    assert restarted._last_implementation_retry is not None
 
 
 def test_delta_result_exposes_exact_invariant_core_preservation() -> None:

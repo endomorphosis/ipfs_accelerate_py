@@ -1,0 +1,724 @@
+"""Focused tests for the reusable Hugging Face Space compatibility client."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+from pathlib import Path
+from typing import Mapping
+from unittest.mock import Mock
+
+import pytest
+import requests
+
+import ipfs_accelerate_py
+from ipfs_accelerate_py.hf_space_inference import (
+    BatchProcessor,
+    BatchState,
+    HFBucketBackend,
+    HFBucketBackendError,
+    HFSpaceClient,
+    RefreshableGradioFile,
+    is_hf_space_transport_error,
+    is_retryable_hf_space_error,
+    is_stale_gradio_file_error,
+)
+
+
+def _response(payload: object = None) -> Mock:
+    response = Mock()
+    response.json.return_value = payload
+    response.headers = {}
+    return response
+
+
+def _indextts_config() -> dict[str, object]:
+    return {
+        "dependencies": [
+            {
+                "id": 5,
+                "api_name": False,
+                "label": "update prompt audio",
+                "inputs": [],
+            },
+            {
+                "id": 6,
+                "api_name": "gen_single",
+                "label": "Generate a single response",
+                "component_name": "button",
+                "inputs": list(range(24)),
+            },
+        ]
+    }
+
+
+def test_package_exports_compatibility_client() -> None:
+    assert ipfs_accelerate_py.HFSpaceClient is HFSpaceClient
+    assert ipfs_accelerate_py.HFBucketBackend is HFBucketBackend
+    assert ipfs_accelerate_py.HFBucketBackendError is HFBucketBackendError
+    assert ipfs_accelerate_py.RefreshableGradioFile is RefreshableGradioFile
+
+
+def test_space_error_classifier_covers_stream_disconnect_and_stale_upload() -> None:
+    stream_error = RuntimeError("Response ended prematurely")
+    stale_upload = RuntimeError(
+        "FileNotFoundError: [Errno 2] No such file or directory: "
+        "'/tmp/gradio/session/reference.wav'"
+    )
+
+    assert is_hf_space_transport_error(stream_error)
+    assert is_stale_gradio_file_error(stale_upload)
+    assert is_retryable_hf_space_error(stream_error)
+    assert is_retryable_hf_space_error(stale_upload)
+    assert not is_retryable_hf_space_error(ValueError("invalid payload"))
+
+
+def test_refreshable_gradio_file_reuploads_before_retry() -> None:
+    upload_paths: list[str] = []
+    operation_paths: list[str] = []
+    delays: list[float] = []
+    retries: list[tuple[str, int]] = []
+
+    def upload() -> dict[str, object]:
+        path = f"/tmp/gradio/upload-{len(upload_paths) + 1}/reference.wav"
+        upload_paths.append(path)
+        return {"path": path, "meta": {"_type": "gradio.FileData"}}
+
+    def operation(reference: Mapping[str, object]) -> str:
+        path = str(reference["path"])
+        operation_paths.append(path)
+        if len(operation_paths) == 1:
+            raise RuntimeError(
+                f"FileNotFoundError: no such file or directory: {path}"
+            )
+        return "completed"
+
+    reference = RefreshableGradioFile(upload, sleeper=delays.append)
+    result = reference.run(
+        operation,
+        max_retries=1,
+        retry_backoff_seconds=0.25,
+        on_retry=lambda error, attempt: retries.append(
+            (type(error).__name__, attempt)
+        ),
+    )
+
+    assert result == "completed"
+    assert operation_paths == upload_paths
+    assert len(upload_paths) == 2
+    assert delays == [0.25]
+    assert retries == [("RuntimeError", 1)]
+
+
+def test_endpoint_contract_resolution_and_arity() -> None:
+    client = HFSpaceClient("https://example.hf.space", session=Mock())
+    config = _indextts_config()
+
+    assert client.dependency_api_names(config) == ["/gen_single"]
+    assert client.resolve_fn_index("/gen_single", config) == 6
+    assert client.resolve_fn_index(
+        "/missing",
+        config,
+        fallback_markers=("generate",),
+    ) == 6
+    assert client.lookup_dependency_input_count(6, config) == 24
+
+
+def test_config_is_cached_but_can_be_refreshed() -> None:
+    session = Mock()
+    session.get.return_value = _response(_indextts_config())
+    client = HFSpaceClient("https://example.hf.space", session=session)
+
+    first = client.get_config()
+    second = client.get_config()
+    refreshed = client.get_config(use_cache=False)
+
+    assert first is second
+    assert refreshed == first
+    assert session.get.call_count == 2
+    assert session.get.call_args_list[0].args == (
+        "https://example.hf.space/config",
+    )
+
+
+def test_upload_uses_gradio_api_and_preserves_multipart_boundary() -> None:
+    session = Mock()
+    session.post.return_value = _response(
+        [{"path": "/tmp/reference.wav", "orig_name": "reference.wav"}]
+    )
+    client = HFSpaceClient(
+        "https://example.hf.space/",
+        headers_factory=lambda: {
+            "Authorization": "Bearer test",
+            "Content-Type": "application/json",
+        },
+        session=session,
+    )
+
+    uploaded = client.upload_file(
+        "reference.wav",
+        b"RIFF",
+        "audio/wav",
+    )
+
+    assert uploaded[0]["path"] == "/tmp/reference.wav"
+    assert session.post.call_args.args[0] == (
+        "https://example.hf.space/gradio_api/upload"
+    )
+    headers = session.post.call_args.kwargs["headers"]
+    assert headers["Authorization"] == "Bearer test"
+    assert not any(key.lower() == "content-type" for key in headers)
+    assert session.post.call_args.kwargs["files"]["files"] == (
+        "reference.wav",
+        b"RIFF",
+        "audio/wav",
+    )
+
+
+def test_queue_join_and_sse_completion() -> None:
+    session = Mock()
+    session.post.return_value = _response({"event_id": "event-1"})
+    stream_response = _response()
+    stream_response.iter_lines.return_value = [
+        'data: {"msg":"estimation","rank":0}',
+        (
+            'data: {"msg":"process_completed","success":true,'
+            '"output":{"data":[{"path":"/tmp/result.wav"}]}}'
+        ),
+    ]
+    session.get.return_value = stream_response
+    client = HFSpaceClient("https://example.hf.space", session=session)
+
+    session_hash = client.queue_join(
+        6,
+        ["hello"],
+        session_hash="session with spaces",
+    )
+    result = client.wait_for_queue_result(
+        session_hash,
+        timeout_seconds=2,
+        poll_interval_seconds=0,
+    )
+
+    assert session_hash == "session with spaces"
+    join_payload = session.post.call_args.kwargs["json"]
+    assert join_payload == {
+        "data": ["hello"],
+        "fn_index": 6,
+        "session_hash": "session with spaces",
+    }
+    assert result["data"][0]["path"] == "/tmp/result.wav"
+    assert session.get.call_args.args[0].endswith(
+        "session_hash=session%20with%20spaces"
+    )
+
+
+def test_queue_stream_reconnects_same_session_after_chunk_truncation() -> None:
+    session = Mock()
+    session.post.return_value = _response({"event_id": "event-1"})
+    interrupted_response = _response()
+
+    def interrupted_events() -> object:
+        yield 'data: {"msg":"estimation","rank":0}'
+        raise requests.exceptions.ChunkedEncodingError(
+            "Response ended prematurely"
+        )
+
+    interrupted_response.iter_lines.return_value = interrupted_events()
+    completed_response = _response()
+    completed_response.iter_lines.return_value = [
+        (
+            'data: {"msg":"process_completed","success":true,'
+            '"output":{"data":[{"path":"/tmp/result.wav"}]}}'
+        ),
+    ]
+    session.get.side_effect = [interrupted_response, completed_response]
+    client = HFSpaceClient("https://example.hf.space", session=session)
+
+    session_hash = client.queue_join(
+        6,
+        ["hello"],
+        session_hash="stable-session",
+    )
+    result = client.wait_for_queue_result(
+        session_hash,
+        timeout_seconds=2,
+        poll_interval_seconds=0,
+    )
+
+    assert result["data"][0]["path"] == "/tmp/result.wav"
+    assert session.post.call_count == 1
+    assert session.get.call_count == 2
+    assert {
+        call.args[0] for call in session.get.call_args_list
+    } == {
+        (
+            "https://example.hf.space/gradio_api/queue/data?"
+            "session_hash=stable-session"
+        )
+    }
+
+
+def test_queue_failure_is_not_treated_as_a_cacheable_result() -> None:
+    with pytest.raises(RuntimeError, match="worker failed"):
+        HFSpaceClient._resolve_terminal_event(
+            {
+                "msg": "process_completed",
+                "success": False,
+                "output": {"error": "worker failed"},
+            },
+            operation="queue",
+        )
+
+
+def test_fetch_file_supports_inline_and_relative_gradio_urls() -> None:
+    session = Mock()
+    client = HFSpaceClient("https://example.hf.space", session=session)
+
+    inline = client.fetch_file(
+        {"name": "result.wav", "_inline_bytes": b"RIFF"}
+    )
+    assert inline == (b"RIFF", "audio/x-wav")
+    session.get.assert_not_called()
+
+    file_response = _response()
+    file_response.content = b"audio"
+    file_response.headers = {"Content-Type": "audio/mpeg"}
+    session.get.return_value = file_response
+    downloaded = client.fetch_file(
+        {"url": "/gradio_api/file=/tmp/result.mp3"}
+    )
+    assert downloaded == (b"audio", "audio/mpeg")
+    assert session.get.call_args.args[0] == (
+        "https://example.hf.space/gradio_api/file=/tmp/result.mp3"
+    )
+
+
+def test_bucket_exists_uses_current_read_only_hf_cli(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                [
+                    {
+                        "type": "file",
+                        "path": "run/audio/response.mp3",
+                        "size": 100,
+                    }
+                ]
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.hf_space_inference.subprocess.run",
+        fake_run,
+    )
+    backend = HFBucketBackend(
+        "hf://buckets/Publicus/abby-voice/run",
+        hf_token="test-token",
+    )
+
+    assert backend.exists("audio/response.mp3") is True
+    assert calls == [
+        [
+            "hf",
+            "buckets",
+            "list",
+            (
+                "hf://buckets/Publicus/abby-voice/run/"
+                "audio/response.mp3"
+            ),
+            "--json",
+        ]
+    ]
+    assert "ls-lh" not in calls[0]
+
+
+def test_bucket_missing_object_and_recursive_listing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    responses = iter(
+        [
+            subprocess.CompletedProcess([], 0, stdout="", stderr=""),
+            subprocess.CompletedProcess(
+                [],
+                0,
+                stdout=json.dumps(
+                    [
+                        {"type": "file", "path": "run/audio/b.mp3"},
+                        {"type": "directory", "path": "run/audio"},
+                        {"type": "file", "path": "run/audio/a.mp3"},
+                    ]
+                ),
+                stderr="",
+            ),
+        ]
+    )
+
+    def fake_run(
+        command: list[str],
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        result = next(responses)
+        result.args = command
+        return result
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.hf_space_inference.subprocess.run",
+        fake_run,
+    )
+    backend = HFBucketBackend("hf://buckets/Publicus/abby-voice/run")
+
+    assert backend.exists("audio/missing.mp3") is False
+    assert backend.list_files("audio") == [
+        "run/audio/a.mp3",
+        "run/audio/b.mp3",
+    ]
+
+
+def test_bucket_exists_requires_exact_path_not_prefix_collision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.hf_space_inference.subprocess.run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                [
+                    {
+                        "type": "file",
+                        "path": "run/audio/response-longer.mp3",
+                    },
+                    {
+                        "type": "directory",
+                        "path": "run/audio/response.mp3",
+                    },
+                ]
+            ),
+            stderr="",
+        ),
+    )
+    backend = HFBucketBackend("hf://buckets/Publicus/abby-voice/run")
+
+    assert backend.exists("audio/response.mp3") is False
+
+
+def test_bucket_exists_accepts_exact_full_uri_entry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.hf_space_inference.subprocess.run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                [
+                    {
+                        "type": "blob",
+                        "path": (
+                            "hf://buckets/Publicus/abby-voice/"
+                            "run/audio/response.mp3"
+                        ),
+                    },
+                ]
+            ),
+            stderr="",
+        ),
+    )
+    backend = HFBucketBackend("hf://buckets/Publicus/abby-voice/run")
+
+    assert backend.exists("audio/response.mp3") is True
+
+
+def test_bucket_listing_failure_is_not_reported_as_cache_miss(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(
+        command: list[str],
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            command,
+            1,
+            stdout="",
+            stderr="authentication failed",
+        )
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.hf_space_inference.subprocess.run",
+        fake_run,
+    )
+    backend = HFBucketBackend("hf://buckets/Publicus/abby-voice/run")
+
+    with pytest.raises(
+        HFBucketBackendError,
+        match="exit code 1: authentication failed",
+    ):
+        backend.exists("audio/response.mp3")
+
+
+def test_bucket_invalid_listing_payload_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.hf_space_inference.subprocess.run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="not-json",
+            stderr="",
+        ),
+    )
+    backend = HFBucketBackend("hf://buckets/Publicus/abby-voice/run")
+
+    with pytest.raises(HFBucketBackendError, match="invalid JSON"):
+        backend.list_files("audio")
+
+
+@pytest.mark.parametrize("payload", [["audio/file.mp3"], [None]])
+def test_bucket_non_object_listing_entries_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    payload: list[object],
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.hf_space_inference.subprocess.run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(payload),
+            stderr="",
+        ),
+    )
+    backend = HFBucketBackend("hf://buckets/Publicus/abby-voice/run")
+
+    with pytest.raises(HFBucketBackendError, match="entries are not objects"):
+        backend.list_files("audio")
+
+
+def test_bucket_upload_uses_buckets_cp_without_touching_network(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.hf_space_inference.subprocess.run",
+        fake_run,
+    )
+    source = tmp_path / "response.mp3"
+    source.write_bytes(b"audio")
+    backend = HFBucketBackend("hf://buckets/Publicus/abby-voice/run")
+
+    assert backend.put_file(source, "audio/response.mp3") is True
+    assert calls[0][:3] == ["hf", "buckets", "cp"]
+    assert calls[0][-1].endswith("/audio/response.mp3")
+
+
+def test_bucket_download_uses_bounded_temporary_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(
+        command: list[str],
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        Path(command[-1]).write_bytes(b"audio")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="",
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.hf_space_inference.subprocess.run",
+        fake_run,
+    )
+    backend = HFBucketBackend("hf://buckets/Publicus/abby-voice/run")
+
+    assert backend.get_file("audio/response.mp3", max_bytes=5) == b"audio"
+    assert calls[0][:3] == ["hf", "buckets", "cp"]
+    assert calls[0][3].endswith("/run/audio/response.mp3")
+    assert not Path(calls[0][-1]).exists()
+
+
+def test_bucket_download_rejects_oversized_object(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(
+        command: list[str],
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        Path(command[-1]).write_bytes(b"too-large")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="",
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.hf_space_inference.subprocess.run",
+        fake_run,
+    )
+    backend = HFBucketBackend("hf://buckets/Publicus/abby-voice/run")
+
+    with pytest.raises(HFBucketBackendError, match="download limit"):
+        backend.get_file("audio/response.mp3", max_bytes=3)
+
+
+def _batch_processor(state_file: Path) -> BatchProcessor:
+    return BatchProcessor(
+        Mock(spec=HFSpaceClient),
+        Mock(),
+        state_file,
+        batch_size=4,
+    )
+
+
+def test_batch_checkpoint_is_atomically_saved_and_loaded(
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "state.json"
+    processor = _batch_processor(state_file)
+
+    processor.save_state(
+        BatchState(
+            total_items=10,
+            next_offset=4,
+            batch_size=4,
+            batches_completed=1,
+            failures=0,
+            last_batch_id="batch-1",
+        )
+    )
+
+    assert state_file.read_bytes().endswith(b"\n")
+    assert not list(tmp_path.glob(".state.json.*.tmp"))
+    loaded = processor.load_state()
+    assert loaded.total_items == 10
+    assert loaded.next_offset == 4
+    assert loaded.batches_completed == 1
+    assert loaded.last_batch_id == "batch-1"
+    assert loaded.updated_at
+
+
+def test_batch_checkpoint_corruption_fails_closed(
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "state.json"
+    state_file.write_text('{"nextOffset":', encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="Invalid batch checkpoint"):
+        _batch_processor(state_file).load_state()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {
+            "schemaVersion": 99,
+            "updatedAt": "",
+            "totalItems": 10,
+            "nextOffset": 4,
+            "batchSize": 4,
+            "batchesCompleted": 1,
+            "failures": 0,
+            "lastBatchId": "",
+        },
+        {
+            "schemaVersion": 1,
+            "updatedAt": "",
+            "totalItems": 10.9,
+            "nextOffset": 4,
+            "batchSize": 4,
+            "batchesCompleted": 1,
+            "failures": 0,
+            "lastBatchId": "",
+        },
+        {
+            "schemaVersion": 1,
+            "updatedAt": "",
+            "totalItems": 10,
+            "nextOffset": 4,
+            "batchSize": 4,
+            "batchesCompleted": True,
+            "failures": 0,
+            "lastBatchId": "",
+        },
+    ],
+)
+def test_batch_checkpoint_rejects_ambiguous_or_coerced_fields(
+    tmp_path: Path,
+    payload: Mapping[str, object],
+) -> None:
+    state_file = tmp_path / "state.json"
+    state_file.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="Invalid batch checkpoint"):
+        _batch_processor(state_file).load_state()
+
+
+def test_batch_checkpoint_replace_failure_preserves_previous_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "state.json"
+    previous = b'{"schemaVersion":1,"sentinel":true}\n'
+    state_file.write_bytes(previous)
+
+    def fail_replace(_source: Path, _destination: Path) -> None:
+        raise OSError("simulated interruption")
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.hf_space_inference.os.replace",
+        fail_replace,
+    )
+
+    with pytest.raises(OSError, match="simulated interruption"):
+        _batch_processor(state_file).save_state(
+            BatchState(total_items=10, next_offset=4, batch_size=4)
+        )
+
+    assert state_file.read_bytes() == previous
+    assert not list(tmp_path.glob(".state.json.*.tmp"))
+
+
+def test_batch_checkpoint_invalid_save_preserves_previous_state(
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "state.json"
+    processor = _batch_processor(state_file)
+    processor.save_state(
+        BatchState(total_items=10, next_offset=4, batch_size=4)
+    )
+    previous = state_file.read_bytes()
+
+    with pytest.raises(ValueError, match="outside valid bounds"):
+        processor.save_state(
+            BatchState(
+                total_items=1,
+                next_offset=2,
+                batch_size=0,
+                batches_completed=-1,
+                failures=-1,
+            )
+        )
+
+    assert state_file.read_bytes() == previous
+    assert processor.load_state().next_offset == 4

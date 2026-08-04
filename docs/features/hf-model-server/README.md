@@ -1,5 +1,20 @@
 # HuggingFace Model Server
 
+**Status:** Reference
+**Owner:** hf-model-server maintainers
+**Audience:** Operators and developers who need a local FastAPI HF serve path
+**Scope:** Optional package surface under `ipfs_accelerate_py/hf_model_server/`:
+install, CLI (`discover` / `hardware` / `serve`), HTTP routes, configuration,
+and contract tests
+**Non-goals:** Making the server a default install or a catalog-selected router
+backend without explicit projection; claiming production security defaults
+**Sources:** `ipfs_accelerate_py/hf_model_server/server.py`,
+`config.py`, `cli.py`; `requirements-hf-server.txt`;
+`test/test_hf_model_server_endpoint_contract.py`;
+`test/api/test_serving_readiness_contracts.py`
+**Last verified:** `2bf2cebd3` (2026-08-03); CLI commands, `ServerConfig` /
+`HF_SERVER_*` env loading, and registered routes checked against the tree
+
 `ipfs_accelerate_py.hf_model_server` is an optional FastAPI model-serving
 surface. It is separate from the package-level accelerator API and from the
 canonical MCP server. Its behavior is defined by the code in
@@ -41,21 +56,25 @@ the `HF_SERVER_*` environment variables in
 
 ## HTTP surface
 
-The current server registers these routes:
+The current server registers these routes (conditional routes are noted):
 
 | Method | Route | Purpose |
 | --- | --- | --- |
 | `GET` | `/health` | Liveness check. |
-| `GET` | `/ready` | Readiness check. |
-| `GET` | `/status` | Server status. |
-| `GET` | `/metrics` | Prometheus metrics when enabled. |
+| `GET` | `/ready` | Readiness check (503 when skill registry is unset). |
+| `GET` | `/status` | Server status payload. |
+| `GET` | `/metrics` | Prometheus metrics when metrics are enabled. |
 | `GET` | `/v1/models` | List served models. |
 | `POST` | `/v1/completions` | Completion requests. |
 | `POST` | `/v1/chat/completions` | Chat completion requests. |
 | `POST` | `/v1/embeddings` | Embedding requests. |
 | `POST` | `/models/load` | Load a model. |
 | `POST` | `/models/unload` | Unload a model. |
-| `WS` | `/ws/{client_id}` | Optional streaming/status channel. |
+| `WS` | `/ws/{client_id}` | Optional streaming/status channel when websocket support is present. |
+| `POST`/`GET` | `/admin/keys/*` | Optional admin key management when the API-key manager is configured. |
+
+Default `ServerConfig.host` is `0.0.0.0`; the `serve` example above binds
+`127.0.0.1` deliberately for local development.
 
 Example health check:
 

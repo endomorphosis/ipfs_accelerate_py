@@ -1557,6 +1557,28 @@ SubprocessProvider = SubprocessProofProvider
 run_provider_stdio = serve_provider_json
 
 
+def project_provider_request_to_canonical(
+    request: "ProviderRequest",
+    *,
+    cancellation: "CancellationToken | None" = None,
+) -> Any:
+    """Convert a supervisor provider request to the datasets logic-provider wire type."""
+
+    from ..canonical_logic_adapter import project_provider_request
+
+    return project_provider_request(request, cancellation=cancellation)
+
+
+def project_resource_budget_to_canonical(
+    budget: ResourceBudget | Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project a supervisor resource budget onto the canonical provider budget shape."""
+
+    from ..canonical_logic_adapter import project_resource_budget
+
+    return project_resource_budget(budget)
+
+
 __all__ = [
     "DEFAULT_PROVIDER_CPU_TIME_SECONDS",
     "DEFAULT_PROVIDER_MAX_PROCESSES",
@@ -1595,6 +1617,8 @@ __all__ = [
     "dispatch_provider_request",
     "get_proof_provider",
     "load_provider_reference",
+    "project_provider_request_to_canonical",
+    "project_resource_budget_to_canonical",
     "register_proof_provider",
     "run_provider_stdio",
     "serve_provider_json",

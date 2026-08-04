@@ -14,6 +14,30 @@ Existing supervisor identities (``content_identity`` CIDs and
 without silently replacing either side.  Cross-package drift is fail-closed:
 independent construction via ``cid_utils`` and the ``multiformats`` library
 must agree, and double-hashing of an already-computed digest is rejected.
+
+The executable profile descriptor and exact discovery term
+``vfs/cid-profile@1`` are the VFS-G141 evidence surface.  VFS-087 binds that
+surface to the shared VFS-G141/G142 content-addressing packet.  The descriptor
+describes the already-enforced wire profile; neither the evidence label nor
+goal metadata is included in CID input bytes or allowed to replace existing
+supervisor IDs.
+
+The content-addressing packet
+(``goal_packet/content_addressing/ipfs_accelerate_py/591cd7cfb087``) pairs
+this surface with ``vfs/dependency-cache@1`` (VFS-G142) owned by
+:mod:`program_analysis_cache`.  Packet evidence helpers here list both terms
+for discovery cohesion; dependency-cache key population and fail-closed
+lookup remain implemented only on the cache facade.
+
+VFS-G150 / VFS-089 binds that packet and the VFS-G031 invalidation surface to
+``vfs/cache-invalidation-proof@1``.  This bridge mirrors the aggregate's exact
+goal and evidence lineage for discovery, while executable cache proof behavior
+remains owned by :mod:`program_analysis_cache`.
+
+VFS-G030 owns the parent multiformats + dependency-cache surface.  Its
+synthetic ``objective validation repair`` discovery marker is exposed only
+through evidence helpers and never enters CID bytes, compatibility links, or
+mutable current-tree projections used by analysis caches.
 """
 
 from __future__ import annotations
@@ -39,12 +63,14 @@ except ImportError:  # pragma: no cover - exercised under hermetic validation
     # contracts remain importable without user-site editable installs.
     from ipfs_accelerate_py.utils import cid_utils as _cid_utils
 
-
 MULTIFORMATS_IDENTITY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/multiformats-identity@1"
 )
 IDENTITY_LINK_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/multiformats-identity-link@1"
+)
+CID_PROFILE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/cid-profile@1"
 )
 
 CID_VERSION: Final = 1
@@ -52,6 +78,94 @@ CID_BASE: Final = "base32"
 MH_TYPE: Final = "sha2-256"
 DIGEST_SIZE: Final = 32
 ALLOWED_CODECS: Final = frozenset({"raw", "dag-json"})
+
+# Exact objective-heap discovery key and its supervisor-fed packet bindings.
+CID_PROFILE_EVIDENCE: Final = "vfs/cid-profile@1"
+CID_PROFILE_GOAL_ID: Final = "VFS-G141"
+CID_PROFILE_TASK_ID: Final = "VFS-087"
+# VFS-057 first introduced the executable descriptor.  Keep its task identity
+# as explicit history rather than leaving the current singleton binding stale.
+CID_PROFILE_PREVIOUS_TASK_IDS: Final[tuple[str, ...]] = ("VFS-057",)
+
+# Paired VFS-G142 dependency-cache discovery anchors (implemented by
+# program_analysis_cache).  Declared here as exact-text constants so the
+# content-addressing packet evidence is discoverable from both module surfaces
+# without importing the cache facade (avoids circular imports).
+DEPENDENCY_CACHE_EVIDENCE: Final = "vfs/dependency-cache@1"
+DEPENDENCY_CACHE_GOAL_ID: Final = "VFS-G142"
+DEPENDENCY_CACHE_TASK_ID: Final = "VFS-088"
+CONTENT_ADDRESSING_PACKET_ID: Final = (
+    "goal_packet/content_addressing/ipfs_accelerate_py/591cd7cfb087"
+)
+CONTENT_ADDRESSING_PACKET_GOAL_IDS: Final[tuple[str, ...]] = (
+    CID_PROFILE_GOAL_ID,
+    DEPENDENCY_CACHE_GOAL_ID,
+)
+CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    CID_PROFILE_EVIDENCE,
+    DEPENDENCY_CACHE_EVIDENCE,
+)
+# VFS-G150 proof-aggregate discovery anchors.  These mirror the cache module
+# without importing it (and therefore without creating a circular import).
+CACHE_INVALIDATION_PROOF_EVIDENCE: Final = "vfs/cache-invalidation-proof@1"
+CACHE_INVALIDATION_PROOF_GOAL_ID: Final = "VFS-G150"
+CACHE_INVALIDATION_PROOF_TASK_ID: Final = "VFS-089"
+CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID: Final = "VFS-G031"
+CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS: Final[tuple[str, ...]] = (
+    CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID,
+    CID_PROFILE_GOAL_ID,
+    DEPENDENCY_CACHE_GOAL_ID,
+)
+CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS: Final[
+    tuple[str, ...]
+] = (
+    CACHE_INVALIDATION_PROOF_EVIDENCE,
+    CID_PROFILE_EVIDENCE,
+    DEPENDENCY_CACHE_EVIDENCE,
+)
+
+# Synthetic objective-heap evidence term for VFS-G030 validation-gate work.
+# Exact-text discovery key only — never part of CID input, identity links,
+# or mutable current-tree projection dimensions used by analysis caches.
+OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final = "objective validation repair"
+# Domain parent goal that owns multiformats identity + dependency-aware caches.
+OBJECTIVE_GOAL_ID: Final = "VFS-G030"
+# Repair task that owns the synthetic objective validation repair obligation.
+OBJECTIVE_VALIDATION_REPAIR_TASK_ID: Final = "VFS-060"
+# Domain evidence owned by this bridge (child VFS-G141 profile surface).
+OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (CID_PROFILE_EVIDENCE,)
+
+# Keep exact-text discovery anchors aligned with the objective heap.
+assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+assert OBJECTIVE_GOAL_ID == "VFS-G030"
+assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-060"
+assert CID_PROFILE_EVIDENCE == "vfs/cid-profile@1"
+assert CID_PROFILE_GOAL_ID == "VFS-G141"
+assert CID_PROFILE_TASK_ID == "VFS-087"
+assert CID_PROFILE_PREVIOUS_TASK_IDS == ("VFS-057",)
+assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == ("vfs/cid-profile@1",)
+assert DEPENDENCY_CACHE_EVIDENCE == "vfs/dependency-cache@1"
+assert DEPENDENCY_CACHE_GOAL_ID == "VFS-G142"
+assert DEPENDENCY_CACHE_TASK_ID == "VFS-088"
+assert CONTENT_ADDRESSING_PACKET_GOAL_IDS == ("VFS-G141", "VFS-G142")
+assert CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS == (
+    "vfs/cid-profile@1",
+    "vfs/dependency-cache@1",
+)
+assert CACHE_INVALIDATION_PROOF_EVIDENCE == "vfs/cache-invalidation-proof@1"
+assert CACHE_INVALIDATION_PROOF_GOAL_ID == "VFS-G150"
+assert CACHE_INVALIDATION_PROOF_TASK_ID == "VFS-089"
+assert CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID == "VFS-G031"
+assert CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS == (
+    "VFS-G031",
+    "VFS-G141",
+    "VFS-G142",
+)
+assert CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS == (
+    "vfs/cache-invalidation-proof@1",
+    "vfs/cid-profile@1",
+    "vfs/dependency-cache@1",
+)
 
 RUNTIME_ARTIFACT_PREFIX: Final = "runtime-artifact:sha256:"
 PAYLOAD_DIGEST_PREFIX: Final = "sha256:"
@@ -84,6 +198,55 @@ _TEMPORAL_TYPES = (datetime, date, time, timedelta)
 
 class MultiformatsIdentityError(ValueError):
     """A multiformats identity or link violates the frozen profile."""
+
+
+@dataclass(frozen=True)
+class CIDProfile:
+    """Immutable interface descriptor for the admitted supervisor CID profile.
+
+    Construction is deliberately closed to the constants enforced by the
+    minting and validation helpers below.  This makes the VFS-G141 evidence
+    machine-checkable without creating a second, configurable CID path.
+    """
+
+    schema: str = CID_PROFILE_SCHEMA
+    evidence: str = CID_PROFILE_EVIDENCE
+    version: int = CID_VERSION
+    base: str = CID_BASE
+    codecs: tuple[str, ...] = tuple(sorted(ALLOWED_CODECS))
+    multihash_type: str = MH_TYPE
+    digest_size: int = DIGEST_SIZE
+
+    def __post_init__(self) -> None:
+        expected = (
+            CID_PROFILE_SCHEMA,
+            CID_PROFILE_EVIDENCE,
+            CID_VERSION,
+            CID_BASE,
+            tuple(sorted(ALLOWED_CODECS)),
+            MH_TYPE,
+            DIGEST_SIZE,
+        )
+        actual = (
+            self.schema,
+            self.evidence,
+            self.version,
+            self.base,
+            self.codecs,
+            self.multihash_type,
+            self.digest_size,
+        )
+        if actual != expected:
+            raise MultiformatsIdentityError(
+                "CID profile is frozen to "
+                "CIDv1/base32/dag-json+raw/sha2-256/32-byte digests"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+_CID_PROFILE: Final = CIDProfile()
 
 
 class IdentityKind(str, Enum):
@@ -901,10 +1064,141 @@ def independent_round_trip_dag_json(obj: Any) -> str:
     return cid
 
 
+def cid_profile() -> CIDProfile:
+    """Return the immutable VFS-G141 CID-profile interface descriptor."""
+
+    return _CID_PROFILE
+
+
+def cid_profile_evidence_terms() -> tuple[str, ...]:
+    """Return the exact VFS-G141 objective evidence discovery term."""
+
+    return (CID_PROFILE_EVIDENCE,)
+
+
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain evidence exposed by this identity bridge.
+
+    Domain envelope evidence remains ``vfs/cid-profile@1`` only.  The synthetic
+    ``objective validation repair`` term is intentionally omitted here so CID
+    profile descriptors and identity links stay domain-only; use
+    :func:`objective_validation_repair_evidence_terms` (or
+    :func:`all_covered_evidence_terms`) for the VFS-G030 validation gate.
+
+    Objective/task labels are metadata only.  The returned evidence term does
+    not participate in canonical DAG-JSON bytes, CIDs, or compatibility links.
+    """
+
+    return OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+
+
+def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
+    """Return the synthetic VFS-G030 validation-gate evidence term.
+
+    Exact-text discovery key for objective validation repair.  Never mixes
+    into content-addressed CIDs, multihash digests, IdentityLink records, or
+    mutable current-tree projection dimensions.  Immutable object identity
+    (CIDv1/base32/dag-json/raw/sha2-256) stays separate from cache population
+    keys that bind forest / tree projections.  Owned by
+    :data:`OBJECTIVE_GOAL_ID` (``VFS-G030``) via repair task
+    :data:`OBJECTIVE_VALIDATION_REPAIR_TASK_ID` (``VFS-060``).
+    """
+
+    return (OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,)
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain VFS-G030/G141 terms plus the objective validation repair gate.
+
+    Domain ``vfs/cid-profile@1`` comes first; the synthetic objective
+    validation repair discovery key is appended last and never enters CID
+    input bytes, identity-link payloads, or tree-projection cache dimensions.
+
+    Packet-level ``vfs/dependency-cache@1`` (VFS-G142) is intentionally omitted
+    here so this bridge stays cid-profile-only; use
+    :func:`content_addressing_packet_evidence_terms` for the shared
+    content-addressing packet surface.
+    """
+
+    return covered_evidence_terms() + objective_validation_repair_evidence_terms()
+
+
+def content_addressing_packet_evidence_terms() -> tuple[str, ...]:
+    """Return shared VFS-G141 / VFS-G142 packet evidence discovery terms.
+
+    Order is stable: ``vfs/cid-profile@1`` then ``vfs/dependency-cache@1``.
+    Neither term participates in CID input bytes or IdentityLink payloads.
+    """
+
+    return CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS
+
+
+def content_addressing_packet_goal_ids() -> tuple[str, ...]:
+    """Return the VFS-G141 / VFS-G142 goal ids for the content-addressing packet."""
+
+    return CONTENT_ADDRESSING_PACKET_GOAL_IDS
+
+
+def cache_invalidation_proof_aggregate_evidence_terms() -> tuple[str, ...]:
+    """Return the VFS-G150 proof aggregate's exact evidence lineage."""
+
+    return CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS
+
+
+def cache_invalidation_proof_aggregate_goal_ids() -> tuple[str, ...]:
+    """Return the VFS-G031/G141/G142 aggregate lineage for VFS-G150."""
+
+    return CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS
+
+
+def immutable_object_identity_separate_from_tree_projections() -> bool:
+    """VFS-G030 refinement: content CIDs never encode current-tree projections.
+
+    Multiformats CIDs address immutable payload bytes only.  Mutable
+    current-tree / forest projections participate as analysis-cache
+    population dimensions (see :mod:`program_analysis_cache`), not as
+    object-identity inputs.  Returning ``True`` anchors the refinement for
+    objective validation repair without creating a second CID profile.
+    """
+
+    # Profile and discovery metadata are closed and must not widen the wire
+    # profile into tree-aware identity minting.
+    assert CID_VERSION == 1
+    assert CID_BASE == "base32"
+    assert MH_TYPE == "sha2-256"
+    assert DIGEST_SIZE == 32
+    assert ALLOWED_CODECS == frozenset({"raw", "dag-json"})
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE not in (
+        CID_PROFILE_EVIDENCE,
+        CID_PROFILE_SCHEMA,
+        IDENTITY_LINK_SCHEMA,
+        MULTIFORMATS_IDENTITY_SCHEMA,
+    )
+    return True
+
+
 __all__ = [
     "ALLOWED_CODECS",
+    "CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS",
+    "CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS",
+    "CACHE_INVALIDATION_PROOF_EVIDENCE",
+    "CACHE_INVALIDATION_PROOF_GOAL_ID",
+    "CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID",
+    "CACHE_INVALIDATION_PROOF_TASK_ID",
     "CID_BASE",
+    "CID_PROFILE_EVIDENCE",
+    "CID_PROFILE_GOAL_ID",
+    "CID_PROFILE_PREVIOUS_TASK_IDS",
+    "CID_PROFILE_SCHEMA",
+    "CID_PROFILE_TASK_ID",
     "CID_VERSION",
+    "CIDProfile",
+    "CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS",
+    "CONTENT_ADDRESSING_PACKET_GOAL_IDS",
+    "CONTENT_ADDRESSING_PACKET_ID",
+    "DEPENDENCY_CACHE_EVIDENCE",
+    "DEPENDENCY_CACHE_GOAL_ID",
+    "DEPENDENCY_CACHE_TASK_ID",
     "DIGEST_SIZE",
     "IDENTITY_LINK_SCHEMA",
     "IdentityKind",
@@ -912,13 +1206,26 @@ __all__ = [
     "MH_TYPE",
     "MULTIFORMATS_IDENTITY_SCHEMA",
     "MultiformatsIdentityError",
+    "OBJECTIVE_DOMAIN_EVIDENCE_TERMS",
+    "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
+    "OBJECTIVE_VALIDATION_REPAIR_TASK_ID",
     "PAYLOAD_DIGEST_PREFIX",
     "RUNTIME_ARTIFACT_PREFIX",
+    "all_covered_evidence_terms",
+    "cache_invalidation_proof_aggregate_evidence_terms",
+    "cache_invalidation_proof_aggregate_goal_ids",
     "canonical_dag_json_bytes",
     "cid_for_bytes",
     "cid_for_dag_json",
     "cid_from_sha256_digest",
+    "cid_profile",
+    "cid_profile_evidence_terms",
+    "content_addressing_packet_evidence_terms",
+    "content_addressing_packet_goal_ids",
+    "covered_evidence_terms",
     "digest_hex_from_cid",
+    "immutable_object_identity_separate_from_tree_projections",
     "independent_round_trip_cid",
     "independent_round_trip_dag_json",
     "link_content_identity",
@@ -926,6 +1233,7 @@ __all__ = [
     "link_payload_digest",
     "link_raw_bytes",
     "link_runtime_artifact",
+    "objective_validation_repair_evidence_terms",
     "parse_payload_digest",
     "parse_runtime_artifact_id",
     "reject_double_hashed_multihash",

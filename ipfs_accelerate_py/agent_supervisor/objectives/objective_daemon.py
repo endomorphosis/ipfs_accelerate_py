@@ -3765,6 +3765,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "multiple sensitive roots."
         ),
     )
+    parser.add_argument(
+        "--protected-output-path",
+        dest="protected_output_paths",
+        action="append",
+        default=[],
+        help=(
+            "Exact repo-relative file that generated implementation tasks must "
+            "treat as read-only context instead of an output. Repeat for "
+            "multiple supervisor-owned control-plane files."
+        ),
+    )
     parser.add_argument("--task-prefix", default=DEFAULT_TASK_PREFIX)
     parser.add_argument("--objective-summary-prefix", default=DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX)
     parser.add_argument("--discovery-output-path", default=DEFAULT_DISCOVERY_OUTPUT_PATH)
@@ -3775,6 +3786,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="Objective goal id to rescan even when an existing discovery fingerprint would suppress it.",
+    )
+    parser.add_argument(
+        "--scope-goal-id",
+        action="append",
+        default=[],
+        help=(
+            "Restrict evidence scanning and todo generation to this objective "
+            "goal id. Repeat for multiple goals. Unlike --force-goal-id, this "
+            "does not merely prioritize the named goals."
+        ),
     )
     parser.add_argument("--repeat-existing", action="store_true", help="Do not suppress fingerprints already in discovery files")
     parser.add_argument("--max-findings", type=int, default=10)
@@ -3972,6 +3993,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     repo_root = args.repo_root.resolve()
+    protected_output_paths = tuple(
+        str(item).strip()
+        for item in (
+            getattr(
+                args,
+                "protected_output_paths",
+                getattr(args, "protected_output_path", ()),
+            )
+            or ()
+        )
+        if str(item).strip()
+    )
     scan_exclude_paths = resolve_scan_exclude_paths(
         repo_root,
         getattr(args, "scan_exclude_path", ()) or (),
@@ -4169,6 +4202,9 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             *refined_goal_ids,
             *split_csv(getattr(args, "force_goal_id", []) or []),
         ],
+        scope_goal_ids=split_csv(
+            getattr(args, "scope_goal_id", []) or []
+        ),
         persist_ast_dataset=not args.no_persist_ast_dataset,
         write_todo_vector_index=not getattr(args, "no_todo_vector_index", False),
         todo_vector_index_path=getattr(args, "todo_vector_index_path", None),
@@ -4179,6 +4215,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         evidence_repository_tree=evidence_repository_tree,
         scan_exclude_paths=scan_exclude_paths,
         trust_recorded_external_completion=completion_reconciliation_enabled,
+        protected_output_paths=protected_output_paths,
     )
     plan_evaluation_path = (
         getattr(args, "plan_evaluation_path", None) or state_root / "plan_evaluations.json"
@@ -4487,6 +4524,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
                         trust_recorded_external_completion=(
                             completion_reconciliation_enabled
                         ),
+                        protected_output_paths=protected_output_paths,
                     )
                     records.extend(objective_generation_materialized_records)
                     generated_plan_decisions = plan_objective_records(
@@ -4533,6 +4571,11 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "graph_path": repo_relative_path(repo_root, graph_path),
         "scan_exclude_paths": scan_exclude_metadata,
         "scan_exclude_path_count": len(scan_exclude_metadata),
+        "scope_goal_ids": split_csv(
+            getattr(args, "scope_goal_id", []) or []
+        ),
+        "protected_output_paths": list(protected_output_paths),
+        "protected_output_path_count": len(protected_output_paths),
         "source_protected_scan_policy": source_protected_scan_policy(),
         "objective_completion_reconciliation_enabled": (
             completion_reconciliation_enabled

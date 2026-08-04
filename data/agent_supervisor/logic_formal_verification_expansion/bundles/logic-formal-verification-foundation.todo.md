@@ -1,0 +1,460 @@
+# Objective Bundle: logic-formal-verification/foundation
+
+Source todo: docs/architecture/logic_formal_verification_expansion.todo.md
+Purpose: bundle objective-generated tasks so parallel daemons can work one lane at a time.
+Conflict policy: keep edits inside this bundle when possible; use the LLM merge resolver for semantic conflicts.
+
+## LFV-001 Close objective gap: Align and continuously verify the datasets submodule
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: foundation
+- Depends on:
+- Outputs: tools/logic/verify_submodule_alignment.py, test/api/test_logic_submodule_alignment.py
+- Validation: python -m pytest test/api/test_logic_submodule_alignment.py -q
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-001-objective-gap-295a1f22e55e.md
+- Bundle: logic-formal-verification/foundation
+- Bundle shard: data/agent_supervisor/logic_formal_verification_expansion/bundles/logic-formal-verification-foundation.todo.md
+- Bundle strategy: explicit
+- Graph parents: LFV-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: logic-formal-verification/foundation
+- Conflict policy: Own the read-only alignment checker and its parent-repository tests; do not fetch, checkout, commit, publish, or edit datasets source during validation.
+- Predicted files: tools/logic/verify_submodule_alignment.py, test/api/test_logic_submodule_alignment.py
+- Changed paths:
+- AST symbols: tools/logic/verify_submodule_alignment.py, test/api/test_logic_submodule_alignment.py
+- Interfaces: LogicSubmoduleAlignment@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: LFV-G005
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/65c260e64dddae1dec9014a8654f0516e64583e2f89b1faa268164a0533b5da7
+- Canonical task CID: baguqeeramxbgbzsn3wxb33eqcsugktyfc3tela7c7cnr7krgqfskauz3lwtq
+- Semantic identity: objective-evidence-obligation/v1/1d0a125a4609d112aeed9045419e7cb5b8f7862940838378bf04707cc3a0e9e3
+- Acceptance subset: The check reports parent commit, gitlink, embedded HEAD, embedded origin/main, cleanliness, and availability of required logic modules, mismatches fail with actionable diagnostics and never rewrite a checkout.
+- Preconditions: objective goal LFV-G005 is schedulable
+- Effects: satisfy evidence requirement: tools/logic/verify_submodule_alignment.py, satisfy evidence requirement: test/api/test_logic_submodule_alignment.py
+- Evidence subset: tools/logic/verify_submodule_alignment.py, test/api/test_logic_submodule_alignment.py
+- Resource class: cpu-small
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-small
+- Merge fate: objective/LFV-G005
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/1d0a125a4609d112aeed9045419e7cb5b8f7862940838378bf04707cc3a0e9e3
+- Missing evidence: tools/logic/verify_submodule_alignment.py, test/api/test_logic_submodule_alignment.py
+- Embedding query: Bind the implementation branch to the intended published `ipfs_datasets_py` revision and detect sibling, remote-main, and embedded-gitlink drift before workers or tests run.
+- AST query: tools/logic/verify_submodule_alignment.py, test/api/test_logic_submodule_alignment.py
+- Surplus group: objective/LFV-G005
+- Merge key: 1db3b817e0c0e85b
+- Merge family: objective/LFV-G005
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 0e66fdd57caebb7d
+- Acceptance: Objective scan filed this gap for LFV-G005. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-001-objective-gap-295a1f22e55e.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (tools/logic/verify_submodule_alignment.py, test/api/test_logic_submodule_alignment.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## LFV-002 Close objective gap: Produce an executable capability census and maturity matrix
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: foundation
+- Depends on: LFV-001
+- Outputs: ipfs_datasets_py/docs/logic/software_verification_capability_inventory.md, ipfs_datasets_py/tests/fixtures/logic/software_verification/capability_matrix.json, ipfs_datasets_py/tests/unit/logic/software_verification/test_capability_inventory.py
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_capability_inventory.py -q
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-002-objective-gap-a2116885d0ad.md
+- Bundle: logic-formal-verification/foundation
+- Bundle shard: data/agent_supervisor/logic_formal_verification_expansion/bundles/logic-formal-verification-foundation.todo.md
+- Bundle strategy: explicit
+- Graph parents: LFV-G000
+- Graph depth: 1
+- Objective heap index: 1
+- Parallel lane: logic-formal-verification/foundation
+- Conflict policy: Own only the new inventory, fixture, and inventory test; inspect existing implementations without editing their behavior or public registries.
+- Predicted files: ipfs_datasets_py/docs/logic/software_verification_capability_inventory.md, ipfs_datasets_py/tests/fixtures/logic/software_verification/capability_matrix.json, ipfs_datasets_py/tests/unit/logic/software_verification/test_capability_inventory.py
+- Changed paths:
+- AST symbols: ipfs_datasets_py/docs/logic/software_verification_capability_inventory.md, ipfs_datasets_py/tests/fixtures/logic/software_verification/capability_matrix.json, ipfs_datasets_py/tests/unit/logic/software_verification/test_capability_inventory.py
+- Interfaces: LogicCapabilityMatrix@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: LFV-G010
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/366b218a1e25145e4abf99b17a1a46f5feee41b3bbc608071b6349dbcade28dd
+- Canonical task CID: baguqeeragzvsdcq6eukf4sv7tgyxugsg6x7o4qntxpdaqby3mne5xsw6fdoq
+- Semantic identity: objective-evidence-obligation/v1/efc10a9c57f7a99cde2e65380c8fc4939e63b2d49a6d64b3ce9fa45ffdfaf09a
+- Acceptance subset: The matrix distinguishes declared, discoverable, installed, smoke-tested, translation-conformant, reconstruction-capable, shadow, canary, and authoritative-for states, stale paths and inconsistent metadata are test failures.
+- Preconditions: objective goal LFV-G010 is schedulable
+- Effects: satisfy evidence requirement: ipfs_datasets_py/docs/logic/software_verification_capability_inventory.md, satisfy evidence requirement: ipfs_datasets_py/tests/fixtures/logic/software_verification/capability_matrix.json, satisfy evidence requirement: ipfs_datasets_py/tests/unit/logic/software_verification/test_capability_inventory.py
+- Evidence subset: ipfs_datasets_py/docs/logic/software_verification_capability_inventory.md, ipfs_datasets_py/tests/fixtures/logic/software_verification/capability_matrix.json, ipfs_datasets_py/tests/unit/logic/software_verification/test_capability_inventory.py
+- Resource class: cpu-small
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-small
+- Merge fate: objective/LFV-G010
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/efc10a9c57f7a99cde2e65380c8fc4939e63b2d49a6d64b3ce9fa45ffdfaf09a
+- Missing evidence: ipfs_datasets_py/docs/logic/software_verification_capability_inventory.md, ipfs_datasets_py/tests/fixtures/logic/software_verification/capability_matrix.json, ipfs_datasets_py/tests/unit/logic/software_verification/test_capability_inventory.py
+- Embedding query: Inventory every logic family, compiler, provider, installer, probe, adapter, conformance suite, authority role, and public access path across datasets and the supervisor.
+- AST query: ipfs_datasets_py/docs/logic/software_verification_capability_inventory.md, ipfs_datasets_py/tests/fixtures/logic/software_verification/capability_matrix.json, ipfs_datasets_py/tests/unit/logic/software_verification/test_capability_inventory.py
+- Surplus group: objective/LFV-G010
+- Merge key: 0ba4cebf20d3fa4a
+- Merge family: objective/LFV-G010
+- Merge role: aggregate
+- Work item count: 3
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: eadb798b8a6b0323
+- Acceptance: Objective scan filed this gap for LFV-G010. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-002-objective-gap-a2116885d0ad.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_datasets_py/docs/logic/software_verification_capability_inventory.md, ipfs_datasets_py/tests/fixtures/logic/software_verification/capability_matrix.json, ipfs_datasets_py/tests/unit/logic/software_verification/test_capability_inventory.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## LFV-003 Close objective gap: Freeze the existing public logic and proof-authority surface
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: compatibility
+- Depends on: LFV-001
+- Outputs: ipfs_datasets_py/docs/logic/logic_api_v1_compatibility.md, ipfs_datasets_py/tests/fixtures/logic/api_v1/manifest.json, ipfs_datasets_py/tests/unit/logic/test_logic_api_v1_compatibility.py
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/test_logic_api_v1_compatibility.py -q
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-003-objective-gap-dd3456826376.md
+- Bundle: logic-formal-verification/foundation
+- Bundle shard: data/agent_supervisor/logic_formal_verification_expansion/bundles/logic-formal-verification-foundation.todo.md
+- Bundle strategy: explicit
+- Graph parents: LFV-G000
+- Graph depth: 1
+- Objective heap index: 2
+- Parallel lane: logic-formal-verification/foundation
+- Conflict policy: Add compatibility documentation, fixtures, and tests only; do not edit production logic modules, exports, registries, or generated artifacts.
+- Predicted files: ipfs_datasets_py/docs/logic/logic_api_v1_compatibility.md, ipfs_datasets_py/tests/fixtures/logic/api_v1/manifest.json, ipfs_datasets_py/tests/unit/logic/test_logic_api_v1_compatibility.py
+- Changed paths:
+- AST symbols: ipfs_datasets_py/docs/logic/logic_api_v1_compatibility.md, ipfs_datasets_py/tests/fixtures/logic/api_v1/manifest.json, ipfs_datasets_py/tests/unit/logic/test_logic_api_v1_compatibility.py
+- Interfaces: LogicAPICompatibility@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: LFV-G011
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/3e31e699eb256f543fba7f4eb8d1aebf5240b7051c8b90fd1a8cb7f626a8139d
+- Canonical task CID: baguqeerahyy6ngplevxvip52p5hlrunox5jebnyfdsfzb7i2rs37mjvicooq
+- Semantic identity: objective-evidence-obligation/v1/e259e0d9001599983365a45791d8ca3764a390b2cc03a7cb034111c7747bae76
+- Acceptance subset: FOL, deontic, modal, CEC/DCEC, TDFOL, FLogic, bridges, caches, ZKP, API, CLI, MCP, and lazy import behavior have exact reviewed fixtures, optional-tool absence is recorded separately from success.
+- Preconditions: objective goal LFV-G011 is schedulable
+- Effects: satisfy evidence requirement: ipfs_datasets_py/docs/logic/logic_api_v1_compatibility.md, satisfy evidence requirement: ipfs_datasets_py/tests/fixtures/logic/api_v1/manifest.json, satisfy evidence requirement: ipfs_datasets_py/tests/unit/logic/test_logic_api_v1_compatibility.py
+- Evidence subset: ipfs_datasets_py/docs/logic/logic_api_v1_compatibility.md, ipfs_datasets_py/tests/fixtures/logic/api_v1/manifest.json, ipfs_datasets_py/tests/unit/logic/test_logic_api_v1_compatibility.py
+- Resource class: cpu-small
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-small
+- Merge fate: objective/LFV-G011
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/e259e0d9001599983365a45791d8ca3764a390b2cc03a7cb034111c7747bae76
+- Missing evidence: ipfs_datasets_py/docs/logic/logic_api_v1_compatibility.md, ipfs_datasets_py/tests/fixtures/logic/api_v1/manifest.json, ipfs_datasets_py/tests/unit/logic/test_logic_api_v1_compatibility.py
+- Embedding query: Freeze reviewed imports, API/CLI/MCP behavior, result meanings, and representative canonical payloads before adding general software-verification surfaces.
+- AST query: ipfs_datasets_py/docs/logic/logic_api_v1_compatibility.md, ipfs_datasets_py/tests/fixtures/logic/api_v1/manifest.json, ipfs_datasets_py/tests/unit/logic/test_logic_api_v1_compatibility.py
+- Surplus group: objective/LFV-G011
+- Merge key: d53dfd4be4ae0e05
+- Merge family: objective/LFV-G011
+- Merge role: aggregate
+- Work item count: 3
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: a032721eaf71905e
+- Acceptance: Objective scan filed this gap for LFV-G011. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-003-objective-gap-dd3456826376.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_datasets_py/docs/logic/logic_api_v1_compatibility.md, ipfs_datasets_py/tests/fixtures/logic/api_v1/manifest.json, ipfs_datasets_py/tests/unit/logic/test_logic_api_v1_compatibility.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## LFV-004 Close objective gap: Define the canonical logic-family and provider-capability taxonomy
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: family-taxonomy
+- Depends on: LFV-002
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/families/models.py, ipfs_datasets_py/ipfs_datasets_py/logic/families/registry.py, ipfs_datasets_py/tests/unit/logic/families/test_registry.py
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/families/test_registry.py -q
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-004-objective-gap-cd5c29b06751.md
+- Bundle: logic-formal-verification/foundation
+- Bundle shard: data/agent_supervisor/logic_formal_verification_expansion/bundles/logic-formal-verification-foundation.todo.md
+- Bundle strategy: explicit
+- Graph parents: LFV-G000
+- Graph depth: 1
+- Objective heap index: 3
+- Parallel lane: logic-formal-verification/foundation
+- Conflict policy: Own the new family package and tests; do not edit shared package exports, backend registry, supervisor enums, or existing family implementations.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/families/models.py, ipfs_datasets_py/ipfs_datasets_py/logic/families/registry.py, ipfs_datasets_py/tests/unit/logic/families/test_registry.py
+- Changed paths:
+- AST symbols: ipfs_datasets_py/ipfs_datasets_py/logic/families/models.py, ipfs_datasets_py/ipfs_datasets_py/logic/families/registry.py, ipfs_datasets_py/tests/unit/logic/families/test_registry.py
+- Interfaces: LogicFamilyRegistry@1, ProviderCapabilityDescriptor@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: LFV-G012
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/178401b193d44ff7b0f8ced5f1a19c71ed812184dc8aa0c7de016a9c6d153814
+- Canonical task CID: baguqeerac6cadmmt2rh7pmhyz3k7dim4ohwycime3sfkbr66afvjy3ivhaka
+- Semantic identity: objective-evidence-obligation/v1/2d33a09132cb42ec29a74182cbf267086be2fd987a4541eccf4ba863109c2538
+- Acceptance subset: The registry covers existing and planned families including Horn/CHC and PDR/IC3 operations, rejects alias collisions and silent semantic equivalence, declares native, translated, declaration-only, and unsupported support, serializes deterministically, and imports no provider runtime.
+- Preconditions: objective goal LFV-G012 is schedulable
+- Effects: satisfy evidence requirement: ipfs_datasets_py/ipfs_datasets_py/logic/families/models.py, satisfy evidence requirement: ipfs_datasets_py/ipfs_datasets_py/logic/families/registry.py, satisfy evidence requirement: ipfs_datasets_py/tests/unit/logic/families/test_registry.py
+- Evidence subset: ipfs_datasets_py/ipfs_datasets_py/logic/families/models.py, ipfs_datasets_py/ipfs_datasets_py/logic/families/registry.py, ipfs_datasets_py/tests/unit/logic/families/test_registry.py
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/LFV-G012
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/2d33a09132cb42ec29a74182cbf267086be2fd987a4541eccf4ba863109c2538
+- Missing evidence: ipfs_datasets_py/ipfs_datasets_py/logic/families/models.py, ipfs_datasets_py/ipfs_datasets_py/logic/families/registry.py, ipfs_datasets_py/tests/unit/logic/families/test_registry.py
+- Embedding query: Define versioned family, fragment, property, operation, runtime, evidence, boundedness, translation, and provider-capability descriptors shared by datasets and the supervisor, including Horn/CHC, PDR/IC3, and declaration-only families.
+- AST query: ipfs_datasets_py/ipfs_datasets_py/logic/families/models.py, ipfs_datasets_py/ipfs_datasets_py/logic/families/registry.py, ipfs_datasets_py/tests/unit/logic/families/test_registry.py
+- Surplus group: objective/LFV-G012
+- Merge key: bf3d3f7e5997c27f
+- Merge family: objective/LFV-G012
+- Merge role: aggregate
+- Work item count: 3
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 925bda1dae6f4f58
+- Acceptance: Objective scan filed this gap for LFV-G012. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-004-objective-gap-cd5c29b06751.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_datasets_py/ipfs_datasets_py/logic/families/models.py, ipfs_datasets_py/ipfs_datasets_py/logic/families/registry.py, ipfs_datasets_py/tests/unit/logic/families/test_registry.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## LFV-006 Close objective gap: Generalize typed backend results and authority normalization
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: typed-results
+- Depends on: LFV-004
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/results.py, ipfs_datasets_py/tests/unit/logic/backends/test_typed_results.py
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/backends/test_typed_results.py -q
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-006-objective-gap-3c3056674bbf.md
+- Bundle: logic-formal-verification/foundation
+- Bundle shard: data/agent_supervisor/logic_formal_verification_expansion/bundles/logic-formal-verification-foundation.todo.md
+- Bundle strategy: explicit
+- Graph parents: LFV-G000
+- Graph depth: 1
+- Objective heap index: 5
+- Parallel lane: logic-formal-verification/foundation
+- Conflict policy: Own the new result-normalization module and tests; adapt existing `ir_core.protocols` by composition and defer registry integration to LFV-G070.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/backends/results.py, ipfs_datasets_py/tests/unit/logic/backends/test_typed_results.py
+- Changed paths:
+- AST symbols: ipfs_datasets_py/ipfs_datasets_py/logic/backends/results.py, ipfs_datasets_py/tests/unit/logic/backends/test_typed_results.py
+- Interfaces: TypedBackendResult@1, ResultAuthorityNormalization@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: LFV-G013
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/29885d4575196014f0cb5d8fcb3ddfb6ee7e60df64fcda82c4d7d4cd9cf0ca70
+- Canonical task CID: baguqeerafgef2rlvdfqbj4gllwh4wpo7w3xh4yg7mt6nvawe27km3hhqzjya
+- Semantic identity: objective-evidence-obligation/v1/19291d6ddb866eb83e03419f30586a2b15a391c5bb2220766afcb7c4065f386b
+- Acceptance subset: Typed normalizers preserve unknown, timeout, unavailable, unsupported, malformed, witness, assumptions, bounds, translation ceiling, and resource usage, adversarial tests reject every cross-authority substitution.
+- Preconditions: objective goal LFV-G013 is schedulable
+- Effects: satisfy evidence requirement: ipfs_datasets_py/ipfs_datasets_py/logic/backends/results.py, satisfy evidence requirement: ipfs_datasets_py/tests/unit/logic/backends/test_typed_results.py
+- Evidence subset: ipfs_datasets_py/ipfs_datasets_py/logic/backends/results.py, ipfs_datasets_py/tests/unit/logic/backends/test_typed_results.py
+- Resource class: cpu-proof-type-check
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-proof-type-check
+- Merge fate: objective/LFV-G013
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/19291d6ddb866eb83e03419f30586a2b15a391c5bb2220766afcb7c4065f386b
+- Missing evidence: ipfs_datasets_py/ipfs_datasets_py/logic/backends/results.py, ipfs_datasets_py/tests/unit/logic/backends/test_typed_results.py
+- Embedding query: Normalize theorem, satisfiability, model-check, monitor, authorization, protocol, hyperproperty, candidate, reconstruction, and attestation outcomes without collapsing their authority.
+- AST query: ipfs_datasets_py/ipfs_datasets_py/logic/backends/results.py, ipfs_datasets_py/tests/unit/logic/backends/test_typed_results.py
+- Surplus group: objective/LFV-G013
+- Merge key: 851b7f8e098a1dad
+- Merge family: objective/LFV-G013
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: f10fb25d7f1fd80f
+- Acceptance: Objective scan filed this gap for LFV-G013. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-006-objective-gap-3c3056674bbf.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_datasets_py/ipfs_datasets_py/logic/backends/results.py, ipfs_datasets_py/tests/unit/logic/backends/test_typed_results.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## LFV-007 Close objective gap: Build one bounded external-tool process lifecycle
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: runtime
+- Depends on: LFV-004
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/process.py, ipfs_datasets_py/tests/unit/logic/backends/test_process_lifecycle.py
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/backends/test_process_lifecycle.py -q
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-007-objective-gap-1e916666009f.md
+- Bundle: logic-formal-verification/foundation
+- Bundle shard: data/agent_supervisor/logic_formal_verification_expansion/bundles/logic-formal-verification-foundation.todo.md
+- Bundle strategy: explicit
+- Graph parents: LFV-G000
+- Graph depth: 1
+- Objective heap index: 6
+- Parallel lane: logic-formal-verification/foundation
+- Conflict policy: Adapt patterns from Hammer and supervisor runners into the new leaf module; do not change installers or any concrete prover adapter.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/backends/process.py, ipfs_datasets_py/tests/unit/logic/backends/test_process_lifecycle.py
+- Changed paths:
+- AST symbols: ipfs_datasets_py/ipfs_datasets_py/logic/backends/process.py, ipfs_datasets_py/tests/unit/logic/backends/test_process_lifecycle.py
+- Interfaces: BoundedToolRunner@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: LFV-G014
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/64e0ab93de925b51abab59ae68a2869c0372f93f2e44cc541af18c9cbb26b937
+- Canonical task CID: baguqeeramtqkxe66sjnvdk5llgxgriugtqbxf6j7fzcmyva26ggjzozgxe3q
+- Semantic identity: objective-evidence-obligation/v1/374d62cca8aec4636afd9330ee005dbea6f71a0be8595e21c9a738d9673e08a1
+- Acceptance subset: Argument arrays avoid shell interpretation, workspaces are isolated, timeouts terminate process trees, output and paths are bounded, secrets are redacted, fake runners make tests deterministic, imports and probes install nothing.
+- Preconditions: objective goal LFV-G014 is schedulable
+- Effects: satisfy evidence requirement: ipfs_datasets_py/ipfs_datasets_py/logic/backends/process.py, satisfy evidence requirement: ipfs_datasets_py/tests/unit/logic/backends/test_process_lifecycle.py
+- Evidence subset: ipfs_datasets_py/ipfs_datasets_py/logic/backends/process.py, ipfs_datasets_py/tests/unit/logic/backends/test_process_lifecycle.py
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/LFV-G014
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/374d62cca8aec4636afd9330ee005dbea6f71a0be8595e21c9a738d9673e08a1
+- Missing evidence: ipfs_datasets_py/ipfs_datasets_py/logic/backends/process.py, ipfs_datasets_py/tests/unit/logic/backends/test_process_lifecycle.py
+- Embedding query: Provide a reusable injected runner for native, JVM, OCaml/opam, and WASM-capable tools with strict process, path, time, output, memory, cancellation, and cleanup controls.
+- AST query: ipfs_datasets_py/ipfs_datasets_py/logic/backends/process.py, ipfs_datasets_py/tests/unit/logic/backends/test_process_lifecycle.py
+- Surplus group: objective/LFV-G014
+- Merge key: 1f661ac0ba597859
+- Merge family: objective/LFV-G014
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: bbd0056bcd089157
+- Acceptance: Objective scan filed this gap for LFV-G014. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-007-objective-gap-1e916666009f.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_datasets_py/ipfs_datasets_py/logic/backends/process.py, ipfs_datasets_py/tests/unit/logic/backends/test_process_lifecycle.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## LFV-008 Close objective gap: Reconcile datasets and supervisor provider contracts
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: provider-contract
+- Depends on: LFV-001, LFV-004, LFV-006
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/provider.py, ipfs_accelerate_py/agent_supervisor/logic_provider_contract.py, test/api/test_logic_provider_contract.py
+- Validation: python -m pytest test/api/test_logic_provider_contract.py ipfs_datasets_py/tests/unit/logic/backends -q
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-008-objective-gap-003218cab9fc.md
+- Bundle: logic-formal-verification/foundation
+- Bundle shard: data/agent_supervisor/logic_formal_verification_expansion/bundles/logic-formal-verification-foundation.todo.md
+- Bundle strategy: explicit
+- Graph parents: LFV-G000
+- Graph depth: 1
+- Objective heap index: 7
+- Parallel lane: logic-formal-verification/foundation
+- Conflict policy: Own the new provider contract, supervisor facade, and contract test; do not register concrete providers or edit routing policy.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/backends/provider.py, ipfs_accelerate_py/agent_supervisor/logic_provider_contract.py, test/api/test_logic_provider_contract.py
+- Changed paths:
+- AST symbols: ipfs_datasets_py/ipfs_datasets_py/logic/backends/provider.py, ipfs_accelerate_py/agent_supervisor/logic_provider_contract.py, test/api/test_logic_provider_contract.py
+- Interfaces: LogicProvider@1, SupervisorLogicProviderFacade@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: LFV-G015
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/73300d026615c9f4118d598c03a6687f06dc6eb4c526559f23d2e2bc3cc86f39
+- Canonical task CID: baguqeeraomya2atgcxe7iemnlggahjtip4dny3vuyutflhzd2lrlypgin44q
+- Semantic identity: objective-evidence-obligation/v1/934af1dfc3866cfef90902390f94471ec0cd6a3a78966bcbd12602070548cb98
+- Acceptance subset: Requests/responses round trip canonically across the submodule boundary, provider discovery stays lazy, cancellations and resources are representable, supervisor compatibility is additive, dataset code never imports the parent package.
+- Preconditions: objective goal LFV-G015 is schedulable
+- Effects: satisfy evidence requirement: ipfs_datasets_py/ipfs_datasets_py/logic/backends/provider.py, satisfy evidence requirement: ipfs_accelerate_py/agent_supervisor/logic_provider_contract.py, satisfy evidence requirement: test/api/test_logic_provider_contract.py
+- Evidence subset: ipfs_datasets_py/ipfs_datasets_py/logic/backends/provider.py, ipfs_accelerate_py/agent_supervisor/logic_provider_contract.py, test/api/test_logic_provider_contract.py
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/LFV-G015
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/934af1dfc3866cfef90902390f94471ec0cd6a3a78966bcbd12602070548cb98
+- Missing evidence: ipfs_datasets_py/ipfs_datasets_py/logic/backends/provider.py, ipfs_accelerate_py/agent_supervisor/logic_provider_contract.py, test/api/test_logic_provider_contract.py
+- Embedding query: Define a stable wire/provider contract usable by datasets logic and thin supervisor adapters without creating a cyclic import or a fifth provider abstraction.
+- AST query: ipfs_datasets_py/ipfs_datasets_py/logic/backends/provider.py, ipfs_accelerate_py/agent_supervisor/logic_provider_contract.py, test/api/test_logic_provider_contract.py
+- Surplus group: objective/LFV-G015
+- Merge key: 03ef695319888bdf
+- Merge family: objective/LFV-G015
+- Merge role: aggregate
+- Work item count: 3
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: d7e4fd9965a75ede
+- Acceptance: Objective scan filed this gap for LFV-G015. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-008-objective-gap-003218cab9fc.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_datasets_py/ipfs_datasets_py/logic/backends/provider.py, ipfs_accelerate_py/agent_supervisor/logic_provider_contract.py, test/api/test_logic_provider_contract.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.

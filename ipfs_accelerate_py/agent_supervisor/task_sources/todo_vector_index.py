@@ -19,8 +19,9 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from ..core.conflict_graph import (
-    build_task_work_contract,
+    TaskWorkContract,
     build_conflict_surface,
+    build_task_work_contract,
     materialize_task_conflict_graph,
     project_conflict_free_wave,
 )
@@ -29,6 +30,7 @@ from ..objectives.objective_graph import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     DEFAULT_BUNDLE_CLUSTER_MIN_SCORE,
     cosine,
+    materialize_task_dependency_graph,
     objective_tokens,
     repo_relative_path,
     repo_relative_path_safe,
@@ -80,6 +82,7 @@ class TodoIndexRecord:
     conflict_policy: str = ""
     context_paths: list[str] = field(default_factory=list)
     resource_class: str = ""
+    resources: list[str] = field(default_factory=list)
     provider_batch_key: str = ""
     provider_id: str = ""
     provider_route: str = ""
@@ -94,6 +97,7 @@ class TodoIndexRecord:
     surplus_group: str = ""
     merge_key: str = ""
     merge_family: str = ""
+    merge_fate: str = ""
     merge_role: str = ""
     work_item_count: int = 0
     work_scope: str = ""
@@ -434,6 +438,7 @@ def record_embedding_text(record: TodoIndexRecord) -> str:
             " ".join(record.missing_evidence),
             " ".join(record.context_paths),
             record.resource_class,
+            " ".join(record.resources),
             record.provider_batch_key,
             record.provider_id,
             record.provider_route,
@@ -804,6 +809,12 @@ def parse_todo_vector_records(
                 "context_keys",
             ),
             resource_class=str(fields.get("resource_class") or "").strip(),
+            resources=_all_csv(
+                fields,
+                "resources",
+                "required_resources",
+                "resource_needs",
+            ),
             provider_batch_key=str(
                 fields.get("provider_batch_key")
                 or fields.get("provider_compatibility_key")
@@ -850,6 +861,7 @@ def parse_todo_vector_records(
             surplus_group=surplus_group,
             merge_key=merge_key,
             merge_family=merge_family,
+            merge_fate=str(fields.get("merge_fate") or "").strip(),
             merge_role=merge_role,
             work_item_count=parse_int(fields.get("work_item_count"), len(missing_evidence)),
             work_scope=str(fields.get("work_scope") or "").strip(),
@@ -2135,6 +2147,196 @@ def _stored_conflict_inputs(paths: Sequence[Path | None]) -> dict[str, Any]:
     return collected
 
 
+def _apply_record_contract_fields(
+    task: dict[str, Any],
+    record: TodoIndexRecord,
+) -> None:
+    """Project todo-owned contract fields onto one bundle task.
+
+    Bundle tasks retain admission-only fields such as objective acceptance
+    subsets, preconditions, conflicts, and token classes.  Todo records own
+    the current task identity, predicted scope, dependency, and cost fields.
+    Applying the same merge before both artifacts derive their work contract
+    prevents the two projections from silently binding different work.
+    """
+
+    task["goal_id"] = record.goal_id or task.get("goal_id", "")
+    task["merge_key"] = record.merge_key
+    task["merge_family"] = record.merge_family
+    task["merge_fate"] = record.merge_fate or task.get("merge_fate", "")
+    task["merge_role"] = record.merge_role
+    task["canonical_task_key"] = record.canonical_task_key or task.get(
+        "canonical_task_key", ""
+    )
+    task["canonical_task_cid"] = record.task_cid or task.get(
+        "canonical_task_cid", ""
+    )
+    task["depends_on"] = list(record.dependency_task_cids)
+    task["dependency_task_ids"] = list(record.dependency_task_cids)
+    task["dependency_task_cids"] = list(record.dependency_task_cids)
+    task["context_paths"] = list(record.context_paths)
+    task["resource_class"] = record.resource_class
+    task["estimated_context_tokens"] = max(
+        record.estimated_context_tokens,
+        parse_int(task.get("estimated_context_tokens"), 0),
+    )
+    task["estimated_tokens"] = max(
+        record.estimated_tokens,
+        parse_int(task.get("estimated_tokens"), 0),
+    )
+    task["estimated_validation_seconds"] = max(
+        record.estimated_validation_seconds,
+        parse_int(task.get("estimated_validation_seconds"), 0),
+    )
+    task["predicted_files"] = list(record.predicted_files)
+    task["predicted_symbols"] = list(record.predicted_symbols)
+    task["acceptance"] = record.acceptance
+    task["acceptance_criteria"] = list(record.acceptance_criteria)
+    task["effects"] = list(record.effects)
+
+
+def _project_contract_onto_conflict_surface(
+    surface: Mapping[str, Any] | None,
+    contract: TaskWorkContract,
+) -> dict[str, Any]:
+    """Return a conflict surface carrying the canonical task contract."""
+
+    projected = dict(surface or {})
+    projected.update(
+        {
+            "goal_id": contract.goal_id,
+            "acceptance_subset": list(contract.acceptance),
+            "effect_subset": list(contract.effects),
+            "evidence_subset": list(contract.evidence_subset),
+            "predicted_paths": list(contract.predicted_paths),
+            "predicted_symbols": list(contract.predicted_symbols),
+            "context_paths": list(contract.context_paths),
+            "estimated_context_tokens": contract.estimated_context_tokens,
+            "estimated_tokens": contract.estimated_tokens,
+            "estimated_validation_seconds": (
+                contract.estimated_validation_seconds
+            ),
+            "resource_class": contract.resource_class,
+            "token_class": contract.token_class,
+            "preconditions": list(contract.preconditions),
+            "dependencies": list(contract.dependencies),
+            "conflicts": list(contract.conflicts),
+            "validation_commands": list(contract.validation_commands),
+            "merge_fate": contract.merge_fate,
+            "work_contract": contract._material(),
+            "work_contract_id": contract.work_contract_id,
+            "task_work_contract": contract.to_dict(),
+            "task_work_contract_id": contract.task_work_contract_id,
+        }
+    )
+    return projected
+
+
+def _project_bundle_work_contracts_onto_records(
+    *,
+    bundle_index_path: Path,
+    records: Sequence[TodoIndexRecord],
+) -> list[TodoIndexRecord]:
+    """Hydrate vector records with the contracts their bundle tasks will use."""
+
+    try:
+        payload = json.loads(bundle_index_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return list(records)
+    bundles = payload.get("bundles") if isinstance(payload, Mapping) else None
+    if not isinstance(bundles, Mapping):
+        return list(records)
+
+    tasks_by_id: dict[str, Mapping[str, Any]] = {}
+    for bundle in bundles.values():
+        if not isinstance(bundle, Mapping):
+            continue
+        tasks = bundle.get("tasks")
+        if not isinstance(tasks, list):
+            continue
+        for task in tasks:
+            if not isinstance(task, Mapping):
+                continue
+            task_id = str(task.get("task_id") or "")
+            if not task_id:
+                continue
+            if task_id in tasks_by_id:
+                raise ValueError(
+                    f"bundle index contains duplicate task identity {task_id}"
+                )
+            tasks_by_id[task_id] = task
+
+    projected_records: list[TodoIndexRecord] = []
+    for record in records:
+        bundle_task = tasks_by_id.get(record.task_id)
+        if bundle_task is None:
+            projected_records.append(record)
+            continue
+        projected_task = dict(bundle_task)
+        projected_task["conflict_surface"] = dict(record.conflict_surface)
+        _apply_record_contract_fields(projected_task, record)
+        projected_task.pop("work_contract", None)
+        projected_task.pop("work_contract_id", None)
+        projected_task.pop("task_work_contract", None)
+        projected_task.pop("task_work_contract_id", None)
+        contract = build_task_work_contract(projected_task)
+        projected_record = replace_record(
+            record,
+            conflict_surface=_project_contract_onto_conflict_surface(
+                record.conflict_surface,
+                contract,
+            ),
+            merge_fate=contract.merge_fate,
+            work_contract=contract._material(),
+            work_contract_id=contract.work_contract_id,
+            task_work_contract=contract.to_dict(),
+            task_work_contract_id=contract.task_work_contract_id,
+        )
+        verification_payload = projected_record.to_dict()
+        verification_payload.pop("work_contract", None)
+        verification_payload.pop("work_contract_id", None)
+        verification_payload.pop("task_work_contract", None)
+        verification_payload.pop("task_work_contract_id", None)
+        verified = build_task_work_contract(verification_payload)
+        if (
+            verified.work_contract_id != contract.work_contract_id
+            or verified.task_work_contract_id != contract.task_work_contract_id
+        ):
+            expected_material = contract._material()
+            observed_material = verified._material()
+            divergent_fields = sorted(
+                field_name
+                for field_name in set(expected_material) | set(observed_material)
+                if expected_material.get(field_name)
+                != observed_material.get(field_name)
+            )
+            expected_execution = expected_material.get("execution_boundary")
+            observed_execution = observed_material.get("execution_boundary")
+            divergent_execution_fields = (
+                sorted(
+                    field_name
+                    for field_name in set(expected_execution)
+                    | set(observed_execution)
+                    if expected_execution.get(field_name)
+                    != observed_execution.get(field_name)
+                )
+                if isinstance(expected_execution, Mapping)
+                and isinstance(observed_execution, Mapping)
+                else []
+            )
+            raise ValueError(
+                "todo-vector contract projection diverged for "
+                f"{record.task_id}: expected {contract.work_contract_id}/"
+                f"{contract.task_work_contract_id}, observed "
+                f"{verified.work_contract_id}/{verified.task_work_contract_id}; "
+                f"fields={','.join(divergent_fields)}; "
+                "execution_fields="
+                f"{','.join(divergent_execution_fields)}"
+            )
+        projected_records.append(projected_record)
+    return projected_records
+
+
 def write_todo_vector_index(
     *,
     repo_root: Path,
@@ -2161,6 +2363,11 @@ def write_todo_vector_index(
         task_header_prefix=task_header_prefix,
         dimensions=dimensions,
     )
+    if bundle_index_path is not None and bundle_index_path.exists():
+        records = _project_bundle_work_contracts_onto_records(
+            bundle_index_path=bundle_index_path,
+            records=records,
+        )
     coverage_inputs = build_todo_coverage_inputs(records)
     clusters = cluster_records(records)
     merge_candidates = build_merge_candidates(records, clusters)
@@ -2185,9 +2392,10 @@ def write_todo_vector_index(
         **graph_kwargs,
     )
     conflict_graph_payload = _surface_dict(conflict_graph)
+    generated_at = utc_now()
     payload: dict[str, Any] = {
         "schema": DEFAULT_TODO_VECTOR_INDEX_SCHEMA,
-        "generated_at": utc_now(),
+        "generated_at": generated_at,
         "repo_root": str(repo_root),
         "todo_path": repo_relative_path(repo_root, todo_path),
         "objective_path": repo_relative_path(repo_root, objective_path) if objective_path else "",
@@ -2232,6 +2440,7 @@ def write_todo_vector_index(
             bundle_contexts=bundle_contexts,
             execution_packets=execution_packets,
             conflict_graph=conflict_graph_payload,
+            generated_at=generated_at,
         )
     return payload
 
@@ -2335,6 +2544,7 @@ def update_bundle_index_with_todo_vectors(
     bundle_contexts: Sequence[Mapping[str, Any]] = (),
     execution_packets: Sequence[Mapping[str, Any]] = (),
     conflict_graph: Mapping[str, Any] | None = None,
+    generated_at: str | None = None,
 ) -> None:
     try:
         payload = json.loads(bundle_index_path.read_text(encoding="utf-8"))
@@ -2584,9 +2794,8 @@ def update_bundle_index_with_todo_vectors(
                 dependency_diagnostics.get(task_identity, [])
             )
             task["context_paths"] = record.context_paths
-            task["resource_class"] = (
-                record.resource_class or task.get("resource_class", "")
-            )
+            task["resource_class"] = record.resource_class
+            task["resources"] = list(record.resources)
             task["provider_batch_key"] = (
                 record.provider_batch_key or task.get("provider_batch_key", "")
             )
@@ -2631,11 +2840,24 @@ def update_bundle_index_with_todo_vectors(
             task["conflict_surface"] = compact_conflict_surface(
                 graph_surfaces.get(record_conflict_key) or record.conflict_surface
             )
+            _apply_record_contract_fields(task, record)
             task.pop("task_work_contract", None)
             task.pop("work_contract", None)
             task.pop("work_contract_id", None)
             task.pop("task_work_contract_id", None)
             contract = build_task_work_contract(task)
+            if (
+                contract.work_contract_id != record.work_contract_id
+                or contract.task_work_contract_id
+                != record.task_work_contract_id
+            ):
+                raise ValueError(
+                    f"bundle contract projection diverged for {record.task_id}"
+                )
+            task["conflict_surface"] = _project_contract_onto_conflict_surface(
+                task.get("conflict_surface"),
+                contract,
+            )
             task["work_contract"] = contract._material()
             task["work_contract_id"] = contract.work_contract_id
             task["task_work_contract"] = contract.to_dict()
@@ -2671,11 +2893,23 @@ def update_bundle_index_with_todo_vectors(
                 "task_cid": record_conflict_key,
                 "tables": ["conflict_edges", "planning_decisions"],
             }
+    dependency_graph = materialize_task_dependency_graph(
+        [
+            dict(task)
+            for bundle_payload in bundles.values()
+            if isinstance(bundle_payload, Mapping)
+            for task in (bundle_payload.get("tasks") or [])
+            if isinstance(task, Mapping)
+        ]
+    ).to_dict()
+    payload["task_dependency_graph"] = dependency_graph
+    payload["dependency_dag"] = dependency_graph
     if graph_payload:
         payload["conflict_graph"] = graph_payload
         payload["task_conflict_graph"] = graph_payload
         payload["conflict_history"] = dict(graph_payload.get("history") or {})
     payload["todo_coverage_inputs"] = build_todo_coverage_inputs(records)
+    payload["generated_at"] = str(generated_at or utc_now())
     from ..runtime.artifact_store import write_bundle_index_artifact
 
     write_bundle_index_artifact(bundle_index_path, payload)
