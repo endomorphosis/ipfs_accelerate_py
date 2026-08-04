@@ -12118,6 +12118,9 @@ def build_post_remediation_assurance_delta(
             "authority_substitution_fails_closed": True,
             "unsupported_platform_promotion_fails_closed": True,
             "deployment_ready_requires_fvt_g232_and_required_rows": True,
+            "external_secpal_is_reference_only": True,
+            "do_not_port_or_depend_on_microsoft_secpal": True,
+            "authorization_stack_is_own_ir_plus_smt_backends": True,
         },
         "validation": {
             "command": POST_REMEDIATION_VALIDATION_COMMAND,
@@ -12135,6 +12138,10 @@ def build_post_remediation_assurance_delta(
             # external approval already present on the replacement receipt.
             "does_not_complete_fvt_g232": True,
             "observes_bound_fvt_g232_without_authoring": True,
+            "external_secpal_reference_semantics_only": True,
+            "external_secpal_not_required_for_replacement_stack": True,
+            "do_not_port_or_depend_on_microsoft_secpal": True,
+            "research_eula_not_intended_for_live_environment": True,
         },
     }
     delta = public_evidence_projection(delta, repo_root=root)

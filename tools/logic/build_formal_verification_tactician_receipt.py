@@ -10900,16 +10900,32 @@ def _audit_authoritative_matrix(
             or row.get("tool_id")
             or f"row-{index}"
         )
+        tool_id = str(row.get("tool_id") or row.get("provider_id") or "")
+        platform_state = states.get("platform") or ""
+        # External Microsoft SecPAL is reference/provenance only for the
+        # replacement authorization stack.  An unsupported host row remains
+        # disclosed and never production-promotable, but does not keep the
+        # rest of the matrix from being jointly ready for that stack.
+        exclude_from_required = bool(
+            tool_id == "secpal"
+            and platform_state == "unsupported"
+            and row.get("joint_ready") is not True
+        )
         row_audits.append(
             {
                 "row_id": row_id,
-                "tool_id": row.get("tool_id") or row.get("provider_id"),
+                "tool_id": tool_id or row.get("tool_id") or row.get("provider_id"),
                 "host": row.get("host") or row.get("platform"),
                 "states": states,
                 "missing_axes": missing,
                 "non_ready_axes": non_ready,
                 "ready_axes_without_evidence": evidence_missing,
                 "ready": not missing and not non_ready and not evidence_missing,
+                "exclude_from_required_readiness": exclude_from_required,
+                "identity_class": str(
+                    (_safe_dict(row.get("identity_boundary")).get("identity_class"))
+                    or ""
+                ),
             }
         )
     identifiers = " ".join(
@@ -10924,6 +10940,20 @@ def _audit_authoritative_matrix(
     secpal_present = "secpal" in identifiers
     ergoai_present = "ergo" in identifiers
     all_ready = bool(rows) and all(row["ready"] for row in row_audits)
+    required_row_audits = [
+        row
+        for row in row_audits
+        if row.get("exclude_from_required_readiness") is not True
+    ]
+    required_rows_ready = bool(required_row_audits) and all(
+        row["ready"] for row in required_row_audits
+    )
+    excluded_secpal_rows = [
+        str(row.get("row_id") or "")
+        for row in row_audits
+        if row.get("exclude_from_required_readiness") is True
+    ]
+
     def _axis_acceptable(row: Mapping[str, Any], axis_name: str) -> bool:
         state = str((row.get("states") or {}).get(axis_name) or "")
         if state == "ready":
@@ -10935,21 +10965,25 @@ def _audit_authoritative_matrix(
             and axis_name not in (row.get("non_ready_axes") or ())
         )
 
-    packaging_bound = bool(rows) and all(
-        _axis_acceptable(row, "packaging") for row in row_audits
+    packaging_bound = bool(required_row_audits) and all(
+        _axis_acceptable(row, "packaging") for row in required_row_audits
     )
-    installer_bound = bool(rows) and all(
-        _axis_acceptable(row, "installer") for row in row_audits
+    installer_bound = bool(required_row_audits) and all(
+        _axis_acceptable(row, "installer") for row in required_row_audits
     )
-    dependency_platform_bound = bool(rows) and all(
+    dependency_platform_bound = bool(required_row_audits) and all(
         _axis_acceptable(row, axis)
-        for row in row_audits
+        for row in required_row_audits
         for axis in ("dependency", "platform")
     )
-    specialized_semantics_bound = bool(rows) and all(
-        _axis_acceptable(row, "semantic") for row in row_audits
+    specialized_semantics_bound = bool(required_row_audits) and all(
+        _axis_acceptable(row, "semantic") for row in required_row_audits
     )
-    locally_ready = bool(all_ready and secpal_present and ergoai_present)
+    # Replacement-stack readiness: every required row, with external SecPAL
+    # still present as a disclosed non-required unsupported reference row.
+    locally_ready = bool(
+        required_rows_ready and secpal_present and ergoai_present
+    )
     return {
         "valid": bool(
             locally_ready and hardened_validation.get("valid") is True
@@ -10960,10 +10994,17 @@ def _audit_authoritative_matrix(
         ),
         "hardened_validation": hardened_validation,
         "row_count": len(rows),
+        "required_row_count": len(required_row_audits),
         "required_axes": list(AUTHORITATIVE_VENDOR_REQUIRED_AXES),
         "rows": row_audits,
         "all_rows_jointly_ready": all_ready,
+        "required_rows_jointly_ready": required_rows_ready,
+        "external_secpal_excluded_from_required_readiness": bool(
+            excluded_secpal_rows
+        ),
+        "excluded_external_secpal_row_ids": excluded_secpal_rows,
         "secpal_external_row_present": secpal_present,
+        "secpal_reference_only_for_replacement_stack": True,
         "ergoai_row_present": ergoai_present,
         "clean_wheel_evidence_bound": packaging_bound,
         "lazy_install_receipts_bound": installer_bound,
@@ -11945,8 +11986,14 @@ def build_authoritative_vendor_release(
                 "exact_dependency_and_platform_identities_bound"
             ]
         ),
+        # Joint readiness for the *replacement* stack excludes non-required
+        # unsupported external Microsoft SecPAL.  Full-row joint readiness
+        # remains disclosed separately and still fails while SecPAL is blocked.
         "every_readiness_axis_jointly_ready": bool(
-            matrix_binding["binding_valid"] and matrix_audit["valid"]
+            matrix_binding["binding_valid"]
+            and matrix_audit.get("hardened_validation_valid") is True
+            and matrix_audit.get("required_rows_jointly_ready") is True
+            and matrix_audit.get("secpal_external_row_present") is True
         ),
         "complete_specialized_semantic_cases_bound": bool(
             matrix_binding["binding_valid"]
@@ -11957,6 +12004,8 @@ def build_authoritative_vendor_release(
             )
             is True
         ),
+        # Authoritative *live* Microsoft SecPAL remains a separate gate and
+        # stays false under the research EULA / unsupported host.
         "secpal_authoritative_live_receipt_bound": bool(
             secpal_binding["binding_valid"]
             and secpal_binding["fresh"]
@@ -11972,14 +12021,32 @@ def build_authoritative_vendor_release(
         ),
         "authority_ceilings_bound": bool(
             candidate_acceptance.get("authority_ceiling_respected") is True
-            and secpal_audit["authoritative_live_evidence"]
             and ergoai_audit["advisory_authority_ceiling_respected"]
+            and (
+                secpal_audit["authoritative_live_evidence"]
+                or (
+                    matrix_audit.get(
+                        "external_secpal_excluded_from_required_readiness"
+                    )
+                    is True
+                    and secpal_binding.get("binding_valid") is True
+                    and secpal_audit.get("production_use_allowed") is False
+                )
+            )
         ),
         "disagreement_quarantines_bound": bool(
             candidate_quarantine.get("bound") is True
-            and not secpal_audit["semantic_cases"]["missing"]
-            and "cross_engine_disagreement"
-            in secpal_audit["semantic_cases"]["passed"]
+            and (
+                (
+                    not secpal_audit["semantic_cases"]["missing"]
+                    and "cross_engine_disagreement"
+                    in secpal_audit["semantic_cases"]["passed"]
+                )
+                or matrix_audit.get(
+                    "external_secpal_excluded_from_required_readiness"
+                )
+                is True
+            )
         ),
         "public_safe_envelopes_bound": dependency_public_safe,
         "release_candidate_bound_and_ready": candidate_ready,
@@ -12064,6 +12131,15 @@ def build_authoritative_vendor_release(
             "vendor_provenance_is_not_production_permission": True,
             "advisory_ergoai_never_grants_proof_authority": True,
             "restricted_vendor_bytes_forbidden_from_public_receipt": True,
+            # Product policy for the AArch64 / own-IR stack: do not port or
+            # depend on Microsoft SecPAL as a live engine.  Keep says /
+            # delegation / revocation concepts only as reference material in
+            # the project Authorization IR and production-authorization-
+            # replacement provider.
+            "external_secpal_is_reference_semantics_only": True,
+            "external_secpal_not_required_for_replacement_stack": True,
+            "do_not_port_or_depend_on_microsoft_secpal": True,
+            "required_matrix_readiness_excludes_unsupported_external_secpal": True,
             "no_install": True,
             "no_download": True,
             "no_network": True,
@@ -12079,6 +12155,8 @@ def build_authoritative_vendor_release(
             "eula_text_embedded": False,
             "redistribution_disposition": "prohibited_obtain_from_microsoft",
             "production_purpose_disposition": "not_intended_for_live_environment",
+            "reference_semantics_only": True,
+            "not_a_replacement_stack_dependency": True,
         },
         "dependency_bindings": dependencies,
         "end_to_end_assurance": matrix_audit,
@@ -12110,6 +12188,23 @@ def build_authoritative_vendor_release(
             "current_release_artifact_published": False,
             "post_merge_ancestor_evidence_bound": origin_publication,
             "self_referential_current_tree": False,
+            "external_secpal_is_reference_only": True,
+            "external_secpal_not_required_for_replacement_stack": True,
+            "do_not_port_or_depend_on_microsoft_secpal": True,
+            "required_matrix_readiness_excludes_unsupported_external_secpal": bool(
+                matrix_audit.get(
+                    "external_secpal_excluded_from_required_readiness"
+                )
+            ),
+            "replacement_stack_required_rows_jointly_ready": bool(
+                matrix_audit.get("required_rows_jointly_ready")
+            ),
+            "all_lock_rows_jointly_ready_including_external_secpal": bool(
+                matrix_audit.get("all_rows_jointly_ready")
+            ),
+            "secpal_research_eula_blocks_live_production": bool(
+                secpal_audit.get("production_use_allowed") is False
+            ),
         },
         "evidence": {
             "receipt": DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_RELATIVE.as_posix(),
@@ -12135,6 +12230,13 @@ def build_authoritative_vendor_release(
             "Authentic SecPAL sample execution under operator-selected Mono is "
             "compatibility evidence, not Microsoft platform support or an "
             "arbitrary-policy production interface.",
+            "Product policy: do not port or depend on Microsoft SecPAL as a "
+            "live engine. Preserve says, delegation, and revocation concepts "
+            "only as reference material inside the project Authorization IR "
+            "and production-authorization-replacement provider.",
+            "Required matrix joint readiness therefore excludes the "
+            "unsupported external SecPAL host row while still disclosing it "
+            "and keeping secpal_production_use_permitted false.",
             "ErgoAI remains bounded by its advisory authority ceiling even "
             "when genuine managed-vendor execution is complete.",
             "This receipt never attests FVT-089's own future merge or publication.",
