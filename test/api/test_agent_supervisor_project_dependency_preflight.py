@@ -24,6 +24,8 @@ from ipfs_accelerate_py.agent_supervisor.validation.project_dependency_preflight
 )
 from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
     ValidationDependencyScope,
+    expand_cd_parent_return_validation_commands,
+    split_validation_commands,
     validation_command_dependency_scope,
     validation_command_repository_root,
 )
@@ -1001,6 +1003,85 @@ def test_ordinary_shell_arguments_do_not_change_inferred_repository_root(
     command,
 ) -> None:
     assert validation_command_repository_root(command) == ""
+
+
+def test_cd_parent_return_closeout_chain_expands_into_two_safe_commands() -> None:
+    """Monorepo closeout: package suite then root board validator."""
+
+    command = (
+        "cd ipfs_kit_py && python -m pytest -q "
+        "tests/runtime_readiness/release/test_joined_release_receipt.py "
+        "&& cd .. && python scripts/validate_ipfs_kit_runtime_readiness_board.py "
+        "--check-all"
+    )
+    # The combined form is still root-unsafe until expanded.
+    assert validation_command_repository_root(command) is None
+    expanded = expand_cd_parent_return_validation_commands(command)
+    assert expanded == [
+        (
+            "cd ipfs_kit_py && python -m pytest -q "
+            "tests/runtime_readiness/release/test_joined_release_receipt.py"
+        ),
+        "python scripts/validate_ipfs_kit_runtime_readiness_board.py --check-all",
+    ]
+    assert validation_command_repository_root(expanded[0]) == "ipfs_kit_py"
+    assert validation_command_repository_root(expanded[1]) == ""
+    assert split_validation_commands(command) == expanded
+
+
+def test_cd_parent_return_closeout_chain_passes_dependency_preflight(
+    tmp_path: Path,
+) -> None:
+    """Expanded closeout chains must not false-positive as dependency drift."""
+
+    project = tmp_path / "ipfs_kit_py"
+    project.mkdir()
+    (project / "pyproject.toml").write_text(
+        "[project]\n"
+        'name = "ipfs-kit-py"\n'
+        'version = "0.0.0"\n'
+        'requires-python = ">=3.11"\n'
+        "dependencies = []\n",
+        encoding="utf-8",
+    )
+    command = (
+        "cd ipfs_kit_py && python -m pytest -q "
+        "tests/runtime_readiness/release/test_joined_release_receipt.py "
+        "&& cd .. && python scripts/validate_ipfs_kit_runtime_readiness_board.py "
+        "--check-all"
+    )
+    receipt = preflight_validation_project_dependencies(
+        tmp_path,
+        split_validation_commands(command),
+        probe_runner=lambda *_args, **_kwargs: {
+            "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+            "passed": True,
+            "reason": "probe_stub_ok",
+            "projects": [],
+            "probe_source_sha256": "a" * 64,
+        },
+    )
+    assert receipt["invalid_commands"] == []
+    assert "ipfs_kit_py" in receipt["validation_roots"]
+    # Root-relative board script is the empty-string root.
+    assert "" in receipt["validation_roots"]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # Multiple parent returns remain fail-closed.
+        "cd a && true && cd .. && true && cd .. && true",
+        # Nested shell still fail-closed.
+        "cd a && bash -c 'true' && cd .. && true",
+        # Mid-chain pushd is not expanded.
+        "cd a && pushd b && true && cd .. && true",
+    ],
+)
+def test_unsafe_multi_cd_chains_are_not_expanded(command: str) -> None:
+    expanded = expand_cd_parent_return_validation_commands(command)
+    assert expanded == [command]
+    assert validation_command_repository_root(command) is None
 
 
 @pytest.mark.parametrize(

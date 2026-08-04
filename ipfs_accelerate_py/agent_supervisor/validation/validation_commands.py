@@ -428,8 +428,127 @@ def normalize_validation_command_text(value: str) -> str:
     return command
 
 
+def _quote_shell_token(token: str) -> str:
+    """Return a shell-safe spelling of one structure token."""
+
+    text = str(token)
+    if text in {"&&", "||", ";", "|", "&", "(", ")"}:
+        return text
+    if text and all(
+        character.isalnum() or character in "._/+-=:@%,[]{}~^"
+        for character in text
+    ):
+        return text
+    return shlex.quote(text)
+
+
+def _join_shell_segments_with_and(
+    segments: Sequence[Sequence[str]],
+) -> str:
+    """Reconstruct one ``&&``-joined shell command from structure segments."""
+
+    rendered: list[str] = []
+    for segment in segments:
+        if not segment:
+            continue
+        rendered.append(" ".join(_quote_shell_token(token) for token in segment))
+    return " && ".join(rendered)
+
+
+def expand_cd_parent_return_validation_commands(command: str) -> list[str]:
+    """Expand a reviewed ``cd sub && … && cd .. && …`` closeout pattern.
+
+    Boards sometimes validate both a package-local suite and a monorepo-root
+    script in one shell chain by changing into a submodule, running tests, then
+    returning with ``cd ..`` before the root script.  That form is intentional
+    and safe when:
+
+    * the only working-directory changes are a leading ``cd <safe-relative>``
+      and exactly one later ``cd ..`` that returns to the repository root; and
+    * neither body introduces another ``cd``/pushd/popd/source/eval form.
+
+    The historical preflight required a single leading ``cd`` for the entire
+    chain, which permanently deferred tasks such as release closeout with a
+    long dependency-drift backoff even though each half of the chain was
+    independently safe.  Expanding into two commands restores the intended
+    authority while keeping unsafe multi-``cd`` forms fail-closed.
+    """
+
+    text = normalize_validation_command_text(command)
+    if not text:
+        return []
+    # Already a single-root command: leave unchanged.
+    if validation_command_repository_root(text) is not None:
+        return [text]
+
+    structure_tokens = _shell_structure_tokens(text)
+    if not structure_tokens:
+        return [text]
+    # Only pure &&-chains are eligible; mixed | || ; keep fail-closed.
+    if any(token in {";", "|", "||", "&"} for token in structure_tokens):
+        return [text]
+    segments = _shell_command_segments(structure_tokens)
+    if len(segments) < 3:
+        return [text]
+
+    first = segments[0]
+    if len(first) != 2 or first[0] != "cd":
+        return [text]
+    subdir = _safe_literal_repository_path(
+        first[1],
+        allow_current_directory=False,
+    )
+    if subdir is None or not subdir:
+        return [text]
+
+    return_indices = [
+        index
+        for index, segment in enumerate(segments)
+        if len(segment) == 2 and segment[0] == "cd" and segment[1] == ".."
+    ]
+    if len(return_indices) != 1:
+        return [text]
+    return_index = return_indices[0]
+    if return_index <= 1 or return_index >= len(segments) - 1:
+        return [text]
+
+    left_body = segments[1:return_index]
+    right_body = segments[return_index + 1 :]
+    for segment in (*left_body, *right_body):
+        command_meta = _shell_segment_command(segment)
+        if command_meta is None:
+            continue
+        if command_meta[0] == "cd":
+            return [text]
+        # Reject other cwd-indeterminate builtins in either half.
+        if command_meta[0] in _CWD_INDETERMINATE_SHELL_BUILTINS:
+            return [text]
+
+    if (
+        _has_unquoted_shell_grouping(text)
+        or _has_unquoted_shell_newline(text)
+        or _uses_unsafe_env_options(segments)
+        or _uses_nested_shell_command(segments)
+    ):
+        return [text]
+
+    left_command = _join_shell_segments_with_and((first, *left_body))
+    right_command = _join_shell_segments_with_and(right_body)
+    if (
+        validation_command_repository_root(left_command) is None
+        or validation_command_repository_root(right_command) is None
+    ):
+        return [text]
+    return [left_command, right_command]
+
+
 def split_validation_commands(value: str) -> list[str]:
-    """Split semicolon-separated shell commands without splitting quoted code."""
+    """Split semicolon-separated shell commands without splitting quoted code.
+
+    After semicolon splitting, expand the reviewed
+    ``cd <sub> && … && cd .. && …`` monorepo closeout pattern into two
+    independently rooted commands so dependency preflight can accept each half.
+    """
 
     text = normalize_validation_command_text(value)
     commands: list[str] = []
@@ -467,7 +586,11 @@ def split_validation_commands(value: str) -> list[str]:
         current.append(char)
 
     flush()
-    return commands
+
+    expanded: list[str] = []
+    for command in commands:
+        expanded.extend(expand_cd_parent_return_validation_commands(command))
+    return expanded
 
 
 def _shell_tokens(command: str) -> list[str]:
