@@ -46,6 +46,7 @@ from ..context.context_compiler import (
 from ..context.context_contracts import (
     ABSOLUTE_MAX_CONTEXT_BYTES,
     ContextBudget,
+    ContextBoundsError,
     ContextCapsule,
 )
 from ..proof.formal_verification_contracts import canonical_json, content_identity
@@ -41625,6 +41626,74 @@ class PortalImplementationDaemon:
             )
         return byte_count
 
+    def _implementation_prompt_token_usage(
+        self,
+        task: PortalTask,
+        rendered: str,
+    ) -> tuple[int, int]:
+        """Measure final provider text against every authoritative ceiling.
+
+        Context compilation accounts for the canonical capsule.  Retry
+        guidance is appended later, so final dispatch must be remeasured with
+        the same tokenizer and negotiated provider window.  A retained parent
+        may be stricter than current configuration; its effective capsule
+        budget remains an upper bound.
+        """
+
+        provider_window, configured_budget, prompt_byte_limit = (
+            self._implementation_provider_context_window_for_task(task)
+        )
+        compiler = ContextCompiler(
+            configured_budget,
+            tokenizer=self.implementation_context_tokenizer,
+            provider_context_window=provider_window,
+            provider_max_input_tokens=(
+                self.implementation_provider_max_input_tokens
+            ),
+            provider_max_input_bytes=prompt_byte_limit,
+        )
+        token_count = compiler.estimator.estimate(rendered)
+        effective_limit = compiler.effective_input_limit
+        context = self._last_implementation_context
+        if isinstance(context, ContextCompileResult):
+            effective_limit = min(
+                effective_limit,
+                context.capsule.budget.max_input_tokens,
+            )
+            base_prompt = render_context_capsule(context.capsule)
+            if rendered.startswith(base_prompt):
+                suffix = rendered[len(base_prompt) :]
+                token_count = max(
+                    token_count,
+                    context.capsule.input_tokens
+                    + (
+                        compiler.estimator.estimate(suffix)
+                        if suffix
+                        else 0
+                    ),
+                )
+        elif isinstance(context, ContextDeltaResult):
+            effective_limit = min(
+                effective_limit,
+                context.parent_capsule.budget.max_input_tokens,
+            )
+        return token_count, effective_limit
+
+    def _require_implementation_prompt_token_budget(
+        self,
+        task: PortalTask,
+        rendered: str,
+    ) -> int:
+        token_count, effective_limit = self._implementation_prompt_token_usage(
+            task,
+            rendered,
+        )
+        if token_count > effective_limit:
+            raise ImplementationRetryDeferred(
+                "implementation context token budget exhausted"
+            )
+        return token_count
+
     def _resolve_context_path(self, value: Any) -> Path | None:
         text = str(value or "").strip()
         if not text:
@@ -43255,10 +43324,14 @@ class PortalImplementationDaemon:
                         raise ValueError(
                             "persisted base context is not receipt-bound"
                         )
-                    self._implementation_loaded_parents[key] = (
-                        parent,
-                        receipt.receipt_id,
+                    self._implementation_base_contexts[key] = (
+                        ContextCompileResult(
+                            parent,
+                            receipt,
+                            receipt.decisions,
+                        )
                     )
+                    self._implementation_loaded_parents.pop(key, None)
                 except (TypeError, ValueError):
                     # A malformed/stale sidecar is an invalidation, never an
                     # excuse to dispatch unverified inherited context.
@@ -43315,6 +43388,58 @@ class PortalImplementationDaemon:
             return base.capsule, base.receipt.receipt_id
         return self._implementation_loaded_parents.get(key)
 
+    def _persist_implementation_diagnostic_sidecars(
+        self,
+        task: PortalTask,
+        receipt: ImplementationDiagnosticReceipt,
+    ) -> None:
+        """Persist one diagnostic and its matching retry-state projection."""
+
+        key = self._canonical_ref(task)
+        self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
+        path = self.implementation_log_dir / (
+            self._implementation_context_file_stem(task)
+            + "-diagnostic-receipt.json"
+        )
+        _shared_atomic_write_json(path, receipt.to_record())
+        state_path = self.implementation_log_dir / (
+            self._implementation_context_file_stem(task)
+            + "-diagnostic-state.json"
+        )
+        _shared_atomic_write_json(
+            state_path,
+            {
+                "schema": "implementation-diagnostic-state.v1",
+                "diagnostic_receipt_id": receipt.receipt_id,
+                "repeat_count": self._implementation_diagnostic_repeats.get(
+                    key,
+                    1,
+                ),
+                "not_before": self._implementation_retry_not_before.get(
+                    key,
+                    0.0,
+                ),
+            },
+        )
+
+    @staticmethod
+    def _fresh_retry_context_matches_diagnostic(
+        capsule: ContextCapsule,
+        diagnostic: ImplementationDiagnosticReceipt,
+        *,
+        repair_round: int,
+    ) -> bool:
+        """Return whether a full parent already carries this exact retry."""
+
+        prefix = f"retry-fresh-{int(repair_round)}:"
+        return any(
+            item.required
+            and item.kind == "implementation-fresh-retry-context"
+            and item.reference_id.startswith(prefix)
+            and diagnostic.failure_id in item.coverage_ids
+            for item in capsule.evidence
+        )
+
     def record_implementation_failure_context(
         self,
         task: PortalTask,
@@ -43356,27 +43481,7 @@ class PortalImplementationDaemon:
             self._implementation_diagnostic_repeats[key] = 1
             self._implementation_retry_not_before.pop(key, None)
         self._implementation_diagnostics[key] = receipt
-        self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
-        path = self.implementation_log_dir / (
-            re.sub(r"[^a-z0-9._-]+", "-", task.task_id.lower()).strip("-")
-            + "-diagnostic-receipt.json"
-        )
-        _shared_atomic_write_json(path, receipt.to_record())
-        state_path = self.implementation_log_dir / (
-            self._implementation_context_file_stem(task)
-            + "-diagnostic-state.json"
-        )
-        _shared_atomic_write_json(
-            state_path,
-            {
-                "schema": "implementation-diagnostic-state.v1",
-                "diagnostic_receipt_id": receipt.receipt_id,
-                "repeat_count": self._implementation_diagnostic_repeats[key],
-                "not_before": self._implementation_retry_not_before.get(
-                    key, 0.0
-                ),
-            },
-        )
+        self._persist_implementation_diagnostic_sidecars(task, receipt)
         return receipt
 
     def _record_failed_attempt_retry_context(
@@ -43755,7 +43860,7 @@ class PortalImplementationDaemon:
         task: PortalTask,
         attempt: int,
         diagnostic: ImplementationDiagnosticReceipt,
-    ) -> RetryContextResult:
+    ) -> RetryContextResult | ContextCompileResult:
         """Compile one bounded semantic delta from the retained base context."""
 
         parent = self._implementation_parent(task)
@@ -43833,7 +43938,9 @@ class PortalImplementationDaemon:
         result: RetryContextResult | None = None
         projection_name = ""
         attempted_projections: list[str] = []
-        last_budget_error: ContextDeltaBudgetError | None = None
+        last_budget_error: Exception | None = None
+        rescue_projection_name = ""
+        rescue_projection: dict[str, Any] | None = None
         try:
             for (
                 candidate_name,
@@ -43842,6 +43949,15 @@ class PortalImplementationDaemon:
                 diagnostic
             ):
                 attempted_projections.append(candidate_name)
+                # Retain only the smallest candidate reached.  If the exact
+                # parent is already at its immutable ceiling, every valid
+                # delta can fail because compile_delta remeasures the complete
+                # parent plus new evidence.  A single fresh-context rescue
+                # below may replace optional parent evidence with this exact,
+                # receipt-bound projection; it never retries unboundedly or
+                # changes the task's authority-bearing core.
+                rescue_projection_name = candidate_name
+                rescue_projection = diagnostic_projection
                 failure_references = build_text_context_references(
                     canonical_json(diagnostic_projection),
                     reference_prefix=f"retry-failure-{repair_round}",
@@ -43879,7 +43995,10 @@ class PortalImplementationDaemon:
                         tree_id=tree_id,
                         cancelled=self.implementation_cancelled,
                     )
-                except ContextDeltaBudgetError as exc:
+                except (
+                    ContextBoundsError,
+                    ContextDeltaBudgetError,
+                ) as exc:
                     last_budget_error = exc
                     continue
                 projection_name = candidate_name
@@ -43895,10 +44014,222 @@ class PortalImplementationDaemon:
                 "implementation context byte budget exhausted"
             ) from exc
         if result is None:
-            raise ImplementationRetryDeferred(
-                "implementation retry context budget exhausted",
-                backoff_seconds=300,
-            ) from last_budget_error
+            # A delta's full-reconstruction check can be impossible even when
+            # the immutable core plus the minimum failure diagnosis fits: the
+            # prior compiler was allowed to fill all remaining budget with
+            # optional evidence.  Recompile exactly once as a full provider
+            # context under the stricter parent/configured budget.  The fresh
+            # capsule preserves every authority-bearing identity and required
+            # parent reference, while ordinary optional evidence competes for
+            # space after the required, content-addressed retry binding.
+            if rescue_projection is None:
+                raise ImplementationRetryDeferred(
+                    "implementation retry context budget exhausted",
+                    backoff_seconds=300,
+                ) from last_budget_error
+
+            def bounded_retry_values(values: Sequence[str]) -> list[str]:
+                marker = "...<truncated>"
+                bounded: list[str] = []
+                for value in values[:16]:
+                    text = str(value)
+                    if len(text) > 256:
+                        text = text[: 256 - len(marker)].rstrip() + marker
+                    bounded.append(text)
+                return bounded
+
+            rescue_binding = {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "implementation-fresh-retry-context@1"
+                ),
+                "mode": "bounded_fresh_context_rescue",
+                "parent_capsule_id": parent_capsule.capsule_id,
+                "parent_invariant_core_id": (
+                    parent_capsule.invariant_core_id
+                ),
+                "prior_decision_id": prior_decision_id,
+                "diagnostic_receipt_id": diagnostic.receipt_id,
+                "diagnostic_failure_id": diagnostic.failure_id,
+                "diagnostic_projection": rescue_projection_name,
+                "failure": rescue_projection,
+                "repair_round": repair_round,
+                "max_repair_rounds": self.implementation_max_repair_rounds,
+                # The receipt ID binds the complete sequences.  Include a
+                # bounded actionable prefix and an identity for each complete
+                # sequence so large diagnostics cannot regain unbounded input
+                # authority through this rescue path.
+                "changed_files": bounded_retry_values(
+                    diagnostic.changed_files
+                ),
+                "changed_files_id": content_identity(
+                    list(diagnostic.changed_files)
+                ),
+                "changed_symbols": bounded_retry_values(
+                    diagnostic.changed_symbols
+                ),
+                "changed_symbols_id": content_identity(
+                    list(diagnostic.changed_symbols)
+                ),
+                "unresolved_requirement_ids": bounded_retry_values(
+                    diagnostic.unresolved_requirements
+                ),
+                "unresolved_requirements_id": content_identity(
+                    list(diagnostic.unresolved_requirements)
+                ),
+            }
+            try:
+                rescue_references = build_text_context_references(
+                    canonical_json(rescue_binding),
+                    reference_prefix=f"retry-fresh-{repair_round}",
+                    kind="implementation-fresh-retry-context",
+                    repository_id=repository_id,
+                    tree_id=tree_id,
+                    priority=1_000,
+                    required=True,
+                    chunk_bytes=8_192,
+                    coverage_ids=(
+                        diagnostic.failure_id,
+                        *diagnostic.unresolved_requirements[:15],
+                    ),
+                )
+                fresh_result = compiler.compile(
+                    repository_id=parent_capsule.repository_id,
+                    tree_id=parent_capsule.tree_id,
+                    objective_id=parent_capsule.objective_id,
+                    objective_revision=parent_capsule.objective_revision,
+                    policy_id=parent_capsule.policy_id,
+                    policy_revision=parent_capsule.policy_revision,
+                    caller=parent_capsule.caller,
+                    stage=parent_capsule.stage,
+                    goal=parent_capsule.goal,
+                    authority=parent_capsule.authority,
+                    scope=parent_capsule.scope,
+                    acceptance=parent_capsule.acceptance,
+                    evidence=(
+                        *parent_capsule.evidence,
+                        *rescue_references,
+                    ),
+                )
+            except (
+                ContextBoundsError,
+                RequiredContextOverflowError,
+            ) as exc:
+                raise ImplementationRetryDeferred(
+                    "implementation retry context budget exhausted",
+                    backoff_seconds=300,
+                ) from exc
+
+            identity_fields = (
+                "repository_id",
+                "tree_id",
+                "objective_id",
+                "objective_revision",
+                "policy_id",
+                "policy_revision",
+                "caller",
+                "stage",
+            )
+            if any(
+                getattr(fresh_result.capsule, name)
+                != getattr(parent_capsule, name)
+                for name in identity_fields
+            ):
+                raise RuntimeError(
+                    "fresh retry context changed an immutable context identity"
+                )
+            if (
+                fresh_result.capsule.invariant_core_id
+                != parent_capsule.invariant_core_id
+                or fresh_result.capsule.invariant_core
+                != parent_capsule.invariant_core
+            ):
+                raise RuntimeError(
+                    "fresh retry context changed the authority-bearing core"
+                )
+            parent_budget = parent_capsule.budget
+            rescue_budget = fresh_result.capsule.budget
+            if (
+                rescue_budget.max_input_tokens
+                > parent_budget.max_input_tokens
+                or rescue_budget.max_items > parent_budget.max_items
+                or rescue_budget.max_item_bytes
+                > parent_budget.max_item_bytes
+                or rescue_budget.max_serialized_bytes
+                > parent_budget.max_serialized_bytes
+                or rescue_budget.max_depth > parent_budget.max_depth
+                or rescue_budget.max_text_bytes
+                > parent_budget.max_text_bytes
+                or rescue_budget.reserved_output_tokens
+                < parent_budget.reserved_output_tokens
+                or rescue_budget.reserved_tool_tokens
+                < parent_budget.reserved_tool_tokens
+            ):
+                raise RuntimeError(
+                    "fresh retry context widened its immutable parent budget"
+                )
+            selected_ids = {
+                item.reference_id for item in fresh_result.capsule.evidence
+            }
+            rescue_ids = {
+                item.reference_id for item in rescue_references
+            }
+            parent_required_ids = {
+                item.reference_id
+                for item in parent_capsule.evidence
+                if item.required
+            }
+            if (
+                not rescue_ids.issubset(selected_ids)
+                or not parent_required_ids.issubset(selected_ids)
+            ):
+                raise RuntimeError(
+                    "fresh retry context lost required retry evidence"
+                )
+            allowed_ids = {
+                item.reference_id for item in parent_capsule.evidence
+            } | rescue_ids
+            if not selected_ids.issubset(allowed_ids):
+                raise RuntimeError(
+                    "fresh retry context introduced unauthorized evidence"
+                )
+
+            self._last_implementation_context = fresh_result
+            self._last_implementation_retry = None
+            key = self._canonical_ref(task)
+            self._implementation_base_contexts[key] = fresh_result
+            self._implementation_loaded_parents.pop(key, None)
+            rebound_diagnostic = replace(
+                diagnostic,
+                prior_decision_id=fresh_result.receipt.receipt_id,
+            )
+            self._implementation_diagnostics[key] = rebound_diagnostic
+            self._decision_runtime_route(
+                "retry",
+                {
+                    "task_id": task.task_id,
+                    "attempt": int(attempt),
+                    "mode": "bounded_fresh_context_rescue",
+                    "repair_round": int(repair_round),
+                    "prior_decision_id": prior_decision_id,
+                    "diagnostic_receipt_id": diagnostic.receipt_id,
+                    "rebound_diagnostic_receipt_id": (
+                        rebound_diagnostic.receipt_id
+                    ),
+                    "parent_capsule_id": parent_capsule.capsule_id,
+                    "parent_invariant_core_id": (
+                        parent_capsule.invariant_core_id
+                    ),
+                    "context_receipt_id": (
+                        fresh_result.receipt.receipt_id
+                    ),
+                    "fresh_capsule_id": fresh_result.capsule.capsule_id,
+                    "diagnostic_projection": rescue_projection_name,
+                    "diagnostic_projection_attempts": attempted_projections,
+                    "reason": "delta_full_reconstruction_budget",
+                },
+            )
+            return fresh_result
         self._last_implementation_context = result.delta_result
         self._last_implementation_retry = result
         self._decision_runtime_route(
@@ -44317,6 +44648,28 @@ class PortalImplementationDaemon:
             _shared_atomic_write_json(
                 base_receipt_path, result.receipt.to_dict()
             )
+            diagnostic = self._implementation_diagnostics.get(
+                self._canonical_ref(task)
+            )
+            if (
+                attempt > 1
+                and diagnostic is not None
+                and diagnostic.prior_decision_id
+                == result.receipt.receipt_id
+                and self._fresh_retry_context_matches_diagnostic(
+                    result.capsule,
+                    diagnostic,
+                    repair_round=attempt - 1,
+                )
+            ):
+                # Publish the rebound diagnosis only after its new base
+                # capsule and receipt are durable.  A crash before this point
+                # leaves the previous base/diagnostic pair fail-closed rather
+                # than a diagnosis naming an unpublished parent.
+                self._persist_implementation_diagnostic_sidecars(
+                    task,
+                    diagnostic,
+                )
         if self._last_implementation_retry is not None:
             retry_path = (
                 self.implementation_log_dir
@@ -44445,6 +44798,7 @@ class PortalImplementationDaemon:
                 backoff_seconds=300,
             )
         rendered = ""
+        fresh_retry_context = False
         if attempt > 1:
             if attempt - 1 > self.implementation_max_repair_rounds:
                 raise ImplementationRetryDeferred(
@@ -44470,24 +44824,73 @@ class PortalImplementationDaemon:
                     result = self._compile_implementation_context(task, attempt)
                     rendered = render_context_capsule(result.capsule)
                 else:
-                    repeats = self._implementation_diagnostic_repeats.get(key, 1)
-                    if repeats >= self.implementation_max_repair_rounds:
-                        raise ImplementationRetryDeferred(
-                            "identical implementation failure escalated"
+                    repair_round = attempt - 1
+                    if self._fresh_retry_context_matches_diagnostic(
+                        parent[0],
+                        diagnostic,
+                        repair_round=repair_round,
+                    ):
+                        result = self._implementation_base_contexts.get(key)
+                        if not isinstance(result, ContextCompileResult):
+                            raise ImplementationRetryDeferred(
+                                "fresh retry base receipt is unavailable",
+                                backoff_seconds=300,
+                            )
+                        self._last_implementation_context = result
+                        self._last_implementation_retry = None
+                        rendered = render_context_capsule(result.capsule)
+                        fresh_retry_context = True
+                        self._decision_runtime_route(
+                            "retry",
+                            {
+                                "task_id": task.task_id,
+                                "attempt": int(attempt),
+                                "mode": "bounded_fresh_context_reuse",
+                                "repair_round": int(repair_round),
+                                "diagnostic_receipt_id": (
+                                    diagnostic.receipt_id
+                                ),
+                                "context_receipt_id": (
+                                    result.receipt.receipt_id
+                                ),
+                                "fresh_capsule_id": (
+                                    result.capsule.capsule_id
+                                ),
+                            },
                         )
-                    not_before = self._implementation_retry_not_before.get(key, 0.0)
-                    if not_before > time.time():
-                        raise ImplementationRetryDeferred(
-                            "identical implementation failure backoff",
-                            backoff_seconds=max(
-                                1,
-                                int(not_before - time.time() + 0.999),
-                            ),
+                    else:
+                        repeats = self._implementation_diagnostic_repeats.get(
+                            key,
+                            1,
                         )
-                    result = self._compile_implementation_retry_context(
-                        task, attempt, diagnostic
-                    )
-                    rendered = render_retry_context(result.capsule)
+                        if repeats >= self.implementation_max_repair_rounds:
+                            raise ImplementationRetryDeferred(
+                                "identical implementation failure escalated"
+                            )
+                        not_before = self._implementation_retry_not_before.get(
+                            key,
+                            0.0,
+                        )
+                        if not_before > time.time():
+                            raise ImplementationRetryDeferred(
+                                "identical implementation failure backoff",
+                                backoff_seconds=max(
+                                    1,
+                                    int(not_before - time.time() + 0.999),
+                                ),
+                            )
+                        result = self._compile_implementation_retry_context(
+                            task, attempt, diagnostic
+                        )
+                        fresh_retry_context = isinstance(
+                            result,
+                            ContextCompileResult,
+                        )
+                        rendered = (
+                            render_retry_context(result.capsule)
+                            if isinstance(result, RetryContextResult)
+                            else render_context_capsule(result.capsule)
+                        )
         if not rendered:
             result = self._compile_implementation_context(task, attempt)
             rendered = render_context_capsule(result.capsule)
@@ -44512,22 +44915,42 @@ class PortalImplementationDaemon:
                     f"{addendum}\n"
                 )
                 byte_limit = self._task_llm_context_budget_bytes(task)
+                candidate_bytes = len(candidate.encode("utf-8"))
+                candidate_tokens, candidate_token_limit = (
+                    self._implementation_prompt_token_usage(task, candidate)
+                )
                 if (
-                    byte_limit is None
-                    or len(candidate.encode("utf-8")) <= byte_limit
+                    not fresh_retry_context
+                    and (
+                        byte_limit is None
+                        or candidate_bytes <= byte_limit
+                    )
+                    and candidate_tokens <= candidate_token_limit
                 ):
                     rendered = candidate
                 else:
                     self._decision_runtime_route(
-                        "implementation_context_addendum_omitted",
+                        "implementation_context",
                         {
                             "task_id": task.task_id,
                             "attempt": int(attempt),
-                            "reason": "provider_input_byte_budget",
-                            "provider_input_byte_limit": byte_limit,
-                            "candidate_input_bytes": len(
-                                candidate.encode("utf-8")
+                            "mode": "deterministic_addendum_omitted",
+                            "reason": (
+                                "receipt_bound_fresh_retry_context"
+                                if fresh_retry_context
+                                else "provider_input_byte_budget"
+                                if (
+                                    byte_limit is not None
+                                    and candidate_bytes > byte_limit
+                                )
+                                else "provider_input_token_budget"
                             ),
+                            "provider_input_byte_limit": byte_limit,
+                            "candidate_input_bytes": candidate_bytes,
+                            "provider_input_token_limit": (
+                                candidate_token_limit
+                            ),
+                            "candidate_input_tokens": candidate_tokens,
                         },
                     )
             seed_guidance = str(
@@ -44540,6 +44963,7 @@ class PortalImplementationDaemon:
                     f"{seed_guidance}\n"
                 )
         self._require_implementation_prompt_byte_budget(task, rendered)
+        self._require_implementation_prompt_token_budget(task, rendered)
         if attempt > 1 and seed_guidance:
             # One-shot after the bounded prompt is accepted; failed budget
             # admission must retain the recovery guidance for diagnosis.
