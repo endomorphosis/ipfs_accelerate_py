@@ -44021,24 +44021,30 @@ class PortalImplementationDaemon:
             # context under the stricter parent/configured budget.  The fresh
             # capsule preserves every authority-bearing identity and required
             # parent reference, while ordinary optional evidence competes for
-            # space after the required, content-addressed retry binding.
+            # space after one bounded sequence of content-addressed retry
+            # binding projections.
             if rescue_projection is None:
                 raise ImplementationRetryDeferred(
                     "implementation retry context budget exhausted",
                     backoff_seconds=300,
                 ) from last_budget_error
 
-            def bounded_retry_values(values: Sequence[str]) -> list[str]:
+            def bounded_retry_values(
+                values: Sequence[str],
+                *,
+                count: int = 16,
+                width: int = 256,
+            ) -> list[str]:
                 marker = "...<truncated>"
                 bounded: list[str] = []
-                for value in values[:16]:
+                for value in values[:count]:
                     text = str(value)
-                    if len(text) > 256:
-                        text = text[: 256 - len(marker)].rstrip() + marker
+                    if len(text) > width:
+                        text = text[: width - len(marker)].rstrip() + marker
                     bounded.append(text)
                 return bounded
 
-            rescue_binding = {
+            detailed_rescue_binding = {
                 "schema": (
                     "ipfs_accelerate_py/agent-supervisor/"
                     "implementation-fresh-retry-context@1"
@@ -44078,47 +44084,229 @@ class PortalImplementationDaemon:
                     list(diagnostic.unresolved_requirements)
                 ),
             }
-            try:
-                rescue_references = build_text_context_references(
-                    canonical_json(rescue_binding),
-                    reference_prefix=f"retry-fresh-{repair_round}",
-                    kind="implementation-fresh-retry-context",
-                    repository_id=repository_id,
-                    tree_id=tree_id,
-                    priority=1_000,
-                    required=True,
-                    chunk_bytes=8_192,
-                    coverage_ids=(
-                        diagnostic.failure_id,
-                        *diagnostic.unresolved_requirements[:15],
-                    ),
+
+            # The detailed v1 binding predates content-addressed diagnostic
+            # receipts and repeats the projection envelope plus literal
+            # changed-file/symbol/requirement prefixes.  Keep it as the first
+            # candidate for compatibility, but let a receipt-bound projection
+            # remove only those duplicates when an immutable task core leaves
+            # insufficient room.  The exact diagnostic receipt transitively
+            # binds every omitted literal; the independent sequence identities
+            # below make that relationship directly auditable.
+            rescue_binding_candidates: list[
+                tuple[str, dict[str, Any]]
+            ] = [("detailed", detailed_rescue_binding)]
+            projected_failure = rescue_projection.get("failure")
+            projection_is_bound = (
+                rescue_projection.get("schema")
+                == (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "implementation-retry-diagnostic-projection@1"
                 )
-                fresh_result = compiler.compile(
-                    repository_id=parent_capsule.repository_id,
-                    tree_id=parent_capsule.tree_id,
-                    objective_id=parent_capsule.objective_id,
-                    objective_revision=parent_capsule.objective_revision,
-                    policy_id=parent_capsule.policy_id,
-                    policy_revision=parent_capsule.policy_revision,
-                    caller=parent_capsule.caller,
-                    stage=parent_capsule.stage,
-                    goal=parent_capsule.goal,
-                    authority=parent_capsule.authority,
-                    scope=parent_capsule.scope,
-                    acceptance=parent_capsule.acceptance,
-                    evidence=(
-                        *parent_capsule.evidence,
-                        *rescue_references,
+                and rescue_projection.get("diagnostic_receipt_id")
+                == diagnostic.receipt_id
+                and rescue_projection.get("failure_id")
+                == diagnostic.failure_id
+                and isinstance(projected_failure, Mapping)
+            )
+            if projection_is_bound:
+                receipt_bound_core = {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "implementation-fresh-retry-context@2"
                     ),
+                    "mode": "bounded_fresh_context_rescue",
+                    "parent_capsule_id": parent_capsule.capsule_id,
+                    "parent_invariant_core_id": (
+                        parent_capsule.invariant_core_id
+                    ),
+                    "prior_decision_id": prior_decision_id,
+                    "diagnostic_receipt_id": diagnostic.receipt_id,
+                    "diagnostic_failure_id": diagnostic.failure_id,
+                    "diagnostic_projection": rescue_projection_name,
+                    "repair_round": repair_round,
+                    "max_repair_rounds": (
+                        self.implementation_max_repair_rounds
+                    ),
+                    "changed_files_id": content_identity(
+                        list(diagnostic.changed_files)
+                    ),
+                    "changed_symbols_id": content_identity(
+                        list(diagnostic.changed_symbols)
+                    ),
+                    "unresolved_requirements_id": content_identity(
+                        list(diagnostic.unresolved_requirements)
+                    ),
+                }
+                receipt_bound_failure = dict(projected_failure)
+                rescue_binding_candidates.append(
+                    (
+                        "receipt_bound_actionable",
+                        {
+                            **receipt_bound_core,
+                            "failure": receipt_bound_failure,
+                        },
+                    )
                 )
-            except (
-                ContextBoundsError,
-                RequiredContextOverflowError,
-            ) as exc:
+
+                def compact_rescue_failure(
+                    source: Mapping[str, Any],
+                    *,
+                    addendum_limit: int,
+                ) -> dict[str, Any]:
+                    compact = {
+                        name: source[name]
+                        for name in (
+                            "kind",
+                            "reason",
+                            "returncode",
+                            "exception_type",
+                            "phase",
+                            "timeout_reason",
+                        )
+                        if source.get(name) not in (
+                            None,
+                            "",
+                            (),
+                            [],
+                            {},
+                        )
+                    }
+                    for name in (
+                        "reason_codes",
+                        "missing_outputs",
+                        "denied_paths",
+                        "failed_commands",
+                    ):
+                        raw_values = source.get(name)
+                        values = (
+                            raw_values
+                            if isinstance(raw_values, Sequence)
+                            and not isinstance(
+                                raw_values,
+                                (str, bytes, bytearray),
+                            )
+                            else ()
+                        )
+                        bounded = bounded_retry_values(
+                            values,
+                            count=2,
+                            width=256,
+                        )
+                        if bounded:
+                            compact[name] = bounded
+                    addendum = str(
+                        source.get("next_attempt_prompt_addendum") or ""
+                    ).strip()
+                    if addendum and addendum_limit > 0:
+                        marker = "...<truncated>"
+                        if len(addendum) > addendum_limit:
+                            addendum = (
+                                addendum[
+                                    : addendum_limit - len(marker)
+                                ].rstrip()
+                                + marker
+                            )
+                        compact["next_attempt_prompt_addendum"] = addendum
+                    return compact
+
+                rescue_binding_candidates.extend(
+                    (
+                        (
+                            "receipt_bound_compact",
+                            {
+                                **receipt_bound_core,
+                                "failure": compact_rescue_failure(
+                                    receipt_bound_failure,
+                                    addendum_limit=256,
+                                ),
+                            },
+                        ),
+                        (
+                            "receipt_bound_minimal",
+                            {
+                                **receipt_bound_core,
+                                "failure": compact_rescue_failure(
+                                    receipt_bound_failure,
+                                    addendum_limit=0,
+                                ),
+                            },
+                        ),
+                    )
+                )
+
+            unique_rescue_bindings: list[
+                tuple[str, dict[str, Any]]
+            ] = []
+            seen_rescue_bindings: set[str] = set()
+            for candidate_name, candidate_binding in (
+                rescue_binding_candidates
+            ):
+                encoded = canonical_json(candidate_binding)
+                if encoded in seen_rescue_bindings:
+                    continue
+                seen_rescue_bindings.add(encoded)
+                unique_rescue_bindings.append(
+                    (candidate_name, candidate_binding)
+                )
+
+            fresh_result: ContextCompileResult | None = None
+            rescue_references = ()
+            selected_rescue_binding = ""
+            attempted_rescue_bindings: list[str] = []
+            rescue_budget_error: Exception | None = last_budget_error
+            for candidate_name, candidate_binding in unique_rescue_bindings:
+                attempted_rescue_bindings.append(candidate_name)
+                try:
+                    candidate_references = build_text_context_references(
+                        canonical_json(candidate_binding),
+                        reference_prefix=f"retry-fresh-{repair_round}",
+                        kind="implementation-fresh-retry-context",
+                        repository_id=repository_id,
+                        tree_id=tree_id,
+                        priority=1_000,
+                        required=True,
+                        chunk_bytes=8_192,
+                        coverage_ids=(
+                            diagnostic.failure_id,
+                            *diagnostic.unresolved_requirements[:15],
+                        ),
+                    )
+                    candidate_result = compiler.compile(
+                        repository_id=parent_capsule.repository_id,
+                        tree_id=parent_capsule.tree_id,
+                        objective_id=parent_capsule.objective_id,
+                        objective_revision=(
+                            parent_capsule.objective_revision
+                        ),
+                        policy_id=parent_capsule.policy_id,
+                        policy_revision=parent_capsule.policy_revision,
+                        caller=parent_capsule.caller,
+                        stage=parent_capsule.stage,
+                        goal=parent_capsule.goal,
+                        authority=parent_capsule.authority,
+                        scope=parent_capsule.scope,
+                        acceptance=parent_capsule.acceptance,
+                        evidence=(
+                            *parent_capsule.evidence,
+                            *candidate_references,
+                        ),
+                    )
+                except (
+                    ContextBoundsError,
+                    RequiredContextOverflowError,
+                ) as exc:
+                    rescue_budget_error = exc
+                    continue
+                fresh_result = candidate_result
+                rescue_references = candidate_references
+                selected_rescue_binding = candidate_name
+                break
+            if fresh_result is None:
                 raise ImplementationRetryDeferred(
                     "implementation retry context budget exhausted",
                     backoff_seconds=300,
-                ) from exc
+                ) from rescue_budget_error
 
             identity_fields = (
                 "repository_id",
@@ -44226,6 +44414,10 @@ class PortalImplementationDaemon:
                     "fresh_capsule_id": fresh_result.capsule.capsule_id,
                     "diagnostic_projection": rescue_projection_name,
                     "diagnostic_projection_attempts": attempted_projections,
+                    "rescue_binding_projection": selected_rescue_binding,
+                    "rescue_binding_projection_attempts": (
+                        attempted_rescue_bindings
+                    ),
                     "reason": "delta_full_reconstruction_budget",
                 },
             )
