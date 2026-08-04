@@ -110,7 +110,9 @@
       ],
       "probe": {
         "method": "bounded_version_argv",
-        "argv": ["--version"],
+        "argv": [
+          "--version"
+        ],
         "timeout_seconds": 2,
         "network": false
       },
@@ -140,7 +142,9 @@
       ],
       "probe": {
         "method": "bounded_version_argv",
-        "argv": ["--version"],
+        "argv": [
+          "--version"
+        ],
         "timeout_seconds": 2,
         "network": false
       },
@@ -171,7 +175,9 @@
       ],
       "probe": {
         "method": "bounded_version_and_elan_toolchain_census",
-        "argv": ["--version"],
+        "argv": [
+          "--version"
+        ],
         "timeout_seconds": 5,
         "network": false,
         "toolchain_source": "filesystem:~/.elan/toolchains"
@@ -213,7 +219,9 @@
       ],
       "probe": {
         "method": "bounded_version_argv",
-        "argv": ["--version"],
+        "argv": [
+          "--version"
+        ],
         "timeout_seconds": 5,
         "network": false
       },
@@ -241,7 +249,9 @@
       "repository_paths": [],
       "probe": {
         "method": "bounded_version_argv",
-        "argv": ["-version"],
+        "argv": [
+          "-version"
+        ],
         "timeout_seconds": 2,
         "network": false
       },
@@ -271,7 +281,9 @@
       ],
       "probe": {
         "method": "bounded_which_and_version",
-        "argv": ["-help"],
+        "argv": [
+          "-help"
+        ],
         "timeout_seconds": 2,
         "network": false
       },
@@ -301,7 +313,9 @@
       ],
       "probe": {
         "method": "bounded_which_and_version",
-        "argv": ["--version"],
+        "argv": [
+          "--version"
+        ],
         "timeout_seconds": 2,
         "network": false
       },
@@ -331,7 +345,9 @@
       ],
       "probe": {
         "method": "bounded_which_and_version",
-        "argv": ["version"],
+        "argv": [
+          "version"
+        ],
         "timeout_seconds": 2,
         "network": false
       },
@@ -362,7 +378,9 @@
       ],
       "probe": {
         "method": "bounded_which_and_version",
-        "argv": ["--version"],
+        "argv": [
+          "--version"
+        ],
         "timeout_seconds": 2,
         "network": false
       },
@@ -392,7 +410,9 @@
       ],
       "probe": {
         "method": "bounded_which_and_version",
-        "argv": ["--version"],
+        "argv": [
+          "--version"
+        ],
         "timeout_seconds": 2,
         "network": false
       },
@@ -419,7 +439,9 @@
     {
       "id": "capability.smt.z3",
       "component": "Z3 backend adapter and public solver route",
-      "tool_ids": ["z3"],
+      "tool_ids": [
+        "z3"
+      ],
       "repository_paths": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/z3",
         "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py"
@@ -439,7 +461,9 @@
         "fixture_tests": [
           "ipfs_datasets_py/tests/fixtures/logic/software_verification/capability_matrix.json"
         ],
-        "live_probes": ["tool:z3"],
+        "live_probes": [
+          "tool:z3"
+        ],
         "synthetic": false
       },
       "notes": "Live SMT foundation is real; production certification deferred to hermetic toolchain matrix."
@@ -447,7 +471,9 @@
     {
       "id": "capability.smt.cvc5",
       "component": "CVC5 backend adapter and public solver route",
-      "tool_ids": ["cvc5"],
+      "tool_ids": [
+        "cvc5"
+      ],
       "repository_paths": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/cvc5",
         "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py"
@@ -467,7 +493,9 @@
         "fixture_tests": [
           "ipfs_datasets_py/tests/fixtures/logic/software_verification/capability_matrix.json"
         ],
-        "live_probes": ["tool:cvc5"],
+        "live_probes": [
+          "tool:cvc5"
+        ],
         "synthetic": false
       },
       "notes": "Same readiness posture as Z3."
@@ -475,7 +503,10 @@
     {
       "id": "capability.kernel.lean",
       "component": "Lean reconstruction / kernel path",
-      "tool_ids": ["lean", "lake"],
+      "tool_ids": [
+        "lean",
+        "lake"
+      ],
       "repository_paths": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/kernel",
         "ipfs_datasets_py/ipfs_datasets_py/logic/hammers/reconstructors/lean.py"
@@ -495,7 +526,11 @@
         "fixture_tests": [
           "ipfs_datasets_py/tests/fixtures/logic/software_verification/capability_matrix.json"
         ],
-        "live_probes": ["tool:lean", "tool:lake", "detection:lean_shim_toolchain_mismatch"],
+        "live_probes": [
+          "tool:lean",
+          "tool:lake",
+          "detection:lean_shim_toolchain_mismatch"
+        ],
         "synthetic": false
       },
       "notes": "Usability is gated by lean_shim_toolchain_mismatch detection, never by PATH alone."
@@ -503,7 +538,9 @@
     {
       "id": "capability.model_checker.tla",
       "component": "TLA-family model checking adapters",
-      "tool_ids": ["tlc"],
+      "tool_ids": [
+        "tlc"
+      ],
       "repository_paths": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/tla"
       ],
@@ -530,7 +567,10 @@
     {
       "id": "capability.atp.external",
       "component": "External ATP backends (Vampire/E)",
-      "tool_ids": ["vampire", "eprover"],
+      "tool_ids": [
+        "vampire",
+        "eprover"
+      ],
       "repository_paths": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/atp"
       ],
@@ -555,7 +595,10 @@
     {
       "id": "capability.pipeline.source_vc_smt",
       "component": "Source snapshot to VC to SMT vertical slice",
-      "tool_ids": ["z3", "cvc5"],
+      "tool_ids": [
+        "z3",
+        "cvc5"
+      ],
       "repository_paths": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/vc.py",
         "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/source_adapters.py"
@@ -791,15 +834,15 @@
           },
           {
             "repository": "ipfs_datasets_py",
-            "commit": "89539f135b226826673fcae2e0845c1227c3f715"
+            "commit": "20a3fef9229c7f4bab7e960d489b9ce438b506ea"
           }
         ],
         "implementation_artifacts": [
           {
             "repository": "ipfs_datasets_py",
             "path": "ipfs_datasets_py/logic/verification_api.py",
-            "commit": "89539f135b226826673fcae2e0845c1227c3f715",
-            "content_identity": "sha256:5e1c931c3ff4eaecdb255eaacd0e0f5bed444fe31f7ac77039a83dc02ee91d3b"
+            "commit": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
+            "content_identity": "sha256:254728bfae3465e96b39be8628c67a63273ec3577fb39f17f2cfb12d93519075"
           }
         ],
         "validation_tests": [
@@ -837,15 +880,15 @@
           },
           {
             "repository": "ipfs_datasets_py",
-            "commit": "89539f135b226826673fcae2e0845c1227c3f715"
+            "commit": "20a3fef9229c7f4bab7e960d489b9ce438b506ea"
           }
         ],
         "implementation_artifacts": [
           {
             "repository": "ipfs_datasets_py",
             "path": "ipfs_datasets_py/logic/verification_api.py",
-            "commit": "89539f135b226826673fcae2e0845c1227c3f715",
-            "content_identity": "sha256:5e1c931c3ff4eaecdb255eaacd0e0f5bed444fe31f7ac77039a83dc02ee91d3b"
+            "commit": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
+            "content_identity": "sha256:254728bfae3465e96b39be8628c67a63273ec3577fb39f17f2cfb12d93519075"
           },
           {
             "repository": "ipfs_datasets_py",
@@ -913,10 +956,24 @@
   "summary": {
     "tool_count": 10,
     "capability_count": 12,
-    "usable_tools": ["z3", "cvc5", "lean", "lake", "java"],
-    "unavailable_tools": ["tlc", "coqc", "isabelle", "vampire", "eprover"],
+    "usable_tools": [
+      "z3",
+      "cvc5",
+      "lean",
+      "lake",
+      "java"
+    ],
+    "unavailable_tools": [
+      "tlc",
+      "coqc",
+      "isabelle",
+      "vampire",
+      "eprover"
+    ],
     "production_certified_count": 0,
-    "synthetic_capability_ids": ["capability.examples.software_verification"],
+    "synthetic_capability_ids": [
+      "capability.examples.software_verification"
+    ],
     "alignment_aligned": true,
     "lean_shim_mismatch_on_host": false,
     "never_infer_usability_from_path_or_source": true
