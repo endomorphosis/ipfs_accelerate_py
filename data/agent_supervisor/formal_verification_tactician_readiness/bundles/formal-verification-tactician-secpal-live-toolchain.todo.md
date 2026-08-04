@@ -72,3 +72,72 @@ Conflict policy: keep edits inside this bundle when possible; use the LLM merge 
 - Candidate kind: aggregate
 - Todo vector key: 27c4c3f6a87f0134
 - Acceptance: Objective scan filed this gap for FVT-G217. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-086-objective-gap-d9aca6db2ede.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_secpal_live_toolchain_contract.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-101 Close objective gap: Bind the genuine SecPAL artifact-intake and capability ceiling
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-055, FVT-073, FVT-087
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_secpal_live_toolchain_contract.py test/integration/toolchains/test_external_authorization_vendor_certification.py test/integration/toolchains/test_external_authorization_toolchain_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-101-objective-gap-6090071d053c.md
+- Bundle: formal-verification-tactician/secpal-live-toolchain
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-secpal-live-toolchain.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/secpal-live-toolchain
+- Conflict policy: Own SecPAL artifact provenance, platform matrix, artifact intake, and authority ceiling; never invent an upstream release, accept an unreviewed mirror, accept license terms on an operator's behalf, redistribute restricted bytes, promote sample compatibility, or label the in-process engine as the external vendor binary.
+- Predicted files: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- Changed paths:
+- Context paths: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- AST symbols: test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- Interfaces: SecPALLiveToolchainContract@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G217
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/d5823f3c41700f455f77ab36a7ecf1a328c25f5f81d40850ee53fb3fde6b9058
+- Canonical task CID: baguqeera2wbd6pcboahukx3xvm3kp3hrumumex27qhkaquhokp5t7xtlsbma
+- Semantic identity: objective-evidence-obligation/v1/0a4f97823b8932d380f024671fa0ac25a13a92041607a17c4019dfaf6795a559
+- Acceptance subset: The recovered Microsoft MSI binds the official publisher and archived metadata URLs, ProductVersion/ProductCode, exact size and SHA-256, independently verified Authenticode identity, exact embedded EULA digest and reviewed redistribution/execution limits, intake requires an explicit local path and explicit operator license acceptance, performs no download, extraction, execution, or redistribution, stages non-executable bytes atomically beneath a bounded user-local root, and preserves the previous exact tree on failure, the live execution supported-platform matrix is explicitly empty, every host therefore fails closed for vendor installation and semantic certification, authentic sample execution is separately classified as non-promotable operator compatibility and cannot create an engine identity, arbitrary-policy interface, platform authority, production permission, or FVT-G219 completion, fixtures, in-process Datalog/SecPAL, and hermetic adapters remain separately named and cannot impersonate the vendor tool.
+- Preconditions: objective goal FVT-G217 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G217
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/0a4f97823b8932d380f024671fa0ac25a13a92041607a17c4019dfaf6795a559
+- Missing evidence: objective validation repair
+- Embedding query: Replace ambiguous SecPAL acquisition and adapter behavior with an exact official-artifact, license-aware, transactional local intake path that proves the recovered research release cannot be promoted to a live vendor engine.
+- AST query: test/integration/toolchains/test_secpal_live_toolchain_contract.py
+- Surplus group: objective/FVT-G217
+- Merge key: 6e203b00a4cb100e
+- Merge family: objective/FVT-G217
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 92bb9b45d012de57
+- Acceptance: Objective scan filed this gap for FVT-G217. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-101-objective-gap-6090071d053c.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
