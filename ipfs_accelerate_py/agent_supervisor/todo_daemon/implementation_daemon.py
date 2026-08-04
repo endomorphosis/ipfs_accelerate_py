@@ -6502,12 +6502,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
     def _record_empty_backlog_state(self, *, reason: str, error: str = "") -> dict[str, Any]:
         previous = PortalTaskState.load(self.state_path)
-        progress_recovery = self._auto_recover_stalled_implementation_progress(
-            previous,
-            tasks,
-        )
-        if progress_recovery.get("changed"):
-            previous = PortalTaskState.load(self.state_path)
         strategy = self.load_strategy()
         live_inflight_implementation = self._find_live_inflight_implementation()
         now = utc_now()
@@ -6755,6 +6749,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if self._canonical_ref(task) in shared_active_merge_cids
         }
         previous = PortalTaskState.load(self.state_path)
+        progress_recovery = self._auto_recover_stalled_implementation_progress(
+            previous,
+            tasks,
+        )
+        if progress_recovery.get("changed"):
+            previous = PortalTaskState.load(self.state_path)
         strategy = self.load_strategy()
         released_retry_budget_strategy_blocks = (
             self._release_completed_retry_budget_strategy_blocks(
@@ -11908,8 +11908,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             legacy_review_reason_code
                         )
                         legacy_landed_capacity_signal = True
+                    # Clean landed work must not burn repair-round budget while
+                    # independent review is still pending.  Treat clean
+                    # already-landed product as a non-failure pending review.
                     production_route_payload = {
-                        "returncode": 0 if guard_clean and legacy_reviewed else 1,
+                        "returncode": (
+                            0
+                            if guard_clean
+                            else 1
+                        ),
                         "pending": not legacy_reviewed,
                         "disposition": (
                             "legacy_landed_review_attested"
