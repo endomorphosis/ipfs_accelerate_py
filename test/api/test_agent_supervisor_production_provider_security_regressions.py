@@ -198,6 +198,176 @@ def test_codex_quota_exhaustion_applies_admitted_grok_proposal() -> None:
     assert bind_applied_patch_to_review_chain(result) is None
 
 
+def test_codex_quota_recovery_skips_reviewed_effect_and_reaches_handoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Capacity-recovery writes must not fail on reviewed-effect capture.
+
+    Live wave0 previously admitted Grok, wrote files, then raised
+    ``production reviewed effect capture failed`` because capture hard-requires
+    Codex approve. That aborted the attempt and cleaned the worktree. Capture
+    must be skipped so validation/commit can complete non-authoritatively.
+    """
+
+    daemon = _daemon_for_ephemeral_handoff(tmp_path, monkeypatch)
+    task = _production_task()
+    calls: list[str] = []
+    committed: list[str] = []
+    queued_requests: list[Any] = []
+    policy = daemon.production_provider_policy
+    assert isinstance(policy, ProductionCLIProviderPolicy)
+
+    def seed(worktree_path: Path, _branch: str, *, task: Any = None) -> str:
+        _git(
+            daemon.repo_root,
+            "worktree",
+            "add",
+            "-b",
+            _branch,
+            str(worktree_path),
+            "HEAD",
+        )
+        return _git(worktree_path, "rev-parse", "HEAD")
+
+    def validate(workspace: Path, *_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        calls.append("validation")
+        assert (workspace / TARGET_PATH).read_text(encoding="utf-8") == (
+            "VALUE = 'capacity-recovery-daemon'\n"
+        )
+        return {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+        }
+
+    real_commit = daemon._commit_worktree_changes
+
+    def commit(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        calls.append("commit")
+        result = real_commit(*args, **kwargs)
+        committed.append(str(result.get("commit") or ""))
+        return result
+
+    real_enqueue = daemon._enqueue_validated_worktree
+
+    def enqueue(**kwargs: Any) -> dict[str, Any]:
+        calls.append("enqueue")
+        assert kwargs["implementation_commit"] == committed[-1]
+        assert kwargs["validation_result"]["passed"] is True
+        # Capacity recovery has no reviewed-effect binding.
+        assert daemon._last_production_reviewed_effect_binding is None
+        return real_enqueue(**kwargs)
+
+    real_queue_enqueue = daemon.merge_queue.enqueue
+
+    def queue_enqueue(**kwargs: Any) -> Any:
+        request = real_queue_enqueue(**kwargs)
+        queued_requests.append(request)
+        return request
+
+    def invoke(_prompt: str, config: Any) -> tuple[str, LlmChildResultEnvelope]:
+        if config.provider == policy.codex_provider:
+            raise RuntimeError(
+                "legacy_codex_usage_capacity_exhausted: "
+                "You've hit your usage limit"
+            )
+        encoded = json.dumps(
+            _grok_proposal(content="VALUE = 'capacity-recovery-daemon'\n"),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return encoded, LlmChildResultEnvelope(
+            usage_mode=LLM_USAGE_MODE_ENFORCE,
+            request_id=config.request_id,
+            attempt=config.attempt,
+            idempotency_key=config.idempotency_key,
+            status="ok",
+            effective_provider=str(config.provider or ""),
+            text_chars=len(encoded),
+            exit_code=0,
+        )
+
+    grok, codex = build_production_cli_provider_pair(policy, invoker=invoke)
+
+    monkeypatch.setattr(daemon, "_create_seeded_worktree", seed)
+    monkeypatch.setattr(
+        daemon,
+        "_production_landed_task_guard_for_workspace",
+        lambda *_args, **_kwargs: {
+            "guarded": False,
+            "action": "new_implementation_route_allowed",
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_prepare_worktree_for_validation",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(daemon, "_run_validation_with_candidate_binding", validate)
+    monkeypatch.setattr(daemon, "_commit_worktree_changes", commit)
+    monkeypatch.setattr(daemon, "_enqueue_validated_worktree", enqueue)
+    monkeypatch.setattr(daemon.merge_queue, "enqueue", queue_enqueue)
+    monkeypatch.setattr(
+        daemon,
+        "_consume_one_merge_candidate",
+        lambda: {"status": "deferred", "reason": "test_consumer_disabled"},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_failed_attempt_retry_context",
+        lambda *_args, **_kwargs: None,
+    )
+    daemon._production_grok_provider = grok
+    daemon._production_codex_provider = codex
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=PortalTaskState(),
+        attempt=1,
+        started_at=datetime.now(UTC).isoformat(),
+        log_path=daemon.state_path.parent / "implementation.log",
+        prompt="capacity recovery production route",
+    )
+
+    assert result["returncode"] == 0
+    assert result["implementation_commit"] == committed[-1]
+    assert _git(daemon.repo_root, "cat-file", "-t", committed[-1]) == "commit"
+    assert result["merge_result"]["queued"] is True
+    assert calls == ["validation", "commit", "enqueue"]
+    assert len(queued_requests) == 1
+    queued_metadata = queued_requests[0].metadata
+    # Non-authoritative capacity recovery: no reviewed-effect / attestation.
+    assert "production_reviewed_effect_binding" not in queued_metadata
+    assert "provider_review_attestation" not in queued_metadata
+    assert daemon._production_capacity_recovery_write_active() is True
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert any(
+        "production_reviewed_effect_skipped_capacity_recovery" in json.dumps(event)
+        for event in events
+    ), "expected capacity-recovery skip event"
+
+
 def _provider_request(role: ProviderRole) -> ProviderRequest:
     prompt = json.dumps(
         {"role": role.value, "task_id": "SEC-001", "provider_input": {}},

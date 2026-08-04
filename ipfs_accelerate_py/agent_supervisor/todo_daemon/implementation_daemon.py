@@ -2064,7 +2064,12 @@ def parse_timestamp(value: str) -> datetime | None:
 
 
 def classify_provider_capacity_failure(text: str) -> dict[str, Any]:
-    """Classify provider quota/capacity failures without treating them as code failures."""
+    """Classify provider quota/capacity failures without treating them as code failures.
+
+    Capacity-recovery *success* reason codes still contain ``codex_quota_exhausted``
+    after an admitted Grok write. Callers that observed ``write_performed`` must
+    not feed those success strings into this classifier.
+    """
 
     # This secret-free token is an internal typed message, not a substring
     # pattern for arbitrary provider output.  Requiring exact equality keeps
@@ -11125,8 +11130,25 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             or (isinstance(merge_result, dict) and bool(merge_result.get("merged")))
         )
 
+    def _production_capacity_recovery_write_active(self) -> bool:
+        """True when the latest production route wrote without independent review.
+
+        Codex quota/unavailability may still land admitted Grok bytes so
+        implement/validate/commit can complete. Formal reviewed-effect capture
+        and authoritative completion remain gated on independent review.
+        """
+
+        return bool(
+            getattr(self, "_last_production_capacity_recovery_write", False)
+        )
+
     def _production_reviewed_effect_required(self, task: PortalTask) -> bool:
         if self._verified_current_legacy_landed_review_result(task) is not None:
+            return False
+        # Capacity-recovery writes land repository effects without Codex
+        # approval; reviewed-effect capture cannot bind and must not block
+        # non-authoritative validate/commit completion.
+        if self._production_capacity_recovery_write_active():
             return False
         return bool(
             isinstance(
@@ -11135,6 +11157,38 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
             and not self._task_uses_typed_local_execution(task)
         )
+
+    @staticmethod
+    def _route_has_independent_codex_approval(route_result: Any) -> bool:
+        """Whether the route carries an admitted Codex approve with empty findings."""
+
+        review = getattr(route_result, "review_proposal", None)
+        if review is None:
+            return False
+        if getattr(review, "role", None) is not ProviderRole.CODEX_REVIEW:
+            return False
+        if getattr(review, "admitted", None) is not True:
+            return False
+        payload = getattr(review, "payload", None)
+        if not isinstance(payload, Mapping):
+            return False
+        return (
+            payload.get("decision") == "approve"
+            and payload.get("findings") == []
+            and payload.get("proposal") in (None, {})
+        )
+
+    @staticmethod
+    def _route_is_capacity_recovery_write(route_result: Any) -> bool:
+        """True when admitted Grok bytes were applied because Codex could not review."""
+
+        if not getattr(route_result, "write_performed", False):
+            return False
+        reason = str(getattr(route_result, "reason_code", "") or "")
+        return reason in {
+            ProviderReason.CODEX_QUOTA_EXHAUSTED.value,
+            ProviderReason.CODEX_UNAVAILABLE.value,
+        }
 
     def _verified_current_legacy_landed_review_result(
         self,
@@ -11889,8 +11943,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     )
                     # Prefer typed production-route capacity signals over log
                     # scraping so deferred timeouts never burn attempt budget.
-                    if production_route_payload.get(
-                        "provider_capacity_exhausted"
+                    # Capacity-recovery routes may succeed with write_performed
+                    # while reason_code still contains ``codex_quota_exhausted``;
+                    # that token must not re-enter the non-consuming deferral
+                    # path after repository effects have already landed.
+                    route_wrote = bool(route_event.get("write_performed"))
+                    if (
+                        production_route_payload.get(
+                            "provider_capacity_exhausted"
+                        )
+                        and not route_wrote
                     ):
                         provider_failure = {
                             "exhausted": True,
@@ -11904,7 +11966,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 or ""
                             ),
                         }
-                    else:
+                    elif not route_wrote and int(completed.returncode) != 0:
                         capacity_probe = classify_provider_capacity_failure(
                             " ".join(
                                 part
@@ -20393,29 +20455,55 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         reviewed_effect: ProductionReviewedEffectBinding | None = None
         self._last_production_reviewed_effect_binding = None
+        capacity_recovery_write = self._route_is_capacity_recovery_write(
+            route_result
+        )
+        self._last_production_capacity_recovery_write = bool(
+            capacity_recovery_write
+        )
         if (
             isinstance(policy, ProductionCLIProviderPolicy)
             and apply
             and route_result.write_performed
         ):
-            if workspace_path is None or not str(baseline_ref or "").strip():
-                raise RuntimeError(
-                    "production reviewed effect requires an exact workspace baseline"
+            # Reviewed-effect capture binds Grok final bytes to an admitted
+            # Codex approve. Capacity recovery applies Grok without that
+            # independent review so capture cannot succeed; skip it and keep
+            # completions non-authoritative while still returning success so
+            # validation/commit can land the written files.
+            if capacity_recovery_write or not self._route_has_independent_codex_approval(
+                route_result
+            ):
+                self._record_event(
+                    "production_reviewed_effect_skipped_capacity_recovery",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": int(attempt),
+                        "reason_code": str(route_result.reason_code or ""),
+                        "write_performed": True,
+                        "completion_authoritative": False,
+                        "proof_authoritative": False,
+                    },
                 )
-            try:
-                reviewed_effect = capture_production_reviewed_effect(
-                    repo_root=workspace_path,
-                    task=task,
-                    task_identity=self._identity_for_task(task),
-                    packet=route_packet,
-                    route_result=route_result,
-                    baseline_ref=baseline_ref,
-                )
-            except (OSError, TypeError, ValueError) as exc:
-                raise RuntimeError(
-                    "production reviewed effect capture failed"
-                ) from exc
-            self._last_production_reviewed_effect_binding = reviewed_effect
+            else:
+                if workspace_path is None or not str(baseline_ref or "").strip():
+                    raise RuntimeError(
+                        "production reviewed effect requires an exact workspace baseline"
+                    )
+                try:
+                    reviewed_effect = capture_production_reviewed_effect(
+                        repo_root=workspace_path,
+                        task=task,
+                        task_identity=self._identity_for_task(task),
+                        packet=route_packet,
+                        route_result=route_result,
+                        baseline_ref=baseline_ref,
+                    )
+                except (OSError, TypeError, ValueError) as exc:
+                    raise RuntimeError(
+                        "production reviewed effect capture failed"
+                    ) from exc
+                self._last_production_reviewed_effect_binding = reviewed_effect
         disposition, disposition_reason = evaluate_production_provider_receipt(
             receipt,
             expected_task_id=task.task_id,
