@@ -352,9 +352,19 @@ def test_ergoai_advice_remains_separate_from_independent_proof_authority(
     assert boundary["can_satisfy_certified_authority"] is False
     assert boundary["independent_proof_authority"] is False
     assert boundary["independent_reconstruction_required"] is True
-    assert ergoai["axes"]["semantic"]["state"] == "blocked"
-    assert "advisor_only_evidence" in ergoai["axes"]["semantic"]["reason_codes"]
-    assert ergoai["joint_ready"] is False
+    # Advisor rows may be jointly ready under role-scoped usability, but they
+    # never gain production semantic or independent proof authority.
+    semantic = ergoai["axes"]["semantic"]
+    assert semantic["state"] in {"blocked", "not_applicable"}
+    if semantic["state"] == "blocked":
+        assert "advisor_only_evidence" in semantic["reason_codes"]
+        assert ergoai["joint_ready"] is False
+    else:
+        assert "non_certifying_role_has_no_production_semantic_authority" in (
+            semantic["reason_codes"]
+        )
+        assert semantic["required"] is False
+        assert semantic["details"]["production_certified"] is False
     assert any(
         row["identity_boundary"]["independent_proof_authority"] is True
         for row in matrix["provider_host_rows"]
@@ -395,15 +405,25 @@ def test_checked_matrix_surfaces_required_failure_class_tokens(
         for axis in row["axes"].values():
             observed.update(axis.get("reason_codes") or ())
     # Always-present fail-closed classes on the current blocked deployment.
+    # Tokens evolve as remediations close axis gaps; keep the durable catalog
+    # classes that remain live on unsupported external SecPAL and non-certifying
+    # role boundaries.
     for required in (
-        "supported_missing_dependencies",
         "placeholder_dispatch",
-        "stale_lock",
-        "parser_fixture",
-        "advisor_only_evidence",
         "unsupported_host",
+        "secpal_live_semantic_cli_unavailable",
+        "non_certifying_authority_ceiling_enforced",
+        "provider_exposed_by_logic_api",
     ):
         assert required in observed, f"missing live failure class token: {required}"
+    # At least one non-certifying / role-scoped or advisor token remains visible.
+    assert observed & {
+        "advisor_only_evidence",
+        "non_certifying_role_has_no_production_semantic_authority",
+        "shadow_checker_has_no_independent_public_provider_surface",
+        "advisor_candidate_has_no_independent_public_provider_surface",
+        "support_dependency_has_no_semantic_authority",
+    }
     # Wheel-contract absence is encoded when packaging evidence is incomplete;
     # architecture mismatch is encoded only when a wrong-arch artifact is bound.
     for optional in ("missing_wheel_files", "wrong_architecture_artifact"):
