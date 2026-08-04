@@ -6,7 +6,7 @@
   "goal_id": "FVT-G213",
   "task_id": "FVT-066",
   "program": "formal-verification-tactician/toolchain-release-candidate",
-  "observed_at": "2026-08-03T04:19:06Z",
+  "observed_at": "2026-08-04T21:20:20Z",
   "binding_mode": "pre_merge_role_aware_release_candidate",
   "status": "role_aware_release_candidate_ready",
   "readiness_stage": "release_candidate",
@@ -5266,5 +5266,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "candidate_identity": "sha256:a115bf6e8de217e3f75131b9d44e74c6d4714a3dda8feebfd13038e793a586df"
+  "candidate_identity": "sha256:9ccda9f2d765802475857005d41ae0e2c0be49daa6c5be39ea98bf6f9ac45beb"
 }
