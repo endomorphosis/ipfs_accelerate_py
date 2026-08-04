@@ -10781,6 +10781,16 @@ def _authoritative_axis_state(axis: Any) -> str:
     return str(axis or "").lower()
 
 
+def _authoritative_axis_required(axis: Any) -> bool | None:
+    """Return the axis required flag when present; None when unknown."""
+
+    if not isinstance(axis, Mapping):
+        return None
+    if "required" not in axis:
+        return None
+    return axis.get("required") is True
+
+
 def _authoritative_axis_has_evidence(axis: Any) -> bool:
     if not isinstance(axis, Mapping):
         return False
@@ -10860,9 +10870,22 @@ def _audit_authoritative_matrix(
             name: _authoritative_axis_state(axes.get(name))
             for name in AUTHORITATIVE_VENDOR_REQUIRED_AXES
         }
+        required_flags = {
+            name: _authoritative_axis_required(axes.get(name))
+            for name in AUTHORITATIVE_VENDOR_REQUIRED_AXES
+        }
         missing = sorted(name for name, state in states.items() if not state)
+        # Support/advisor/shadow axes may honestly be not_applicable with
+        # required=false; those must not keep the authoritative matrix from
+        # recognizing an otherwise jointly ready required-axis set.
         non_ready = sorted(
-            name for name, state in states.items() if state and state != "ready"
+            name
+            for name, state in states.items()
+            if state
+            and state != "ready"
+            and not (
+                state == "not_applicable" and required_flags.get(name) is False
+            )
         )
         evidence_missing = sorted(
             name
@@ -10901,26 +10924,30 @@ def _audit_authoritative_matrix(
     secpal_present = "secpal" in identifiers
     ergoai_present = "ergo" in identifiers
     all_ready = bool(rows) and all(row["ready"] for row in row_audits)
+    def _axis_acceptable(row: Mapping[str, Any], axis_name: str) -> bool:
+        state = str((row.get("states") or {}).get(axis_name) or "")
+        if state == "ready":
+            return axis_name not in (row.get("ready_axes_without_evidence") or ())
+        # Accept honest not_applicable only when the audited row marked the axis
+        # non-ready solely for that reason (required=false path above).
+        return (
+            state == "not_applicable"
+            and axis_name not in (row.get("non_ready_axes") or ())
+        )
+
     packaging_bound = bool(rows) and all(
-        row["states"]["packaging"] == "ready"
-        and "packaging" not in row["ready_axes_without_evidence"]
-        for row in row_audits
+        _axis_acceptable(row, "packaging") for row in row_audits
     )
     installer_bound = bool(rows) and all(
-        row["states"]["installer"] == "ready"
-        and "installer" not in row["ready_axes_without_evidence"]
-        for row in row_audits
+        _axis_acceptable(row, "installer") for row in row_audits
     )
     dependency_platform_bound = bool(rows) and all(
-        row["states"][axis] == "ready"
-        and axis not in row["ready_axes_without_evidence"]
+        _axis_acceptable(row, axis)
         for row in row_audits
         for axis in ("dependency", "platform")
     )
     specialized_semantics_bound = bool(rows) and all(
-        row["states"]["semantic"] == "ready"
-        and "semantic" not in row["ready_axes_without_evidence"]
-        for row in row_audits
+        _axis_acceptable(row, "semantic") for row in row_audits
     )
     locally_ready = bool(all_ready and secpal_present and ergoai_present)
     return {

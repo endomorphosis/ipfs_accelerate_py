@@ -6,7 +6,7 @@
   "goal_id": "FVT-G221",
   "task_id": "FVT-089",
   "program": "formal-verification-tactician/authoritative-vendor-release",
-  "observed_at": "2026-08-04T15:27:56Z",
+  "observed_at": "2026-08-04T17:04:16Z",
   "status": "authoritative_vendor_release_blocked",
   "deployment_ready": false,
   "assessment_complete": true,
@@ -61,10 +61,10 @@
       "present": true,
       "reachable": true,
       "file_present": true,
-      "file_sha256": "sha256:6a78e4782c139c430131fc58b4e883035f2a5d2aed694298f977cfafd4d723c2",
+      "file_sha256": "sha256:2943e762ee996a321afcb485b96e1f3b0cd8a0ac5af862f6a0de19743e42b169",
       "repository_body_matches": true,
-      "repository_head_blob": "33d247a8f8247964281a74d30568d2fc2f423168",
-      "repository_working_blob": "fa6d02c76d439b6a392459e28c858d48d71f9b89",
+      "repository_head_blob": "fa6d02c76d439b6a392459e28c858d48d71f9b89",
+      "repository_working_blob": "6a17dd4d22002ad26746bf0b5d5d640af32c206b",
       "repository_file_committed_at_head": false,
       "repository_content_bound": false,
       "interface": "FormalVerificationEndToEndAssuranceMatrix@1",
@@ -73,8 +73,8 @@
       "task_id": "FVT-088",
       "status": null,
       "declared_identity_field": "matrix_digest_sha256",
-      "declared_identity": "4a63939f29219a279ecf9ce3dc510e7d48a2bcfb79916ca505f2edd52c112e3c",
-      "payload_content_identity": "sha256:35100fcc06d569aaf1325e48dc160203d05b4f1b1bb8cd91e1005972d0b19d1d",
+      "declared_identity": "d8ca726fadd52c8dbe534649e10362729e30db1e75d411f6eebd2e0b8e4a84f8",
+      "payload_content_identity": "sha256:114dba50cc108442cd989eb73cecc0296c46d53477fa29cfdb7e97b931570eaf",
       "identity_valid": true,
       "interface_valid": true,
       "interface_contract_valid": true,
@@ -83,11 +83,11 @@
       "public_safe": true,
       "freshness": {
         "valid": true,
-        "timestamp": "2026-08-04T15:26:34Z",
-        "age_seconds": 82.0,
-        "wall_clock_age_seconds": 82.753168,
-        "release_wall_clock_age_seconds": 0.753168,
-        "wall_clock_observed_at": "2026-08-04T15:27:56.753168Z",
+        "timestamp": "2026-08-04T17:04:16Z",
+        "age_seconds": 0.0,
+        "wall_clock_age_seconds": 0.830013,
+        "release_wall_clock_age_seconds": 0.830013,
+        "wall_clock_observed_at": "2026-08-04T17:04:16.830013Z",
         "max_age_seconds": 86400,
         "clock_skew_seconds": 300,
         "failures": []
@@ -106,50 +106,46 @@
       "path": "docs/architecture/formal_verification_secpal_live_receipt.json",
       "source_kind": "checked_file",
       "fallback_used": false,
-      "present": false,
-      "reachable": false,
-      "file_present": false,
-      "file_sha256": null,
-      "repository_body_matches": false,
+      "present": true,
+      "reachable": true,
+      "file_present": true,
+      "file_sha256": "sha256:6ce269f01904084ce10378a7e00f073e8b0916a5636302309ab7d8e17af939c7",
+      "repository_body_matches": true,
       "repository_head_blob": null,
-      "repository_working_blob": null,
+      "repository_working_blob": "c27ff99b8b3ba53e26eaa677fe4575368c4a7e1e",
       "repository_file_committed_at_head": false,
       "repository_content_bound": false,
-      "interface": null,
-      "schema_version": null,
-      "goal_id": null,
-      "task_id": null,
-      "status": null,
-      "declared_identity_field": null,
-      "declared_identity": null,
-      "payload_content_identity": null,
-      "identity_valid": false,
-      "interface_valid": false,
-      "interface_contract_valid": false,
+      "interface": "SecPALAuthoritativeLiveEvidence@1",
+      "schema_version": "secpal-authoritative-live-evidence/v1",
+      "goal_id": "FVT-G219",
+      "task_id": "FVT-086",
+      "status": "authoritative_live_blocked",
+      "declared_identity_field": "receipt_digest_sha256",
+      "declared_identity": "dc1de0214b34baaa22f5e044adce7ad961f6d00eaa4654497948a38b2b8cc6d9",
+      "payload_content_identity": "sha256:e47f5fe8a7ff7a481c6a872465831f8e257ab334bd13612b4e3bc08dda9413a0",
+      "identity_valid": true,
+      "interface_valid": true,
+      "interface_contract_valid": true,
       "interface_contract_failures": [],
-      "fresh": false,
-      "public_safe": false,
+      "fresh": true,
+      "public_safe": true,
       "freshness": {
-        "valid": false,
-        "timestamp": null,
-        "age_seconds": null,
+        "valid": true,
+        "timestamp": "2026-08-04T17:03:16Z",
+        "age_seconds": 60.0,
+        "wall_clock_age_seconds": 60.830013,
+        "release_wall_clock_age_seconds": 0.830013,
+        "wall_clock_observed_at": "2026-08-04T17:04:16.830013Z",
         "max_age_seconds": 86400,
         "clock_skew_seconds": 300,
-        "failures": [
-          "dependency_missing"
-        ]
+        "failures": []
       },
       "public_evidence_audit": {
-        "satisfied": false,
-        "failures": [
-          "dependency_missing"
-        ]
+        "satisfied": true,
+        "failure_count": 0,
+        "failures": []
       },
       "binding_failures": [
-        "dependency_missing",
-        "interface_contract_mismatch:interface",
-        "interface_not_accepted_for_dependency",
-        "payload_does_not_match_selected_repository_file",
         "selected_repository_file_not_committed_at_head"
       ],
       "binding_valid": false
@@ -186,8 +182,8 @@
         "timestamp": null,
         "age_seconds": null,
         "wall_clock_age_seconds": null,
-        "release_wall_clock_age_seconds": 0.753168,
-        "wall_clock_observed_at": "2026-08-04T15:27:56.753168Z",
+        "release_wall_clock_age_seconds": 0.830013,
+        "wall_clock_observed_at": "2026-08-04T17:04:16.830013Z",
         "max_age_seconds": 86400,
         "clock_skew_seconds": 300,
         "failures": [
@@ -235,10 +231,10 @@
       "freshness": {
         "valid": false,
         "timestamp": "2026-08-03T04:19:06Z",
-        "age_seconds": 126530.0,
-        "wall_clock_age_seconds": 126530.753168,
-        "release_wall_clock_age_seconds": 0.753168,
-        "wall_clock_observed_at": "2026-08-04T15:27:56.753168Z",
+        "age_seconds": 132310.0,
+        "wall_clock_age_seconds": 132310.830013,
+        "release_wall_clock_age_seconds": 0.830013,
+        "wall_clock_observed_at": "2026-08-04T17:04:16.830013Z",
         "max_age_seconds": 86400,
         "clock_skew_seconds": 300,
         "failures": [
@@ -284,10 +280,10 @@
       "freshness": {
         "valid": false,
         "timestamp": "2026-08-03T04:17:46Z",
-        "age_seconds": 126610.0,
-        "wall_clock_age_seconds": 126610.753168,
-        "release_wall_clock_age_seconds": 0.753168,
-        "wall_clock_observed_at": "2026-08-04T15:27:56.753168Z",
+        "age_seconds": 132390.0,
+        "wall_clock_age_seconds": 132390.830013,
+        "release_wall_clock_age_seconds": 0.830013,
+        "wall_clock_observed_at": "2026-08-04T17:04:16.830013Z",
         "max_age_seconds": 86400,
         "clock_skew_seconds": 300,
         "failures": [
@@ -333,10 +329,10 @@
       "freshness": {
         "valid": false,
         "timestamp": "2026-08-03T04:19:06Z",
-        "age_seconds": 126530.0,
-        "wall_clock_age_seconds": 126530.753168,
-        "release_wall_clock_age_seconds": 0.753168,
-        "wall_clock_observed_at": "2026-08-04T15:27:56.753168Z",
+        "age_seconds": 132310.0,
+        "wall_clock_age_seconds": 132310.830013,
+        "release_wall_clock_age_seconds": 0.830013,
+        "wall_clock_observed_at": "2026-08-04T17:04:16.830013Z",
         "max_age_seconds": 86400,
         "clock_skew_seconds": 300,
         "failures": [
@@ -386,26 +382,20 @@
           "machine": "aarch64"
         },
         "states": {
-          "dependency": "blocked",
+          "dependency": "ready",
           "packaging": "ready",
           "installer": "ready",
-          "capability": "blocked",
-          "semantic": "blocked",
+          "capability": "ready",
+          "semantic": "ready",
           "platform": "ready",
-          "authority": "blocked",
-          "freshness": "blocked",
+          "authority": "ready",
+          "freshness": "ready",
           "public_surface": "ready"
         },
         "missing_axes": [],
-        "non_ready_axes": [
-          "authority",
-          "capability",
-          "dependency",
-          "freshness",
-          "semantic"
-        ],
+        "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": false
+        "ready": true
       },
       {
         "row_id": "autohyper@linux-aarch64",
@@ -499,11 +489,9 @@
           "public_surface": "ready"
         },
         "missing_axes": [],
-        "non_ready_axes": [
-          "installer"
-        ],
+        "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": false
+        "ready": true
       },
       {
         "row_id": "eprover@linux-aarch64",
@@ -542,19 +530,16 @@
           "packaging": "ready",
           "installer": "ready",
           "capability": "ready",
-          "semantic": "blocked",
+          "semantic": "not_applicable",
           "platform": "ready",
           "authority": "ready",
           "freshness": "ready",
-          "public_surface": "blocked"
+          "public_surface": "not_applicable"
         },
         "missing_axes": [],
-        "non_ready_axes": [
-          "public_surface",
-          "semantic"
-        ],
+        "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": false
+        "ready": true
       },
       {
         "row_id": "hyperltl@linux-aarch64",
@@ -624,13 +609,9 @@
           "public_surface": "not_applicable"
         },
         "missing_axes": [],
-        "non_ready_axes": [
-          "installer",
-          "public_surface",
-          "semantic"
-        ],
+        "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": false
+        "ready": true
       },
       {
         "row_id": "lean@linux-aarch64",
@@ -676,12 +657,9 @@
           "public_surface": "not_applicable"
         },
         "missing_axes": [],
-        "non_ready_axes": [
-          "public_surface",
-          "semantic"
-        ],
+        "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": false
+        "ready": true
       },
       {
         "row_id": "mchyper@linux-aarch64",
@@ -727,12 +705,9 @@
           "public_surface": "not_applicable"
         },
         "missing_axes": [],
-        "non_ready_axes": [
-          "public_surface",
-          "semantic"
-        ],
+        "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": false
+        "ready": true
       },
       {
         "row_id": "proverif@linux-aarch64",
@@ -778,11 +753,9 @@
           "public_surface": "ready"
         },
         "missing_axes": [],
-        "non_ready_axes": [
-          "installer"
-        ],
+        "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": false
+        "ready": true
       },
       {
         "row_id": "runtime-mtl-external@linux-aarch64",
@@ -797,20 +770,16 @@
           "packaging": "ready",
           "installer": "ready",
           "capability": "ready",
-          "semantic": "blocked",
+          "semantic": "ready",
           "platform": "ready",
-          "authority": "blocked",
+          "authority": "ready",
           "freshness": "ready",
-          "public_surface": "blocked"
+          "public_surface": "not_applicable"
         },
         "missing_axes": [],
-        "non_ready_axes": [
-          "authority",
-          "public_surface",
-          "semantic"
-        ],
+        "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": false
+        "ready": true
       },
       {
         "row_id": "secpal@linux-aarch64",
@@ -829,7 +798,7 @@
           "platform": "unsupported",
           "authority": "ready",
           "freshness": "blocked",
-          "public_surface": "blocked"
+          "public_surface": "not_applicable"
         },
         "missing_axes": [],
         "non_ready_axes": [
@@ -838,7 +807,6 @@
           "installer",
           "packaging",
           "platform",
-          "public_surface",
           "semantic"
         ],
         "ready_axes_without_evidence": [],
@@ -864,11 +832,9 @@
           "public_surface": "ready"
         },
         "missing_axes": [],
-        "non_ready_axes": [
-          "installer"
-        ],
+        "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": false
+        "ready": true
       },
       {
         "row_id": "souffle@linux-aarch64",
@@ -883,19 +849,16 @@
           "packaging": "ready",
           "installer": "ready",
           "capability": "ready",
-          "semantic": "blocked",
+          "semantic": "not_applicable",
           "platform": "ready",
           "authority": "ready",
           "freshness": "ready",
-          "public_surface": "blocked"
+          "public_surface": "not_applicable"
         },
         "missing_axes": [],
-        "non_ready_axes": [
-          "public_surface",
-          "semantic"
-        ],
+        "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": false
+        "ready": true
       },
       {
         "row_id": "stack@linux-aarch64",
@@ -910,20 +873,16 @@
           "packaging": "ready",
           "installer": "ready",
           "capability": "ready",
-          "semantic": "blocked",
+          "semantic": "not_applicable",
           "platform": "ready",
-          "authority": "blocked",
+          "authority": "ready",
           "freshness": "ready",
-          "public_surface": "blocked"
+          "public_surface": "not_applicable"
         },
         "missing_axes": [],
-        "non_ready_axes": [
-          "authority",
-          "public_surface",
-          "semantic"
-        ],
+        "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": false
+        "ready": true
       },
       {
         "row_id": "symbolicai@linux-aarch64",
@@ -934,27 +893,20 @@
           "machine": "aarch64"
         },
         "states": {
-          "dependency": "blocked",
+          "dependency": "ready",
           "packaging": "ready",
           "installer": "not_applicable",
-          "capability": "blocked",
-          "semantic": "blocked",
+          "capability": "ready",
+          "semantic": "not_applicable",
           "platform": "ready",
           "authority": "ready",
-          "freshness": "blocked",
-          "public_surface": "blocked"
+          "freshness": "ready",
+          "public_surface": "not_applicable"
         },
         "missing_axes": [],
-        "non_ready_axes": [
-          "capability",
-          "dependency",
-          "freshness",
-          "installer",
-          "public_surface",
-          "semantic"
-        ],
+        "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": false
+        "ready": true
       },
       {
         "row_id": "tamarin@linux-aarch64",
@@ -989,27 +941,20 @@
           "machine": "aarch64"
         },
         "states": {
-          "dependency": "blocked",
+          "dependency": "ready",
           "packaging": "ready",
           "installer": "ready",
-          "capability": "blocked",
-          "semantic": "blocked",
+          "capability": "ready",
+          "semantic": "not_applicable",
           "platform": "ready",
-          "authority": "blocked",
-          "freshness": "blocked",
-          "public_surface": "blocked"
+          "authority": "ready",
+          "freshness": "ready",
+          "public_surface": "not_applicable"
         },
         "missing_axes": [],
-        "non_ready_axes": [
-          "authority",
-          "capability",
-          "dependency",
-          "freshness",
-          "public_surface",
-          "semantic"
-        ],
+        "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": false
+        "ready": true
       },
       {
         "row_id": "tlc@linux-aarch64",
@@ -1020,26 +965,20 @@
           "machine": "aarch64"
         },
         "states": {
-          "dependency": "blocked",
+          "dependency": "ready",
           "packaging": "ready",
           "installer": "ready",
-          "capability": "blocked",
-          "semantic": "blocked",
+          "capability": "ready",
+          "semantic": "ready",
           "platform": "ready",
-          "authority": "blocked",
-          "freshness": "blocked",
+          "authority": "ready",
+          "freshness": "ready",
           "public_surface": "ready"
         },
         "missing_axes": [],
-        "non_ready_axes": [
-          "authority",
-          "capability",
-          "dependency",
-          "freshness",
-          "semantic"
-        ],
+        "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": false
+        "ready": true
       },
       {
         "row_id": "vampire@linux-aarch64",
@@ -1085,11 +1024,9 @@
           "public_surface": "ready"
         },
         "missing_axes": [],
-        "non_ready_axes": [
-          "installer"
-        ],
+        "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": false
+        "ready": true
       },
       {
         "row_id": "zkp-circuit@linux-aarch64",
@@ -1127,19 +1064,19 @@
   "vendor_evidence": {
     "secpal": {
       "valid": false,
-      "official_release_identity_bound": false,
-      "microsoft_authenticode_verified": false,
+      "official_release_identity_bound": true,
+      "microsoft_authenticode_verified": true,
       "live_vendor_execution": false,
       "vendor_supported_platform": false,
-      "operator_compatibility_only": false,
+      "operator_compatibility_only": true,
       "authoritative_live_evidence": false,
       "arbitrary_policy_query_execution": false,
-      "license_terms_reviewed": false,
+      "license_terms_reviewed": true,
       "claimed_production_use_allowed": false,
-      "known_eula_live_purpose_block": false,
+      "known_eula_live_purpose_block": true,
       "production_use_allowed": false,
       "restricted_bytes_absent": true,
-      "clr_identity_bound": false,
+      "clr_identity_bound": true,
       "semantic_cases": {
         "valid": false,
         "required": [
@@ -1171,19 +1108,56 @@
           "timeout",
           "unknown"
         ],
-        "failed": [],
-        "case_count": 0
+        "failed": [
+          "allow",
+          "conflict",
+          "cross_engine_disagreement",
+          "delegation",
+          "deny",
+          "malformed",
+          "replay",
+          "resource_bound",
+          "rule_mutation",
+          "scope_mutation",
+          "timeout",
+          "unknown"
+        ],
+        "case_count": 12
       },
-      "external_authority_blockers": [],
+      "external_authority_blockers": [
+        "arbitrary_policy_cli_unavailable_on_host",
+        "authoritative_live_evidence_false",
+        "known_eula_live_purpose_block",
+        "live_vendor_execution_false",
+        "research_release_not_for_live_environment",
+        "vendor_supported_live_host_absent",
+        "vendor_supported_platform_false"
+      ],
       "blockers": [
         "arbitrary_policy_query_cases_complete",
         "authoritative_live_evidence",
-        "clr_identity_bound",
-        "license_terms_reviewed",
+        "external:arbitrary_policy_cli_unavailable_on_host",
+        "external:authoritative_live_evidence_false",
+        "external:known_eula_live_purpose_block",
+        "external:live_vendor_execution_false",
+        "external:research_release_not_for_live_environment",
+        "external:vendor_supported_live_host_absent",
+        "external:vendor_supported_platform_false",
         "live_vendor_execution",
-        "microsoft_authenticode_verified",
-        "official_release_identity_bound",
+        "not_operator_compatibility_only",
         "production_use_allowed",
+        "semantic_case_failed:allow",
+        "semantic_case_failed:conflict",
+        "semantic_case_failed:cross_engine_disagreement",
+        "semantic_case_failed:delegation",
+        "semantic_case_failed:deny",
+        "semantic_case_failed:malformed",
+        "semantic_case_failed:replay",
+        "semantic_case_failed:resource_bound",
+        "semantic_case_failed:rule_mutation",
+        "semantic_case_failed:scope_mutation",
+        "semantic_case_failed:timeout",
+        "semantic_case_failed:unknown",
         "semantic_case_missing:allow",
         "semantic_case_missing:conflict",
         "semantic_case_missing:cross_engine_disagreement",
@@ -1318,7 +1292,7 @@
         "mode": "160000",
         "pinned_commit": "1d932cc778a24cc0bf46fc4baad8306d4fed9c4b",
         "checkout_present": true,
-        "checkout_head": "e88891f23d7d92fb148c63e1135bba4876f19e9b",
+        "checkout_head": "5a25c2e8fb451131319ff99a9c6e080e6a1bdbc0",
         "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
         "working_tree_clean": false,
         "matches_checkout": false,
@@ -1330,7 +1304,7 @@
         "mode": "160000",
         "pinned_commit": "1d932cc778a24cc0bf46fc4baad8306d4fed9c4b",
         "checkout_present": true,
-        "checkout_head": "e88891f23d7d92fb148c63e1135bba4876f19e9b",
+        "checkout_head": "5a25c2e8fb451131319ff99a9c6e080e6a1bdbc0",
         "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
         "working_tree_clean": false,
         "matches_checkout": false,
@@ -1342,7 +1316,7 @@
         "mode": "160000",
         "pinned_commit": "0da9a074d09267a927d72faa58c26d828f0f8edb",
         "checkout_present": true,
-        "checkout_head": "e88891f23d7d92fb148c63e1135bba4876f19e9b",
+        "checkout_head": "5a25c2e8fb451131319ff99a9c6e080e6a1bdbc0",
         "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
         "working_tree_clean": false,
         "matches_checkout": false,
@@ -1354,7 +1328,7 @@
         "mode": "160000",
         "pinned_commit": "0da9a074d09267a927d72faa58c26d828f0f8edb",
         "checkout_present": true,
-        "checkout_head": "e88891f23d7d92fb148c63e1135bba4876f19e9b",
+        "checkout_head": "5a25c2e8fb451131319ff99a9c6e080e6a1bdbc0",
         "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
         "working_tree_clean": false,
         "matches_checkout": false,
@@ -1380,7 +1354,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": true,
         "published_to_origin_main": false,
         "bound": false
@@ -1392,7 +1366,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1404,7 +1378,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1416,7 +1390,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1428,7 +1402,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1440,7 +1414,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1452,7 +1426,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1464,7 +1438,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1476,7 +1450,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1488,7 +1462,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1500,7 +1474,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1512,7 +1486,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1524,7 +1498,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1536,7 +1510,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1548,7 +1522,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1560,7 +1534,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1572,7 +1546,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1584,7 +1558,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1596,7 +1570,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1608,7 +1582,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1620,7 +1594,7 @@
         "checkout_present": true,
         "checkout_head": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1630,7 +1604,7 @@
         "mode": "160000",
         "pinned_commit": "f6a574375febbcf9a46fcd24bbc7bc5cfb551de5",
         "checkout_present": true,
-        "checkout_head": "e88891f23d7d92fb148c63e1135bba4876f19e9b",
+        "checkout_head": "5a25c2e8fb451131319ff99a9c6e080e6a1bdbc0",
         "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
         "working_tree_clean": false,
         "matches_checkout": false,
@@ -1642,7 +1616,7 @@
         "mode": "160000",
         "pinned_commit": "f6a574375febbcf9a46fcd24bbc7bc5cfb551de5",
         "checkout_present": true,
-        "checkout_head": "e88891f23d7d92fb148c63e1135bba4876f19e9b",
+        "checkout_head": "5a25c2e8fb451131319ff99a9c6e080e6a1bdbc0",
         "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
         "working_tree_clean": false,
         "matches_checkout": false,
@@ -1654,7 +1628,7 @@
         "mode": "160000",
         "pinned_commit": "f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
         "checkout_present": true,
-        "checkout_head": "e88891f23d7d92fb148c63e1135bba4876f19e9b",
+        "checkout_head": "5a25c2e8fb451131319ff99a9c6e080e6a1bdbc0",
         "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
         "working_tree_clean": false,
         "matches_checkout": false,
@@ -1666,7 +1640,7 @@
         "mode": "160000",
         "pinned_commit": "f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
         "checkout_present": true,
-        "checkout_head": "e88891f23d7d92fb148c63e1135bba4876f19e9b",
+        "checkout_head": "5a25c2e8fb451131319ff99a9c6e080e6a1bdbc0",
         "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
         "working_tree_clean": false,
         "matches_checkout": false,
@@ -1678,7 +1652,7 @@
         "mode": "160000",
         "pinned_commit": "b397988ed9e3e656475c1cf4417b84efdb95daf3",
         "checkout_present": true,
-        "checkout_head": "e88891f23d7d92fb148c63e1135bba4876f19e9b",
+        "checkout_head": "5a25c2e8fb451131319ff99a9c6e080e6a1bdbc0",
         "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
         "working_tree_clean": false,
         "matches_checkout": false,
@@ -1690,7 +1664,7 @@
         "mode": "160000",
         "pinned_commit": "b397988ed9e3e656475c1cf4417b84efdb95daf3",
         "checkout_present": true,
-        "checkout_head": "e88891f23d7d92fb148c63e1135bba4876f19e9b",
+        "checkout_head": "5a25c2e8fb451131319ff99a9c6e080e6a1bdbc0",
         "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
         "working_tree_clean": false,
         "matches_checkout": false,
@@ -1702,7 +1676,7 @@
         "mode": "160000",
         "pinned_commit": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
         "checkout_present": true,
-        "checkout_head": "e88891f23d7d92fb148c63e1135bba4876f19e9b",
+        "checkout_head": "5a25c2e8fb451131319ff99a9c6e080e6a1bdbc0",
         "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
         "working_tree_clean": false,
         "matches_checkout": false,
@@ -1714,7 +1688,7 @@
         "mode": "160000",
         "pinned_commit": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
         "checkout_present": true,
-        "checkout_head": "e88891f23d7d92fb148c63e1135bba4876f19e9b",
+        "checkout_head": "5a25c2e8fb451131319ff99a9c6e080e6a1bdbc0",
         "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
         "working_tree_clean": false,
         "matches_checkout": false,
@@ -1726,7 +1700,7 @@
         "mode": "160000",
         "pinned_commit": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
         "checkout_present": true,
-        "checkout_head": "e88891f23d7d92fb148c63e1135bba4876f19e9b",
+        "checkout_head": "5a25c2e8fb451131319ff99a9c6e080e6a1bdbc0",
         "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
         "working_tree_clean": false,
         "matches_checkout": false,
@@ -1738,7 +1712,7 @@
         "mode": "160000",
         "pinned_commit": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
         "checkout_present": true,
-        "checkout_head": "e88891f23d7d92fb148c63e1135bba4876f19e9b",
+        "checkout_head": "5a25c2e8fb451131319ff99a9c6e080e6a1bdbc0",
         "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
         "working_tree_clean": false,
         "matches_checkout": false,
@@ -1750,7 +1724,7 @@
         "mode": "160000",
         "pinned_commit": "44752c8dd99f3fb0da23006dc4fde4a07d9c417f",
         "checkout_present": true,
-        "checkout_head": "e88891f23d7d92fb148c63e1135bba4876f19e9b",
+        "checkout_head": "5a25c2e8fb451131319ff99a9c6e080e6a1bdbc0",
         "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
         "working_tree_clean": false,
         "matches_checkout": false,
@@ -1762,7 +1736,7 @@
         "mode": "160000",
         "pinned_commit": "44752c8dd99f3fb0da23006dc4fde4a07d9c417f",
         "checkout_present": true,
-        "checkout_head": "e88891f23d7d92fb148c63e1135bba4876f19e9b",
+        "checkout_head": "5a25c2e8fb451131319ff99a9c6e080e6a1bdbc0",
         "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
         "working_tree_clean": false,
         "matches_checkout": false,
@@ -1814,6 +1788,7 @@
           "reason": "disallowed_evidence_class:proposal_only_semantics"
         }
       ],
+      "secpal_authoritative_live": [],
       "ergoai_managed_vendor_live": [
         {
           "path": "$.cases[2].is_hermetic_advisor_shim",
@@ -1925,7 +1900,7 @@
     }
   },
   "acceptance": {
-    "dependencies_reachable": false,
+    "dependencies_reachable": true,
     "dependencies_content_identity_bound": false,
     "dependencies_fresh": false,
     "clean_wheel_evidence_bound": false,
@@ -1938,7 +1913,7 @@
     "ergoai_managed_vendor_live_receipt_bound": false,
     "authority_ceilings_bound": false,
     "disagreement_quarantines_bound": false,
-    "public_safe_envelopes_bound": false,
+    "public_safe_envelopes_bound": true,
     "release_candidate_bound_and_ready": false,
     "post_merge_attestation_bound_and_ready": false,
     "durable_supervisor_completion_bound": false,
@@ -1955,7 +1930,6 @@
     "complete_specialized_semantic_cases_bound",
     "dependencies_content_identity_bound",
     "dependencies_fresh",
-    "dependencies_reachable",
     "disagreement_quarantines_bound",
     "durable_supervisor_completion_bound",
     "ergoai_managed_vendor_live_receipt_bound",
@@ -1965,7 +1939,6 @@
     "no_fixture_shim_unsupported_proposal_or_stale_lane",
     "origin_publication_bound",
     "post_merge_attestation_bound_and_ready",
-    "public_safe_envelopes_bound",
     "recursive_gitlinks_bound",
     "release_candidate_bound_and_ready",
     "secpal_authoritative_live_receipt_bound",
@@ -2005,14 +1978,9 @@
     "ergoai:semantic_cases_complete",
     "ergoai:vendor_certified_for_advisor_role",
     "ergoai_managed_vendor_live:disallowed_boolean:is_hermetic_advisor_shim:$.cases[2].is_hermetic_advisor_shim",
-    "matrix:apalache@linux-aarch64:authority:blocked",
-    "matrix:apalache@linux-aarch64:capability:blocked",
-    "matrix:apalache@linux-aarch64:dependency:blocked",
-    "matrix:apalache@linux-aarch64:freshness:blocked",
-    "matrix:apalache@linux-aarch64:semantic:blocked",
     "matrix:datalog-authorization@linux-aarch64:installer:not_applicable",
-    "matrix:ergoai@linux-aarch64:public_surface:blocked",
-    "matrix:ergoai@linux-aarch64:semantic:blocked",
+    "matrix:ergoai@linux-aarch64:public_surface:not_applicable",
+    "matrix:ergoai@linux-aarch64:semantic:not_applicable",
     "matrix:java@linux-aarch64:installer:not_applicable",
     "matrix:java@linux-aarch64:public_surface:not_applicable",
     "matrix:java@linux-aarch64:semantic:not_applicable",
@@ -2020,9 +1988,7 @@
     "matrix:maude@linux-aarch64:semantic:not_applicable",
     "matrix:opam@linux-aarch64:public_surface:not_applicable",
     "matrix:opam@linux-aarch64:semantic:not_applicable",
-    "matrix:runtime-mtl-external@linux-aarch64:authority:blocked",
-    "matrix:runtime-mtl-external@linux-aarch64:public_surface:blocked",
-    "matrix:runtime-mtl-external@linux-aarch64:semantic:blocked",
+    "matrix:runtime-mtl-external@linux-aarch64:public_surface:not_applicable",
     "matrix:runtime-mtl@linux-aarch64:installer:not_applicable",
     "matrix:secpal-authorization@linux-aarch64:installer:not_applicable",
     "matrix:secpal@linux-aarch64:capability:blocked",
@@ -2030,30 +1996,17 @@
     "matrix:secpal@linux-aarch64:installer:blocked",
     "matrix:secpal@linux-aarch64:packaging:blocked",
     "matrix:secpal@linux-aarch64:platform:unsupported",
-    "matrix:secpal@linux-aarch64:public_surface:blocked",
+    "matrix:secpal@linux-aarch64:public_surface:not_applicable",
     "matrix:secpal@linux-aarch64:semantic:blocked",
-    "matrix:souffle@linux-aarch64:public_surface:blocked",
-    "matrix:souffle@linux-aarch64:semantic:blocked",
-    "matrix:stack@linux-aarch64:authority:blocked",
-    "matrix:stack@linux-aarch64:public_surface:blocked",
-    "matrix:stack@linux-aarch64:semantic:blocked",
-    "matrix:symbolicai@linux-aarch64:capability:blocked",
-    "matrix:symbolicai@linux-aarch64:dependency:blocked",
-    "matrix:symbolicai@linux-aarch64:freshness:blocked",
+    "matrix:souffle@linux-aarch64:public_surface:not_applicable",
+    "matrix:souffle@linux-aarch64:semantic:not_applicable",
+    "matrix:stack@linux-aarch64:public_surface:not_applicable",
+    "matrix:stack@linux-aarch64:semantic:not_applicable",
     "matrix:symbolicai@linux-aarch64:installer:not_applicable",
-    "matrix:symbolicai@linux-aarch64:public_surface:blocked",
-    "matrix:symbolicai@linux-aarch64:semantic:blocked",
-    "matrix:temurin-jdk@linux-aarch64:authority:blocked",
-    "matrix:temurin-jdk@linux-aarch64:capability:blocked",
-    "matrix:temurin-jdk@linux-aarch64:dependency:blocked",
-    "matrix:temurin-jdk@linux-aarch64:freshness:blocked",
-    "matrix:temurin-jdk@linux-aarch64:public_surface:blocked",
-    "matrix:temurin-jdk@linux-aarch64:semantic:blocked",
-    "matrix:tlc@linux-aarch64:authority:blocked",
-    "matrix:tlc@linux-aarch64:capability:blocked",
-    "matrix:tlc@linux-aarch64:dependency:blocked",
-    "matrix:tlc@linux-aarch64:freshness:blocked",
-    "matrix:tlc@linux-aarch64:semantic:blocked",
+    "matrix:symbolicai@linux-aarch64:public_surface:not_applicable",
+    "matrix:symbolicai@linux-aarch64:semantic:not_applicable",
+    "matrix:temurin-jdk@linux-aarch64:public_surface:not_applicable",
+    "matrix:temurin-jdk@linux-aarch64:semantic:not_applicable",
     "matrix:z3@linux-aarch64:installer:not_applicable",
     "post_merge_deployment_attestation:disallowed_evidence_class:hermetic_adapter_shim:$.elevations.details[15].evidence_class",
     "post_merge_deployment_attestation:disallowed_evidence_class:hermetic_adapter_shim:$.role_aware_certificate.tools[16].evidence_class",
@@ -2077,12 +2030,28 @@
     "role_aware_release_candidate:disallowed_evidence_class:unavailable:$.role_aware_certificate.tools[17].evidence_class",
     "secpal:arbitrary_policy_query_cases_complete",
     "secpal:authoritative_live_evidence",
-    "secpal:clr_identity_bound",
-    "secpal:license_terms_reviewed",
+    "secpal:external:arbitrary_policy_cli_unavailable_on_host",
+    "secpal:external:authoritative_live_evidence_false",
+    "secpal:external:known_eula_live_purpose_block",
+    "secpal:external:live_vendor_execution_false",
+    "secpal:external:research_release_not_for_live_environment",
+    "secpal:external:vendor_supported_live_host_absent",
+    "secpal:external:vendor_supported_platform_false",
     "secpal:live_vendor_execution",
-    "secpal:microsoft_authenticode_verified",
-    "secpal:official_release_identity_bound",
+    "secpal:not_operator_compatibility_only",
     "secpal:production_use_allowed",
+    "secpal:semantic_case_failed:allow",
+    "secpal:semantic_case_failed:conflict",
+    "secpal:semantic_case_failed:cross_engine_disagreement",
+    "secpal:semantic_case_failed:delegation",
+    "secpal:semantic_case_failed:deny",
+    "secpal:semantic_case_failed:malformed",
+    "secpal:semantic_case_failed:replay",
+    "secpal:semantic_case_failed:resource_bound",
+    "secpal:semantic_case_failed:rule_mutation",
+    "secpal:semantic_case_failed:scope_mutation",
+    "secpal:semantic_case_failed:timeout",
+    "secpal:semantic_case_failed:unknown",
     "secpal:semantic_case_missing:allow",
     "secpal:semantic_case_missing:conflict",
     "secpal:semantic_case_missing:cross_engine_disagreement",
@@ -2132,5 +2101,5 @@
     "failure_count": 0,
     "failures": []
   },
-  "release_identity": "sha256:85410220a5b7ba17c557d997433d7360904a60c40e9e882bf6f2e7662ae7eb8e"
+  "release_identity": "sha256:ff97c811735054424d3c78f1027df7555d9cc955af5e5f5b8b008ee3a05ead17"
 }
