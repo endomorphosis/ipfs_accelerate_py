@@ -19778,7 +19778,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         "branch": branch_name,
                     },
                 )
-            seed_plan = self._prior_attempt_seed_plan(state=state, attempt=attempt)
+            seed_plan = self._prior_attempt_seed_plan(
+                task=task,
+                state=state,
+                attempt=attempt,
+            )
             if approved_root_target_commit:
                 baseline_ref = self._create_seeded_worktree(
                     worktree_path,
@@ -21920,6 +21924,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     def _prior_attempt_seed_plan(
         self,
         *,
+        task: PortalTask,
         state: PortalTaskState,
         attempt: int,
     ) -> dict[str, Any]:
@@ -21929,6 +21934,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         ``_preserve_failed_validation_worktree``. Retries should start from that
         commit when it is not yet on the merge target so implementers do not
         re-discover work from git history (LIG-016 attempt-2 class failures).
+
+        The prior commit is only reusable when it belongs to the same canonical
+        task identity and every changed path remains inside the current task's
+        declared output scope. Cross-task residual state and out-of-scope
+        artifacts must never contaminate a later retry seed.
         """
 
         target = self._main_branch_name()
@@ -21939,11 +21949,47 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "reason": "merge_target_baseline",
             "prior_commit": "",
             "prior_branch": "",
+            "prior_changed_paths": [],
+            "prior_out_of_scope_paths": [],
         }
         if int(attempt or 0) <= 1:
             return plan
+        identity = self._identity_for_task(task)
+        expected_identity = {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+        }
+        observed_identity = {
+            "task_id": str(state.last_implementation_task_id or "").strip(),
+            "canonical_task_key": str(
+                state.last_implementation_task_key or ""
+            ).strip(),
+            "canonical_task_cid": str(
+                state.last_implementation_task_cid or ""
+            ).strip(),
+        }
+        plan["expected_task_identity"] = expected_identity
+        plan["prior_task_identity"] = observed_identity
+        identity_mismatch = (
+            observed_identity["task_id"] != expected_identity["task_id"]
+            or (
+                bool(observed_identity["canonical_task_key"])
+                and observed_identity["canonical_task_key"]
+                != expected_identity["canonical_task_key"]
+            )
+            or (
+                bool(observed_identity["canonical_task_cid"])
+                and observed_identity["canonical_task_cid"]
+                != expected_identity["canonical_task_cid"]
+            )
+        )
+        if identity_mismatch:
+            plan["reason"] = "prior_attempt_task_identity_mismatch"
+            return plan
         prior_commit = str(state.last_implementation_commit or "").strip()
         prior_branch = str(state.last_implementation_branch or "").strip()
+        plan["prior_branch"] = prior_branch
         candidate = ""
         if prior_commit and self._git_commit_exists_in_repo(
             self.repo_root, prior_commit
@@ -21963,6 +22009,30 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return plan
         if self._git_ref_is_ancestor(candidate, target):
             plan["reason"] = "prior_already_on_merge_target"
+            return plan
+        changed_paths = self._branch_changed_paths_in_repo(
+            self.repo_root,
+            candidate,
+            base_ref=target,
+        )
+        if changed_paths is None:
+            plan["reason"] = "prior_attempt_diff_unavailable"
+            return plan
+        plan["prior_changed_paths"] = sorted(changed_paths)
+        scope_paths = self._proposal_scope_paths(task)
+        out_of_scope_paths = sorted(
+            path
+            for path in changed_paths
+            if not any(
+                self._path_matches_scope(path, scope) for scope in scope_paths
+            )
+        )
+        plan["prior_out_of_scope_paths"] = out_of_scope_paths
+        if not changed_paths:
+            plan["reason"] = "prior_attempt_has_no_task_changes"
+            return plan
+        if not scope_paths or out_of_scope_paths:
+            plan["reason"] = "prior_attempt_paths_outside_task_scope"
             return plan
         plan["seed_ref"] = candidate
         plan["reuse_prior_attempt"] = True

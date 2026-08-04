@@ -2907,7 +2907,7 @@ _SYNTHETIC_TEST_SECRET_REFERENCE_RE = re.compile(
     r"""vault://[A-Za-z0-9_.][A-Za-z0-9_./-]{0,255})$"""
 )
 _NEVER_EXPOSE_SENTINEL_RE = re.compile(
-    r"""(?ix)^(?:should|must)[_-]?never[_-]?"""
+    r"""(?ix)^(?:should|must)[_-]?(?:never|not)[_-]?"""
     r"""(?:appear|persist|log|store|commit)$"""
 )
 _TEST_ONLY_NON_SECRET_SENTINEL_RE = re.compile(

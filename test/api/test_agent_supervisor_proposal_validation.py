@@ -1216,14 +1216,20 @@ def test_new_secret_like_content_remains_rejected() -> None:
     assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(result)
 
 
-def test_exact_never_expose_sentinel_is_not_treated_as_a_secret() -> None:
+@pytest.mark.parametrize(
+    "sentinel",
+    ("should-never-appear", "should-not-appear"),
+)
+def test_exact_never_expose_sentinel_is_not_treated_as_a_secret(
+    sentinel: str,
+) -> None:
     result = validate_implementation_proposal(
         _proposal(
             _entry(
                 before="VALUE = 1\n",
                 after=(
-                    'VALUE = 2\n'
-                    'payload = {"api_key": "should-never-appear"}\n'
+                    "VALUE = 2\n"
+                    f'payload = {{"api_key": "{sentinel}"}}\n'
                 ),
             )
         ),
