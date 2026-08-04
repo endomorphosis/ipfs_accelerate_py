@@ -1,0 +1,4766 @@
+{
+  "acceptance": {
+    "each_provider_independent_positive_negative_mutation_replay_malformed_timeout_disagreement": true,
+    "goal_id": "FVT-G228",
+    "managed_identity_bound": true,
+    "maude_opam_support_only": true,
+    "no_fixture_parser_wrapper_advisor_other_provider_substitution": true,
+    "rocq_isabelle_genuine_kernel_proof_objects": true,
+    "tamarin_proverif_protocol_secrecy_authentication_mutation": true,
+    "task_id": "FVT-096",
+    "tlc_apalache_bounded_state_safety_liveness": true,
+    "vampire_e_theorem_nontheorem_resource_bound": true
+  },
+  "block_reasons": [],
+  "certificate_digest_sha256": "sha256:4aec1240569a5db1b2d5ecba0be1e9b5f5671fcf60429e04bffcf9ae977cf4f4",
+  "certification_surface": "tools.logic.certify_formal_verification_replayed_core_semantics",
+  "certified": true,
+  "depends_on_goals": [
+    "FVT-G204",
+    "FVT-G205",
+    "FVT-G206",
+    "FVT-G207",
+    "FVT-G226"
+  ],
+  "depends_on_tasks": [
+    "FVT-060",
+    "FVT-076",
+    "FVT-058",
+    "FVT-075",
+    "FVT-057",
+    "FVT-074",
+    "FVT-054",
+    "FVT-071",
+    "FVT-094"
+  ],
+  "deployment_identity": "334324a1cd2800052819b2bee6cb93432ff3aeb87f7b5708bc550a21eaa13470",
+  "deployment_identity_expected": "334324a1cd2800052819b2bee6cb93432ff3aeb87f7b5708bc550a21eaa13470",
+  "deployment_identity_matched": true,
+  "families": {
+    "atp": {
+      "authority_ceiling": "reconstruction_candidate",
+      "authority_scope": "szs_status_candidates_without_kernel_reconstruction",
+      "block_reasons": [],
+      "certified": true,
+      "family_digest": "b20900426e257443879c5ea7954aa9e714078769b975db22855102709f674007",
+      "family_id": "atp",
+      "goal_id": "FVT-G207",
+      "independence_ok": true,
+      "interface": "ATPLiveSemanticCertification@1",
+      "live_execution": true,
+      "policy": {
+        "does_not_change_authority_ceiling": true,
+        "does_not_edit_installer": true,
+        "fixture_parser_wrapper_advisor_cannot_substitute": true,
+        "reuses_family_certifier": true,
+        "sibling_provider_cannot_substitute": true
+      },
+      "production_certified": true,
+      "provider_ids": [
+        "vampire",
+        "eprover"
+      ],
+      "providers": {
+        "eprover": {
+          "authority_tool": true,
+          "bindings": {
+            "artifact_digest": null,
+            "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+            "executable_path": "<managed-tool-path-redacted>/eprover",
+            "family_id": "atp",
+            "identity_probed": true,
+            "live_execution": true,
+            "managed_identity_bound": true,
+            "provider_id": "eprover",
+            "usable": true,
+            "version_string": "E 3.2.5 Puttabong Moondrop (be41955555b56c9616992a99fe1643de343b212c)"
+          },
+          "block_reasons": [],
+          "case_count_raw": 10,
+          "certified": true,
+          "display_name": "E",
+          "evidence": {
+            "by_kind": {
+              "disagreement": [
+                {
+                  "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+                  "canonical_kind": "disagreement",
+                  "case_id": "eprover.disagreement",
+                  "detail": "ATP output contains conflicting SZS statuses: CounterSatisfiable, Theorem",
+                  "evidence_class": null,
+                  "execution_mode": "live+disagreement_quarantine",
+                  "expect": "quarantined",
+                  "family_id": "atp",
+                  "kind": "disagreement",
+                  "matched": true,
+                  "native_kind": "disagreement",
+                  "observed": null,
+                  "output_digest": "ba4046bd98f7e461de3649289a1fe06f273674e69118be82a3c12703abfcd6b2",
+                  "provider_id": "eprover",
+                  "reason_codes": [
+                    "disagreement",
+                    "conflicting_szs",
+                    "quarantined"
+                  ],
+                  "status": "quarantined",
+                  "timed_out": false
+                }
+              ],
+              "malformed": [
+                {
+                  "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+                  "canonical_kind": "malformed",
+                  "case_id": "eprover.malformed_tptp",
+                  "detail": "Malformed TPTP never reports theorem authority",
+                  "evidence_class": null,
+                  "execution_mode": "live",
+                  "expect": "quarantined",
+                  "family_id": "atp",
+                  "kind": "malformed",
+                  "matched": true,
+                  "native_kind": "malformed",
+                  "observed": null,
+                  "output_digest": "b1c55d50d2e879af2b0d1f19c5500fe17ab2abf90136dc87b99a23b8d29bf025",
+                  "provider_id": "eprover",
+                  "reason_codes": [
+                    "malformed_output",
+                    "no_szs_status"
+                  ],
+                  "status": "quarantined",
+                  "timed_out": false
+                }
+              ],
+              "mutation": [
+                {
+                  "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+                  "canonical_kind": "mutation",
+                  "case_id": "eprover.mutated_premise",
+                  "detail": "Premise mutation must not remain theorem",
+                  "evidence_class": null,
+                  "execution_mode": "live",
+                  "expect": "non_theorem_or_unknown",
+                  "family_id": "atp",
+                  "kind": "mutation",
+                  "matched": true,
+                  "native_kind": "mutation",
+                  "observed": null,
+                  "output_digest": "36fcd8acc8aabd4df6efcaf526a84ea31c2a05efd1910da513d0c792ec0422cd",
+                  "provider_id": "eprover",
+                  "reason_codes": [
+                    "szs:CounterSatisfiable",
+                    "unvalidated_atp_model"
+                  ],
+                  "status": "non_theorem_candidate",
+                  "timed_out": false
+                },
+                {
+                  "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+                  "canonical_kind": "mutation",
+                  "case_id": "eprover.mutated_conclusion",
+                  "detail": "Conclusion mutation must not remain theorem",
+                  "evidence_class": null,
+                  "execution_mode": "live",
+                  "expect": "non_theorem_or_unknown",
+                  "family_id": "atp",
+                  "kind": "mutation",
+                  "matched": true,
+                  "native_kind": "mutation",
+                  "observed": null,
+                  "output_digest": "192f6508eee765b2f529dcf9049a1feae05b275b45f117541530a04d9161ffc4",
+                  "provider_id": "eprover",
+                  "reason_codes": [
+                    "szs:CounterSatisfiable",
+                    "unvalidated_atp_model"
+                  ],
+                  "status": "non_theorem_candidate",
+                  "timed_out": false
+                }
+              ],
+              "negative": [
+                {
+                  "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+                  "canonical_kind": "negative",
+                  "case_id": "eprover.counter_satisfiable",
+                  "detail": "Live counter-satisfiable \u2192 candidate model",
+                  "evidence_class": null,
+                  "execution_mode": "live",
+                  "expect": "non_theorem_candidate",
+                  "family_id": "atp",
+                  "kind": "counter_satisfiable",
+                  "matched": true,
+                  "native_kind": "counter_satisfiable",
+                  "observed": null,
+                  "output_digest": "6029447cffe67456d70c35ef504b7fb7e0c78891523ddb0601d7748347b07e80",
+                  "provider_id": "eprover",
+                  "reason_codes": [
+                    "szs:CounterSatisfiable",
+                    "unvalidated_atp_model"
+                  ],
+                  "status": "non_theorem_candidate",
+                  "timed_out": false
+                }
+              ],
+              "positive": [
+                {
+                  "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+                  "canonical_kind": "positive",
+                  "case_id": "eprover.theorem",
+                  "detail": "Live theorem \u2192 unreconstructed candidate",
+                  "evidence_class": null,
+                  "execution_mode": "live",
+                  "expect": "theorem_candidate",
+                  "family_id": "atp",
+                  "kind": "theorem",
+                  "matched": true,
+                  "native_kind": "theorem",
+                  "observed": null,
+                  "output_digest": "caf6072eec1f64da4440d3f3b010781a4e11ec65e65b8b4238ff8175519007e5",
+                  "provider_id": "eprover",
+                  "reason_codes": [
+                    "szs:Theorem",
+                    "unreconstructed_atp_proof"
+                  ],
+                  "status": "theorem_candidate",
+                  "timed_out": false
+                },
+                {
+                  "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+                  "canonical_kind": "positive",
+                  "case_id": "eprover.proof_object",
+                  "detail": "Live proof object remains candidate without reconstruction",
+                  "evidence_class": null,
+                  "execution_mode": "live",
+                  "expect": "theorem_candidate",
+                  "family_id": "atp",
+                  "kind": "proof_object",
+                  "matched": true,
+                  "native_kind": "proof_object",
+                  "observed": null,
+                  "output_digest": "1f9e02952db95acc3842299c7208b1fb5601a86f18b3120c9cbf13ee157eee7e",
+                  "provider_id": "eprover",
+                  "reason_codes": [
+                    "szs:Theorem",
+                    "unreconstructed_atp_proof"
+                  ],
+                  "status": "theorem_candidate",
+                  "timed_out": false
+                }
+              ],
+              "replay": [
+                {
+                  "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+                  "canonical_kind": "replay",
+                  "case_id": "eprover.replay",
+                  "detail": "Replay must preserve SZS class and source digest",
+                  "evidence_class": null,
+                  "execution_mode": "live",
+                  "expect": "theorem_candidate",
+                  "family_id": "atp",
+                  "kind": "replay",
+                  "matched": true,
+                  "native_kind": "replay",
+                  "observed": null,
+                  "output_digest": "3f16bc26effb25140e79a20c84810e1cd7c377b9bcf9912c6a7b29d4a5b3acb5",
+                  "provider_id": "eprover",
+                  "reason_codes": [
+                    "szs:Theorem",
+                    "unreconstructed_atp_proof"
+                  ],
+                  "status": "theorem_candidate",
+                  "timed_out": false
+                }
+              ],
+              "timeout": [
+                {
+                  "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+                  "canonical_kind": "timeout",
+                  "case_id": "eprover.timeout_resource_bounds",
+                  "detail": "Wall-clock resource bounds yield timeout quarantine",
+                  "evidence_class": null,
+                  "execution_mode": "live",
+                  "expect": "timeout",
+                  "family_id": "atp",
+                  "kind": "timeout",
+                  "matched": true,
+                  "native_kind": "timeout",
+                  "observed": null,
+                  "output_digest": "f655b9547451ccb3c98b5a9347c059fdac5be9fc235c8c043bf035f3eff1b2f2",
+                  "provider_id": "eprover",
+                  "reason_codes": [
+                    "wall_clock_timeout",
+                    "resource_bounds"
+                  ],
+                  "status": "timeout",
+                  "timed_out": true
+                }
+              ]
+            },
+            "case_count": 10,
+            "complete": true,
+            "missing_kinds": [],
+            "present": {
+              "disagreement": true,
+              "malformed": true,
+              "mutation": true,
+              "negative": true,
+              "positive": true,
+              "replay": true,
+              "timeout": true
+            },
+            "required_kinds": [
+              "positive",
+              "negative",
+              "mutation",
+              "replay",
+              "malformed",
+              "timeout",
+              "disagreement"
+            ],
+            "unmapped_native_kinds": []
+          },
+          "family_id": "atp",
+          "independence": {
+            "advisor_cannot_substitute": true,
+            "fixture_cannot_substitute": true,
+            "forbidden_substitution_sources": [
+              "fixture",
+              "parser",
+              "wrapper",
+              "advisor",
+              "sibling_provider",
+              "other_provider",
+              "hermetic_parser",
+              "canned_text"
+            ],
+            "ok": true,
+            "other_provider_cannot_substitute": true,
+            "parser_cannot_substitute": true,
+            "sibling_provider_cannot_substitute": true,
+            "wrapper_cannot_substitute": true
+          },
+          "provider_id": "eprover",
+          "semantic": true,
+          "support_only": false
+        },
+        "vampire": {
+          "authority_tool": true,
+          "bindings": {
+            "artifact_digest": null,
+            "binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+            "executable_path": "<managed-tool-path-redacted>/vampire",
+            "family_id": "atp",
+            "identity_probed": true,
+            "live_execution": true,
+            "managed_identity_bound": true,
+            "provider_id": "vampire",
+            "usable": true,
+            "version_string": "Vampire 5.0.1 (Release build, commit 1b13eaf on 2026-01-18 12:14:50 +0000)"
+          },
+          "block_reasons": [],
+          "case_count_raw": 10,
+          "certified": true,
+          "display_name": "Vampire",
+          "evidence": {
+            "by_kind": {
+              "disagreement": [
+                {
+                  "binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+                  "canonical_kind": "disagreement",
+                  "case_id": "vampire.disagreement",
+                  "detail": "ATP output contains conflicting SZS statuses: CounterSatisfiable, Theorem",
+                  "evidence_class": null,
+                  "execution_mode": "live+disagreement_quarantine",
+                  "expect": "quarantined",
+                  "family_id": "atp",
+                  "kind": "disagreement",
+                  "matched": true,
+                  "native_kind": "disagreement",
+                  "observed": null,
+                  "output_digest": "ba4046bd98f7e461de3649289a1fe06f273674e69118be82a3c12703abfcd6b2",
+                  "provider_id": "vampire",
+                  "reason_codes": [
+                    "disagreement",
+                    "conflicting_szs",
+                    "quarantined"
+                  ],
+                  "status": "quarantined",
+                  "timed_out": false
+                }
+              ],
+              "malformed": [
+                {
+                  "binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+                  "canonical_kind": "malformed",
+                  "case_id": "vampire.malformed_tptp",
+                  "detail": "Malformed TPTP never reports theorem authority",
+                  "evidence_class": null,
+                  "execution_mode": "live",
+                  "expect": "quarantined",
+                  "family_id": "atp",
+                  "kind": "malformed",
+                  "matched": true,
+                  "native_kind": "malformed",
+                  "observed": null,
+                  "output_digest": "e4e07fa028bf3acac62c194c654b07db16f74027d1cf83cff625ef26f6532a14",
+                  "provider_id": "vampire",
+                  "reason_codes": [
+                    "malformed_output",
+                    "no_szs_status"
+                  ],
+                  "status": "quarantined",
+                  "timed_out": false
+                }
+              ],
+              "mutation": [
+                {
+                  "binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+                  "canonical_kind": "mutation",
+                  "case_id": "vampire.mutated_premise",
+                  "detail": "Premise mutation must not remain theorem",
+                  "evidence_class": null,
+                  "execution_mode": "live",
+                  "expect": "non_theorem_or_unknown",
+                  "family_id": "atp",
+                  "kind": "mutation",
+                  "matched": true,
+                  "native_kind": "mutation",
+                  "observed": null,
+                  "output_digest": "7f142a174358c85bed56da626202b769a0f2f1b1f95b84dcf0d2657d99ea61d4",
+                  "provider_id": "vampire",
+                  "reason_codes": [
+                    "szs:CounterSatisfiable",
+                    "unvalidated_atp_model"
+                  ],
+                  "status": "non_theorem_candidate",
+                  "timed_out": false
+                },
+                {
+                  "binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+                  "canonical_kind": "mutation",
+                  "case_id": "vampire.mutated_conclusion",
+                  "detail": "Conclusion mutation must not remain theorem",
+                  "evidence_class": null,
+                  "execution_mode": "live",
+                  "expect": "non_theorem_or_unknown",
+                  "family_id": "atp",
+                  "kind": "mutation",
+                  "matched": true,
+                  "native_kind": "mutation",
+                  "observed": null,
+                  "output_digest": "27bb9f7688946aa802a7be9a65efa5d9f47df63e1c0334eb5cd486489ac46cad",
+                  "provider_id": "vampire",
+                  "reason_codes": [
+                    "szs:CounterSatisfiable",
+                    "unvalidated_atp_model"
+                  ],
+                  "status": "non_theorem_candidate",
+                  "timed_out": false
+                }
+              ],
+              "negative": [
+                {
+                  "binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+                  "canonical_kind": "negative",
+                  "case_id": "vampire.counter_satisfiable",
+                  "detail": "Live counter-satisfiable \u2192 candidate model",
+                  "evidence_class": null,
+                  "execution_mode": "live",
+                  "expect": "non_theorem_candidate",
+                  "family_id": "atp",
+                  "kind": "counter_satisfiable",
+                  "matched": true,
+                  "native_kind": "counter_satisfiable",
+                  "observed": null,
+                  "output_digest": "96bf784778d3700d6155c6e477d5b7f41a28b482b30dcaa49a12407fc77917c3",
+                  "provider_id": "vampire",
+                  "reason_codes": [
+                    "szs:CounterSatisfiable",
+                    "unvalidated_atp_model"
+                  ],
+                  "status": "non_theorem_candidate",
+                  "timed_out": false
+                }
+              ],
+              "positive": [
+                {
+                  "binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+                  "canonical_kind": "positive",
+                  "case_id": "vampire.theorem",
+                  "detail": "Live theorem \u2192 unreconstructed candidate",
+                  "evidence_class": null,
+                  "execution_mode": "live",
+                  "expect": "theorem_candidate",
+                  "family_id": "atp",
+                  "kind": "theorem",
+                  "matched": true,
+                  "native_kind": "theorem",
+                  "observed": null,
+                  "output_digest": "451392623b695066ac4833c641ad0ba89491a33f11332267c912730602c858f3",
+                  "provider_id": "vampire",
+                  "reason_codes": [
+                    "szs:Theorem",
+                    "unreconstructed_atp_proof"
+                  ],
+                  "status": "theorem_candidate",
+                  "timed_out": false
+                },
+                {
+                  "binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+                  "canonical_kind": "positive",
+                  "case_id": "vampire.proof_object",
+                  "detail": "Live proof object remains candidate without reconstruction",
+                  "evidence_class": null,
+                  "execution_mode": "live",
+                  "expect": "theorem_candidate",
+                  "family_id": "atp",
+                  "kind": "proof_object",
+                  "matched": true,
+                  "native_kind": "proof_object",
+                  "observed": null,
+                  "output_digest": "c35081396a6ccea821b028c863885236199f2ee8b04c0ed2c3e6fe211b790e08",
+                  "provider_id": "vampire",
+                  "reason_codes": [
+                    "szs:Theorem",
+                    "unreconstructed_atp_proof"
+                  ],
+                  "status": "theorem_candidate",
+                  "timed_out": false
+                }
+              ],
+              "replay": [
+                {
+                  "binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+                  "canonical_kind": "replay",
+                  "case_id": "vampire.replay",
+                  "detail": "Replay must preserve SZS class and source digest",
+                  "evidence_class": null,
+                  "execution_mode": "live",
+                  "expect": "theorem_candidate",
+                  "family_id": "atp",
+                  "kind": "replay",
+                  "matched": true,
+                  "native_kind": "replay",
+                  "observed": null,
+                  "output_digest": "1dc3e9c7087511d0b9fbaf3ececf60a50cc07c5ce427a99590a6ac421581e944",
+                  "provider_id": "vampire",
+                  "reason_codes": [
+                    "szs:Theorem",
+                    "unreconstructed_atp_proof"
+                  ],
+                  "status": "theorem_candidate",
+                  "timed_out": false
+                }
+              ],
+              "timeout": [
+                {
+                  "binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+                  "canonical_kind": "timeout",
+                  "case_id": "vampire.timeout_resource_bounds",
+                  "detail": "Wall-clock resource bounds yield timeout quarantine",
+                  "evidence_class": null,
+                  "execution_mode": "live",
+                  "expect": "timeout",
+                  "family_id": "atp",
+                  "kind": "timeout",
+                  "matched": true,
+                  "native_kind": "timeout",
+                  "observed": null,
+                  "output_digest": "f655b9547451ccb3c98b5a9347c059fdac5be9fc235c8c043bf035f3eff1b2f2",
+                  "provider_id": "vampire",
+                  "reason_codes": [
+                    "wall_clock_timeout",
+                    "resource_bounds"
+                  ],
+                  "status": "timeout",
+                  "timed_out": true
+                }
+              ]
+            },
+            "case_count": 10,
+            "complete": true,
+            "missing_kinds": [],
+            "present": {
+              "disagreement": true,
+              "malformed": true,
+              "mutation": true,
+              "negative": true,
+              "positive": true,
+              "replay": true,
+              "timeout": true
+            },
+            "required_kinds": [
+              "positive",
+              "negative",
+              "mutation",
+              "replay",
+              "malformed",
+              "timeout",
+              "disagreement"
+            ],
+            "unmapped_native_kinds": []
+          },
+          "family_id": "atp",
+          "independence": {
+            "advisor_cannot_substitute": true,
+            "fixture_cannot_substitute": true,
+            "forbidden_substitution_sources": [
+              "fixture",
+              "parser",
+              "wrapper",
+              "advisor",
+              "sibling_provider",
+              "other_provider",
+              "hermetic_parser",
+              "canned_text"
+            ],
+            "ok": true,
+            "other_provider_cannot_substitute": true,
+            "parser_cannot_substitute": true,
+            "sibling_provider_cannot_substitute": true,
+            "wrapper_cannot_substitute": true
+          },
+          "provider_id": "vampire",
+          "semantic": true,
+          "support_only": false
+        }
+      },
+      "repair_task_id": "FVT-071",
+      "schema_version": "atp-live-semantic-certification/v1",
+      "source_mode": "reuse",
+      "source_path": "docs/architecture/formal_verification_atp_live_certificate.json",
+      "task_id": "FVT-054"
+    },
+    "kernel": {
+      "authority_ceiling": "kernel",
+      "authority_scope": "genuine_kernel_proof_objects",
+      "block_reasons": [],
+      "certified": true,
+      "family_digest": "7cdae906eaafd2f227d1c22bab74234012b8c8ede897a4d48f8bf581725c5dd8",
+      "family_id": "kernel",
+      "goal_id": "FVT-G206",
+      "independence_ok": true,
+      "interface": "KernelLiveSemanticFanIn@1",
+      "live_execution": true,
+      "policy": {
+        "does_not_change_authority_ceiling": true,
+        "does_not_edit_installer": true,
+        "fixture_parser_wrapper_advisor_cannot_substitute": true,
+        "reuses_family_certifier": true,
+        "sibling_provider_cannot_substitute": true
+      },
+      "production_certified": true,
+      "provider_ids": [
+        "rocq",
+        "isabelle"
+      ],
+      "providers": {
+        "isabelle": {
+          "authority_tool": true,
+          "bindings": {
+            "advisor_substitution": false,
+            "artifact_digest": null,
+            "binary_digest": null,
+            "executable_path": "<managed-tool-path-redacted>/isabelle",
+            "family_id": "kernel",
+            "fanin_passed": true,
+            "identity_probed": true,
+            "live_execution": true,
+            "managed_identity_bound": true,
+            "provider_id": "isabelle",
+            "selected_kernel": "isabelle",
+            "sibling_kernel_substitution": false,
+            "version_string": null
+          },
+          "block_reasons": [],
+          "case_count_raw": 9,
+          "certified": true,
+          "display_name": "Isabelle",
+          "evidence": {
+            "by_kind": {
+              "disagreement": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "disagreement",
+                  "case_id": "sorry_escape",
+                  "detail": "source scan rejected incomplete or unreviewed constructs",
+                  "evidence_class": null,
+                  "execution_mode": null,
+                  "expect": "rejected",
+                  "family_id": "kernel",
+                  "kind": "fail_closed",
+                  "matched": true,
+                  "native_kind": "fail_closed",
+                  "observed": null,
+                  "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                  "provider_id": "isabelle",
+                  "reason_codes": [
+                    "sorry_or_oops"
+                  ],
+                  "status": "rejected",
+                  "timed_out": false
+                },
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "disagreement",
+                  "case_id": "axiom_escape",
+                  "detail": "source scan rejected incomplete or unreviewed constructs",
+                  "evidence_class": null,
+                  "execution_mode": null,
+                  "expect": "rejected",
+                  "family_id": "kernel",
+                  "kind": "fail_closed",
+                  "matched": true,
+                  "native_kind": "fail_closed",
+                  "observed": null,
+                  "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                  "provider_id": "isabelle",
+                  "reason_codes": [
+                    "unreviewed_axiomatization"
+                  ],
+                  "status": "rejected",
+                  "timed_out": false
+                }
+              ],
+              "malformed": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "malformed",
+                  "case_id": "malformed_source",
+                  "detail": "isabelle build session under offline pin",
+                  "evidence_class": null,
+                  "execution_mode": null,
+                  "expect": "rejected",
+                  "family_id": "kernel",
+                  "kind": "malformed",
+                  "matched": true,
+                  "native_kind": "malformed",
+                  "observed": null,
+                  "output_digest": "f42c6c4f3348d3095c885b6fda19dd65d123f689c025af2a5ad5264146c90230",
+                  "provider_id": "isabelle",
+                  "reason_codes": [
+                    "error_marker",
+                    "non_zero_exit"
+                  ],
+                  "status": "rejected",
+                  "timed_out": false
+                }
+              ],
+              "mutation": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "mutation",
+                  "case_id": "hypothesis_mutation",
+                  "detail": "isabelle build session under offline pin",
+                  "evidence_class": null,
+                  "execution_mode": null,
+                  "expect": "rejected",
+                  "family_id": "kernel",
+                  "kind": "mutation",
+                  "matched": true,
+                  "native_kind": "mutation",
+                  "observed": null,
+                  "output_digest": "9e0f695b4f8273f7b66568160c7bfa78c06fb4bf43f79e39b70cba937c0ebf8c",
+                  "provider_id": "isabelle",
+                  "reason_codes": [
+                    "error_marker",
+                    "failed_diagnostic",
+                    "non_zero_exit"
+                  ],
+                  "status": "rejected",
+                  "timed_out": false
+                },
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "mutation",
+                  "case_id": "conclusion_mutation",
+                  "detail": "isabelle build session under offline pin",
+                  "evidence_class": null,
+                  "execution_mode": null,
+                  "expect": "rejected",
+                  "family_id": "kernel",
+                  "kind": "mutation",
+                  "matched": true,
+                  "native_kind": "mutation",
+                  "observed": null,
+                  "output_digest": "00a7393d501c92c2bd0c29e3acceb82fabcea828da84f21ee989bcc4fcf02c1f",
+                  "provider_id": "isabelle",
+                  "reason_codes": [
+                    "error_marker",
+                    "failed_diagnostic",
+                    "non_zero_exit"
+                  ],
+                  "status": "rejected",
+                  "timed_out": false
+                }
+              ],
+              "negative": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "negative",
+                  "case_id": "false_proof",
+                  "detail": "isabelle build session under offline pin",
+                  "evidence_class": null,
+                  "execution_mode": null,
+                  "expect": "rejected",
+                  "family_id": "kernel",
+                  "kind": "negative",
+                  "matched": true,
+                  "native_kind": "negative",
+                  "observed": null,
+                  "output_digest": "e7aab7033d5203831105cc1f2d8ae83633ec1ec01c7c49e3ca190fe10d451905",
+                  "provider_id": "isabelle",
+                  "reason_codes": [
+                    "error_marker",
+                    "failed_diagnostic",
+                    "non_zero_exit"
+                  ],
+                  "status": "rejected",
+                  "timed_out": false
+                }
+              ],
+              "positive": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "positive",
+                  "case_id": "true_theorem",
+                  "detail": "isabelle build session under offline pin",
+                  "evidence_class": null,
+                  "execution_mode": null,
+                  "expect": "accepted",
+                  "family_id": "kernel",
+                  "kind": "positive",
+                  "matched": true,
+                  "native_kind": "positive",
+                  "observed": null,
+                  "output_digest": "64b293c0e6318fbadde9dca2fb2524a2f3cdeeb79037435f2c10c2ce24934665",
+                  "provider_id": "isabelle",
+                  "reason_codes": [],
+                  "status": "accepted",
+                  "timed_out": false
+                }
+              ],
+              "replay": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "replay",
+                  "case_id": "deterministic_replay",
+                  "detail": "isabelle build session under offline pin",
+                  "evidence_class": null,
+                  "execution_mode": null,
+                  "expect": "accepted",
+                  "family_id": "kernel",
+                  "kind": "replay",
+                  "matched": true,
+                  "native_kind": "replay",
+                  "observed": null,
+                  "output_digest": "b0e241616c822b7a7955ca0aff3e4f2bf73a79fc80857218486baec6a1dbc10a",
+                  "provider_id": "isabelle",
+                  "reason_codes": [],
+                  "status": "accepted",
+                  "timed_out": false
+                }
+              ],
+              "timeout": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "timeout",
+                  "case_id": "timeout_case",
+                  "detail": "fan-in timeout bound rejects without acceptance",
+                  "evidence_class": null,
+                  "execution_mode": null,
+                  "expect": "rejected",
+                  "family_id": "kernel",
+                  "kind": "timeout",
+                  "matched": true,
+                  "native_kind": "timeout",
+                  "observed": null,
+                  "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                  "provider_id": "isabelle",
+                  "reason_codes": [
+                    "timeout_or_spawn_failure"
+                  ],
+                  "status": "rejected",
+                  "timed_out": true
+                }
+              ]
+            },
+            "case_count": 9,
+            "complete": true,
+            "missing_kinds": [],
+            "present": {
+              "disagreement": true,
+              "malformed": true,
+              "mutation": true,
+              "negative": true,
+              "positive": true,
+              "replay": true,
+              "timeout": true
+            },
+            "required_kinds": [
+              "positive",
+              "negative",
+              "mutation",
+              "replay",
+              "malformed",
+              "timeout",
+              "disagreement"
+            ],
+            "unmapped_native_kinds": []
+          },
+          "family_id": "kernel",
+          "independence": {
+            "advisor_cannot_substitute": true,
+            "fixture_cannot_substitute": true,
+            "forbidden_substitution_sources": [
+              "fixture",
+              "parser",
+              "wrapper",
+              "advisor",
+              "sibling_provider",
+              "other_provider",
+              "hermetic_parser",
+              "canned_text"
+            ],
+            "ok": true,
+            "other_provider_cannot_substitute": true,
+            "parser_cannot_substitute": true,
+            "sibling_provider_cannot_substitute": true,
+            "wrapper_cannot_substitute": true
+          },
+          "provider_id": "isabelle",
+          "semantic": true,
+          "support_only": false
+        },
+        "rocq": {
+          "authority_tool": true,
+          "bindings": {
+            "advisor_substitution": false,
+            "artifact_digest": null,
+            "binary_digest": null,
+            "executable_path": "<managed-tool-path-redacted>/coqc",
+            "family_id": "kernel",
+            "fanin_passed": true,
+            "identity_probed": true,
+            "live_execution": true,
+            "managed_identity_bound": true,
+            "provider_id": "rocq",
+            "selected_kernel": "rocq",
+            "sibling_kernel_substitution": false,
+            "version_string": null
+          },
+          "block_reasons": [],
+          "case_count_raw": 9,
+          "certified": true,
+          "display_name": "Rocq/Coq",
+          "evidence": {
+            "by_kind": {
+              "disagreement": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "disagreement",
+                  "case_id": "admit_escape",
+                  "detail": "source scan rejected incomplete or unsafe constructs",
+                  "evidence_class": null,
+                  "execution_mode": null,
+                  "expect": "rejected",
+                  "family_id": "kernel",
+                  "kind": "fail_closed",
+                  "matched": true,
+                  "native_kind": "fail_closed",
+                  "observed": null,
+                  "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                  "provider_id": "rocq",
+                  "reason_codes": [
+                    "admit_or_admitted"
+                  ],
+                  "status": "rejected",
+                  "timed_out": false
+                },
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "disagreement",
+                  "case_id": "axiom_escape",
+                  "detail": "source scan rejected incomplete or unsafe constructs",
+                  "evidence_class": null,
+                  "execution_mode": null,
+                  "expect": "rejected",
+                  "family_id": "kernel",
+                  "kind": "fail_closed",
+                  "matched": true,
+                  "native_kind": "fail_closed",
+                  "observed": null,
+                  "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                  "provider_id": "rocq",
+                  "reason_codes": [
+                    "unreviewed_axiom"
+                  ],
+                  "status": "rejected",
+                  "timed_out": false
+                }
+              ],
+              "malformed": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "malformed",
+                  "case_id": "malformed_source",
+                  "detail": "coqc under offline pin",
+                  "evidence_class": null,
+                  "execution_mode": null,
+                  "expect": "rejected",
+                  "family_id": "kernel",
+                  "kind": "malformed",
+                  "matched": true,
+                  "native_kind": "malformed",
+                  "observed": null,
+                  "output_digest": "85fc27131ced7fd7a31a280a1a83cc4151afd136404afa5e8dcb918d10b35d53",
+                  "provider_id": "rocq",
+                  "reason_codes": [
+                    "error_marker",
+                    "non_zero_exit"
+                  ],
+                  "status": "rejected",
+                  "timed_out": false
+                }
+              ],
+              "mutation": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "mutation",
+                  "case_id": "hypothesis_mutation",
+                  "detail": "coqc under offline pin",
+                  "evidence_class": null,
+                  "execution_mode": null,
+                  "expect": "rejected",
+                  "family_id": "kernel",
+                  "kind": "mutation",
+                  "matched": true,
+                  "native_kind": "mutation",
+                  "observed": null,
+                  "output_digest": "ac1994b569e717f9fdd04c1bd00656ac4c71fecc11c6962aa1650f5b3d1a791d",
+                  "provider_id": "rocq",
+                  "reason_codes": [
+                    "error_marker",
+                    "non_zero_exit"
+                  ],
+                  "status": "rejected",
+                  "timed_out": false
+                },
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "mutation",
+                  "case_id": "conclusion_mutation",
+                  "detail": "coqc under offline pin",
+                  "evidence_class": null,
+                  "execution_mode": null,
+                  "expect": "rejected",
+                  "family_id": "kernel",
+                  "kind": "mutation",
+                  "matched": true,
+                  "native_kind": "mutation",
+                  "observed": null,
+                  "output_digest": "e3afb1926d407398451e10c27034dd02b7a17b0ad8e07ac3f520845a9f7eeef9",
+                  "provider_id": "rocq",
+                  "reason_codes": [
+                    "error_marker",
+                    "non_zero_exit"
+                  ],
+                  "status": "rejected",
+                  "timed_out": false
+                }
+              ],
+              "negative": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "negative",
+                  "case_id": "false_proof",
+                  "detail": "coqc under offline pin",
+                  "evidence_class": null,
+                  "execution_mode": null,
+                  "expect": "rejected",
+                  "family_id": "kernel",
+                  "kind": "negative",
+                  "matched": true,
+                  "native_kind": "negative",
+                  "observed": null,
+                  "output_digest": "3f83f4e928a5429e84d7d9bb0bea7a965a82851652feb903fb78fa002ad0815c",
+                  "provider_id": "rocq",
+                  "reason_codes": [
+                    "error_marker",
+                    "non_zero_exit"
+                  ],
+                  "status": "rejected",
+                  "timed_out": false
+                }
+              ],
+              "positive": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "positive",
+                  "case_id": "true_theorem",
+                  "detail": "coqc under offline pin",
+                  "evidence_class": null,
+                  "execution_mode": null,
+                  "expect": "accepted",
+                  "family_id": "kernel",
+                  "kind": "positive",
+                  "matched": true,
+                  "native_kind": "positive",
+                  "observed": null,
+                  "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+                  "provider_id": "rocq",
+                  "reason_codes": [],
+                  "status": "accepted",
+                  "timed_out": false
+                }
+              ],
+              "replay": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "replay",
+                  "case_id": "deterministic_replay",
+                  "detail": "coqc under offline pin",
+                  "evidence_class": null,
+                  "execution_mode": null,
+                  "expect": "accepted",
+                  "family_id": "kernel",
+                  "kind": "replay",
+                  "matched": true,
+                  "native_kind": "replay",
+                  "observed": null,
+                  "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+                  "provider_id": "rocq",
+                  "reason_codes": [],
+                  "status": "accepted",
+                  "timed_out": false
+                }
+              ],
+              "timeout": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "timeout",
+                  "case_id": "timeout_case",
+                  "detail": "fan-in timeout bound rejects without acceptance",
+                  "evidence_class": null,
+                  "execution_mode": null,
+                  "expect": "rejected",
+                  "family_id": "kernel",
+                  "kind": "timeout",
+                  "matched": true,
+                  "native_kind": "timeout",
+                  "observed": null,
+                  "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                  "provider_id": "rocq",
+                  "reason_codes": [
+                    "timeout_or_spawn_failure"
+                  ],
+                  "status": "rejected",
+                  "timed_out": true
+                }
+              ]
+            },
+            "case_count": 9,
+            "complete": true,
+            "missing_kinds": [],
+            "present": {
+              "disagreement": true,
+              "malformed": true,
+              "mutation": true,
+              "negative": true,
+              "positive": true,
+              "replay": true,
+              "timeout": true
+            },
+            "required_kinds": [
+              "positive",
+              "negative",
+              "mutation",
+              "replay",
+              "malformed",
+              "timeout",
+              "disagreement"
+            ],
+            "unmapped_native_kinds": []
+          },
+          "family_id": "kernel",
+          "independence": {
+            "advisor_cannot_substitute": true,
+            "fixture_cannot_substitute": true,
+            "forbidden_substitution_sources": [
+              "fixture",
+              "parser",
+              "wrapper",
+              "advisor",
+              "sibling_provider",
+              "other_provider",
+              "hermetic_parser",
+              "canned_text"
+            ],
+            "ok": true,
+            "other_provider_cannot_substitute": true,
+            "parser_cannot_substitute": true,
+            "sibling_provider_cannot_substitute": true,
+            "wrapper_cannot_substitute": true
+          },
+          "provider_id": "rocq",
+          "semantic": true,
+          "support_only": false
+        }
+      },
+      "repair_task_id": "FVT-074",
+      "schema_version": "kernel-live-semantic-fanin/v1",
+      "source_mode": "reuse",
+      "source_path": "docs/architecture/formal_verification_kernel_live_certificate.json",
+      "task_id": "FVT-057"
+    },
+    "protocol": {
+      "authority_ceiling": "protocol",
+      "authority_scope": "protocol_secrecy_authentication",
+      "block_reasons": [],
+      "certified": true,
+      "family_digest": "dc3b9d2d8e947a96d4c1a3e1be4c6c73e4236f765fbf378005a3f05e4ca1600f",
+      "family_id": "protocol",
+      "goal_id": "FVT-G205",
+      "independence_ok": true,
+      "interface": "ProtocolLiveSemanticCertification@1",
+      "live_execution": true,
+      "policy": {
+        "does_not_change_authority_ceiling": true,
+        "does_not_edit_installer": true,
+        "fixture_parser_wrapper_advisor_cannot_substitute": true,
+        "reuses_family_certifier": true,
+        "sibling_provider_cannot_substitute": true
+      },
+      "production_certified": true,
+      "provider_ids": [
+        "tamarin",
+        "proverif"
+      ],
+      "providers": {
+        "proverif": {
+          "authority_tool": true,
+          "bindings": {
+            "artifact_digest": null,
+            "binary_digest": null,
+            "executable_path": "<managed-tool-path-redacted>/proverif",
+            "family_id": "protocol",
+            "identity_probed": true,
+            "live_execution": true,
+            "live_semantic_certified": true,
+            "managed_identity_bound": true,
+            "provider_id": "proverif",
+            "support": {
+              "executable": "<managed-tool-path-redacted>/opam",
+              "support_only": true,
+              "tool_id": "opam",
+              "usable": true,
+              "version_string": "2.5.2"
+            },
+            "version_string": "<managed-tool-path-redacted>/proverif: unknown option '--version'."
+          },
+          "block_reasons": [],
+          "case_count_raw": 9,
+          "certified": true,
+          "display_name": "ProVerif",
+          "evidence": {
+            "by_kind": {
+              "disagreement": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "disagreement",
+                  "case_id": "live_disagreement",
+                  "detail": "Mixed true/false claims quarantine or attack",
+                  "evidence_class": "live",
+                  "execution_mode": null,
+                  "expect": "rejected_or_quarantined",
+                  "family_id": "protocol",
+                  "kind": "disagreement",
+                  "matched": true,
+                  "native_kind": "disagreement",
+                  "observed": null,
+                  "output_digest": "1afdbc078f5400c217ec9960b2dd6c2d1fa32d2a881687e12642eb15a5f17975",
+                  "provider_id": "proverif",
+                  "reason_codes": [
+                    "disagreement"
+                  ],
+                  "status": "quarantined",
+                  "timed_out": null
+                }
+              ],
+              "malformed": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "malformed",
+                  "case_id": "live_malformed_model",
+                  "detail": "Malformed model never reports SECURE",
+                  "evidence_class": "live",
+                  "execution_mode": null,
+                  "expect": "quarantined",
+                  "family_id": "protocol",
+                  "kind": "malformed",
+                  "matched": true,
+                  "native_kind": "malformed",
+                  "observed": null,
+                  "output_digest": "017557ce308ad9cf2c22af4a64ee83e7e0204857945e7f2b61934d5db6fe3e99",
+                  "provider_id": "proverif",
+                  "reason_codes": [
+                    "inconclusive"
+                  ],
+                  "status": "quarantined",
+                  "timed_out": null
+                }
+              ],
+              "mutation": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "mutation",
+                  "case_id": "live_mutated_claim",
+                  "detail": "Premise/conclusion mutation must not remain secure",
+                  "evidence_class": "live",
+                  "execution_mode": null,
+                  "expect": "rejected_or_quarantined",
+                  "family_id": "protocol",
+                  "kind": "mutation",
+                  "matched": true,
+                  "native_kind": "mutation",
+                  "observed": null,
+                  "output_digest": "1afdbc078f5400c217ec9960b2dd6c2d1fa32d2a881687e12642eb15a5f17975",
+                  "provider_id": "proverif",
+                  "reason_codes": [
+                    "disagreement"
+                  ],
+                  "status": "quarantined",
+                  "timed_out": null
+                },
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "mutation",
+                  "case_id": "live_mutated_protocol",
+                  "detail": "Protocol mutation yields an attack",
+                  "evidence_class": "live",
+                  "execution_mode": null,
+                  "expect": "attack",
+                  "family_id": "protocol",
+                  "kind": "mutation",
+                  "matched": true,
+                  "native_kind": "mutation",
+                  "observed": null,
+                  "output_digest": "a067fdd58d5c00f4dff605116a25a29a48b8cabb31807dccdfea682f2da29f2a",
+                  "provider_id": "proverif",
+                  "reason_codes": [],
+                  "status": "attack",
+                  "timed_out": null
+                }
+              ],
+              "negative": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "negative",
+                  "case_id": "live_attack_leak",
+                  "detail": "Live concrete attack: private name leaked",
+                  "evidence_class": "live",
+                  "execution_mode": null,
+                  "expect": "attack",
+                  "family_id": "protocol",
+                  "kind": "attack",
+                  "matched": true,
+                  "native_kind": "attack",
+                  "observed": null,
+                  "output_digest": "a067fdd58d5c00f4dff605116a25a29a48b8cabb31807dccdfea682f2da29f2a",
+                  "provider_id": "proverif",
+                  "reason_codes": [],
+                  "status": "attack",
+                  "timed_out": null
+                }
+              ],
+              "positive": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "positive",
+                  "case_id": "live_secure_secrecy_auth",
+                  "detail": "Live secure secrecy and authentication queries",
+                  "evidence_class": "live",
+                  "execution_mode": null,
+                  "expect": "secure",
+                  "family_id": "protocol",
+                  "kind": "secure",
+                  "matched": true,
+                  "native_kind": "secure",
+                  "observed": null,
+                  "output_digest": "c03346ef52780c328bcedbee73f55043e27992067683649635ce556e1e9d157b",
+                  "provider_id": "proverif",
+                  "reason_codes": [],
+                  "status": "secure",
+                  "timed_out": null
+                }
+              ],
+              "replay": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "replay",
+                  "case_id": "live_deterministic_replay",
+                  "detail": "Deterministic live replay of the secure case",
+                  "evidence_class": "live",
+                  "execution_mode": null,
+                  "expect": "secure",
+                  "family_id": "protocol",
+                  "kind": "replay",
+                  "matched": true,
+                  "native_kind": "replay",
+                  "observed": null,
+                  "output_digest": "c03346ef52780c328bcedbee73f55043e27992067683649635ce556e1e9d157b",
+                  "provider_id": "proverif",
+                  "reason_codes": [],
+                  "status": "secure",
+                  "timed_out": null
+                }
+              ],
+              "timeout": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "timeout",
+                  "case_id": "live_timeout",
+                  "detail": "Subprocess timeout quarantines rather than SECURE",
+                  "evidence_class": "live",
+                  "execution_mode": null,
+                  "expect": "quarantined",
+                  "family_id": "protocol",
+                  "kind": "timeout",
+                  "matched": true,
+                  "native_kind": "timeout",
+                  "observed": null,
+                  "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+                  "provider_id": "proverif",
+                  "reason_codes": [
+                    "timeout"
+                  ],
+                  "status": "quarantined",
+                  "timed_out": null
+                },
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "timeout",
+                  "case_id": "live_bounded_search",
+                  "detail": "Bounded search cannot-prove quarantines",
+                  "evidence_class": "live",
+                  "execution_mode": null,
+                  "expect": "quarantined",
+                  "family_id": "protocol",
+                  "kind": "bounded_search",
+                  "matched": true,
+                  "native_kind": "bounded_search",
+                  "observed": null,
+                  "output_digest": "1503adb779f42be5619e8c36cfcc31eb0fa7288bec381127556c4253994fc824",
+                  "provider_id": "proverif",
+                  "reason_codes": [
+                    "inconclusive"
+                  ],
+                  "status": "quarantined",
+                  "timed_out": null
+                }
+              ]
+            },
+            "case_count": 9,
+            "complete": true,
+            "missing_kinds": [],
+            "present": {
+              "disagreement": true,
+              "malformed": true,
+              "mutation": true,
+              "negative": true,
+              "positive": true,
+              "replay": true,
+              "timeout": true
+            },
+            "required_kinds": [
+              "positive",
+              "negative",
+              "mutation",
+              "replay",
+              "malformed",
+              "timeout",
+              "disagreement"
+            ],
+            "unmapped_native_kinds": []
+          },
+          "family_id": "protocol",
+          "independence": {
+            "advisor_cannot_substitute": true,
+            "fixture_cannot_substitute": true,
+            "forbidden_substitution_sources": [
+              "fixture",
+              "parser",
+              "wrapper",
+              "advisor",
+              "sibling_provider",
+              "other_provider",
+              "hermetic_parser",
+              "canned_text"
+            ],
+            "ok": true,
+            "other_provider_cannot_substitute": true,
+            "parser_cannot_substitute": true,
+            "sibling_provider_cannot_substitute": true,
+            "wrapper_cannot_substitute": true
+          },
+          "provider_id": "proverif",
+          "semantic": true,
+          "support_only": false
+        },
+        "tamarin": {
+          "authority_tool": true,
+          "bindings": {
+            "artifact_digest": null,
+            "binary_digest": null,
+            "executable_path": "<managed-tool-path-redacted>/tamarin-prover",
+            "family_id": "protocol",
+            "identity_probed": true,
+            "live_execution": true,
+            "live_semantic_certified": true,
+            "managed_identity_bound": true,
+            "provider_id": "tamarin",
+            "support": {
+              "executable": "<managed-tool-path-redacted>/maude",
+              "support_only": true,
+              "tool_id": "maude",
+              "usable": true,
+              "version_string": "3.5.1"
+            },
+            "version_string": "tamarin-prover 1.12.0, (C) David Basin, Cas Cremers, Jannik Dreier, Simon Meier, Ralf Sasse, Benedikt Schmidt, 2010-2023"
+          },
+          "block_reasons": [],
+          "case_count_raw": 9,
+          "certified": true,
+          "display_name": "Tamarin",
+          "evidence": {
+            "by_kind": {
+              "disagreement": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "disagreement",
+                  "case_id": "live_disagreement",
+                  "detail": "Mixed verified/falsified claims quarantine",
+                  "evidence_class": "live",
+                  "execution_mode": null,
+                  "expect": "rejected_or_quarantined",
+                  "family_id": "protocol",
+                  "kind": "disagreement",
+                  "matched": true,
+                  "native_kind": "disagreement",
+                  "observed": null,
+                  "output_digest": "4191ecf1e24f31b177d7716c7f817842bc5bf2a332722f80a286f1bf71bdd4fd",
+                  "provider_id": "tamarin",
+                  "reason_codes": [
+                    "disagreement"
+                  ],
+                  "status": "quarantined",
+                  "timed_out": null
+                }
+              ],
+              "malformed": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "malformed",
+                  "case_id": "live_malformed_model",
+                  "detail": "Malformed model never reports SECURE",
+                  "evidence_class": "live",
+                  "execution_mode": null,
+                  "expect": "quarantined",
+                  "family_id": "protocol",
+                  "kind": "malformed",
+                  "matched": true,
+                  "native_kind": "malformed",
+                  "observed": null,
+                  "output_digest": "b183bb06d048fb65fd6d4509096a777b1972c4165084323e9905f8b0820c6df7",
+                  "provider_id": "tamarin",
+                  "reason_codes": [
+                    "inconclusive"
+                  ],
+                  "status": "quarantined",
+                  "timed_out": null
+                }
+              ],
+              "mutation": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "mutation",
+                  "case_id": "live_mutated_claim",
+                  "detail": "Premise/conclusion mutation must not remain secure",
+                  "evidence_class": "live",
+                  "execution_mode": null,
+                  "expect": "rejected_or_quarantined",
+                  "family_id": "protocol",
+                  "kind": "mutation",
+                  "matched": true,
+                  "native_kind": "mutation",
+                  "observed": null,
+                  "output_digest": "8ea4dd41abb0c73184dcd6008990badc81672b07e9d4c3b07ec42057d36db7a3",
+                  "provider_id": "tamarin",
+                  "reason_codes": [
+                    "disagreement"
+                  ],
+                  "status": "quarantined",
+                  "timed_out": null
+                },
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "mutation",
+                  "case_id": "live_mutated_protocol",
+                  "detail": "Protocol mutation yields an attack",
+                  "evidence_class": "live",
+                  "execution_mode": null,
+                  "expect": "attack",
+                  "family_id": "protocol",
+                  "kind": "mutation",
+                  "matched": true,
+                  "native_kind": "mutation",
+                  "observed": null,
+                  "output_digest": "534ce6607401762d630689e8bcc34bea38e5361236fb0edb1c6e456f809a6440",
+                  "provider_id": "tamarin",
+                  "reason_codes": [],
+                  "status": "attack",
+                  "timed_out": null
+                }
+              ],
+              "negative": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "negative",
+                  "case_id": "live_attack_leak",
+                  "detail": "Live concrete attack: secret leaked on the network",
+                  "evidence_class": "live",
+                  "execution_mode": null,
+                  "expect": "attack",
+                  "family_id": "protocol",
+                  "kind": "attack",
+                  "matched": true,
+                  "native_kind": "attack",
+                  "observed": null,
+                  "output_digest": "6975d6dc2bfb9750df7c37c344125185fd98521e6398381664171e13463d9867",
+                  "provider_id": "tamarin",
+                  "reason_codes": [],
+                  "status": "attack",
+                  "timed_out": null
+                }
+              ],
+              "positive": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "positive",
+                  "case_id": "live_secure_secrecy_auth",
+                  "detail": "Live secure secrecy and authentication lemmas",
+                  "evidence_class": "live",
+                  "execution_mode": null,
+                  "expect": "secure",
+                  "family_id": "protocol",
+                  "kind": "secure",
+                  "matched": true,
+                  "native_kind": "secure",
+                  "observed": null,
+                  "output_digest": "e9deecf478a4807d9da07ef1e6b3026ec61a4bccd98d2e797ff97331ebdb6cba",
+                  "provider_id": "tamarin",
+                  "reason_codes": [],
+                  "status": "secure",
+                  "timed_out": null
+                }
+              ],
+              "replay": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "replay",
+                  "case_id": "live_deterministic_replay",
+                  "detail": "Deterministic live replay of the secure case",
+                  "evidence_class": "live",
+                  "execution_mode": null,
+                  "expect": "secure",
+                  "family_id": "protocol",
+                  "kind": "replay",
+                  "matched": true,
+                  "native_kind": "replay",
+                  "observed": null,
+                  "output_digest": "25fc5bf84250021de0dcb1bb254b6a58cd1acf4b9011c51516276dbd1e1c8805",
+                  "provider_id": "tamarin",
+                  "reason_codes": [],
+                  "status": "secure",
+                  "timed_out": null
+                }
+              ],
+              "timeout": [
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "timeout",
+                  "case_id": "live_timeout",
+                  "detail": "Subprocess timeout quarantines rather than SECURE",
+                  "evidence_class": "live",
+                  "execution_mode": null,
+                  "expect": "quarantined",
+                  "family_id": "protocol",
+                  "kind": "timeout",
+                  "matched": true,
+                  "native_kind": "timeout",
+                  "observed": null,
+                  "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+                  "provider_id": "tamarin",
+                  "reason_codes": [
+                    "timeout"
+                  ],
+                  "status": "quarantined",
+                  "timed_out": null
+                },
+                {
+                  "binary_digest": null,
+                  "canonical_kind": "timeout",
+                  "case_id": "live_bounded_search",
+                  "detail": "Bounded search incompleteness quarantines",
+                  "evidence_class": "live",
+                  "execution_mode": null,
+                  "expect": "quarantined",
+                  "family_id": "protocol",
+                  "kind": "bounded_search",
+                  "matched": true,
+                  "native_kind": "bounded_search",
+                  "observed": null,
+                  "output_digest": "732c1601da56c9259707c9d315e908450dca1c86010fae7ff37a814935f52ad3",
+                  "provider_id": "tamarin",
+                  "reason_codes": [
+                    "inconclusive"
+                  ],
+                  "status": "quarantined",
+                  "timed_out": null
+                }
+              ]
+            },
+            "case_count": 9,
+            "complete": true,
+            "missing_kinds": [],
+            "present": {
+              "disagreement": true,
+              "malformed": true,
+              "mutation": true,
+              "negative": true,
+              "positive": true,
+              "replay": true,
+              "timeout": true
+            },
+            "required_kinds": [
+              "positive",
+              "negative",
+              "mutation",
+              "replay",
+              "malformed",
+              "timeout",
+              "disagreement"
+            ],
+            "unmapped_native_kinds": []
+          },
+          "family_id": "protocol",
+          "independence": {
+            "advisor_cannot_substitute": true,
+            "fixture_cannot_substitute": true,
+            "forbidden_substitution_sources": [
+              "fixture",
+              "parser",
+              "wrapper",
+              "advisor",
+              "sibling_provider",
+              "other_provider",
+              "hermetic_parser",
+              "canned_text"
+            ],
+            "ok": true,
+            "other_provider_cannot_substitute": true,
+            "parser_cannot_substitute": true,
+            "sibling_provider_cannot_substitute": true,
+            "wrapper_cannot_substitute": true
+          },
+          "provider_id": "tamarin",
+          "semantic": true,
+          "support_only": false
+        }
+      },
+      "repair_task_id": "FVT-075",
+      "schema_version": "protocol-live-semantic-certification/v1",
+      "source_mode": "reuse",
+      "source_path": "docs/architecture/formal_verification_protocol_live_certificate.json",
+      "task_id": "FVT-058"
+    },
+    "state_model": {
+      "authority_ceiling": "bounded",
+      "authority_scope": "bounded_state_model_only",
+      "block_reasons": [],
+      "certified": true,
+      "family_digest": "e74a7df3860dcb4457334571e2e00775ef048cf384b9e7b599ce04230b68d472",
+      "family_id": "state_model",
+      "goal_id": "FVT-G204",
+      "independence_ok": true,
+      "interface": "StateModelLiveSemanticCertification@1",
+      "live_execution": true,
+      "policy": {
+        "does_not_change_authority_ceiling": true,
+        "does_not_edit_installer": true,
+        "fixture_parser_wrapper_advisor_cannot_substitute": true,
+        "reuses_family_certifier": true,
+        "sibling_provider_cannot_substitute": true
+      },
+      "production_certified": true,
+      "provider_ids": [
+        "tlc",
+        "apalache"
+      ],
+      "providers": {
+        "apalache": {
+          "authority_tool": true,
+          "bindings": {
+            "artifact_digest": "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5",
+            "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+            "executable_path": "<managed-tool-path-redacted>/apalache-mc",
+            "family_id": "state_model",
+            "identity_probed": true,
+            "live_execution": true,
+            "managed_identity_bound": true,
+            "provider_id": "apalache",
+            "usable": true,
+            "version_string": "0.58.3"
+          },
+          "block_reasons": [],
+          "case_count_raw": 8,
+          "certified": true,
+          "display_name": "Apalache",
+          "evidence": {
+            "by_kind": {
+              "disagreement": [
+                {
+                  "canonical_kind": "disagreement",
+                  "case_id": "apalache.derived_disagreement_independence",
+                  "detail": "provider cannot be satisfied by fixture/parser/wrapper/advisor/sibling provider; independence binding held",
+                  "family_id": "state_model",
+                  "kind": "disagreement",
+                  "matched": true,
+                  "native_kind": "engine_independence",
+                  "provider_id": "apalache",
+                  "reason_codes": [
+                    "derived_from_independence"
+                  ],
+                  "status": "passed"
+                }
+              ],
+              "malformed": [
+                {
+                  "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+                  "canonical_kind": "malformed",
+                  "case_id": "apalache.malformed_model",
+                  "detail": "Malformed model never reports a successful pass",
+                  "evidence_class": "live_external",
+                  "execution_mode": "live",
+                  "expect": "malformed_or_error",
+                  "family_id": "state_model",
+                  "kind": "malformed",
+                  "matched": true,
+                  "native_kind": "malformed",
+                  "observed": null,
+                  "output_digest": "eecf90b4da234d1d9a38c37813f474eab5a6d990e5643a3f88f8f3d65c8982db",
+                  "provider_id": "apalache",
+                  "reason_codes": [
+                    "malformed_output"
+                  ],
+                  "status": "malformed",
+                  "timed_out": false
+                }
+              ],
+              "mutation": [
+                {
+                  "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+                  "canonical_kind": "mutation",
+                  "case_id": "apalache.mutated_next",
+                  "detail": "Next (specification) mutation never remains a pass",
+                  "evidence_class": "live_external",
+                  "execution_mode": "live",
+                  "expect": "counterexample",
+                  "family_id": "state_model",
+                  "kind": "mutation",
+                  "matched": true,
+                  "native_kind": "mutation",
+                  "observed": null,
+                  "output_digest": "29911948c3b8fc977ae8c953f27a2a93af3d9329f632d197d8c85959e2dd5e41",
+                  "provider_id": "apalache",
+                  "reason_codes": [
+                    "invariant_violation"
+                  ],
+                  "status": "counterexample",
+                  "timed_out": false
+                },
+                {
+                  "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+                  "canonical_kind": "mutation",
+                  "case_id": "apalache.mutated_invariant",
+                  "detail": "Invariant mutation never remains a pass",
+                  "evidence_class": "live_external",
+                  "execution_mode": "live",
+                  "expect": "counterexample",
+                  "family_id": "state_model",
+                  "kind": "mutation",
+                  "matched": true,
+                  "native_kind": "mutation",
+                  "observed": null,
+                  "output_digest": "54ab14647ee076b6f820a004c70fedae759851985d3c582506cb986d8c354ace",
+                  "provider_id": "apalache",
+                  "reason_codes": [
+                    "invariant_violation"
+                  ],
+                  "status": "counterexample",
+                  "timed_out": false
+                }
+              ],
+              "negative": [
+                {
+                  "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+                  "canonical_kind": "negative",
+                  "case_id": "apalache.violation_trace",
+                  "detail": "Violating model yields a concrete counterexample trace",
+                  "evidence_class": "live_external",
+                  "execution_mode": "live",
+                  "expect": "counterexample",
+                  "family_id": "state_model",
+                  "kind": "violation_trace",
+                  "matched": true,
+                  "native_kind": "violation_trace",
+                  "observed": null,
+                  "output_digest": "a04db7fa3bb46fff16fbc4e6f685d5e1ea1a1c35ced1600f8243afc9bc1a2652",
+                  "provider_id": "apalache",
+                  "reason_codes": [
+                    "invariant_violation"
+                  ],
+                  "status": "counterexample",
+                  "timed_out": false
+                }
+              ],
+              "positive": [
+                {
+                  "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+                  "canonical_kind": "positive",
+                  "case_id": "apalache.invariant_holds",
+                  "detail": "Valid invariant model passes under declared bounds",
+                  "evidence_class": "live_external",
+                  "execution_mode": "live",
+                  "expect": "passed",
+                  "family_id": "state_model",
+                  "kind": "invariant_holds",
+                  "matched": true,
+                  "native_kind": "invariant_holds",
+                  "observed": null,
+                  "output_digest": "3dd805902400bdf70ba00d19dab75dc295078fd1391323570ab544f90942b289",
+                  "provider_id": "apalache",
+                  "reason_codes": [
+                    "bounded_success",
+                    "finite_trace_only"
+                  ],
+                  "status": "passed",
+                  "timed_out": false
+                }
+              ],
+              "replay": [
+                {
+                  "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+                  "canonical_kind": "replay",
+                  "case_id": "apalache.deterministic_replay",
+                  "detail": "Positive case replays with identical source digests",
+                  "evidence_class": "live_external",
+                  "execution_mode": "live",
+                  "expect": "passed",
+                  "family_id": "state_model",
+                  "kind": "replay",
+                  "matched": true,
+                  "native_kind": "replay",
+                  "observed": null,
+                  "output_digest": "83504db634e8cfcc28d544154211595bdf37aa8944a33d35c72336ef71aaf092",
+                  "provider_id": "apalache",
+                  "reason_codes": [
+                    "bounded_success",
+                    "finite_trace_only"
+                  ],
+                  "status": "passed",
+                  "timed_out": false
+                }
+              ],
+              "timeout": [
+                {
+                  "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+                  "canonical_kind": "timeout",
+                  "case_id": "apalache.timeout_bound",
+                  "detail": "Wall-clock timeout quarantines rather than passes",
+                  "evidence_class": "live_external",
+                  "execution_mode": "live",
+                  "expect": "timed_out",
+                  "family_id": "state_model",
+                  "kind": "timeout",
+                  "matched": true,
+                  "native_kind": "timeout",
+                  "observed": null,
+                  "output_digest": "f059e49c380f7a3d458877fb7667286a253ea39ff10907c888a60893d01dbc0b",
+                  "provider_id": "apalache",
+                  "reason_codes": [
+                    "timeout"
+                  ],
+                  "status": "timed_out",
+                  "timed_out": true
+                },
+                {
+                  "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+                  "canonical_kind": "timeout",
+                  "case_id": "apalache.bound_behavior",
+                  "detail": "Bounded success is finite-state/finite-trace only; never theorem",
+                  "evidence_class": "live_external",
+                  "execution_mode": "live",
+                  "expect": "passed_bounded",
+                  "family_id": "state_model",
+                  "kind": "bound",
+                  "matched": true,
+                  "native_kind": "bound",
+                  "observed": null,
+                  "output_digest": "a509d7a1138060a260c49e4462b810b672b7ed0fa43776f8e095bf503f936545",
+                  "provider_id": "apalache",
+                  "reason_codes": [
+                    "bounded_success",
+                    "finite_trace_only",
+                    "bounded_only",
+                    "never_theorem_authority"
+                  ],
+                  "status": "passed",
+                  "timed_out": false
+                }
+              ]
+            },
+            "case_count": 9,
+            "complete": true,
+            "missing_kinds": [],
+            "present": {
+              "disagreement": true,
+              "malformed": true,
+              "mutation": true,
+              "negative": true,
+              "positive": true,
+              "replay": true,
+              "timeout": true
+            },
+            "required_kinds": [
+              "positive",
+              "negative",
+              "mutation",
+              "replay",
+              "malformed",
+              "timeout",
+              "disagreement"
+            ],
+            "unmapped_native_kinds": []
+          },
+          "family_id": "state_model",
+          "independence": {
+            "advisor_cannot_substitute": true,
+            "fixture_cannot_substitute": true,
+            "forbidden_substitution_sources": [
+              "fixture",
+              "parser",
+              "wrapper",
+              "advisor",
+              "sibling_provider",
+              "other_provider",
+              "hermetic_parser",
+              "canned_text"
+            ],
+            "ok": true,
+            "other_provider_cannot_substitute": true,
+            "parser_cannot_substitute": true,
+            "sibling_provider_cannot_substitute": true,
+            "wrapper_cannot_substitute": true
+          },
+          "provider_id": "apalache",
+          "semantic": true,
+          "support_only": false
+        },
+        "tlc": {
+          "authority_tool": true,
+          "bindings": {
+            "artifact_digest": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5",
+            "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+            "executable_path": "<managed-tool-path-redacted>/tlc",
+            "family_id": "state_model",
+            "identity_probed": true,
+            "live_execution": true,
+            "managed_identity_bound": true,
+            "provider_id": "tlc",
+            "usable": true,
+            "version_string": "TLC managed release 1.8.0; artifact sha256:e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5"
+          },
+          "block_reasons": [],
+          "case_count_raw": 8,
+          "certified": true,
+          "display_name": "TLC",
+          "evidence": {
+            "by_kind": {
+              "disagreement": [
+                {
+                  "canonical_kind": "disagreement",
+                  "case_id": "tlc.derived_disagreement_independence",
+                  "detail": "provider cannot be satisfied by fixture/parser/wrapper/advisor/sibling provider; independence binding held",
+                  "family_id": "state_model",
+                  "kind": "disagreement",
+                  "matched": true,
+                  "native_kind": "engine_independence",
+                  "provider_id": "tlc",
+                  "reason_codes": [
+                    "derived_from_independence"
+                  ],
+                  "status": "passed"
+                }
+              ],
+              "malformed": [
+                {
+                  "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+                  "canonical_kind": "malformed",
+                  "case_id": "tlc.malformed_model",
+                  "detail": "Malformed model never reports a successful pass",
+                  "evidence_class": "live_external",
+                  "execution_mode": "live",
+                  "expect": "malformed_or_error",
+                  "family_id": "state_model",
+                  "kind": "malformed",
+                  "matched": true,
+                  "native_kind": "malformed",
+                  "observed": null,
+                  "output_digest": "5e89f12afd851672c91ac3c3442d27ee164a26b8778680b28501fa241c2c2fb4",
+                  "provider_id": "tlc",
+                  "reason_codes": [
+                    "malformed_output"
+                  ],
+                  "status": "malformed",
+                  "timed_out": false
+                }
+              ],
+              "mutation": [
+                {
+                  "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+                  "canonical_kind": "mutation",
+                  "case_id": "tlc.mutated_next",
+                  "detail": "Next (specification) mutation never remains a pass",
+                  "evidence_class": "live_external",
+                  "execution_mode": "live",
+                  "expect": "counterexample",
+                  "family_id": "state_model",
+                  "kind": "mutation",
+                  "matched": true,
+                  "native_kind": "mutation",
+                  "observed": null,
+                  "output_digest": "e2ea261a9ecdf6d6251b731b8c6759d4be9c2c7fc858796766339438e68d5635",
+                  "provider_id": "tlc",
+                  "reason_codes": [
+                    "invariant_violation"
+                  ],
+                  "status": "counterexample",
+                  "timed_out": false
+                },
+                {
+                  "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+                  "canonical_kind": "mutation",
+                  "case_id": "tlc.mutated_invariant",
+                  "detail": "Invariant mutation never remains a pass",
+                  "evidence_class": "live_external",
+                  "execution_mode": "live",
+                  "expect": "counterexample",
+                  "family_id": "state_model",
+                  "kind": "mutation",
+                  "matched": true,
+                  "native_kind": "mutation",
+                  "observed": null,
+                  "output_digest": "7bd57521a30db43bca0968aefb55d5265e5a9ef758f0b608a06e564f716cafbc",
+                  "provider_id": "tlc",
+                  "reason_codes": [
+                    "invariant_violation"
+                  ],
+                  "status": "counterexample",
+                  "timed_out": false
+                }
+              ],
+              "negative": [
+                {
+                  "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+                  "canonical_kind": "negative",
+                  "case_id": "tlc.violation_trace",
+                  "detail": "Violating model yields a concrete counterexample trace",
+                  "evidence_class": "live_external",
+                  "execution_mode": "live",
+                  "expect": "counterexample",
+                  "family_id": "state_model",
+                  "kind": "violation_trace",
+                  "matched": true,
+                  "native_kind": "violation_trace",
+                  "observed": null,
+                  "output_digest": "91466a8edb9fb2e871b22412da887fda3bc6fc16cfe6b83ed248ecda45667e6f",
+                  "provider_id": "tlc",
+                  "reason_codes": [
+                    "invariant_violation"
+                  ],
+                  "status": "counterexample",
+                  "timed_out": false
+                }
+              ],
+              "positive": [
+                {
+                  "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+                  "canonical_kind": "positive",
+                  "case_id": "tlc.invariant_holds",
+                  "detail": "Valid invariant model passes under declared bounds",
+                  "evidence_class": "live_external",
+                  "execution_mode": "live",
+                  "expect": "passed",
+                  "family_id": "state_model",
+                  "kind": "invariant_holds",
+                  "matched": true,
+                  "native_kind": "invariant_holds",
+                  "observed": null,
+                  "output_digest": "b322306f61aec89da3ae78091ce10e70f5c808b105e0597be96726cb9c481dbd",
+                  "provider_id": "tlc",
+                  "reason_codes": [
+                    "bounded_success"
+                  ],
+                  "status": "passed",
+                  "timed_out": false
+                }
+              ],
+              "replay": [
+                {
+                  "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+                  "canonical_kind": "replay",
+                  "case_id": "tlc.deterministic_replay",
+                  "detail": "Positive case replays with identical source digests",
+                  "evidence_class": "live_external",
+                  "execution_mode": "live",
+                  "expect": "passed",
+                  "family_id": "state_model",
+                  "kind": "replay",
+                  "matched": true,
+                  "native_kind": "replay",
+                  "observed": null,
+                  "output_digest": "cf43839ae7a7c9f8cc6cada6c7599e913df4aa1bc132f8738e1987e5b4016492",
+                  "provider_id": "tlc",
+                  "reason_codes": [
+                    "bounded_success"
+                  ],
+                  "status": "passed",
+                  "timed_out": false
+                }
+              ],
+              "timeout": [
+                {
+                  "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+                  "canonical_kind": "timeout",
+                  "case_id": "tlc.timeout_bound",
+                  "detail": "Wall-clock timeout quarantines rather than passes",
+                  "evidence_class": "live_external",
+                  "execution_mode": "live",
+                  "expect": "timed_out",
+                  "family_id": "state_model",
+                  "kind": "timeout",
+                  "matched": true,
+                  "native_kind": "timeout",
+                  "observed": null,
+                  "output_digest": "f059e49c380f7a3d458877fb7667286a253ea39ff10907c888a60893d01dbc0b",
+                  "provider_id": "tlc",
+                  "reason_codes": [
+                    "timeout"
+                  ],
+                  "status": "timed_out",
+                  "timed_out": true
+                },
+                {
+                  "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+                  "canonical_kind": "timeout",
+                  "case_id": "tlc.bound_behavior",
+                  "detail": "Bounded success is finite-state/finite-trace only; never theorem",
+                  "evidence_class": "live_external",
+                  "execution_mode": "live",
+                  "expect": "passed_bounded",
+                  "family_id": "state_model",
+                  "kind": "bound",
+                  "matched": true,
+                  "native_kind": "bound",
+                  "observed": null,
+                  "output_digest": "3ec22a71ef01bd475e12673d1c4540b37dfa3f995b0c801e73abcf47c13acd74",
+                  "provider_id": "tlc",
+                  "reason_codes": [
+                    "bounded_success",
+                    "bounded_only",
+                    "never_theorem_authority"
+                  ],
+                  "status": "passed",
+                  "timed_out": false
+                }
+              ]
+            },
+            "case_count": 9,
+            "complete": true,
+            "missing_kinds": [],
+            "present": {
+              "disagreement": true,
+              "malformed": true,
+              "mutation": true,
+              "negative": true,
+              "positive": true,
+              "replay": true,
+              "timeout": true
+            },
+            "required_kinds": [
+              "positive",
+              "negative",
+              "mutation",
+              "replay",
+              "malformed",
+              "timeout",
+              "disagreement"
+            ],
+            "unmapped_native_kinds": []
+          },
+          "family_id": "state_model",
+          "independence": {
+            "advisor_cannot_substitute": true,
+            "fixture_cannot_substitute": true,
+            "forbidden_substitution_sources": [
+              "fixture",
+              "parser",
+              "wrapper",
+              "advisor",
+              "sibling_provider",
+              "other_provider",
+              "hermetic_parser",
+              "canned_text"
+            ],
+            "ok": true,
+            "other_provider_cannot_substitute": true,
+            "parser_cannot_substitute": true,
+            "sibling_provider_cannot_substitute": true,
+            "wrapper_cannot_substitute": true
+          },
+          "provider_id": "tlc",
+          "semantic": true,
+          "support_only": false
+        }
+      },
+      "repair_task_id": "FVT-076",
+      "schema_version": "state-model-live-semantic-certification/v1",
+      "source_mode": "reuse",
+      "source_path": "docs/architecture/formal_verification_state_model_live_certificate.json",
+      "task_id": "FVT-060"
+    }
+  },
+  "family_ids": [
+    "state_model",
+    "protocol",
+    "kernel",
+    "atp"
+  ],
+  "goal_id": "FVT-G228",
+  "handler_id": "replayed_core_external_semantics@1",
+  "interface": "ReplayedCoreExternalSemantics@1",
+  "managed_environment": {
+    "certified": true,
+    "deployment_identity_matched": true,
+    "goal_id": "FVT-G226",
+    "interface": "FormalVerificationManagedEnvironmentReplay@1",
+    "managed_root_approved_immutable": true,
+    "path": "docs/architecture/formal_verification_managed_environment_replay_receipt.json",
+    "present": true,
+    "production_bindings_ready": true,
+    "receipt_digest_sha256": "sha256:1e8838a1d2963c9b7caeaf20d89a55aed8b490a63aa597d47f98a83d3e568324",
+    "source": "reuse",
+    "task_id": "FVT-094"
+  },
+  "missing_family_fail_closed": {
+    "atp": {
+      "aggregator_certified": false,
+      "fail_closed": true,
+      "missing_family": "atp",
+      "reason": "missing family atp blocks cross-family certification",
+      "remaining_families_ok": true,
+      "stale_receipt_cannot_repair": true
+    },
+    "kernel": {
+      "aggregator_certified": false,
+      "fail_closed": true,
+      "missing_family": "kernel",
+      "reason": "missing family kernel blocks cross-family certification",
+      "remaining_families_ok": true,
+      "stale_receipt_cannot_repair": true
+    },
+    "protocol": {
+      "aggregator_certified": false,
+      "fail_closed": true,
+      "missing_family": "protocol",
+      "reason": "missing family protocol blocks cross-family certification",
+      "remaining_families_ok": true,
+      "stale_receipt_cannot_repair": true
+    },
+    "state_model": {
+      "aggregator_certified": false,
+      "fail_closed": true,
+      "missing_family": "state_model",
+      "reason": "missing family state_model blocks cross-family certification",
+      "remaining_families_ok": true,
+      "stale_receipt_cannot_repair": true
+    }
+  },
+  "mode": "reuse",
+  "notes": "Cross-family replayed core external semantics certified by reusing production family certifiers for state-model, protocol, kernel, and ATP under ReplayedCoreExternalSemantics@1; Maude/OPAM remain support-only.",
+  "optional_provider_ids": [
+    "lean"
+  ],
+  "policy": {
+    "axes_do_not_inherit_success": true,
+    "compact_receipt": true,
+    "does_not_change_authority_ceilings": true,
+    "does_not_edit_installers": true,
+    "fixture_parser_wrapper_advisor_cannot_substitute": true,
+    "live_or_production_family_receipt_required": true,
+    "maude_opam_support_only": true,
+    "no_download": true,
+    "no_install": true,
+    "no_network": true,
+    "other_provider_cannot_substitute": true,
+    "owns_cross_family_aggregator_only": true,
+    "reuses_family_certifiers": true,
+    "sibling_provider_cannot_substitute": true,
+    "stale_receipts_cannot_repair_failures": true
+  },
+  "production_certified": true,
+  "program": "formal-verification-tactician/replayed-core-external-semantics",
+  "promotion_blocked": false,
+  "providers": {
+    "apalache": {
+      "authority_tool": true,
+      "bindings": {
+        "artifact_digest": "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5",
+        "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+        "executable_path": "<managed-tool-path-redacted>/apalache-mc",
+        "family_id": "state_model",
+        "identity_probed": true,
+        "live_execution": true,
+        "managed_identity_bound": true,
+        "provider_id": "apalache",
+        "usable": true,
+        "version_string": "0.58.3"
+      },
+      "block_reasons": [],
+      "case_count_raw": 8,
+      "certified": true,
+      "display_name": "Apalache",
+      "evidence": {
+        "by_kind": {
+          "disagreement": [
+            {
+              "canonical_kind": "disagreement",
+              "case_id": "apalache.derived_disagreement_independence",
+              "detail": "provider cannot be satisfied by fixture/parser/wrapper/advisor/sibling provider; independence binding held",
+              "family_id": "state_model",
+              "kind": "disagreement",
+              "matched": true,
+              "native_kind": "engine_independence",
+              "provider_id": "apalache",
+              "reason_codes": [
+                "derived_from_independence"
+              ],
+              "status": "passed"
+            }
+          ],
+          "malformed": [
+            {
+              "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+              "canonical_kind": "malformed",
+              "case_id": "apalache.malformed_model",
+              "detail": "Malformed model never reports a successful pass",
+              "evidence_class": "live_external",
+              "execution_mode": "live",
+              "expect": "malformed_or_error",
+              "family_id": "state_model",
+              "kind": "malformed",
+              "matched": true,
+              "native_kind": "malformed",
+              "observed": null,
+              "output_digest": "eecf90b4da234d1d9a38c37813f474eab5a6d990e5643a3f88f8f3d65c8982db",
+              "provider_id": "apalache",
+              "reason_codes": [
+                "malformed_output"
+              ],
+              "status": "malformed",
+              "timed_out": false
+            }
+          ],
+          "mutation": [
+            {
+              "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+              "canonical_kind": "mutation",
+              "case_id": "apalache.mutated_next",
+              "detail": "Next (specification) mutation never remains a pass",
+              "evidence_class": "live_external",
+              "execution_mode": "live",
+              "expect": "counterexample",
+              "family_id": "state_model",
+              "kind": "mutation",
+              "matched": true,
+              "native_kind": "mutation",
+              "observed": null,
+              "output_digest": "29911948c3b8fc977ae8c953f27a2a93af3d9329f632d197d8c85959e2dd5e41",
+              "provider_id": "apalache",
+              "reason_codes": [
+                "invariant_violation"
+              ],
+              "status": "counterexample",
+              "timed_out": false
+            },
+            {
+              "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+              "canonical_kind": "mutation",
+              "case_id": "apalache.mutated_invariant",
+              "detail": "Invariant mutation never remains a pass",
+              "evidence_class": "live_external",
+              "execution_mode": "live",
+              "expect": "counterexample",
+              "family_id": "state_model",
+              "kind": "mutation",
+              "matched": true,
+              "native_kind": "mutation",
+              "observed": null,
+              "output_digest": "54ab14647ee076b6f820a004c70fedae759851985d3c582506cb986d8c354ace",
+              "provider_id": "apalache",
+              "reason_codes": [
+                "invariant_violation"
+              ],
+              "status": "counterexample",
+              "timed_out": false
+            }
+          ],
+          "negative": [
+            {
+              "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+              "canonical_kind": "negative",
+              "case_id": "apalache.violation_trace",
+              "detail": "Violating model yields a concrete counterexample trace",
+              "evidence_class": "live_external",
+              "execution_mode": "live",
+              "expect": "counterexample",
+              "family_id": "state_model",
+              "kind": "violation_trace",
+              "matched": true,
+              "native_kind": "violation_trace",
+              "observed": null,
+              "output_digest": "a04db7fa3bb46fff16fbc4e6f685d5e1ea1a1c35ced1600f8243afc9bc1a2652",
+              "provider_id": "apalache",
+              "reason_codes": [
+                "invariant_violation"
+              ],
+              "status": "counterexample",
+              "timed_out": false
+            }
+          ],
+          "positive": [
+            {
+              "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+              "canonical_kind": "positive",
+              "case_id": "apalache.invariant_holds",
+              "detail": "Valid invariant model passes under declared bounds",
+              "evidence_class": "live_external",
+              "execution_mode": "live",
+              "expect": "passed",
+              "family_id": "state_model",
+              "kind": "invariant_holds",
+              "matched": true,
+              "native_kind": "invariant_holds",
+              "observed": null,
+              "output_digest": "3dd805902400bdf70ba00d19dab75dc295078fd1391323570ab544f90942b289",
+              "provider_id": "apalache",
+              "reason_codes": [
+                "bounded_success",
+                "finite_trace_only"
+              ],
+              "status": "passed",
+              "timed_out": false
+            }
+          ],
+          "replay": [
+            {
+              "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+              "canonical_kind": "replay",
+              "case_id": "apalache.deterministic_replay",
+              "detail": "Positive case replays with identical source digests",
+              "evidence_class": "live_external",
+              "execution_mode": "live",
+              "expect": "passed",
+              "family_id": "state_model",
+              "kind": "replay",
+              "matched": true,
+              "native_kind": "replay",
+              "observed": null,
+              "output_digest": "83504db634e8cfcc28d544154211595bdf37aa8944a33d35c72336ef71aaf092",
+              "provider_id": "apalache",
+              "reason_codes": [
+                "bounded_success",
+                "finite_trace_only"
+              ],
+              "status": "passed",
+              "timed_out": false
+            }
+          ],
+          "timeout": [
+            {
+              "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+              "canonical_kind": "timeout",
+              "case_id": "apalache.timeout_bound",
+              "detail": "Wall-clock timeout quarantines rather than passes",
+              "evidence_class": "live_external",
+              "execution_mode": "live",
+              "expect": "timed_out",
+              "family_id": "state_model",
+              "kind": "timeout",
+              "matched": true,
+              "native_kind": "timeout",
+              "observed": null,
+              "output_digest": "f059e49c380f7a3d458877fb7667286a253ea39ff10907c888a60893d01dbc0b",
+              "provider_id": "apalache",
+              "reason_codes": [
+                "timeout"
+              ],
+              "status": "timed_out",
+              "timed_out": true
+            },
+            {
+              "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+              "canonical_kind": "timeout",
+              "case_id": "apalache.bound_behavior",
+              "detail": "Bounded success is finite-state/finite-trace only; never theorem",
+              "evidence_class": "live_external",
+              "execution_mode": "live",
+              "expect": "passed_bounded",
+              "family_id": "state_model",
+              "kind": "bound",
+              "matched": true,
+              "native_kind": "bound",
+              "observed": null,
+              "output_digest": "a509d7a1138060a260c49e4462b810b672b7ed0fa43776f8e095bf503f936545",
+              "provider_id": "apalache",
+              "reason_codes": [
+                "bounded_success",
+                "finite_trace_only",
+                "bounded_only",
+                "never_theorem_authority"
+              ],
+              "status": "passed",
+              "timed_out": false
+            }
+          ]
+        },
+        "case_count": 9,
+        "complete": true,
+        "missing_kinds": [],
+        "present": {
+          "disagreement": true,
+          "malformed": true,
+          "mutation": true,
+          "negative": true,
+          "positive": true,
+          "replay": true,
+          "timeout": true
+        },
+        "required_kinds": [
+          "positive",
+          "negative",
+          "mutation",
+          "replay",
+          "malformed",
+          "timeout",
+          "disagreement"
+        ],
+        "unmapped_native_kinds": []
+      },
+      "family_id": "state_model",
+      "independence": {
+        "advisor_cannot_substitute": true,
+        "fixture_cannot_substitute": true,
+        "forbidden_substitution_sources": [
+          "fixture",
+          "parser",
+          "wrapper",
+          "advisor",
+          "sibling_provider",
+          "other_provider",
+          "hermetic_parser",
+          "canned_text"
+        ],
+        "ok": true,
+        "other_provider_cannot_substitute": true,
+        "parser_cannot_substitute": true,
+        "sibling_provider_cannot_substitute": true,
+        "wrapper_cannot_substitute": true
+      },
+      "provider_id": "apalache",
+      "semantic": true,
+      "support_only": false
+    },
+    "eprover": {
+      "authority_tool": true,
+      "bindings": {
+        "artifact_digest": null,
+        "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+        "executable_path": "<managed-tool-path-redacted>/eprover",
+        "family_id": "atp",
+        "identity_probed": true,
+        "live_execution": true,
+        "managed_identity_bound": true,
+        "provider_id": "eprover",
+        "usable": true,
+        "version_string": "E 3.2.5 Puttabong Moondrop (be41955555b56c9616992a99fe1643de343b212c)"
+      },
+      "block_reasons": [],
+      "case_count_raw": 10,
+      "certified": true,
+      "display_name": "E",
+      "evidence": {
+        "by_kind": {
+          "disagreement": [
+            {
+              "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+              "canonical_kind": "disagreement",
+              "case_id": "eprover.disagreement",
+              "detail": "ATP output contains conflicting SZS statuses: CounterSatisfiable, Theorem",
+              "evidence_class": null,
+              "execution_mode": "live+disagreement_quarantine",
+              "expect": "quarantined",
+              "family_id": "atp",
+              "kind": "disagreement",
+              "matched": true,
+              "native_kind": "disagreement",
+              "observed": null,
+              "output_digest": "ba4046bd98f7e461de3649289a1fe06f273674e69118be82a3c12703abfcd6b2",
+              "provider_id": "eprover",
+              "reason_codes": [
+                "disagreement",
+                "conflicting_szs",
+                "quarantined"
+              ],
+              "status": "quarantined",
+              "timed_out": false
+            }
+          ],
+          "malformed": [
+            {
+              "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+              "canonical_kind": "malformed",
+              "case_id": "eprover.malformed_tptp",
+              "detail": "Malformed TPTP never reports theorem authority",
+              "evidence_class": null,
+              "execution_mode": "live",
+              "expect": "quarantined",
+              "family_id": "atp",
+              "kind": "malformed",
+              "matched": true,
+              "native_kind": "malformed",
+              "observed": null,
+              "output_digest": "b1c55d50d2e879af2b0d1f19c5500fe17ab2abf90136dc87b99a23b8d29bf025",
+              "provider_id": "eprover",
+              "reason_codes": [
+                "malformed_output",
+                "no_szs_status"
+              ],
+              "status": "quarantined",
+              "timed_out": false
+            }
+          ],
+          "mutation": [
+            {
+              "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+              "canonical_kind": "mutation",
+              "case_id": "eprover.mutated_premise",
+              "detail": "Premise mutation must not remain theorem",
+              "evidence_class": null,
+              "execution_mode": "live",
+              "expect": "non_theorem_or_unknown",
+              "family_id": "atp",
+              "kind": "mutation",
+              "matched": true,
+              "native_kind": "mutation",
+              "observed": null,
+              "output_digest": "36fcd8acc8aabd4df6efcaf526a84ea31c2a05efd1910da513d0c792ec0422cd",
+              "provider_id": "eprover",
+              "reason_codes": [
+                "szs:CounterSatisfiable",
+                "unvalidated_atp_model"
+              ],
+              "status": "non_theorem_candidate",
+              "timed_out": false
+            },
+            {
+              "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+              "canonical_kind": "mutation",
+              "case_id": "eprover.mutated_conclusion",
+              "detail": "Conclusion mutation must not remain theorem",
+              "evidence_class": null,
+              "execution_mode": "live",
+              "expect": "non_theorem_or_unknown",
+              "family_id": "atp",
+              "kind": "mutation",
+              "matched": true,
+              "native_kind": "mutation",
+              "observed": null,
+              "output_digest": "192f6508eee765b2f529dcf9049a1feae05b275b45f117541530a04d9161ffc4",
+              "provider_id": "eprover",
+              "reason_codes": [
+                "szs:CounterSatisfiable",
+                "unvalidated_atp_model"
+              ],
+              "status": "non_theorem_candidate",
+              "timed_out": false
+            }
+          ],
+          "negative": [
+            {
+              "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+              "canonical_kind": "negative",
+              "case_id": "eprover.counter_satisfiable",
+              "detail": "Live counter-satisfiable \u2192 candidate model",
+              "evidence_class": null,
+              "execution_mode": "live",
+              "expect": "non_theorem_candidate",
+              "family_id": "atp",
+              "kind": "counter_satisfiable",
+              "matched": true,
+              "native_kind": "counter_satisfiable",
+              "observed": null,
+              "output_digest": "6029447cffe67456d70c35ef504b7fb7e0c78891523ddb0601d7748347b07e80",
+              "provider_id": "eprover",
+              "reason_codes": [
+                "szs:CounterSatisfiable",
+                "unvalidated_atp_model"
+              ],
+              "status": "non_theorem_candidate",
+              "timed_out": false
+            }
+          ],
+          "positive": [
+            {
+              "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+              "canonical_kind": "positive",
+              "case_id": "eprover.theorem",
+              "detail": "Live theorem \u2192 unreconstructed candidate",
+              "evidence_class": null,
+              "execution_mode": "live",
+              "expect": "theorem_candidate",
+              "family_id": "atp",
+              "kind": "theorem",
+              "matched": true,
+              "native_kind": "theorem",
+              "observed": null,
+              "output_digest": "caf6072eec1f64da4440d3f3b010781a4e11ec65e65b8b4238ff8175519007e5",
+              "provider_id": "eprover",
+              "reason_codes": [
+                "szs:Theorem",
+                "unreconstructed_atp_proof"
+              ],
+              "status": "theorem_candidate",
+              "timed_out": false
+            },
+            {
+              "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+              "canonical_kind": "positive",
+              "case_id": "eprover.proof_object",
+              "detail": "Live proof object remains candidate without reconstruction",
+              "evidence_class": null,
+              "execution_mode": "live",
+              "expect": "theorem_candidate",
+              "family_id": "atp",
+              "kind": "proof_object",
+              "matched": true,
+              "native_kind": "proof_object",
+              "observed": null,
+              "output_digest": "1f9e02952db95acc3842299c7208b1fb5601a86f18b3120c9cbf13ee157eee7e",
+              "provider_id": "eprover",
+              "reason_codes": [
+                "szs:Theorem",
+                "unreconstructed_atp_proof"
+              ],
+              "status": "theorem_candidate",
+              "timed_out": false
+            }
+          ],
+          "replay": [
+            {
+              "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+              "canonical_kind": "replay",
+              "case_id": "eprover.replay",
+              "detail": "Replay must preserve SZS class and source digest",
+              "evidence_class": null,
+              "execution_mode": "live",
+              "expect": "theorem_candidate",
+              "family_id": "atp",
+              "kind": "replay",
+              "matched": true,
+              "native_kind": "replay",
+              "observed": null,
+              "output_digest": "3f16bc26effb25140e79a20c84810e1cd7c377b9bcf9912c6a7b29d4a5b3acb5",
+              "provider_id": "eprover",
+              "reason_codes": [
+                "szs:Theorem",
+                "unreconstructed_atp_proof"
+              ],
+              "status": "theorem_candidate",
+              "timed_out": false
+            }
+          ],
+          "timeout": [
+            {
+              "binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+              "canonical_kind": "timeout",
+              "case_id": "eprover.timeout_resource_bounds",
+              "detail": "Wall-clock resource bounds yield timeout quarantine",
+              "evidence_class": null,
+              "execution_mode": "live",
+              "expect": "timeout",
+              "family_id": "atp",
+              "kind": "timeout",
+              "matched": true,
+              "native_kind": "timeout",
+              "observed": null,
+              "output_digest": "f655b9547451ccb3c98b5a9347c059fdac5be9fc235c8c043bf035f3eff1b2f2",
+              "provider_id": "eprover",
+              "reason_codes": [
+                "wall_clock_timeout",
+                "resource_bounds"
+              ],
+              "status": "timeout",
+              "timed_out": true
+            }
+          ]
+        },
+        "case_count": 10,
+        "complete": true,
+        "missing_kinds": [],
+        "present": {
+          "disagreement": true,
+          "malformed": true,
+          "mutation": true,
+          "negative": true,
+          "positive": true,
+          "replay": true,
+          "timeout": true
+        },
+        "required_kinds": [
+          "positive",
+          "negative",
+          "mutation",
+          "replay",
+          "malformed",
+          "timeout",
+          "disagreement"
+        ],
+        "unmapped_native_kinds": []
+      },
+      "family_id": "atp",
+      "independence": {
+        "advisor_cannot_substitute": true,
+        "fixture_cannot_substitute": true,
+        "forbidden_substitution_sources": [
+          "fixture",
+          "parser",
+          "wrapper",
+          "advisor",
+          "sibling_provider",
+          "other_provider",
+          "hermetic_parser",
+          "canned_text"
+        ],
+        "ok": true,
+        "other_provider_cannot_substitute": true,
+        "parser_cannot_substitute": true,
+        "sibling_provider_cannot_substitute": true,
+        "wrapper_cannot_substitute": true
+      },
+      "provider_id": "eprover",
+      "semantic": true,
+      "support_only": false
+    },
+    "isabelle": {
+      "authority_tool": true,
+      "bindings": {
+        "advisor_substitution": false,
+        "artifact_digest": null,
+        "binary_digest": null,
+        "executable_path": "<managed-tool-path-redacted>/isabelle",
+        "family_id": "kernel",
+        "fanin_passed": true,
+        "identity_probed": true,
+        "live_execution": true,
+        "managed_identity_bound": true,
+        "provider_id": "isabelle",
+        "selected_kernel": "isabelle",
+        "sibling_kernel_substitution": false,
+        "version_string": null
+      },
+      "block_reasons": [],
+      "case_count_raw": 9,
+      "certified": true,
+      "display_name": "Isabelle",
+      "evidence": {
+        "by_kind": {
+          "disagreement": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "disagreement",
+              "case_id": "sorry_escape",
+              "detail": "source scan rejected incomplete or unreviewed constructs",
+              "evidence_class": null,
+              "execution_mode": null,
+              "expect": "rejected",
+              "family_id": "kernel",
+              "kind": "fail_closed",
+              "matched": true,
+              "native_kind": "fail_closed",
+              "observed": null,
+              "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "provider_id": "isabelle",
+              "reason_codes": [
+                "sorry_or_oops"
+              ],
+              "status": "rejected",
+              "timed_out": false
+            },
+            {
+              "binary_digest": null,
+              "canonical_kind": "disagreement",
+              "case_id": "axiom_escape",
+              "detail": "source scan rejected incomplete or unreviewed constructs",
+              "evidence_class": null,
+              "execution_mode": null,
+              "expect": "rejected",
+              "family_id": "kernel",
+              "kind": "fail_closed",
+              "matched": true,
+              "native_kind": "fail_closed",
+              "observed": null,
+              "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "provider_id": "isabelle",
+              "reason_codes": [
+                "unreviewed_axiomatization"
+              ],
+              "status": "rejected",
+              "timed_out": false
+            }
+          ],
+          "malformed": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "malformed",
+              "case_id": "malformed_source",
+              "detail": "isabelle build session under offline pin",
+              "evidence_class": null,
+              "execution_mode": null,
+              "expect": "rejected",
+              "family_id": "kernel",
+              "kind": "malformed",
+              "matched": true,
+              "native_kind": "malformed",
+              "observed": null,
+              "output_digest": "f42c6c4f3348d3095c885b6fda19dd65d123f689c025af2a5ad5264146c90230",
+              "provider_id": "isabelle",
+              "reason_codes": [
+                "error_marker",
+                "non_zero_exit"
+              ],
+              "status": "rejected",
+              "timed_out": false
+            }
+          ],
+          "mutation": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "mutation",
+              "case_id": "hypothesis_mutation",
+              "detail": "isabelle build session under offline pin",
+              "evidence_class": null,
+              "execution_mode": null,
+              "expect": "rejected",
+              "family_id": "kernel",
+              "kind": "mutation",
+              "matched": true,
+              "native_kind": "mutation",
+              "observed": null,
+              "output_digest": "9e0f695b4f8273f7b66568160c7bfa78c06fb4bf43f79e39b70cba937c0ebf8c",
+              "provider_id": "isabelle",
+              "reason_codes": [
+                "error_marker",
+                "failed_diagnostic",
+                "non_zero_exit"
+              ],
+              "status": "rejected",
+              "timed_out": false
+            },
+            {
+              "binary_digest": null,
+              "canonical_kind": "mutation",
+              "case_id": "conclusion_mutation",
+              "detail": "isabelle build session under offline pin",
+              "evidence_class": null,
+              "execution_mode": null,
+              "expect": "rejected",
+              "family_id": "kernel",
+              "kind": "mutation",
+              "matched": true,
+              "native_kind": "mutation",
+              "observed": null,
+              "output_digest": "00a7393d501c92c2bd0c29e3acceb82fabcea828da84f21ee989bcc4fcf02c1f",
+              "provider_id": "isabelle",
+              "reason_codes": [
+                "error_marker",
+                "failed_diagnostic",
+                "non_zero_exit"
+              ],
+              "status": "rejected",
+              "timed_out": false
+            }
+          ],
+          "negative": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "negative",
+              "case_id": "false_proof",
+              "detail": "isabelle build session under offline pin",
+              "evidence_class": null,
+              "execution_mode": null,
+              "expect": "rejected",
+              "family_id": "kernel",
+              "kind": "negative",
+              "matched": true,
+              "native_kind": "negative",
+              "observed": null,
+              "output_digest": "e7aab7033d5203831105cc1f2d8ae83633ec1ec01c7c49e3ca190fe10d451905",
+              "provider_id": "isabelle",
+              "reason_codes": [
+                "error_marker",
+                "failed_diagnostic",
+                "non_zero_exit"
+              ],
+              "status": "rejected",
+              "timed_out": false
+            }
+          ],
+          "positive": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "positive",
+              "case_id": "true_theorem",
+              "detail": "isabelle build session under offline pin",
+              "evidence_class": null,
+              "execution_mode": null,
+              "expect": "accepted",
+              "family_id": "kernel",
+              "kind": "positive",
+              "matched": true,
+              "native_kind": "positive",
+              "observed": null,
+              "output_digest": "64b293c0e6318fbadde9dca2fb2524a2f3cdeeb79037435f2c10c2ce24934665",
+              "provider_id": "isabelle",
+              "reason_codes": [],
+              "status": "accepted",
+              "timed_out": false
+            }
+          ],
+          "replay": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "replay",
+              "case_id": "deterministic_replay",
+              "detail": "isabelle build session under offline pin",
+              "evidence_class": null,
+              "execution_mode": null,
+              "expect": "accepted",
+              "family_id": "kernel",
+              "kind": "replay",
+              "matched": true,
+              "native_kind": "replay",
+              "observed": null,
+              "output_digest": "b0e241616c822b7a7955ca0aff3e4f2bf73a79fc80857218486baec6a1dbc10a",
+              "provider_id": "isabelle",
+              "reason_codes": [],
+              "status": "accepted",
+              "timed_out": false
+            }
+          ],
+          "timeout": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "timeout",
+              "case_id": "timeout_case",
+              "detail": "fan-in timeout bound rejects without acceptance",
+              "evidence_class": null,
+              "execution_mode": null,
+              "expect": "rejected",
+              "family_id": "kernel",
+              "kind": "timeout",
+              "matched": true,
+              "native_kind": "timeout",
+              "observed": null,
+              "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "provider_id": "isabelle",
+              "reason_codes": [
+                "timeout_or_spawn_failure"
+              ],
+              "status": "rejected",
+              "timed_out": true
+            }
+          ]
+        },
+        "case_count": 9,
+        "complete": true,
+        "missing_kinds": [],
+        "present": {
+          "disagreement": true,
+          "malformed": true,
+          "mutation": true,
+          "negative": true,
+          "positive": true,
+          "replay": true,
+          "timeout": true
+        },
+        "required_kinds": [
+          "positive",
+          "negative",
+          "mutation",
+          "replay",
+          "malformed",
+          "timeout",
+          "disagreement"
+        ],
+        "unmapped_native_kinds": []
+      },
+      "family_id": "kernel",
+      "independence": {
+        "advisor_cannot_substitute": true,
+        "fixture_cannot_substitute": true,
+        "forbidden_substitution_sources": [
+          "fixture",
+          "parser",
+          "wrapper",
+          "advisor",
+          "sibling_provider",
+          "other_provider",
+          "hermetic_parser",
+          "canned_text"
+        ],
+        "ok": true,
+        "other_provider_cannot_substitute": true,
+        "parser_cannot_substitute": true,
+        "sibling_provider_cannot_substitute": true,
+        "wrapper_cannot_substitute": true
+      },
+      "provider_id": "isabelle",
+      "semantic": true,
+      "support_only": false
+    },
+    "proverif": {
+      "authority_tool": true,
+      "bindings": {
+        "artifact_digest": null,
+        "binary_digest": null,
+        "executable_path": "<managed-tool-path-redacted>/proverif",
+        "family_id": "protocol",
+        "identity_probed": true,
+        "live_execution": true,
+        "live_semantic_certified": true,
+        "managed_identity_bound": true,
+        "provider_id": "proverif",
+        "support": {
+          "executable": "<managed-tool-path-redacted>/opam",
+          "support_only": true,
+          "tool_id": "opam",
+          "usable": true,
+          "version_string": "2.5.2"
+        },
+        "version_string": "<managed-tool-path-redacted>/proverif: unknown option '--version'."
+      },
+      "block_reasons": [],
+      "case_count_raw": 9,
+      "certified": true,
+      "display_name": "ProVerif",
+      "evidence": {
+        "by_kind": {
+          "disagreement": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "disagreement",
+              "case_id": "live_disagreement",
+              "detail": "Mixed true/false claims quarantine or attack",
+              "evidence_class": "live",
+              "execution_mode": null,
+              "expect": "rejected_or_quarantined",
+              "family_id": "protocol",
+              "kind": "disagreement",
+              "matched": true,
+              "native_kind": "disagreement",
+              "observed": null,
+              "output_digest": "1afdbc078f5400c217ec9960b2dd6c2d1fa32d2a881687e12642eb15a5f17975",
+              "provider_id": "proverif",
+              "reason_codes": [
+                "disagreement"
+              ],
+              "status": "quarantined",
+              "timed_out": null
+            }
+          ],
+          "malformed": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "malformed",
+              "case_id": "live_malformed_model",
+              "detail": "Malformed model never reports SECURE",
+              "evidence_class": "live",
+              "execution_mode": null,
+              "expect": "quarantined",
+              "family_id": "protocol",
+              "kind": "malformed",
+              "matched": true,
+              "native_kind": "malformed",
+              "observed": null,
+              "output_digest": "017557ce308ad9cf2c22af4a64ee83e7e0204857945e7f2b61934d5db6fe3e99",
+              "provider_id": "proverif",
+              "reason_codes": [
+                "inconclusive"
+              ],
+              "status": "quarantined",
+              "timed_out": null
+            }
+          ],
+          "mutation": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "mutation",
+              "case_id": "live_mutated_claim",
+              "detail": "Premise/conclusion mutation must not remain secure",
+              "evidence_class": "live",
+              "execution_mode": null,
+              "expect": "rejected_or_quarantined",
+              "family_id": "protocol",
+              "kind": "mutation",
+              "matched": true,
+              "native_kind": "mutation",
+              "observed": null,
+              "output_digest": "1afdbc078f5400c217ec9960b2dd6c2d1fa32d2a881687e12642eb15a5f17975",
+              "provider_id": "proverif",
+              "reason_codes": [
+                "disagreement"
+              ],
+              "status": "quarantined",
+              "timed_out": null
+            },
+            {
+              "binary_digest": null,
+              "canonical_kind": "mutation",
+              "case_id": "live_mutated_protocol",
+              "detail": "Protocol mutation yields an attack",
+              "evidence_class": "live",
+              "execution_mode": null,
+              "expect": "attack",
+              "family_id": "protocol",
+              "kind": "mutation",
+              "matched": true,
+              "native_kind": "mutation",
+              "observed": null,
+              "output_digest": "a067fdd58d5c00f4dff605116a25a29a48b8cabb31807dccdfea682f2da29f2a",
+              "provider_id": "proverif",
+              "reason_codes": [],
+              "status": "attack",
+              "timed_out": null
+            }
+          ],
+          "negative": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "negative",
+              "case_id": "live_attack_leak",
+              "detail": "Live concrete attack: private name leaked",
+              "evidence_class": "live",
+              "execution_mode": null,
+              "expect": "attack",
+              "family_id": "protocol",
+              "kind": "attack",
+              "matched": true,
+              "native_kind": "attack",
+              "observed": null,
+              "output_digest": "a067fdd58d5c00f4dff605116a25a29a48b8cabb31807dccdfea682f2da29f2a",
+              "provider_id": "proverif",
+              "reason_codes": [],
+              "status": "attack",
+              "timed_out": null
+            }
+          ],
+          "positive": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "positive",
+              "case_id": "live_secure_secrecy_auth",
+              "detail": "Live secure secrecy and authentication queries",
+              "evidence_class": "live",
+              "execution_mode": null,
+              "expect": "secure",
+              "family_id": "protocol",
+              "kind": "secure",
+              "matched": true,
+              "native_kind": "secure",
+              "observed": null,
+              "output_digest": "c03346ef52780c328bcedbee73f55043e27992067683649635ce556e1e9d157b",
+              "provider_id": "proverif",
+              "reason_codes": [],
+              "status": "secure",
+              "timed_out": null
+            }
+          ],
+          "replay": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "replay",
+              "case_id": "live_deterministic_replay",
+              "detail": "Deterministic live replay of the secure case",
+              "evidence_class": "live",
+              "execution_mode": null,
+              "expect": "secure",
+              "family_id": "protocol",
+              "kind": "replay",
+              "matched": true,
+              "native_kind": "replay",
+              "observed": null,
+              "output_digest": "c03346ef52780c328bcedbee73f55043e27992067683649635ce556e1e9d157b",
+              "provider_id": "proverif",
+              "reason_codes": [],
+              "status": "secure",
+              "timed_out": null
+            }
+          ],
+          "timeout": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "timeout",
+              "case_id": "live_timeout",
+              "detail": "Subprocess timeout quarantines rather than SECURE",
+              "evidence_class": "live",
+              "execution_mode": null,
+              "expect": "quarantined",
+              "family_id": "protocol",
+              "kind": "timeout",
+              "matched": true,
+              "native_kind": "timeout",
+              "observed": null,
+              "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+              "provider_id": "proverif",
+              "reason_codes": [
+                "timeout"
+              ],
+              "status": "quarantined",
+              "timed_out": null
+            },
+            {
+              "binary_digest": null,
+              "canonical_kind": "timeout",
+              "case_id": "live_bounded_search",
+              "detail": "Bounded search cannot-prove quarantines",
+              "evidence_class": "live",
+              "execution_mode": null,
+              "expect": "quarantined",
+              "family_id": "protocol",
+              "kind": "bounded_search",
+              "matched": true,
+              "native_kind": "bounded_search",
+              "observed": null,
+              "output_digest": "1503adb779f42be5619e8c36cfcc31eb0fa7288bec381127556c4253994fc824",
+              "provider_id": "proverif",
+              "reason_codes": [
+                "inconclusive"
+              ],
+              "status": "quarantined",
+              "timed_out": null
+            }
+          ]
+        },
+        "case_count": 9,
+        "complete": true,
+        "missing_kinds": [],
+        "present": {
+          "disagreement": true,
+          "malformed": true,
+          "mutation": true,
+          "negative": true,
+          "positive": true,
+          "replay": true,
+          "timeout": true
+        },
+        "required_kinds": [
+          "positive",
+          "negative",
+          "mutation",
+          "replay",
+          "malformed",
+          "timeout",
+          "disagreement"
+        ],
+        "unmapped_native_kinds": []
+      },
+      "family_id": "protocol",
+      "independence": {
+        "advisor_cannot_substitute": true,
+        "fixture_cannot_substitute": true,
+        "forbidden_substitution_sources": [
+          "fixture",
+          "parser",
+          "wrapper",
+          "advisor",
+          "sibling_provider",
+          "other_provider",
+          "hermetic_parser",
+          "canned_text"
+        ],
+        "ok": true,
+        "other_provider_cannot_substitute": true,
+        "parser_cannot_substitute": true,
+        "sibling_provider_cannot_substitute": true,
+        "wrapper_cannot_substitute": true
+      },
+      "provider_id": "proverif",
+      "semantic": true,
+      "support_only": false
+    },
+    "rocq": {
+      "authority_tool": true,
+      "bindings": {
+        "advisor_substitution": false,
+        "artifact_digest": null,
+        "binary_digest": null,
+        "executable_path": "<managed-tool-path-redacted>/coqc",
+        "family_id": "kernel",
+        "fanin_passed": true,
+        "identity_probed": true,
+        "live_execution": true,
+        "managed_identity_bound": true,
+        "provider_id": "rocq",
+        "selected_kernel": "rocq",
+        "sibling_kernel_substitution": false,
+        "version_string": null
+      },
+      "block_reasons": [],
+      "case_count_raw": 9,
+      "certified": true,
+      "display_name": "Rocq/Coq",
+      "evidence": {
+        "by_kind": {
+          "disagreement": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "disagreement",
+              "case_id": "admit_escape",
+              "detail": "source scan rejected incomplete or unsafe constructs",
+              "evidence_class": null,
+              "execution_mode": null,
+              "expect": "rejected",
+              "family_id": "kernel",
+              "kind": "fail_closed",
+              "matched": true,
+              "native_kind": "fail_closed",
+              "observed": null,
+              "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "provider_id": "rocq",
+              "reason_codes": [
+                "admit_or_admitted"
+              ],
+              "status": "rejected",
+              "timed_out": false
+            },
+            {
+              "binary_digest": null,
+              "canonical_kind": "disagreement",
+              "case_id": "axiom_escape",
+              "detail": "source scan rejected incomplete or unsafe constructs",
+              "evidence_class": null,
+              "execution_mode": null,
+              "expect": "rejected",
+              "family_id": "kernel",
+              "kind": "fail_closed",
+              "matched": true,
+              "native_kind": "fail_closed",
+              "observed": null,
+              "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "provider_id": "rocq",
+              "reason_codes": [
+                "unreviewed_axiom"
+              ],
+              "status": "rejected",
+              "timed_out": false
+            }
+          ],
+          "malformed": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "malformed",
+              "case_id": "malformed_source",
+              "detail": "coqc under offline pin",
+              "evidence_class": null,
+              "execution_mode": null,
+              "expect": "rejected",
+              "family_id": "kernel",
+              "kind": "malformed",
+              "matched": true,
+              "native_kind": "malformed",
+              "observed": null,
+              "output_digest": "85fc27131ced7fd7a31a280a1a83cc4151afd136404afa5e8dcb918d10b35d53",
+              "provider_id": "rocq",
+              "reason_codes": [
+                "error_marker",
+                "non_zero_exit"
+              ],
+              "status": "rejected",
+              "timed_out": false
+            }
+          ],
+          "mutation": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "mutation",
+              "case_id": "hypothesis_mutation",
+              "detail": "coqc under offline pin",
+              "evidence_class": null,
+              "execution_mode": null,
+              "expect": "rejected",
+              "family_id": "kernel",
+              "kind": "mutation",
+              "matched": true,
+              "native_kind": "mutation",
+              "observed": null,
+              "output_digest": "ac1994b569e717f9fdd04c1bd00656ac4c71fecc11c6962aa1650f5b3d1a791d",
+              "provider_id": "rocq",
+              "reason_codes": [
+                "error_marker",
+                "non_zero_exit"
+              ],
+              "status": "rejected",
+              "timed_out": false
+            },
+            {
+              "binary_digest": null,
+              "canonical_kind": "mutation",
+              "case_id": "conclusion_mutation",
+              "detail": "coqc under offline pin",
+              "evidence_class": null,
+              "execution_mode": null,
+              "expect": "rejected",
+              "family_id": "kernel",
+              "kind": "mutation",
+              "matched": true,
+              "native_kind": "mutation",
+              "observed": null,
+              "output_digest": "e3afb1926d407398451e10c27034dd02b7a17b0ad8e07ac3f520845a9f7eeef9",
+              "provider_id": "rocq",
+              "reason_codes": [
+                "error_marker",
+                "non_zero_exit"
+              ],
+              "status": "rejected",
+              "timed_out": false
+            }
+          ],
+          "negative": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "negative",
+              "case_id": "false_proof",
+              "detail": "coqc under offline pin",
+              "evidence_class": null,
+              "execution_mode": null,
+              "expect": "rejected",
+              "family_id": "kernel",
+              "kind": "negative",
+              "matched": true,
+              "native_kind": "negative",
+              "observed": null,
+              "output_digest": "3f83f4e928a5429e84d7d9bb0bea7a965a82851652feb903fb78fa002ad0815c",
+              "provider_id": "rocq",
+              "reason_codes": [
+                "error_marker",
+                "non_zero_exit"
+              ],
+              "status": "rejected",
+              "timed_out": false
+            }
+          ],
+          "positive": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "positive",
+              "case_id": "true_theorem",
+              "detail": "coqc under offline pin",
+              "evidence_class": null,
+              "execution_mode": null,
+              "expect": "accepted",
+              "family_id": "kernel",
+              "kind": "positive",
+              "matched": true,
+              "native_kind": "positive",
+              "observed": null,
+              "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+              "provider_id": "rocq",
+              "reason_codes": [],
+              "status": "accepted",
+              "timed_out": false
+            }
+          ],
+          "replay": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "replay",
+              "case_id": "deterministic_replay",
+              "detail": "coqc under offline pin",
+              "evidence_class": null,
+              "execution_mode": null,
+              "expect": "accepted",
+              "family_id": "kernel",
+              "kind": "replay",
+              "matched": true,
+              "native_kind": "replay",
+              "observed": null,
+              "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+              "provider_id": "rocq",
+              "reason_codes": [],
+              "status": "accepted",
+              "timed_out": false
+            }
+          ],
+          "timeout": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "timeout",
+              "case_id": "timeout_case",
+              "detail": "fan-in timeout bound rejects without acceptance",
+              "evidence_class": null,
+              "execution_mode": null,
+              "expect": "rejected",
+              "family_id": "kernel",
+              "kind": "timeout",
+              "matched": true,
+              "native_kind": "timeout",
+              "observed": null,
+              "output_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "provider_id": "rocq",
+              "reason_codes": [
+                "timeout_or_spawn_failure"
+              ],
+              "status": "rejected",
+              "timed_out": true
+            }
+          ]
+        },
+        "case_count": 9,
+        "complete": true,
+        "missing_kinds": [],
+        "present": {
+          "disagreement": true,
+          "malformed": true,
+          "mutation": true,
+          "negative": true,
+          "positive": true,
+          "replay": true,
+          "timeout": true
+        },
+        "required_kinds": [
+          "positive",
+          "negative",
+          "mutation",
+          "replay",
+          "malformed",
+          "timeout",
+          "disagreement"
+        ],
+        "unmapped_native_kinds": []
+      },
+      "family_id": "kernel",
+      "independence": {
+        "advisor_cannot_substitute": true,
+        "fixture_cannot_substitute": true,
+        "forbidden_substitution_sources": [
+          "fixture",
+          "parser",
+          "wrapper",
+          "advisor",
+          "sibling_provider",
+          "other_provider",
+          "hermetic_parser",
+          "canned_text"
+        ],
+        "ok": true,
+        "other_provider_cannot_substitute": true,
+        "parser_cannot_substitute": true,
+        "sibling_provider_cannot_substitute": true,
+        "wrapper_cannot_substitute": true
+      },
+      "provider_id": "rocq",
+      "semantic": true,
+      "support_only": false
+    },
+    "tamarin": {
+      "authority_tool": true,
+      "bindings": {
+        "artifact_digest": null,
+        "binary_digest": null,
+        "executable_path": "<managed-tool-path-redacted>/tamarin-prover",
+        "family_id": "protocol",
+        "identity_probed": true,
+        "live_execution": true,
+        "live_semantic_certified": true,
+        "managed_identity_bound": true,
+        "provider_id": "tamarin",
+        "support": {
+          "executable": "<managed-tool-path-redacted>/maude",
+          "support_only": true,
+          "tool_id": "maude",
+          "usable": true,
+          "version_string": "3.5.1"
+        },
+        "version_string": "tamarin-prover 1.12.0, (C) David Basin, Cas Cremers, Jannik Dreier, Simon Meier, Ralf Sasse, Benedikt Schmidt, 2010-2023"
+      },
+      "block_reasons": [],
+      "case_count_raw": 9,
+      "certified": true,
+      "display_name": "Tamarin",
+      "evidence": {
+        "by_kind": {
+          "disagreement": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "disagreement",
+              "case_id": "live_disagreement",
+              "detail": "Mixed verified/falsified claims quarantine",
+              "evidence_class": "live",
+              "execution_mode": null,
+              "expect": "rejected_or_quarantined",
+              "family_id": "protocol",
+              "kind": "disagreement",
+              "matched": true,
+              "native_kind": "disagreement",
+              "observed": null,
+              "output_digest": "4191ecf1e24f31b177d7716c7f817842bc5bf2a332722f80a286f1bf71bdd4fd",
+              "provider_id": "tamarin",
+              "reason_codes": [
+                "disagreement"
+              ],
+              "status": "quarantined",
+              "timed_out": null
+            }
+          ],
+          "malformed": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "malformed",
+              "case_id": "live_malformed_model",
+              "detail": "Malformed model never reports SECURE",
+              "evidence_class": "live",
+              "execution_mode": null,
+              "expect": "quarantined",
+              "family_id": "protocol",
+              "kind": "malformed",
+              "matched": true,
+              "native_kind": "malformed",
+              "observed": null,
+              "output_digest": "b183bb06d048fb65fd6d4509096a777b1972c4165084323e9905f8b0820c6df7",
+              "provider_id": "tamarin",
+              "reason_codes": [
+                "inconclusive"
+              ],
+              "status": "quarantined",
+              "timed_out": null
+            }
+          ],
+          "mutation": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "mutation",
+              "case_id": "live_mutated_claim",
+              "detail": "Premise/conclusion mutation must not remain secure",
+              "evidence_class": "live",
+              "execution_mode": null,
+              "expect": "rejected_or_quarantined",
+              "family_id": "protocol",
+              "kind": "mutation",
+              "matched": true,
+              "native_kind": "mutation",
+              "observed": null,
+              "output_digest": "8ea4dd41abb0c73184dcd6008990badc81672b07e9d4c3b07ec42057d36db7a3",
+              "provider_id": "tamarin",
+              "reason_codes": [
+                "disagreement"
+              ],
+              "status": "quarantined",
+              "timed_out": null
+            },
+            {
+              "binary_digest": null,
+              "canonical_kind": "mutation",
+              "case_id": "live_mutated_protocol",
+              "detail": "Protocol mutation yields an attack",
+              "evidence_class": "live",
+              "execution_mode": null,
+              "expect": "attack",
+              "family_id": "protocol",
+              "kind": "mutation",
+              "matched": true,
+              "native_kind": "mutation",
+              "observed": null,
+              "output_digest": "534ce6607401762d630689e8bcc34bea38e5361236fb0edb1c6e456f809a6440",
+              "provider_id": "tamarin",
+              "reason_codes": [],
+              "status": "attack",
+              "timed_out": null
+            }
+          ],
+          "negative": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "negative",
+              "case_id": "live_attack_leak",
+              "detail": "Live concrete attack: secret leaked on the network",
+              "evidence_class": "live",
+              "execution_mode": null,
+              "expect": "attack",
+              "family_id": "protocol",
+              "kind": "attack",
+              "matched": true,
+              "native_kind": "attack",
+              "observed": null,
+              "output_digest": "6975d6dc2bfb9750df7c37c344125185fd98521e6398381664171e13463d9867",
+              "provider_id": "tamarin",
+              "reason_codes": [],
+              "status": "attack",
+              "timed_out": null
+            }
+          ],
+          "positive": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "positive",
+              "case_id": "live_secure_secrecy_auth",
+              "detail": "Live secure secrecy and authentication lemmas",
+              "evidence_class": "live",
+              "execution_mode": null,
+              "expect": "secure",
+              "family_id": "protocol",
+              "kind": "secure",
+              "matched": true,
+              "native_kind": "secure",
+              "observed": null,
+              "output_digest": "e9deecf478a4807d9da07ef1e6b3026ec61a4bccd98d2e797ff97331ebdb6cba",
+              "provider_id": "tamarin",
+              "reason_codes": [],
+              "status": "secure",
+              "timed_out": null
+            }
+          ],
+          "replay": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "replay",
+              "case_id": "live_deterministic_replay",
+              "detail": "Deterministic live replay of the secure case",
+              "evidence_class": "live",
+              "execution_mode": null,
+              "expect": "secure",
+              "family_id": "protocol",
+              "kind": "replay",
+              "matched": true,
+              "native_kind": "replay",
+              "observed": null,
+              "output_digest": "25fc5bf84250021de0dcb1bb254b6a58cd1acf4b9011c51516276dbd1e1c8805",
+              "provider_id": "tamarin",
+              "reason_codes": [],
+              "status": "secure",
+              "timed_out": null
+            }
+          ],
+          "timeout": [
+            {
+              "binary_digest": null,
+              "canonical_kind": "timeout",
+              "case_id": "live_timeout",
+              "detail": "Subprocess timeout quarantines rather than SECURE",
+              "evidence_class": "live",
+              "execution_mode": null,
+              "expect": "quarantined",
+              "family_id": "protocol",
+              "kind": "timeout",
+              "matched": true,
+              "native_kind": "timeout",
+              "observed": null,
+              "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+              "provider_id": "tamarin",
+              "reason_codes": [
+                "timeout"
+              ],
+              "status": "quarantined",
+              "timed_out": null
+            },
+            {
+              "binary_digest": null,
+              "canonical_kind": "timeout",
+              "case_id": "live_bounded_search",
+              "detail": "Bounded search incompleteness quarantines",
+              "evidence_class": "live",
+              "execution_mode": null,
+              "expect": "quarantined",
+              "family_id": "protocol",
+              "kind": "bounded_search",
+              "matched": true,
+              "native_kind": "bounded_search",
+              "observed": null,
+              "output_digest": "732c1601da56c9259707c9d315e908450dca1c86010fae7ff37a814935f52ad3",
+              "provider_id": "tamarin",
+              "reason_codes": [
+                "inconclusive"
+              ],
+              "status": "quarantined",
+              "timed_out": null
+            }
+          ]
+        },
+        "case_count": 9,
+        "complete": true,
+        "missing_kinds": [],
+        "present": {
+          "disagreement": true,
+          "malformed": true,
+          "mutation": true,
+          "negative": true,
+          "positive": true,
+          "replay": true,
+          "timeout": true
+        },
+        "required_kinds": [
+          "positive",
+          "negative",
+          "mutation",
+          "replay",
+          "malformed",
+          "timeout",
+          "disagreement"
+        ],
+        "unmapped_native_kinds": []
+      },
+      "family_id": "protocol",
+      "independence": {
+        "advisor_cannot_substitute": true,
+        "fixture_cannot_substitute": true,
+        "forbidden_substitution_sources": [
+          "fixture",
+          "parser",
+          "wrapper",
+          "advisor",
+          "sibling_provider",
+          "other_provider",
+          "hermetic_parser",
+          "canned_text"
+        ],
+        "ok": true,
+        "other_provider_cannot_substitute": true,
+        "parser_cannot_substitute": true,
+        "sibling_provider_cannot_substitute": true,
+        "wrapper_cannot_substitute": true
+      },
+      "provider_id": "tamarin",
+      "semantic": true,
+      "support_only": false
+    },
+    "tlc": {
+      "authority_tool": true,
+      "bindings": {
+        "artifact_digest": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5",
+        "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+        "executable_path": "<managed-tool-path-redacted>/tlc",
+        "family_id": "state_model",
+        "identity_probed": true,
+        "live_execution": true,
+        "managed_identity_bound": true,
+        "provider_id": "tlc",
+        "usable": true,
+        "version_string": "TLC managed release 1.8.0; artifact sha256:e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5"
+      },
+      "block_reasons": [],
+      "case_count_raw": 8,
+      "certified": true,
+      "display_name": "TLC",
+      "evidence": {
+        "by_kind": {
+          "disagreement": [
+            {
+              "canonical_kind": "disagreement",
+              "case_id": "tlc.derived_disagreement_independence",
+              "detail": "provider cannot be satisfied by fixture/parser/wrapper/advisor/sibling provider; independence binding held",
+              "family_id": "state_model",
+              "kind": "disagreement",
+              "matched": true,
+              "native_kind": "engine_independence",
+              "provider_id": "tlc",
+              "reason_codes": [
+                "derived_from_independence"
+              ],
+              "status": "passed"
+            }
+          ],
+          "malformed": [
+            {
+              "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+              "canonical_kind": "malformed",
+              "case_id": "tlc.malformed_model",
+              "detail": "Malformed model never reports a successful pass",
+              "evidence_class": "live_external",
+              "execution_mode": "live",
+              "expect": "malformed_or_error",
+              "family_id": "state_model",
+              "kind": "malformed",
+              "matched": true,
+              "native_kind": "malformed",
+              "observed": null,
+              "output_digest": "5e89f12afd851672c91ac3c3442d27ee164a26b8778680b28501fa241c2c2fb4",
+              "provider_id": "tlc",
+              "reason_codes": [
+                "malformed_output"
+              ],
+              "status": "malformed",
+              "timed_out": false
+            }
+          ],
+          "mutation": [
+            {
+              "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+              "canonical_kind": "mutation",
+              "case_id": "tlc.mutated_next",
+              "detail": "Next (specification) mutation never remains a pass",
+              "evidence_class": "live_external",
+              "execution_mode": "live",
+              "expect": "counterexample",
+              "family_id": "state_model",
+              "kind": "mutation",
+              "matched": true,
+              "native_kind": "mutation",
+              "observed": null,
+              "output_digest": "e2ea261a9ecdf6d6251b731b8c6759d4be9c2c7fc858796766339438e68d5635",
+              "provider_id": "tlc",
+              "reason_codes": [
+                "invariant_violation"
+              ],
+              "status": "counterexample",
+              "timed_out": false
+            },
+            {
+              "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+              "canonical_kind": "mutation",
+              "case_id": "tlc.mutated_invariant",
+              "detail": "Invariant mutation never remains a pass",
+              "evidence_class": "live_external",
+              "execution_mode": "live",
+              "expect": "counterexample",
+              "family_id": "state_model",
+              "kind": "mutation",
+              "matched": true,
+              "native_kind": "mutation",
+              "observed": null,
+              "output_digest": "7bd57521a30db43bca0968aefb55d5265e5a9ef758f0b608a06e564f716cafbc",
+              "provider_id": "tlc",
+              "reason_codes": [
+                "invariant_violation"
+              ],
+              "status": "counterexample",
+              "timed_out": false
+            }
+          ],
+          "negative": [
+            {
+              "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+              "canonical_kind": "negative",
+              "case_id": "tlc.violation_trace",
+              "detail": "Violating model yields a concrete counterexample trace",
+              "evidence_class": "live_external",
+              "execution_mode": "live",
+              "expect": "counterexample",
+              "family_id": "state_model",
+              "kind": "violation_trace",
+              "matched": true,
+              "native_kind": "violation_trace",
+              "observed": null,
+              "output_digest": "91466a8edb9fb2e871b22412da887fda3bc6fc16cfe6b83ed248ecda45667e6f",
+              "provider_id": "tlc",
+              "reason_codes": [
+                "invariant_violation"
+              ],
+              "status": "counterexample",
+              "timed_out": false
+            }
+          ],
+          "positive": [
+            {
+              "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+              "canonical_kind": "positive",
+              "case_id": "tlc.invariant_holds",
+              "detail": "Valid invariant model passes under declared bounds",
+              "evidence_class": "live_external",
+              "execution_mode": "live",
+              "expect": "passed",
+              "family_id": "state_model",
+              "kind": "invariant_holds",
+              "matched": true,
+              "native_kind": "invariant_holds",
+              "observed": null,
+              "output_digest": "b322306f61aec89da3ae78091ce10e70f5c808b105e0597be96726cb9c481dbd",
+              "provider_id": "tlc",
+              "reason_codes": [
+                "bounded_success"
+              ],
+              "status": "passed",
+              "timed_out": false
+            }
+          ],
+          "replay": [
+            {
+              "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+              "canonical_kind": "replay",
+              "case_id": "tlc.deterministic_replay",
+              "detail": "Positive case replays with identical source digests",
+              "evidence_class": "live_external",
+              "execution_mode": "live",
+              "expect": "passed",
+              "family_id": "state_model",
+              "kind": "replay",
+              "matched": true,
+              "native_kind": "replay",
+              "observed": null,
+              "output_digest": "cf43839ae7a7c9f8cc6cada6c7599e913df4aa1bc132f8738e1987e5b4016492",
+              "provider_id": "tlc",
+              "reason_codes": [
+                "bounded_success"
+              ],
+              "status": "passed",
+              "timed_out": false
+            }
+          ],
+          "timeout": [
+            {
+              "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+              "canonical_kind": "timeout",
+              "case_id": "tlc.timeout_bound",
+              "detail": "Wall-clock timeout quarantines rather than passes",
+              "evidence_class": "live_external",
+              "execution_mode": "live",
+              "expect": "timed_out",
+              "family_id": "state_model",
+              "kind": "timeout",
+              "matched": true,
+              "native_kind": "timeout",
+              "observed": null,
+              "output_digest": "f059e49c380f7a3d458877fb7667286a253ea39ff10907c888a60893d01dbc0b",
+              "provider_id": "tlc",
+              "reason_codes": [
+                "timeout"
+              ],
+              "status": "timed_out",
+              "timed_out": true
+            },
+            {
+              "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+              "canonical_kind": "timeout",
+              "case_id": "tlc.bound_behavior",
+              "detail": "Bounded success is finite-state/finite-trace only; never theorem",
+              "evidence_class": "live_external",
+              "execution_mode": "live",
+              "expect": "passed_bounded",
+              "family_id": "state_model",
+              "kind": "bound",
+              "matched": true,
+              "native_kind": "bound",
+              "observed": null,
+              "output_digest": "3ec22a71ef01bd475e12673d1c4540b37dfa3f995b0c801e73abcf47c13acd74",
+              "provider_id": "tlc",
+              "reason_codes": [
+                "bounded_success",
+                "bounded_only",
+                "never_theorem_authority"
+              ],
+              "status": "passed",
+              "timed_out": false
+            }
+          ]
+        },
+        "case_count": 9,
+        "complete": true,
+        "missing_kinds": [],
+        "present": {
+          "disagreement": true,
+          "malformed": true,
+          "mutation": true,
+          "negative": true,
+          "positive": true,
+          "replay": true,
+          "timeout": true
+        },
+        "required_kinds": [
+          "positive",
+          "negative",
+          "mutation",
+          "replay",
+          "malformed",
+          "timeout",
+          "disagreement"
+        ],
+        "unmapped_native_kinds": []
+      },
+      "family_id": "state_model",
+      "independence": {
+        "advisor_cannot_substitute": true,
+        "fixture_cannot_substitute": true,
+        "forbidden_substitution_sources": [
+          "fixture",
+          "parser",
+          "wrapper",
+          "advisor",
+          "sibling_provider",
+          "other_provider",
+          "hermetic_parser",
+          "canned_text"
+        ],
+        "ok": true,
+        "other_provider_cannot_substitute": true,
+        "parser_cannot_substitute": true,
+        "sibling_provider_cannot_substitute": true,
+        "wrapper_cannot_substitute": true
+      },
+      "provider_id": "tlc",
+      "semantic": true,
+      "support_only": false
+    },
+    "vampire": {
+      "authority_tool": true,
+      "bindings": {
+        "artifact_digest": null,
+        "binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+        "executable_path": "<managed-tool-path-redacted>/vampire",
+        "family_id": "atp",
+        "identity_probed": true,
+        "live_execution": true,
+        "managed_identity_bound": true,
+        "provider_id": "vampire",
+        "usable": true,
+        "version_string": "Vampire 5.0.1 (Release build, commit 1b13eaf on 2026-01-18 12:14:50 +0000)"
+      },
+      "block_reasons": [],
+      "case_count_raw": 10,
+      "certified": true,
+      "display_name": "Vampire",
+      "evidence": {
+        "by_kind": {
+          "disagreement": [
+            {
+              "binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+              "canonical_kind": "disagreement",
+              "case_id": "vampire.disagreement",
+              "detail": "ATP output contains conflicting SZS statuses: CounterSatisfiable, Theorem",
+              "evidence_class": null,
+              "execution_mode": "live+disagreement_quarantine",
+              "expect": "quarantined",
+              "family_id": "atp",
+              "kind": "disagreement",
+              "matched": true,
+              "native_kind": "disagreement",
+              "observed": null,
+              "output_digest": "ba4046bd98f7e461de3649289a1fe06f273674e69118be82a3c12703abfcd6b2",
+              "provider_id": "vampire",
+              "reason_codes": [
+                "disagreement",
+                "conflicting_szs",
+                "quarantined"
+              ],
+              "status": "quarantined",
+              "timed_out": false
+            }
+          ],
+          "malformed": [
+            {
+              "binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+              "canonical_kind": "malformed",
+              "case_id": "vampire.malformed_tptp",
+              "detail": "Malformed TPTP never reports theorem authority",
+              "evidence_class": null,
+              "execution_mode": "live",
+              "expect": "quarantined",
+              "family_id": "atp",
+              "kind": "malformed",
+              "matched": true,
+              "native_kind": "malformed",
+              "observed": null,
+              "output_digest": "e4e07fa028bf3acac62c194c654b07db16f74027d1cf83cff625ef26f6532a14",
+              "provider_id": "vampire",
+              "reason_codes": [
+                "malformed_output",
+                "no_szs_status"
+              ],
+              "status": "quarantined",
+              "timed_out": false
+            }
+          ],
+          "mutation": [
+            {
+              "binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+              "canonical_kind": "mutation",
+              "case_id": "vampire.mutated_premise",
+              "detail": "Premise mutation must not remain theorem",
+              "evidence_class": null,
+              "execution_mode": "live",
+              "expect": "non_theorem_or_unknown",
+              "family_id": "atp",
+              "kind": "mutation",
+              "matched": true,
+              "native_kind": "mutation",
+              "observed": null,
+              "output_digest": "7f142a174358c85bed56da626202b769a0f2f1b1f95b84dcf0d2657d99ea61d4",
+              "provider_id": "vampire",
+              "reason_codes": [
+                "szs:CounterSatisfiable",
+                "unvalidated_atp_model"
+              ],
+              "status": "non_theorem_candidate",
+              "timed_out": false
+            },
+            {
+              "binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+              "canonical_kind": "mutation",
+              "case_id": "vampire.mutated_conclusion",
+              "detail": "Conclusion mutation must not remain theorem",
+              "evidence_class": null,
+              "execution_mode": "live",
+              "expect": "non_theorem_or_unknown",
+              "family_id": "atp",
+              "kind": "mutation",
+              "matched": true,
+              "native_kind": "mutation",
+              "observed": null,
+              "output_digest": "27bb9f7688946aa802a7be9a65efa5d9f47df63e1c0334eb5cd486489ac46cad",
+              "provider_id": "vampire",
+              "reason_codes": [
+                "szs:CounterSatisfiable",
+                "unvalidated_atp_model"
+              ],
+              "status": "non_theorem_candidate",
+              "timed_out": false
+            }
+          ],
+          "negative": [
+            {
+              "binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+              "canonical_kind": "negative",
+              "case_id": "vampire.counter_satisfiable",
+              "detail": "Live counter-satisfiable \u2192 candidate model",
+              "evidence_class": null,
+              "execution_mode": "live",
+              "expect": "non_theorem_candidate",
+              "family_id": "atp",
+              "kind": "counter_satisfiable",
+              "matched": true,
+              "native_kind": "counter_satisfiable",
+              "observed": null,
+              "output_digest": "96bf784778d3700d6155c6e477d5b7f41a28b482b30dcaa49a12407fc77917c3",
+              "provider_id": "vampire",
+              "reason_codes": [
+                "szs:CounterSatisfiable",
+                "unvalidated_atp_model"
+              ],
+              "status": "non_theorem_candidate",
+              "timed_out": false
+            }
+          ],
+          "positive": [
+            {
+              "binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+              "canonical_kind": "positive",
+              "case_id": "vampire.theorem",
+              "detail": "Live theorem \u2192 unreconstructed candidate",
+              "evidence_class": null,
+              "execution_mode": "live",
+              "expect": "theorem_candidate",
+              "family_id": "atp",
+              "kind": "theorem",
+              "matched": true,
+              "native_kind": "theorem",
+              "observed": null,
+              "output_digest": "451392623b695066ac4833c641ad0ba89491a33f11332267c912730602c858f3",
+              "provider_id": "vampire",
+              "reason_codes": [
+                "szs:Theorem",
+                "unreconstructed_atp_proof"
+              ],
+              "status": "theorem_candidate",
+              "timed_out": false
+            },
+            {
+              "binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+              "canonical_kind": "positive",
+              "case_id": "vampire.proof_object",
+              "detail": "Live proof object remains candidate without reconstruction",
+              "evidence_class": null,
+              "execution_mode": "live",
+              "expect": "theorem_candidate",
+              "family_id": "atp",
+              "kind": "proof_object",
+              "matched": true,
+              "native_kind": "proof_object",
+              "observed": null,
+              "output_digest": "c35081396a6ccea821b028c863885236199f2ee8b04c0ed2c3e6fe211b790e08",
+              "provider_id": "vampire",
+              "reason_codes": [
+                "szs:Theorem",
+                "unreconstructed_atp_proof"
+              ],
+              "status": "theorem_candidate",
+              "timed_out": false
+            }
+          ],
+          "replay": [
+            {
+              "binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+              "canonical_kind": "replay",
+              "case_id": "vampire.replay",
+              "detail": "Replay must preserve SZS class and source digest",
+              "evidence_class": null,
+              "execution_mode": "live",
+              "expect": "theorem_candidate",
+              "family_id": "atp",
+              "kind": "replay",
+              "matched": true,
+              "native_kind": "replay",
+              "observed": null,
+              "output_digest": "1dc3e9c7087511d0b9fbaf3ececf60a50cc07c5ce427a99590a6ac421581e944",
+              "provider_id": "vampire",
+              "reason_codes": [
+                "szs:Theorem",
+                "unreconstructed_atp_proof"
+              ],
+              "status": "theorem_candidate",
+              "timed_out": false
+            }
+          ],
+          "timeout": [
+            {
+              "binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+              "canonical_kind": "timeout",
+              "case_id": "vampire.timeout_resource_bounds",
+              "detail": "Wall-clock resource bounds yield timeout quarantine",
+              "evidence_class": null,
+              "execution_mode": "live",
+              "expect": "timeout",
+              "family_id": "atp",
+              "kind": "timeout",
+              "matched": true,
+              "native_kind": "timeout",
+              "observed": null,
+              "output_digest": "f655b9547451ccb3c98b5a9347c059fdac5be9fc235c8c043bf035f3eff1b2f2",
+              "provider_id": "vampire",
+              "reason_codes": [
+                "wall_clock_timeout",
+                "resource_bounds"
+              ],
+              "status": "timeout",
+              "timed_out": true
+            }
+          ]
+        },
+        "case_count": 10,
+        "complete": true,
+        "missing_kinds": [],
+        "present": {
+          "disagreement": true,
+          "malformed": true,
+          "mutation": true,
+          "negative": true,
+          "positive": true,
+          "replay": true,
+          "timeout": true
+        },
+        "required_kinds": [
+          "positive",
+          "negative",
+          "mutation",
+          "replay",
+          "malformed",
+          "timeout",
+          "disagreement"
+        ],
+        "unmapped_native_kinds": []
+      },
+      "family_id": "atp",
+      "independence": {
+        "advisor_cannot_substitute": true,
+        "fixture_cannot_substitute": true,
+        "forbidden_substitution_sources": [
+          "fixture",
+          "parser",
+          "wrapper",
+          "advisor",
+          "sibling_provider",
+          "other_provider",
+          "hermetic_parser",
+          "canned_text"
+        ],
+        "ok": true,
+        "other_provider_cannot_substitute": true,
+        "parser_cannot_substitute": true,
+        "sibling_provider_cannot_substitute": true,
+        "wrapper_cannot_substitute": true
+      },
+      "provider_id": "vampire",
+      "semantic": true,
+      "support_only": false
+    }
+  },
+  "public_evidence_policy": {
+    "failures": [],
+    "host_private_paths_forbidden": true,
+    "max_public_string_bytes": 8192,
+    "raw_process_output_forbidden": true,
+    "raw_secret_or_witness_forbidden": true,
+    "repo_root_paths_forbidden": true,
+    "safe": true,
+    "satisfied": true,
+    "violation_count": 0,
+    "violations": []
+  },
+  "receipt_digest_sha256": "sha256:4aec1240569a5db1b2d5ecba0be1e9b5f5671fcf60429e04bffcf9ae977cf4f4",
+  "required_evidence_kinds": [
+    "positive",
+    "negative",
+    "mutation",
+    "replay",
+    "malformed",
+    "timeout",
+    "disagreement"
+  ],
+  "required_provider_ids": [
+    "tlc",
+    "apalache",
+    "tamarin",
+    "proverif",
+    "rocq",
+    "isabelle",
+    "vampire",
+    "eprover"
+  ],
+  "schema_version": "replayed-core-external-semantics/v1",
+  "substitution_fail_closed": {
+    "atp:vampire:fixture": {
+      "fail_closed": true,
+      "family_remains_certified": false,
+      "missing_provider": "vampire",
+      "original_was_certified": true,
+      "reason": "fixture cannot supply semantic or authority axis for missing provider vampire",
+      "simulated_provider_certified": false,
+      "substitute_source": "fixture",
+      "substitution_allowed": false
+    },
+    "kernel:rocq:advisor": {
+      "fail_closed": true,
+      "family_remains_certified": false,
+      "missing_provider": "rocq",
+      "original_was_certified": true,
+      "reason": "advisor cannot supply semantic or authority axis for missing provider rocq",
+      "simulated_provider_certified": false,
+      "substitute_source": "advisor",
+      "substitution_allowed": false
+    },
+    "protocol:tamarin:sibling_provider": {
+      "fail_closed": true,
+      "family_remains_certified": false,
+      "missing_provider": "tamarin",
+      "original_was_certified": true,
+      "reason": "sibling_provider cannot supply semantic or authority axis for missing provider tamarin",
+      "simulated_provider_certified": false,
+      "substitute_source": "sibling_provider",
+      "substitution_allowed": false
+    },
+    "state_model:tlc:hermetic_parser": {
+      "fail_closed": true,
+      "family_remains_certified": false,
+      "missing_provider": "tlc",
+      "original_was_certified": true,
+      "reason": "hermetic_parser cannot supply semantic or authority axis for missing provider tlc",
+      "simulated_provider_certified": false,
+      "substitute_source": "hermetic_parser",
+      "substitution_allowed": false
+    }
+  },
+  "summary": {
+    "certified": true,
+    "families_blocked": [],
+    "families_certified": [
+      "state_model",
+      "protocol",
+      "kernel",
+      "atp"
+    ],
+    "providers_blocked": [],
+    "providers_certified": [
+      "tlc",
+      "apalache",
+      "tamarin",
+      "proverif",
+      "rocq",
+      "isabelle",
+      "vampire",
+      "eprover"
+    ],
+    "required_evidence_kind_count": 7,
+    "required_family_count": 4,
+    "required_provider_count": 8,
+    "support_tools_non_authoritative": true,
+    "support_tools_non_semantic": true
+  },
+  "support_tool_ids": [
+    "maude",
+    "opam"
+  ],
+  "support_tools": {
+    "maude": {
+      "authority_tool": false,
+      "cannot_supply_missing_engine_authority": true,
+      "cannot_supply_missing_engine_semantics": true,
+      "display_name": "Maude",
+      "executable": "<managed-tool-path-redacted>/maude",
+      "grants_authority": false,
+      "grants_semantic_certification": false,
+      "non_authoritative": true,
+      "non_semantic": true,
+      "semantic": false,
+      "source": "protocol.tamarin",
+      "support_only": true,
+      "tool_id": "maude",
+      "usable": true,
+      "version_string": "3.5.1"
+    },
+    "opam": {
+      "authority_tool": false,
+      "cannot_supply_missing_engine_authority": true,
+      "cannot_supply_missing_engine_semantics": true,
+      "display_name": "OPAM",
+      "executable": "<managed-tool-path-redacted>/opam",
+      "grants_authority": false,
+      "grants_semantic_certification": false,
+      "non_authoritative": true,
+      "non_semantic": true,
+      "semantic": false,
+      "source": "protocol.proverif",
+      "support_only": true,
+      "tool_id": "opam",
+      "usable": true,
+      "version_string": "2.5.2"
+    }
+  },
+  "task_id": "FVT-096"
+}
