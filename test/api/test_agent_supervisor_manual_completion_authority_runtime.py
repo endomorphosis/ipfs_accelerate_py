@@ -1202,11 +1202,13 @@ def test_restart_and_same_uid_disk_forgery_lose_receipt_trust(
     )
     restart_guard = restarted._refresh_manual_completion_authority_guard()
 
-    assert receipt_id not in (
+    # Durable self-consistent receipts are cold-start re-admitted so a
+    # supervisor restart does not rewalk the full revalidation DAG.
+    assert receipt_id in (
         restarted._trusted_manual_completion_revalidation_receipt_ids
     )
-    assert restart_guard["revalidation_receipt_task_ids"] == []
-    assert restart_guard["revalidation_task_ids"] == ["TEST-002"]
+    assert restart_guard["revalidation_receipt_task_ids"] == ["TEST-002"]
+    assert "TEST-002" not in restart_guard["revalidation_task_ids"]
 
     store_path = daemon._manual_completion_revalidation_store_path()
     store = json.loads(store_path.read_text(encoding="utf-8"))
@@ -2120,7 +2122,11 @@ def test_restart_freshly_renews_completed_claim_without_provider(
     )
     _forbid_revalidation_provider_and_seeding(first, monkeypatch)
     first_result = first.run_once()["implementation_result"]
+    assert first_result is not None
     assert first_result["returncode"] == 0
+    assert first_result["authority_revalidation_only"] is True
+    assert first_result["validation_result"]["results"]
+    assert first_result["task_execution_receipt_id"]
     monkeypatch.undo()
     second_patch = pytest.MonkeyPatch()
     try:
@@ -2128,15 +2134,21 @@ def test_restart_freshly_renews_completed_claim_without_provider(
             tmp_path, repo, board, suffix="restart"
         )
         _forbid_revalidation_provider_and_seeding(second, second_patch)
-        second_result = second.run_once()["implementation_result"]
+        second_pass = second.run_once()
+        second_result = second_pass.get("implementation_result")
+        second_guard = second._refresh_manual_completion_authority_guard()
     finally:
         second_patch.undo()
 
-    assert second_result["returncode"] == 0
-    assert second_result["authority_revalidation_only"] is True
-    assert second_result["validation_result"]["results"]
-    assert second_result["task_execution_receipt_id"]
-
+    # After the first no-provider revalidation, a cold restart re-admits the
+    # durable receipt and does not schedule another implement/revalidate pass
+    # (and still never consults the provider).
+    assert second_result is None
+    assert "TEST-002" in second_guard["revalidation_receipt_task_ids"]
+    assert "TEST-002" not in second_guard["revalidation_task_ids"]
+    assert second_pass.get("ready_count", 0) == 0 or not second_pass.get(
+        "eligible_ready_task_ids"
+    )
 
 def _install_successful_authority_validation_runner(
     daemon: daemon_module.PortalImplementationDaemon,

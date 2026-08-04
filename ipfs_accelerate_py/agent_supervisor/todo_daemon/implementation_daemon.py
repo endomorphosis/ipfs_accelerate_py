@@ -9167,6 +9167,13 @@ class PortalImplementationDaemon:
         store_generation = int(store["revocation_generation"])
         valid_task_ids: set[str] = set()
         invalid_task_ids: set[str] = set()
+        # Empty trusted set ⇒ cold start / first load this process.  Re-admit
+        # self-consistent durable receipts so restarts do not rewalk the DAG.
+        # Non-empty trusted set ⇒ live process: the trusted set remains the
+        # TOCTOU fence against same-UID mid-process store forgery (a forged
+        # self-consistent row must not introduce a new receipt_id).
+        cold_start = not self._trusted_manual_completion_revalidation_receipt_ids
+        confirmed_receipt_ids: set[str] = set()
         for raw_task_id, raw_receipt in store["records"].items():
             task_id = str(raw_task_id or "").strip()
             task = tasks_by_id.get(task_id)
@@ -9183,12 +9190,7 @@ class PortalImplementationDaemon:
                 and not isinstance(result_digests, (str, bytes, bytearray))
                 else []
             )
-            # Structural / current-tree binding checks.  The in-memory trusted
-            # set was originally a TOCTOU fence for mid-process store mutation;
-            # after a process restart the durable store is the source of prior
-            # receipts, so cold-start re-admits self-consistent receipts that
-            # still bind the live tree and authority context.  Without that,
-            # every supervisor restart rewalks the full revalidation DAG.
+            # Structural / current-tree binding checks.
             structurally_valid = bool(
                 receipt.get("schema")
                 == MANUAL_COMPLETION_REVALIDATION_RECEIPT_SCHEMA
@@ -9233,13 +9235,27 @@ class PortalImplementationDaemon:
                 and receipt_id
                 and content_identity(receipt) == receipt_id
             )
-            if structurally_valid:
+            if not structurally_valid:
+                invalid_task_ids.add(task_id)
+                continue
+            if cold_start or (
+                receipt_id
+                in self._trusted_manual_completion_revalidation_receipt_ids
+            ):
                 self._trusted_manual_completion_revalidation_receipt_ids.add(
                     receipt_id
                 )
+                confirmed_receipt_ids.add(receipt_id)
                 valid_task_ids.add(task_id)
             else:
+                # Live process saw a new self-consistent receipt_id that this
+                # process never produced — treat as forged store mutation.
                 invalid_task_ids.add(task_id)
+        if not cold_start:
+            # Drop previously trusted ids whose rows were replaced or removed.
+            self._trusted_manual_completion_revalidation_receipt_ids &= (
+                confirmed_receipt_ids
+            )
         return valid_task_ids, {
             "available": True,
             "path": str(path),
@@ -9247,6 +9263,7 @@ class PortalImplementationDaemon:
             "invalid_task_ids": sorted(invalid_task_ids),
             "store_id": str(store.get("store_id") or ""),
             "revocation_generation": store_generation,
+            "cold_start_readmission": cold_start,
         }
 
     def _manual_completion_validated_tree_is_current(
