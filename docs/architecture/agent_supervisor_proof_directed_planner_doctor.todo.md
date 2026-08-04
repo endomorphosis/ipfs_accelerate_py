@@ -906,7 +906,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 - Track: attestation
 - Depends on: PDR-002, PDR-010, PDR-014, PDR-027, PDR-053
 - Goal id: PDR-G070
-- Outputs: ipfs_accelerate_py/agent_supervisor/proof/planner_doctor_attestation.py, docs/architecture/agent_supervisor_planner_doctor_zkp_threat_model.md, test/api/test_agent_supervisor_planner_doctor_attestation.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/proof/planner_doctor_attestation.py, docs/architecture/agent_supervisor_planner_doctor_zkp_threat_model.md, test/api/test_agent_supervisor_planner_doctor_attestation.py, config/agent_supervisor_planner_doctor_attestation.seal.json
 - Validation: python -m pytest test/api/test_agent_supervisor_planner_doctor_attestation.py test/api/test_agent_supervisor_program_analysis_zkp.py -q
 - Board namespace: agent-supervisor-proof-directed-planner-doctor-v1
 - Bundle: agent-supervisor/proof-directed-planner-doctor/attestation
@@ -914,7 +914,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 - Resource class: cpu-proof-solver
 - Resource stage: validation
 - Implementation timeout seconds: 10800
-- Predicted files: ipfs_accelerate_py/agent_supervisor/proof/planner_doctor_attestation.py, docs/architecture/agent_supervisor_planner_doctor_zkp_threat_model.md, test/api/test_agent_supervisor_planner_doctor_attestation.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/proof/planner_doctor_attestation.py, docs/architecture/agent_supervisor_planner_doctor_zkp_threat_model.md, test/api/test_agent_supervisor_planner_doctor_attestation.py, config/agent_supervisor_planner_doctor_attestation.seal.json
 - Interfaces: ReasoningRunManifest@1, PlannerDoctorAttestation@1
 - Conflict policy: Reuse proof attestation and `program_analysis_zkp`; no new assurance levels or generic correctness claims.
 - Preconditions: Exact snapshot/cache/admission/mutation/fixed-point lineage exists.
@@ -984,7 +984,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 - Track: quality-oracle
 - Depends on: PDR-002, PDR-003, PDR-052, PDR-053, PDR-054, PDR-071
 - Goal id: PDR-G080
-- Outputs: ipfs_accelerate_py/agent_supervisor/validation/planner_doctor_quality_oracle.py, test/fixtures/agent_supervisor/planner_doctor_holdout/oracle.manifest.json, test/api/test_agent_supervisor_planner_doctor_quality_oracle.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/validation/planner_doctor_quality_oracle.py, test/fixtures/agent_supervisor/planner_doctor_holdout/oracle.manifest.json, test/api/test_agent_supervisor_planner_doctor_quality_oracle.py, config/agent_supervisor_planner_doctor_quality_oracle.seal.json
 - Validation: python -m pytest test/api/test_agent_supervisor_planner_doctor_quality_oracle.py -q
 - Board namespace: agent-supervisor-proof-directed-planner-doctor-v1
 - Bundle: agent-supervisor/proof-directed-planner-doctor/quality-oracle
@@ -992,7 +992,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 - Resource class: cpu-large
 - Resource stage: validation
 - Implementation timeout seconds: 14400
-- Predicted files: ipfs_accelerate_py/agent_supervisor/validation/planner_doctor_quality_oracle.py, test/fixtures/agent_supervisor/planner_doctor_holdout/oracle.manifest.json, test/api/test_agent_supervisor_planner_doctor_quality_oracle.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/validation/planner_doctor_quality_oracle.py, test/fixtures/agent_supervisor/planner_doctor_holdout/oracle.manifest.json, test/api/test_agent_supervisor_planner_doctor_quality_oracle.py, config/agent_supervisor_planner_doctor_quality_oracle.seal.json
 - Interfaces: PlannerDoctorQualityOracle@1, PlannerDoctorAblation@1
 - Conflict policy: Oracle bodies and holdout answers are operator-owned, read-only and outside candidate context/worktrees.
 - Preconditions: Live paired runner and telemetry exist.

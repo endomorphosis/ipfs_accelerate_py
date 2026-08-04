@@ -43,12 +43,14 @@
     "PDR-060": [
       "ipfs_accelerate_py/agent_supervisor/proof/planner_doctor_attestation.py",
       "docs/architecture/agent_supervisor_planner_doctor_zkp_threat_model.md",
-      "test/api/test_agent_supervisor_planner_doctor_attestation.py"
+      "test/api/test_agent_supervisor_planner_doctor_attestation.py",
+      "config/agent_supervisor_planner_doctor_attestation.seal.json"
     ],
     "PDR-072": [
       "ipfs_accelerate_py/agent_supervisor/validation/planner_doctor_quality_oracle.py",
       "test/fixtures/agent_supervisor/planner_doctor_holdout/oracle.manifest.json",
-      "test/api/test_agent_supervisor_planner_doctor_quality_oracle.py"
+      "test/api/test_agent_supervisor_planner_doctor_quality_oracle.py",
+      "config/agent_supervisor_planner_doctor_quality_oracle.seal.json"
     ],
     "PDR-082": [
       "ipfs_accelerate_py/agent_supervisor/self_improvement/planner_doctor_rollout.py",
@@ -115,6 +117,45 @@
         "partition_policy_cid": "baguqeeras2xzxocvbhs74ka47svq2nxfc4xjcleojebdrkrkbpjyu5vke6gq",
         "partition_seed": "pdr-benchmark-corpus-v2",
         "qualifying_case_count": 12
+      }
+    },
+    "PDR-060": {
+      "receipt_path": "config/agent_supervisor_planner_doctor_attestation.seal.json",
+      "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.attestation_seal@1",
+      "interface": "PlannerDoctorAttestationSeal@1",
+      "policy_revision": "1",
+      "expected_receipt_id": "sha256:fd36f5d4ef999aa329fa4e5e5aff13362d7f0246a6b9b618e3632094837b1f47",
+      "artifact_paths": {
+        "attestation_module": "ipfs_accelerate_py/agent_supervisor/proof/planner_doctor_attestation.py",
+        "zkp_threat_model": "docs/architecture/agent_supervisor_planner_doctor_zkp_threat_model.md",
+        "attestation_test": "test/api/test_agent_supervisor_planner_doctor_attestation.py"
+      },
+      "grant_type": "attestation_activation",
+      "grant_action": "activate_attestation_contract",
+      "grant_claims": {},
+      "reviewed_base_claims": {}
+    },
+    "PDR-072": {
+      "receipt_path": "config/agent_supervisor_planner_doctor_quality_oracle.seal.json",
+      "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.quality_oracle_seal@1",
+      "interface": "PlannerDoctorQualityOracleSeal@1",
+      "policy_revision": "1",
+      "expected_receipt_id": "sha256:574423fe49894875317062b720cadd76f8b944c592756ef68579801f408ce392",
+      "artifact_paths": {
+        "quality_oracle": "ipfs_accelerate_py/agent_supervisor/validation/planner_doctor_quality_oracle.py",
+        "oracle_manifest": "test/fixtures/agent_supervisor/planner_doctor_holdout/oracle.manifest.json",
+        "quality_oracle_test": "test/api/test_agent_supervisor_planner_doctor_quality_oracle.py"
+      },
+      "grant_type": "oracle_activation",
+      "grant_action": "activate_quality_oracle",
+      "grant_claims": {
+        "automatic_promotion": false,
+        "oracle_activation": true
+      },
+      "reviewed_base_claims": {
+        "oracle_handle": "opaque:operator-cas/planner-doctor-quality-oracle@1",
+        "operator_seal_handle": "opaque:operator-seal/planner-doctor-quality-oracle-pdr-072@1",
+        "corpus_authority": "operator-owned-holdout-judge"
       }
     }
   },
