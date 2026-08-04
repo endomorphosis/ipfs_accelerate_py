@@ -23,7 +23,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Final
 
 from ..merge.merge_queue import (
     POST_MERGE_REVIEW_DENIAL_TOMBSTONE_SCHEMA,
@@ -1419,6 +1419,21 @@ def _normalize_path(value: Any) -> str:
     return pure.as_posix()
 
 
+# Operator routing overlays may be amended after a denial without changing the
+# reviewed task contract.  They must not rotate post-merge task_binding_id or
+# freeze repair grants against an older board revision.
+_POST_MERGE_BINDING_EXCLUDED_METADATA_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "context symbol hints",
+        "production context symbol hints",
+    }
+)
+
+
+def _normalize_metadata_key(value: Any) -> str:
+    return " ".join(str(value or "").strip().lower().replace("_", " ").split())
+
+
 def _task_projection(task: Any) -> dict[str, Any]:
     task_id = str(getattr(task, "task_id", "") or "").strip()
     title = str(getattr(task, "title", "") or "").strip()
@@ -1461,6 +1476,8 @@ def _task_projection(task: Any) -> dict[str, Any]:
                 metadata.items(),
                 key=lambda item: str(item[0]),
             )
+            if _normalize_metadata_key(key)
+            not in _POST_MERGE_BINDING_EXCLUDED_METADATA_KEYS
         },
         "canonical_task_key": str(
             getattr(task, "canonical_task_key", "") or ""
