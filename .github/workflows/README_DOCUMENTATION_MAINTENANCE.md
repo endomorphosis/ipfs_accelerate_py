@@ -6,8 +6,8 @@ This directory contains GitHub Actions workflows for documentation quality.
 
 **Workflow:** [`documentation-gates.yml`](documentation-gates.yml)
 
-Runs on **every pull request to `main`** (so a required status check can
-always report) and on path-filtered pushes to `main`. Steps:
+Runs on **every pull request and every push to `main`** so the required
+status check can always report. Steps:
 
 1. `python scripts/docs/check_agent_supervisor_docs.py`
 2. `python scripts/docs/check_current_docs_links.py`

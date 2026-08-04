@@ -3,24 +3,15 @@
 # Runs the allowlisted link checker, supervisor primary-doc vocabulary gate,
 # and packaging version-pin alignment. No package install is required.
 #
-# pull_request always runs so a required status check can report on every PR
-# to main (path filters would leave the check "missing" and block merges).
-# push to main stays path-filtered to save runner minutes for non-doc commits.
-# Branch protection may require the check context name: documentation-gates
+# Always run on PRs and pushes to main so required status check
+# "documentation-gates" can report on every protected-branch update.
+# The job is intentionally lightweight (no package install).
 
 name: Documentation Gates
 
 on:
   push:
     branches: [main]
-    paths:
-      - "docs/**"
-      - "README.md"
-      - "scripts/docs/**"
-      - "ipfs_accelerate_py/__init__.py"
-      - "pyproject.toml"
-      - "setup.py"
-      - ".github/workflows/documentation-gates.yml"
   pull_request:
     branches: [main]
   workflow_dispatch:

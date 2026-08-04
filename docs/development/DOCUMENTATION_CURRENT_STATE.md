@@ -135,7 +135,7 @@ pages must **name both sides** until a code/test task reconciles them.
 | --- | --- | --- |
 | Optional capability stacks | CUDA, IPFS, P2P, external LLMs, provers may be absent after a successful import | subsystem maintainers; docs use capability language |
 | Nested product gitlinks | Submodule / gitlink trees may be empty offline | integration maintainers; [NESTED_PACKAGES.md](../NESTED_PACKAGES.md) |
-| Link/doc gates not branch-protection required | Workflow `.github/workflows/documentation-gates.yml` runs on path-filtered PRs; requiring the **documentation-gates** status on `main` is a repository settings step | documentation governance / CI |
+| (none currently for docs CI wiring) | Branch protection on `main` requires status check **documentation-gates** (`enforce_admins` off) | documentation governance |
 
 **Resolved (2026-08-03 / 2026-08-04 revalidation):**
 
@@ -147,9 +147,10 @@ pages must **name both sides** until a code/test task reconciles them.
   `ipfs_accelerate_py.__version__` uses the same `_PACKAGING_VERSION` pin.
 - Allowlisted offline relative-link checker for maintained surfaces:
   `python scripts/docs/check_current_docs_links.py`
-- Path-filtered GitHub Actions workflow
+- GitHub Actions workflow
   [documentation-gates.yml](../../.github/workflows/documentation-gates.yml)
-  runs vocabulary, link, version-pin, and closeout-marker gates on docs PRs
+  runs vocabulary, link, version-pin, and closeout-marker gates on every PR
+  and push to `main`; branch protection requires status **documentation-gates**
 
 The second console script, `ipfs_accelerate`, intentionally uses the separate
 `ai_inference_cli:main` parser. That split is a documented interface boundary.
