@@ -11734,8 +11734,18 @@ def build_authoritative_vendor_release(
         and all(value is True for value in post_requirements.values())
         and not _safe_list(post_merge.get("deployment_blockers"))
     )
+    # Supervisor / tree / origin claims may only count when the post-merge
+    # dependency itself is a fresh, repository-bound, public-safe receipt.
+    # Unbound or synthetic envelopes can disclose these fields but must not
+    # satisfy deployment fan-in acceptance.
+    post_merge_evidence_bound = bool(
+        post_merge_binding["binding_valid"]
+        and post_merge_binding["fresh"]
+        and post_merge_binding["public_safe"]
+    )
     durable_supervisor = bool(
-        supervisor.get("bound") is True
+        post_merge_evidence_bound
+        and supervisor.get("bound") is True
         and supervisor.get("provisional_bound") is True
         and supervisor.get("publication_bound") is True
         and supervisor.get("member_completion_receipt_bound") is True
@@ -11743,7 +11753,8 @@ def build_authoritative_vendor_release(
         and supervisor.get("state_terminal_bound") is True
     )
     source_and_merged_trees = bool(
-        source.get("source_commit_bound") is True
+        post_merge_evidence_bound
+        and source.get("source_commit_bound") is True
         and source.get("valid_for_attestation") is True
         and source.get("certified_source_commit")
         and source.get("certified_source_tree")
@@ -11754,7 +11765,8 @@ def build_authoritative_vendor_release(
         and final_commit_binding.get("merge_tree_matches_implementation") is True
     )
     origin_publication = bool(
-        supervisor.get("publication_bound") is True
+        post_merge_evidence_bound
+        and supervisor.get("publication_bound") is True
         and supervisor.get("publication_phase") == "published_final"
         and final_commit_binding.get("published_to_origin_main") is True
     )

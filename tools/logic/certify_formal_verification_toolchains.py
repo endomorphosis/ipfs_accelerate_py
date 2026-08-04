@@ -204,6 +204,40 @@ END_TO_END_ASSURANCE_VALIDATION_COMMAND: Final = (
     "test/integration/test_formal_verification_real_tool_matrix.py "
     "test/packaging/test_logic_verification_clean_install.py -q"
 )
+
+# Authoritative vendor release gate (FVT-G221 / FVT-089).  Ownership of the
+# fan-in builder remains in build_formal_verification_tactician_receipt.py;
+# the certifier only declares the checked evidence paths and validation
+# command so toolchain surfaces and the vendor release stay aligned.
+AUTHORITATIVE_VENDOR_RELEASE_INTERFACE: Final = (
+    "FormalVerificationAuthoritativeVendorRelease@1"
+)
+AUTHORITATIVE_VENDOR_RELEASE_SCHEMA: Final = (
+    "formal-verification-authoritative-vendor-release/v1"
+)
+AUTHORITATIVE_VENDOR_RELEASE_GOAL_ID: Final = "FVT-G221"
+AUTHORITATIVE_VENDOR_RELEASE_TASK_ID: Final = "FVT-089"
+AUTHORITATIVE_VENDOR_RELEASE_PROGRAM: Final = (
+    "formal-verification-tactician/authoritative-vendor-release"
+)
+DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_authoritative_vendor_release.json"
+)
+AUTHORITATIVE_VENDOR_RELEASE_TEST_RELATIVE: Final = Path(
+    "test/integration/test_formal_verification_authoritative_vendor_release.py"
+)
+AUTHORITATIVE_VENDOR_RELEASE_VALIDATION_COMMAND: Final = (
+    "PYTHONPATH=ipfs_datasets_py python -m pytest "
+    "test/integration/test_formal_verification_authoritative_vendor_release.py "
+    "test/integration/toolchains/"
+    "test_formal_verification_end_to_end_assurance_matrix.py "
+    "test/integration/toolchains/"
+    "test_secpal_ergoai_authoritative_live_evidence.py -q"
+)
+AUTHORITATIVE_VENDOR_RELEASE_OBJECTIVE_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_RELATIVE.as_posix(),
+    AUTHORITATIVE_VENDOR_RELEASE_TEST_RELATIVE.as_posix(),
+)
 END_TO_END_PACKAGING_EVIDENCE_PATHS: Final[tuple[Path, ...]] = (
     Path("setup.py"),
     Path("requirements.txt"),
