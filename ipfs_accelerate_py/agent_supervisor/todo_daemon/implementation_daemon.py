@@ -287,6 +287,9 @@ MAX_NESTED_SUBMODULE_GUARD_EVENT_TEXT_BYTES = 512
 SHARED_WORKTREE_SOURCE_ROOT_ENV = "IPFS_ACCELERATE_AGENT_SHARED_WORKTREE_SOURCE_ROOT"
 LLM_MERGE_RESOLVER_COMMAND_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND"
 LLM_MERGE_RESOLVER_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS"
+LLM_MERGE_RESOLVER_DISABLED_VALUES = frozenset(
+    {"0", "disabled", "false", "none", "off"}
+)
 DAEMON_MERGE_RECONCILIATION_MAX_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_MERGE_RECONCILIATION_MAX"
 DEFAULT_DAEMON_MERGE_RECONCILIATION_MAX = 3
 DAEMON_MERGED_WORKTREE_CLEANUP_MAX_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_MERGED_WORKTREE_CLEANUP_MAX"
@@ -1086,18 +1089,26 @@ RUNTIME_WAKE_KINDS = frozenset(
 DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS = 3600.0
 
 
+def normalize_llm_merge_resolver_command(value: Any) -> str:
+    """Normalize an explicit resolver command, including a disable sentinel."""
+
+    command = str(value or "").strip()
+    if command.lower() in LLM_MERGE_RESOLVER_DISABLED_VALUES:
+        return ""
+    return command
+
+
 def default_llm_merge_resolver_command() -> str:
     """Return the configured resolver or the packaged agent fallback.
 
-    The fallback starts Codex in the conflicted workspace and uses Copilot only
-    when Codex cannot complete the repair. Keeping this as the daemon default
-    means semantic merge conflicts are actively repaired instead of merely
-    recorded for a later manual retry.
+    The packaged route starts exact Grok 4.5 and permits exact Codex Terra at
+    medium effort only after that invocation proves quota/balance exhaustion.
+    Sealed ordered routes ignore configured command overrides at dispatch.
     """
 
     configured = os.environ.get(LLM_MERGE_RESOLVER_COMMAND_ENV, "").strip()
     if configured:
-        return configured
+        return normalize_llm_merge_resolver_command(configured)
     return llm_merge_resolver_fallback_command(python_executable=sys.executable)
 
 
@@ -3694,8 +3705,8 @@ class PortalImplementationDaemon:
         self.llm_merge_resolver_command = (
             default_llm_merge_resolver_command()
             if llm_merge_resolver_command is None
-            else llm_merge_resolver_command
-        ).strip()
+            else normalize_llm_merge_resolver_command(llm_merge_resolver_command)
+        )
         self.llm_merge_resolver_timeout_seconds = llm_merge_resolver_timeout_seconds
         self.merge_reconciliation_max_merges = (
             _env_int(DAEMON_MERGE_RECONCILIATION_MAX_ENV, DEFAULT_DAEMON_MERGE_RECONCILIATION_MAX)
