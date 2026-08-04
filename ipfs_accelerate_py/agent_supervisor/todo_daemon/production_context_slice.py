@@ -791,19 +791,16 @@ def _source_record(
             "large non-Python sources cannot be safely sliced without a parser",
         )
     merged = _merge_candidates(candidates)
-    # When the operator uses the default whole-file bound, shrink individual
-    # AST candidates that still exceed it (large classes) to signature headers.
-    # Explicitly reduced whole_file_bytes values (tests/small budgets) keep
-    # full selected symbols so residual/visibility proofs remain exact.
-    if whole_file_bytes >= DEFAULT_WHOLE_FILE_BYTES:
-        compact = tuple(
-            _signature_candidate(
-                source, candidate, max_bytes=whole_file_bytes
-            )
-            for candidate in merged
+    # Always apply protocol-default header compaction to oversized AST
+    # candidates.  This is independent of ``whole_file_bytes`` (which only
+    # chooses whole-file vs AST mode) so build and verify remain deterministic
+    # even when verification rebuilds with a zero rebuild threshold.
+    compact = tuple(
+        _signature_candidate(
+            source, candidate, max_bytes=DEFAULT_WHOLE_FILE_BYTES
         )
-    else:
-        compact = merged
+        for candidate in merged
+    )
     slices = [_segment(source, candidate) for candidate in compact]
     if not slices:
         _fail("context_insufficient", "declared source produced no visible context")
@@ -1613,6 +1610,9 @@ def verify_production_context_slice(
                     "scope_authority_mismatch",
                     "AST symbols differ from operator/task-derived hints",
                 )
+            # Zero forces AST mode on rebuild; header compaction itself uses
+            # DEFAULT_WHOLE_FILE_BYTES inside _source_record and is therefore
+            # independent of this rebuild threshold.
             rebuild_threshold = 0
         else:
             _fail("manifest_malformed", "source selection mode is unsupported")
