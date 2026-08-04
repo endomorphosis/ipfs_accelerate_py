@@ -10687,6 +10687,94 @@ def test_prepare_main_merge_workspace_detaches_when_host_target_is_dirty(tmp_pat
     )
 
 
+def test_merge_train_callback_preserves_dirty_conflict_over_submodule_unverified(
+    tmp_path,
+    monkeypatch,
+):
+    """Host dirt must not be reclassified into terminal submodule quarantine."""
+
+    repo = tmp_path / "repo"
+    worktrees = tmp_path / "worktrees"
+    repo.mkdir()
+    worktrees.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-b", "implementation/preserve-dirty")
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "feature")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_root=worktrees,
+        worktree_submodule_paths=["libs/child"],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_merge_branch_to_main",
+        lambda *_args, **_kwargs: {
+            "attempted": True,
+            "merged": False,
+            "returncode": 2,
+            "reason": "main_checkout_dirty_conflict",
+            "dirty_paths": ["ipfs_accelerate_py"],
+            "submodule_merge_results": [],
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_changed_submodule_durability_preflight",
+        lambda **_kwargs: {"attempted": True, "verified": True, "failures": []},
+    )
+    request = SimpleNamespace(
+        branch_name="implementation/preserve-dirty",
+        commit_sha=candidate,
+        task_id="PRESERVE-DIRTY",
+        priority="P0",
+        attempt=1,
+        metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
+            "baseline_ref": baseline,
+            "changed_submodule_paths": ["libs/child"],
+            "validation_proof": {
+                "passed": True,
+                "returncode": 0,
+                "selection": {"scope": "pre_merge"},
+            },
+            "task": {
+                "task_id": "PRESERVE-DIRTY",
+                "title": "Keep dirty reason",
+                "status": "todo",
+                "completion": "manual",
+                "priority": "P0",
+                "track": "ops",
+            },
+        },
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["reason"] == "main_checkout_dirty_conflict"
+    assert result["submodule_verification"]["skipped_reclassify"] is True
+    assert result["missing_changed_submodule_paths"] == ["libs/child"]
+    assert result["merged"] is False
+
+
 def test_reconciliation_does_not_freeze_on_host_dirt_when_configured_submodule_dirty(
     tmp_path,
 ):

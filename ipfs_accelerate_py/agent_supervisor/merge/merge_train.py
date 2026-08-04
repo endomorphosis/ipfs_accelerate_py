@@ -3038,6 +3038,82 @@ class MergeTrain:
                 and revived.status == "pending"
             ):
                 recovered += 1
+        recovered += self._recover_transient_host_merge_quarantines(
+            snapshot=snapshot,
+            revive=revive,
+        )
+        return recovered
+
+    def _recover_transient_host_merge_quarantines(
+        self,
+        *,
+        snapshot: Callable[..., Any],
+        revive: Callable[..., Any],
+    ) -> int:
+        """Revive host-dirt quarantines once so detached merge isolation can run.
+
+        Shared monorepo checkouts often quarantine candidates after repeated
+        ``main_checkout_dirty_conflict`` (sometimes mislabeled as
+        ``changed_submodule_merge_unverified`` when submodule results stay empty).
+        Isolation now merges in a detached worktree; revive each request at most
+        once with a clean failure budget so progress can resume without operator
+        surgery.
+        """
+
+        transient_reasons = frozenset(
+            {
+                "main_checkout_dirty_conflict",
+                "main_merge_workspace_unavailable",
+                "main_merge_worktree_dirty",
+                "main_branch_checked_out_elsewhere",
+                "main_merge_detached_worktree_add_failed",
+                "changed_submodule_merge_unverified",
+            }
+        )
+        recovered = 0
+        for request in snapshot(limit=INTEGRATED_QUARANTINE_RECOVERY_LIMIT):
+            if not self._request_matches_exact_target(request):
+                continue
+            reason = str(getattr(request, "failure_reason", "") or "").strip()
+            if reason not in transient_reasons:
+                continue
+            if self._quarantined_candidate_is_integrated(request):
+                # Integrated recovery already handles these.
+                continue
+            metadata = getattr(request, "metadata", None)
+            if not isinstance(metadata, Mapping):
+                metadata = {}
+            revivals = metadata.get("revivals") or []
+            if any(
+                isinstance(item, Mapping)
+                and "host_merge_isolation_retry" in str(item.get("reason") or "")
+                for item in revivals
+                if isinstance(item, Mapping)
+            ):
+                continue
+            candidate = str(request.commit_sha or "").strip()
+            if not candidate:
+                continue
+            verified = self._git(
+                "rev-parse",
+                "--verify",
+                f"{candidate}^{{commit}}",
+            )
+            if verified.returncode != 0:
+                continue
+            revived = revive(
+                request.request_id,
+                reason=(
+                    "host_merge_isolation_retry: revive transient host-dirt "
+                    f"quarantine ({reason}) for detached merge isolation"
+                ),
+                reset_failures=True,
+            )
+            if (
+                isinstance(revived, MergeRequest)
+                and revived.status == "pending"
+            ):
+                recovered += 1
         return recovered
 
     def _worktree_disk_usage(self) -> tuple[int, int]:

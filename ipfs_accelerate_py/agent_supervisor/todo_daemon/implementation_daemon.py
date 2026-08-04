@@ -18695,21 +18695,44 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             and raw_gitlink_recording.get("ok") is False
         )
         if missing_changed_submodule_paths:
-            previous_reason = str(result.get("reason") or "submodule_merge_results_missing")
-            result.update(
-                {
-                    "merged": False,
-                    "returncode": 2,
-                    "reason": "changed_submodule_merge_unverified",
-                    "missing_changed_submodule_paths": missing_changed_submodule_paths,
-                    "submodule_verification": {
-                        "verified": False,
-                        "expected_paths": sorted(changed_submodule_paths or ()),
-                        "reported_paths": sorted(reported_submodule_paths),
-                        "previous_reason": previous_reason,
-                    },
-                }
+            previous_reason = str(result.get("reason") or "").strip()
+            merge_claimed_success = bool(
+                result.get("merged") or result.get("already_merged")
             )
+            # Reclassify only when the merge claimed success (false positive
+            # integration) or left no prior reason. Early aborts such as host
+            # dirt leave empty submodule_merge_results without integrating
+            # gitlinks; overwriting those as changed_submodule_merge_unverified
+            # exhausts the queue into terminal quarantine for a transient
+            # blocker (VOICE-ACTION-026).
+            should_reclassify_unverified = merge_claimed_success or not previous_reason
+            if should_reclassify_unverified:
+                result.update(
+                    {
+                        "merged": False,
+                        "returncode": 2,
+                        "reason": "changed_submodule_merge_unverified",
+                        "missing_changed_submodule_paths": missing_changed_submodule_paths,
+                        "submodule_verification": {
+                            "verified": False,
+                            "expected_paths": sorted(changed_submodule_paths or ()),
+                            "reported_paths": sorted(reported_submodule_paths),
+                            "previous_reason": previous_reason
+                            or "submodule_merge_results_missing",
+                        },
+                    }
+                )
+            else:
+                result["missing_changed_submodule_paths"] = (
+                    missing_changed_submodule_paths
+                )
+                result["submodule_verification"] = {
+                    "verified": False,
+                    "skipped_reclassify": True,
+                    "expected_paths": sorted(changed_submodule_paths or ()),
+                    "reported_paths": sorted(reported_submodule_paths),
+                    "previous_reason": previous_reason,
+                }
         target_branch = self._main_branch_name()
         if (
             not result.get("merged", False)
