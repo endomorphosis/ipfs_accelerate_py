@@ -118,13 +118,20 @@ def _json_object_without_duplicates(value: str) -> dict[str, Any]:
             result[key] = item
         return result
 
-    parsed = json.loads(
-        value,
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError("provider response JSON must contain an object")
+    # Models occasionally append trailing commentary or a second JSON value
+    # after a valid leading object.  Accept the first complete object so a
+    # usable structured proposal is not discarded as ``Extra data``.  Do not
+    # scan past non-JSON preambles (markdown fences stay hard failures).
+    decoder = json.JSONDecoder(
         object_pairs_hook=pairs,
         parse_constant=lambda item: (_ for _ in ()).throw(
             ValueError(f"non-finite JSON value: {item}")
         ),
     )
+    parsed, _end = decoder.raw_decode(text)
     if not isinstance(parsed, dict):
         raise ValueError("provider response JSON must contain an object")
     return parsed
