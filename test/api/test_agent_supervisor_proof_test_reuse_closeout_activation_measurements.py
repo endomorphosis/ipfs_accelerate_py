@@ -30,6 +30,7 @@ def test_measurements_skip_heavy_by_default() -> None:
     assert by_name["controller_owned_context_api"].attempted is True
     assert by_name["ordinary_default_composition"].attempted is True
     assert by_name["candidate_store_path"].attempted is True
+    assert by_name["reviewed_manifest_pin_status"].attempted is True
     # Heavy measured claims stay false without heavy runners.
     assert report.claims_supported.get("measured_subprocess_benchmark") is False
     assert report.claims_supported.get("three_repository_cold_warm") is False
@@ -37,6 +38,9 @@ def test_measurements_skip_heavy_by_default() -> None:
     # claim is recorded but never grants production authority.
     if by_name["ordinary_default_composition"].succeeded:
         assert report.claims_supported.get("ordinary_default_composition_usable") is True
+    # Reviewed allowlist is intentionally empty until ceremony publishes digests.
+    assert report.claims_supported.get("reviewed_manifest_pin_ready") is False
+    assert by_name["reviewed_manifest_pin_status"].succeeded is False
     assert report.authority is False
 
 

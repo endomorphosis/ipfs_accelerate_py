@@ -725,13 +725,32 @@ def attempt_candidate_store_path_probe(
     *,
     repo_root: Path | str | None = None,
 ) -> MeasurementAttempt:
-    """Prove candidate-context + certificate stores construct under cache_root."""
+    """Construct stores and publish a non-authoritative smoke candidate.
+
+    Success proves the ordinary default candidate-context + certificate store
+    path can retain a descriptor/components and that controller-owned v2 pins
+    can admit a complete (synthetic) envelope. This is **not** a current-tree
+    publication and never authorizes warm-skip.
+    """
 
     try:
+        from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+            canonical_json_bytes,
+        )
+        from ipfs_accelerate_py.agent_supervisor.proof.test_candidate_context_store import (
+            _cid_for_canonical_bytes,
+        )
+        from ipfs_accelerate_py.testing.proof_reuse import candidate_publication as cp
+        from ipfs_accelerate_py.testing.proof_reuse.activation_contracts import (
+            CandidateExecutionContext,
+        )
         from ipfs_accelerate_py.testing.proof_reuse.config import ProofReuseMode
         from ipfs_accelerate_py.testing.proof_reuse.services import (
             compose_default_proof_reuse_services,
         )
+
+        def _blob(label: str, padding: int = 32) -> bytes:
+            return canonical_json_bytes({"label": label, "padding": "x" * padding})
 
         roots: list[Path] = []
         if repo_root is not None:
@@ -759,41 +778,101 @@ def attempt_candidate_store_path_probe(
                     candidate_ok = services.candidate_store is not None
                     store_ok = services.store is not None
                     revalidator_ok = services.revalidator is not None
-                    publish = getattr(services.candidate_store, "publish", None)
-                    put = getattr(services.candidate_store, "put_canonical_bytes", None)
-                    # Optional tiny write to prove store is writable (non-authoritative).
-                    wrote = False
-                    write_detail = ""
-                    if candidate_ok and callable(put):
-                        try:
-                            payload = b'{"schema":"ptr-closeout-candidate-smoke@1"}'
-                            result = put(payload)
-                            wrote = result is not None
-                            write_detail = type(result).__name__ if result is not None else "none"
-                        except TypeError:
-                            # Signature may require more args; presence is enough.
-                            write_detail = "put_signature_requires_args"
-                        except Exception as exc:
-                            write_detail = f"{type(exc).__name__}:{exc}"[:80]
-                    ok = candidate_ok and store_ok and revalidator_ok
+                    if not (candidate_ok and store_ok and revalidator_ok):
+                        last_error = "stores_incomplete"
+                        continue
+
+                    components = {
+                        "policy": _blob("policy"),
+                        "pass_receipt": _blob("receipt"),
+                        "execution_key": _blob("execution_key"),
+                        "runtime_trace": _blob("runtime"),
+                        "static_trace": _blob("static"),
+                        "repository_forest": _blob("forest"),
+                        "environment": _blob("environment"),
+                    }
+                    component_cids = {
+                        name: _cid_for_canonical_bytes(data)
+                        for name, data in components.items()
+                    }
+                    locator = _cid_for_canonical_bytes(_blob("locator"))
+                    ast = _cid_for_canonical_bytes(_blob("ast"))
+                    descriptor = CandidateExecutionContext(
+                        locator_cid=locator,
+                        execution_key_cid=component_cids["execution_key"],
+                        pass_receipt_cid=component_cids["pass_receipt"],
+                        repository_forest_cid=component_cids["repository_forest"],
+                        test_ast_cid=ast,
+                        static_trace_root_cid=component_cids["static_trace"],
+                        runtime_trace_root_cid=component_cids["runtime_trace"],
+                        environment_cid=component_cids["environment"],
+                        policy_cid=component_cids["policy"],
+                        component_cids=component_cids,
+                        retained_at_ms=1,
+                    )
+                    put = services.candidate_store.publish(
+                        descriptor, components, publish_index=True
+                    )
+                    stored = bool(getattr(put, "stored", False))
+                    indexed = bool(getattr(put, "indexed", False))
+                    context_cid = str(
+                        getattr(put, "candidate_context_cid", "") or ""
+                    )[:128]
+                    publish_reason = str(getattr(put, "reason_code", "") or "")[:96]
+
+                    controller_complete = False
+                    controller_reason = ""
+                    if stored and context_cid:
+                        admitted, controller_reason = cp.admit_controller_owned_v2_context(
+                            {
+                                "receipt_cid": component_cids["pass_receipt"],
+                                "execution_key_cid": component_cids["execution_key"],
+                                "candidate_context_cid": context_cid,
+                                "policy_cid": component_cids["policy"],
+                                "statement_cid": _cid_for_canonical_bytes(
+                                    _blob("statement")
+                                ),
+                                "circuit_cid": _cid_for_canonical_bytes(_blob("circuit")),
+                                "verifying_key_cid": _cid_for_canonical_bytes(
+                                    _blob("vk")
+                                ),
+                                "issuer_id": "issuerlocalnonproduction",
+                                "epoch": "epochlocal",
+                                "backend_id": "groth16",
+                            },
+                            require_complete=True,
+                        )
+                        controller_complete = bool(
+                            admitted is not None
+                            and getattr(admitted, "is_complete", False)
+                        )
+
+                    ok = stored and indexed and controller_complete
                     return MeasurementAttempt(
                         name="candidate_store_path",
                         attempted=True,
                         succeeded=ok,
                         skipped=False,
                         detail=(
-                            "stores_ready"
+                            "publish_and_controller_admit_ok"
                             if ok
-                            else "stores_incomplete"
-                        ),
+                            else (
+                                f"publish_stored={stored};indexed={indexed};"
+                                f"controller={controller_complete};"
+                                f"reason={publish_reason or controller_reason or 'incomplete'}"
+                            )
+                        )[:200],
                         metrics={
                             "candidate_store": candidate_ok,
                             "certificate_store": store_ok,
                             "revalidator": revalidator_ok,
-                            "publish_callable": callable(publish),
-                            "put_callable": callable(put),
-                            "smoke_write": wrote,
-                            "write_detail": write_detail,
+                            "publish_stored": stored,
+                            "publish_indexed": indexed,
+                            "publish_reason": publish_reason,
+                            "candidate_context_cid": context_cid,
+                            "controller_complete_admit": controller_complete,
+                            "controller_reason": str(controller_reason or "")[:96],
+                            "current_tree_published": False,
                             "root": str(root)[:160] if root is not None else "",
                             "production_authority": False,
                         },
@@ -811,6 +890,82 @@ def attempt_candidate_store_path_probe(
     except Exception as exc:
         return MeasurementAttempt(
             name="candidate_store_path",
+            attempted=True,
+            succeeded=False,
+            skipped=False,
+            detail=f"{type(exc).__name__}:{exc}"[:200],
+        )
+
+
+def attempt_reviewed_manifest_pin_status() -> MeasurementAttempt:
+    """Report reviewed v4 artifact-manifest pin / allowlist readiness honestly.
+
+    The production allowlist ``DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256``
+    is intentionally empty until an operator-reviewed ceremony publishes exact
+    digests. Local operational keys + env self-pins cannot close this gap.
+    """
+
+    import os
+
+    try:
+        from ipfs_accelerate_py.testing.proof_reuse.services import (
+            DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256,
+            PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_ENV,
+            PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_SHA256_ENV,
+            probe_test_certificate_authority,
+        )
+
+        fixture = discover_real_groth16_fixture()
+        manifest_path = str(
+            os.environ.get(PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_ENV, "") or ""
+        ).strip()
+        manifest_sha = str(
+            os.environ.get(PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_SHA256_ENV, "") or ""
+        ).strip()
+        approved = frozenset(DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256 or ())
+        certificate = probe_test_certificate_authority(
+            artifacts_root=fixture.artifacts_root or None,
+            binary_path=fixture.binary_path or None,
+        )
+        pin_env_set = bool(manifest_path) and bool(manifest_sha)
+        path_exists = bool(manifest_path) and Path(manifest_path).expanduser().is_file()
+        # Never succeeds while the reviewed allowlist is empty or cert unready.
+        ready = bool(certificate.get("ready")) and bool(approved)
+        detail = str(certificate.get("reason_code") or "unready")
+        if not approved:
+            detail = "approved_v4_manifest_allowlist_empty"
+        elif not pin_env_set:
+            detail = "artifact_manifest_pin_missing"
+        elif not path_exists:
+            detail = "artifact_manifest_unreadable"
+        return MeasurementAttempt(
+            name="reviewed_manifest_pin_status",
+            attempted=True,
+            succeeded=ready,
+            skipped=False,
+            detail=detail[:200],
+            metrics={
+                "certificate_ready": bool(certificate.get("ready")),
+                "certificate_reason": str(certificate.get("reason_code") or "")[:96],
+                "approved_manifest_count": len(approved),
+                "pin_env_set": pin_env_set,
+                "manifest_path_set": bool(manifest_path),
+                "manifest_sha256_set": bool(manifest_sha),
+                "manifest_path_exists": path_exists,
+                "fixture_keys_present": bool(fixture.available),
+                "local_operational_keys_not_production": True,
+                "production_authority": False,
+                "operator_action": (
+                    "operator-reviewed v4 ceremony must publish exact key digests "
+                    "into DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256, then set "
+                    f"{PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_ENV} + "
+                    f"{PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_SHA256_ENV}"
+                ),
+            },
+        )
+    except Exception as exc:
+        return MeasurementAttempt(
+            name="reviewed_manifest_pin_status",
             attempted=True,
             succeeded=False,
             skipped=False,
@@ -1045,6 +1200,7 @@ def run_closeout_activation_measurements(
         attempt_default_identity_services_probe(),
         attempt_ordinary_default_composition_probe(),
         attempt_candidate_store_path_probe(),
+        attempt_reviewed_manifest_pin_status(),
     ]
 
     if attempt_local_setup:
@@ -1192,6 +1348,14 @@ def run_closeout_activation_measurements(
             by_name.get("controller_owned_context_api")
             and by_name["controller_owned_context_api"].succeeded
         ),
+        "candidate_publish_and_controller_admit_ready": bool(
+            by_name.get("candidate_store_path")
+            and by_name["candidate_store_path"].succeeded
+        ),
+        "reviewed_manifest_pin_ready": bool(
+            by_name.get("reviewed_manifest_pin_status")
+            and by_name["reviewed_manifest_pin_status"].succeeded
+        ),
     }
     return ActivationMeasurementReport(
         fixture=fixture,
@@ -1214,6 +1378,7 @@ __all__ = [
     "attempt_local_nonproduction_v4_setup",
     "attempt_local_v4_certificate_self_check",
     "attempt_ordinary_default_composition_probe",
+    "attempt_reviewed_manifest_pin_status",
     "attempt_single_repo_cold_warm",
     "attempt_subprocess_proof_reuse_benchmark",
     "discover_real_groth16_fixture",

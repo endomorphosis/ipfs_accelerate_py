@@ -193,6 +193,23 @@ def _probe_live_activation_report(
     except Exception:
         pass
 
+    # Optional fixture paths improve cert-authority diagnostics only; local
+    # operational keys never satisfy the reviewed manifest pin allowlist.
+    artifacts_root: str | None = None
+    binary_path: str | None = None
+    try:
+        from .proof_test_reuse_closeout_activation_measurements import (
+            discover_real_groth16_fixture,
+        )
+
+        fixture = discover_real_groth16_fixture()
+        if fixture.artifacts_root:
+            artifacts_root = str(fixture.artifacts_root)
+        if fixture.binary_path:
+            binary_path = str(fixture.binary_path)
+    except Exception:
+        pass
+
     last: dict[str, Any] = {
         "activation_gap_present": True,
         "ordinary_default_composition_usable": False,
@@ -206,6 +223,8 @@ def _probe_live_activation_report(
                 root_path=root,
                 cache_root=cache_root,
                 compose_if_missing=True,
+                artifacts_root=artifacts_root,
+                binary_path=binary_path,
             )
             last = report.to_dict()
             last["composition_probe"] = {
@@ -214,6 +233,8 @@ def _probe_live_activation_report(
                 "root_path": str(root)[:256] if root is not None else "",
                 "identity_required": True,
                 "stores_required": True,
+                "artifacts_root": (artifacts_root or "")[:256],
+                "binary_path_set": bool(binary_path),
             }
             # Score: prefer usable composition, then fewer blockers.
             usable = 1 if last.get("ordinary_default_composition_usable") else 0
@@ -416,9 +437,14 @@ def assess_activation_claims(
             field="controller_owned_receipt_candidate_context",
             observed=controller_ok,
             proven=False,
-            detail=controller_detail,
+            detail=(
+                f"{controller_detail}; "
+                "synthetic store publish/admit is not current-tree publication"
+            ),
             operator_action=(
-                "publish controller-owned v2 candidate context for the current tree"
+                "publish controller-owned v2 candidate context for the current tree "
+                "(ordinary store path ready; bind retained pass receipt + execution key "
+                "to the sealed tree identity)"
             ),
         ),
         ActivationClaimAssessment(
@@ -466,7 +492,11 @@ def assess_activation_claims(
                 f"closeout_authorized={gap.get('closeout_authorized')}"
             ),
             operator_action=(
-                "close activation gap with reviewed v4 keys/manifest allowlist"
+                "close activation gap: operator-reviewed v4 ceremony must publish "
+                "exact digests into DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256 "
+                "and pin IPFS_TEST_PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST + "
+                "IPFS_TEST_PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_SHA256 "
+                f"(live_reason={_text(gap.get('reason_code'))})"
                 if gap_present
                 else ""
             ),
@@ -621,6 +651,26 @@ def produce_closeout_activation_probe(
                             f"{measurement_claims.get('ordinary_default_composition_usable')}"
                         ),
                         operator_action="" if proven else claim.operator_action,
+                    )
+                )
+            elif claim.field == "controller_owned_receipt_candidate_context":
+                # Path readiness (publish+admit smoke) is observed only; current-tree
+                # publication remains operator-owned and unproven here.
+                path_ready = bool(
+                    measurement_claims.get("candidate_publish_and_controller_admit_ready")
+                    or measurement_claims.get("controller_owned_context_api_ready")
+                )
+                updated.append(
+                    ActivationClaimAssessment(
+                        field=claim.field,
+                        observed=bool(claim.observed or path_ready),
+                        proven=False,
+                        detail=(
+                            f"{claim.detail}; "
+                            f"path_ready={path_ready}; "
+                            f"current_tree_published=False"
+                        ),
+                        operator_action=claim.operator_action,
                     )
                 )
             else:
