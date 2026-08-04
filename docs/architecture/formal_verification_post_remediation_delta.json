@@ -52,7 +52,7 @@
     "certificate_lock_digest_matches": true,
     "matrix_audit_complete": true,
     "matrix_deployment_ready": false,
-    "matrix_digest_sha256": "39342c9f1dbee82f30124f742e7046164d0597670638fcf35d84c98dfc716361",
+    "matrix_digest_sha256": "6ced86f2912f9ef9ec7d482b033948a1f7292cad5bb1c74a5d54d64b8e56fcc3",
     "ready_count": 27,
     "ready_provider_ids": [
       "apalache",
@@ -85,7 +85,7 @@
     ],
     "total_count": 28
   },
-  "delta_digest_sha256": "d7bd87bd4c0cbe2741f54f0c31f83fed2cd9f82c3dce22887ea15a4c9432536f",
+  "delta_digest_sha256": "8e25a49ea4a915a9c9e7ddb6034a8383c10f0b38343455129847e5b5fc56a98b",
   "deployment_readiness_inputs": {
     "audit_complete": true,
     "certificate_lock_fresh": true,
@@ -118,7 +118,7 @@
       "kind": "repository_file",
       "path": "docs/architecture/formal_verification_authoritative_vendor_release.json",
       "present": true,
-      "sha256": "sha256:df816815219ec52e4ee6b5c26b5913f1823f60dde51490bf5e00555351eec5b6"
+      "sha256": "sha256:978d3b130d59be05a341f9a759fa5ad8622197973f0932af0c771b6600bc1d20"
     },
     "end_to_end_assurance_matrix": {
       "evidence_id": "end_to_end_assurance_matrix",
@@ -181,7 +181,7 @@
     }
   },
   "interface": "FormalVerificationPostRemediationAssurance@1",
-  "observed_at": "2026-08-04T22:34:24+00:00",
+  "observed_at": "2026-08-04T22:42:01+00:00",
   "production_authorization_replacement_row": {
     "axes": {
       "authority": {
@@ -314,7 +314,7 @@
             "kind": "repository_file",
             "path": "setup.py",
             "present": true,
-            "sha256": "sha256:abea0cd46c8134da0df6eab86a92e5a67ac0b9a97ee3ed7badb64d45c0622c8d"
+            "sha256": "sha256:591655848ebe1f1914d3c3783676667d96906b7e0d412f79c4a94700b95d20c5"
           },
           {
             "evidence_id": "packaging:requirements.txt",
@@ -322,7 +322,7 @@
             "kind": "repository_file",
             "path": "requirements.txt",
             "present": true,
-            "sha256": "sha256:ea9b534cfb699d90c3832f1718f1a98bcc3feb63081be0be55bf5a5624749a3e"
+            "sha256": "sha256:c83ea33a892c2ef6b1a912714fcce32e890e6eaa3268170a169f31abefd61a94"
           },
           {
             "evidence_id": "packaging:ipfs_datasets_py/setup.py",

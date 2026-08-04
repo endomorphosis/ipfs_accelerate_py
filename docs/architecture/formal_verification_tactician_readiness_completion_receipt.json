@@ -6,14 +6,14 @@
   "completion_goal_id": "FVT-G090",
   "task_id": "FVT-036",
   "program": "formal-verification-tactician/readiness",
-  "observed_at": "2026-08-04T22:12:07Z",
+  "observed_at": "2026-08-04T22:42:00Z",
   "binding_mode": "current_tree_content_identity",
   "source": {
-    "parent_commit": "2bfe7ec446c69d0b5a3c7ec546fa4013bb5d9c4d",
-    "parent_tree": "99aa0f15216ea0fcc9fca3677c8966171338533b",
+    "parent_commit": "f51272f86ea5d61cd9e2dc5811286c9456f1ac68",
+    "parent_tree": "9bac20cf92370332a840b1b736c806859228ab26",
     "datasets_gitlink": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
     "datasets_embedded_head": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
-    "datasets_origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+    "datasets_origin_main": "354631938920f89b9af62f02c904f41e70832ed0",
     "parent_origin_main": "03ebf4daf2e0d260c7924be0c4d48b63d5083f47",
     "binding_mode": "current_tree_content_identity"
   },
@@ -304,8 +304,8 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "2bfe7ec446c69d0b5a3c7ec546fa4013bb5d9c4d",
-        "tree": "99aa0f15216ea0fcc9fca3677c8966171338533b",
+        "commit": "f51272f86ea5d61cd9e2dc5811286c9456f1ac68",
+        "tree": "9bac20cf92370332a840b1b736c806859228ab26",
         "origin_main": "03ebf4daf2e0d260c7924be0c4d48b63d5083f47",
         "clean": false,
         "matches_origin_main": false
@@ -320,7 +320,7 @@
         "head": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
         "clean": true,
         "matches_gitlink": true,
-        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
+        "origin_main": "354631938920f89b9af62f02c904f41e70832ed0",
         "matches_origin_main": false
       },
       "publication_gates": {
@@ -1303,7 +1303,7 @@
     "role_aware_certifier": {
       "path": "tools/logic/certify_formal_verification_toolchains.py",
       "present": true,
-      "content_identity": "sha256:2c4f13aacd782eb3d2d216c470d8519e02220a25050a45c0ab76b25afc2a979d"
+      "content_identity": "sha256:85eb10e47fb87666d0a68d5673c8acc4a90d4c193a6ff5a4a57fc5a29972f3f4"
     },
     "role_aware_completion_test": {
       "path": "test/integration/test_formal_verification_role_aware_completion.py",
@@ -4600,5 +4600,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:92b7e77136f8b5701a2fb79d42844fa7f5ea333ff896bc7b14ae310b5d996911"
+  "receipt_identity": "sha256:ee0cece874956103d6cd0dd8949af06b4b67b59b57ac602ec4dffeb003c05891"
 }
