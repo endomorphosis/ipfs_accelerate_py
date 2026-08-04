@@ -192,6 +192,7 @@ from .production_provider_cli import (
     production_landed_task_guard,
 )
 from .implementation_progress_recovery import (
+    DEFAULT_LANDED_REVIEW_DEFER_SECONDS,
     declared_output_presence,
     operator_landed_binding_payload,
     should_recover_stalled_task,
@@ -19427,28 +19428,137 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
             return []
 
+    def _soft_complete_landed_task_board(
+        self,
+        task: PortalTask,
+        *,
+        reason: str,
+    ) -> dict[str, Any]:
+        """Mark a landed-product task completed on the operational board.
+
+        Non-authoritative: products on the merge target prove implement work
+        finished, not dual-review acceptance.  Stops thrash selection and
+        unlocks dependents while leaving authoritative completion gates intact.
+        """
+
+        from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
+            mark_task_statuses_in_todo_text,
+        )
+
+        task_id = str(task.task_id)
+        result: dict[str, Any] = {
+            "task_id": task_id,
+            "updated": False,
+            "completion_authoritative": False,
+            "proof_authoritative": False,
+            "reason": str(reason or "landed_outputs_soft_complete"),
+            "paths": [],
+        }
+        paths: list[Path] = []
+        todo = getattr(self, "todo_path", None)
+        if isinstance(todo, Path):
+            paths.append(todo)
+        # Prefer also updating the source board when the runtime board is a
+        # lane-owned copy so planner digests and dependents observe completion.
+        source_candidates: list[Path] = []
+        try:
+            metadata = getattr(task, "metadata", None) or {}
+            if isinstance(metadata, Mapping):
+                for key in ("todo_path", "source_todo_path", "source todo"):
+                    raw = metadata.get(key)
+                    if raw:
+                        source_candidates.append(Path(str(raw)))
+        except Exception:
+            pass
+        # Lane binding written by bundle materialization.
+        try:
+            state_dir = Path(getattr(self, "state_path", Path("."))).parent
+            for binding_path in state_dir.glob("*_taskboard_input.json"):
+                try:
+                    binding = json.loads(binding_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if not isinstance(binding, Mapping):
+                    continue
+                raw = binding.get("source_todo_path")
+                if raw:
+                    source_candidates.append(Path(str(raw)))
+        except Exception:
+            pass
+        for candidate in source_candidates:
+            if not candidate.is_absolute():
+                candidate = Path(self.repo_root) / candidate
+            if candidate not in paths and candidate.is_file():
+                paths.append(candidate)
+        for path in list(paths):
+            try:
+                text = path.read_text(encoding="utf-8")
+            except OSError as exc:
+                result.setdefault("errors", []).append(
+                    {"path": str(path), "error": str(exc)[-400:]}
+                )
+                continue
+            prefix = str(getattr(self, "task_header_prefix", "## ") or "## ")
+            # backlog_refinery.task_id_prefix strips any leading "## ".
+            updated_text, updated_ids = mark_task_statuses_in_todo_text(
+                text,
+                [task_id],
+                task_prefix=prefix,
+                status="completed",
+            )
+            if not updated_ids:
+                continue
+            try:
+                tmp_path = path.with_name(f".{path.name}.soft-complete.tmp")
+                tmp_path.write_text(updated_text, encoding="utf-8")
+                os.replace(tmp_path, path)
+            except OSError as exc:
+                result.setdefault("errors", []).append(
+                    {"path": str(path), "error": str(exc)[-400:]}
+                )
+                continue
+            result["updated"] = True
+            result["paths"].append(str(path))
+            result.setdefault("updated_task_ids", []).extend(updated_ids)
+        if result["updated"]:
+            self._record_event(
+                "implementation_landed_soft_completed",
+                result,
+            )
+        return result
+
     def _auto_recover_stalled_implementation_progress(
         self,
         state: PortalTaskState,
         tasks: Sequence[PortalTask],
     ) -> dict[str, Any]:
-        """Reset thrash state when declared outputs already land on merge target.
+        """Stop thrash when declared outputs already land on merge target.
 
-        Keeps completion non-authoritative.  The goal is to stop burning repair
-        rounds / capacity when product files are already present and only review
-        or bookkeeping remains.
+        Parks review-pending landed work, soft-closes the board (non-
+        authoritative), reclaims dead lifecycle claims, and never re-opens
+        attempt budget just to re-implement already-present products.
         """
 
         decisions: list[dict[str, Any]] = []
         changed = False
         idle_reason = str(getattr(state, "selection_idle_reason", "") or "")
         for task in tasks:
-            if str(getattr(task, "status", "") or "").strip().lower() == "completed":
+            board_status = str(getattr(task, "status", "") or "").strip().lower()
+            if board_status == "completed":
                 continue
             attempt_count = self._task_attempt_count(state, task)
             last_rc = None
             if state.last_implementation_task_id == task.task_id:
                 last_rc = state.last_implementation_returncode
+            # Fold recent thrash outcomes into the recovery text so markers
+            # match even when selection_idle_reason was cleared.
+            last_failure_parts = [
+                str(getattr(state, "last_merge_error", "") or ""),
+                str(getattr(state, "selection_idle_reason", "") or ""),
+            ]
+            if last_rc not in (None, 0):
+                last_failure_parts.append("implementation_not_integrated")
+                last_failure_parts.append("provider_review_pending")
             decision = should_recover_stalled_task(
                 task_id=task.task_id,
                 outputs=tuple(task.outputs or ()),
@@ -19458,29 +19568,24 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     getattr(self, "implementation_max_repair_rounds", 3) or 3
                 ),
                 last_returncode=last_rc if isinstance(last_rc, int) else None,
-                last_failure_text=str(
-                    getattr(state, "last_merge_error", "")
-                    or getattr(state, "selection_idle_reason", "")
-                    or ""
-                ),
+                last_failure_text="\n".join(part for part in last_failure_parts if part),
                 selection_idle_reason=idle_reason,
                 implementation_in_progress=bool(state.implementation_in_progress),
                 active_task_id=str(state.active_task_id or ""),
+                board_status=board_status,
             )
             if decision is None:
                 continue
             payload = decision.to_dict()
+            key = self._canonical_ref(task)
             if decision.clear_diagnostics:
-                key = self._canonical_ref(task)
                 had_diag = (
                     key in self._implementation_diagnostics
                     or key in self._implementation_diagnostic_repeats
-                    or key in self._implementation_retry_not_before
                     or key in self._implementation_loaded_parents
                 )
                 self._implementation_diagnostics.pop(key, None)
                 self._implementation_diagnostic_repeats.pop(key, None)
-                self._implementation_retry_not_before.pop(key, None)
                 self._implementation_loaded_parents.pop(key, None)
                 archived = self._clear_implementation_diagnostic_files(task)
                 payload["archived_diagnostics"] = archived
@@ -19490,22 +19595,57 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 previous_display = int(
                     state.implementation_attempts.pop(task.task_id, 0) or 0
                 )
-                cid = self._canonical_ref(task)
                 previous_cid = int(
-                    state.implementation_attempts_by_cid.pop(cid, 0) or 0
+                    state.implementation_attempts_by_cid.pop(key, 0) or 0
                 )
                 if state.last_implementation_task_id == task.task_id:
                     state.last_implementation_returncode = None
                 if idle_reason.startswith("implementation_retry_deferred"):
                     state.selection_idle_reason = ""
-                # Task queue retry state if available.
                 try:
-                    self.task_queue.reset_retry_state(cid)
+                    self.task_queue.reset_retry_state(key)
                 except Exception:
                     pass
                 payload["previous_display_attempt_count"] = previous_display
                 payload["previous_canonical_attempt_count"] = previous_cid
                 changed = True
+            if decision.defer_review_pending:
+                defer_seconds = max(
+                    int(decision.defer_seconds or 0),
+                    DEFAULT_LANDED_REVIEW_DEFER_SECONDS,
+                    int(PENDING_ACCEPTANCE_RETRY_BACKOFF_SECONDS),
+                )
+                try:
+                    self.task_queue.defer(
+                        key,
+                        defer_seconds,
+                        reason="landed_products_provider_review_pending",
+                    )
+                    payload["deferred_seconds"] = defer_seconds
+                    changed = True
+                except Exception as exc:  # noqa: BLE001 — park best-effort
+                    payload["defer_error"] = str(exc)[-400:]
+                # Also park local repair backoff so the same pass cannot
+                # re-select this landed task immediately.
+                self._implementation_retry_not_before[key] = (
+                    time.time() + float(defer_seconds)
+                )
+                state.selection_idle_reason = (
+                    "implementation_retry_deferred:landed_products_provider_review_pending"
+                )
+                if state.last_implementation_task_id == task.task_id:
+                    # Soft-success so queue accounting does not treat the last
+                    # review-pending guard as a hard failure.
+                    state.last_implementation_returncode = 0
+                changed = True
+            if decision.soft_complete_board:
+                soft = self._soft_complete_landed_task_board(
+                    task,
+                    reason=decision.reason,
+                )
+                payload["soft_complete"] = soft
+                if soft.get("updated"):
+                    changed = True
             if decision.reclaim_dead_lifecycle:
                 reclaimed = self._reclaim_dead_lifecycle_claims_for_task(task)
                 payload["reclaimed_lifecycle_claims"] = reclaimed
@@ -19525,6 +19665,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 {
                     "decision_count": len(decisions),
                     "decisions": decisions,
+                    "completion_authoritative": False,
                 },
             )
         return {

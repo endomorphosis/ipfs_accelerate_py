@@ -972,6 +972,8 @@ def stale_bundle_lane_input_binding(
     This read-only preflight recognizes that one actionable mismatch without
     rewriting either the binding or the runtime taskboard. Other malformed
     binding conditions continue through the existing fail-closed materializer.
+    Callers that can safely rematerialize should use
+    :func:`refresh_stale_bundle_lane_input_binding`.
     """
 
     planned_digest = str(lane.source_todo_sha256 or "").strip().lower()
@@ -994,6 +996,64 @@ def stale_bundle_lane_input_binding(
         "binding_path": repo_relative_path(repo_root, binding_path),
         "bound_source_todo_sha256": bound_digest,
         "planned_source_todo_sha256": planned_digest,
+    }
+
+
+def refresh_stale_bundle_lane_input_binding(
+    lane: BundleLaneSpec,
+    *,
+    repo_root: Path,
+) -> dict[str, Any] | None:
+    """Archive a stale binding/runtime pair and rematerialize from the plan.
+
+    Used when the source board advanced (e.g. operator or soft-complete status
+    flips) while the lane state directory still points at the previous digest.
+    Safe only when the lane has no live worker holding the runtime board.
+    Returns ``None`` when the binding is not stale; otherwise a report of the
+    refresh (``refreshed`` true on success).
+    """
+
+    diagnosis = stale_bundle_lane_input_binding(lane, repo_root=repo_root)
+    if diagnosis is None:
+        return None
+    binding_path = bundle_taskboard_input_binding_path(lane)
+    runtime_path = lane.runtime_todo_path
+    stamp = utc_now().replace(":", "").replace("+", "_")
+    archived: list[str] = []
+    try:
+        if binding_path.is_file():
+            archive = binding_path.with_name(f"{binding_path.name}.stale-{stamp}")
+            os.replace(binding_path, archive)
+            archived.append(str(archive))
+        if runtime_path is not None and Path(runtime_path).is_file():
+            runtime = Path(runtime_path)
+            archive = runtime.with_name(f"{runtime.name}.stale-{stamp}")
+            os.replace(runtime, archive)
+            archived.append(str(archive))
+        binding = materialize_bundle_lane_taskboard(lane, repo_root=repo_root)
+    except (OSError, ValueError) as exc:
+        logger.warning(
+            "Failed to refresh stale input binding for %s: %s",
+            lane.bundle_key,
+            exc,
+        )
+        return {
+            **diagnosis,
+            "refreshed": False,
+            "error": str(exc)[-1000:],
+            "archived": archived,
+        }
+    logger.info(
+        "Refreshed stale input binding for %s (bound %s → planned %s)",
+        lane.bundle_key,
+        diagnosis.get("bound_source_todo_sha256", "")[:12],
+        diagnosis.get("planned_source_todo_sha256", "")[:12],
+    )
+    return {
+        **diagnosis,
+        "refreshed": True,
+        "archived": archived,
+        "binding": binding,
     }
 
 
@@ -3558,13 +3618,30 @@ def launch_bundle_lanes(
         id(lane): _lane_launch_policy_error(lane)
         for lane in lanes
     }
-    stale_input_bindings = {
-        id(lane): stale_bundle_lane_input_binding(
-            lane,
-            repo_root=repo_root,
-        )
-        for lane in lanes
-    }
+    # Auto-heal stale bindings before claim so board-status progress (soft
+    # complete / operator land) does not permanently park every lane.
+    stale_input_bindings: dict[int, dict[str, Any] | None] = {}
+    for lane in lanes:
+        diagnosis = stale_bundle_lane_input_binding(lane, repo_root=repo_root)
+        if diagnosis is not None:
+            refreshed = refresh_stale_bundle_lane_input_binding(
+                lane,
+                repo_root=repo_root,
+            )
+            if refreshed and refreshed.get("refreshed"):
+                diagnosis = None
+                logger.info(
+                    "Auto-refreshed stale taskboard binding for %s before launch",
+                    lane.bundle_key,
+                )
+            elif refreshed is not None:
+                diagnosis = {
+                    **diagnosis,
+                    "refresh_error": str(
+                        refreshed.get("error") or "refresh_failed"
+                    ),
+                }
+        stale_input_bindings[id(lane)] = diagnosis
     if lanes and all(policy_errors[id(lane)] for lane in lanes):
         return [
             {
@@ -3603,6 +3680,7 @@ def launch_bundle_lanes(
                             "different planned source digest"
                         ),
                         "code": "G_STALE_INPUT_BINDING",
+                        "reason": "stale_input_binding",
                         **stale_input_binding,
                     }
                 )
@@ -5446,17 +5524,43 @@ class DynamicBundleScheduler:
                     for item in decision_projection
                     if self._projection_state(item) == "ready"
                 }
-                stale_input_bindings = {
-                    lane.task_cid: diagnosis
-                    for lane in registered
-                    if lane.task_cid in ready_input_binding_task_cids
-                    if (
-                        diagnosis := stale_bundle_lane_input_binding(
+                stale_input_bindings: dict[str, dict[str, Any]] = {}
+                for lane in registered:
+                    if lane.task_cid not in ready_input_binding_task_cids:
+                        continue
+                    # Skip refresh while a worker is already holding the board.
+                    if lane.task_cid in self._running:
+                        diagnosis = stale_bundle_lane_input_binding(
                             lane,
                             repo_root=self.repo_root,
                         )
+                        if diagnosis is not None:
+                            stale_input_bindings[lane.task_cid] = diagnosis
+                        continue
+                    diagnosis = stale_bundle_lane_input_binding(
+                        lane,
+                        repo_root=self.repo_root,
                     )
-                }
+                    if diagnosis is None:
+                        continue
+                    refreshed = refresh_stale_bundle_lane_input_binding(
+                        lane,
+                        repo_root=self.repo_root,
+                    )
+                    if refreshed and refreshed.get("refreshed"):
+                        logger.info(
+                            "Auto-refreshed stale taskboard binding for %s during reconcile",
+                            lane.bundle_key,
+                        )
+                        continue
+                    if refreshed is not None and not refreshed.get("refreshed"):
+                        diagnosis = {
+                            **diagnosis,
+                            "refresh_error": str(
+                                refreshed.get("error") or "refresh_failed"
+                            ),
+                        }
+                    stale_input_bindings[lane.task_cid] = diagnosis
                 for item in decision_projection:
                     task_cid = str(item.get("task_cid") or "")
                     diagnosis = stale_input_bindings.get(task_cid)

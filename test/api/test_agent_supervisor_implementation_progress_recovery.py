@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_progress_recovery import (
+    DEFAULT_LANDED_REVIEW_DEFER_SECONDS,
     declared_output_presence,
     operator_landed_binding_payload,
     should_recover_stalled_task,
@@ -50,10 +51,16 @@ def test_should_recover_when_outputs_landed_and_repair_budget_exhausted(
         ),
     )
     assert decision is not None
-    assert decision.reset_attempt_budget is True
+    assert decision.action == "defer_landed_review_pending"
+    # Critical: never re-open attempt budget for landed products — that thrash.
+    assert decision.reset_attempt_budget is False
     assert decision.clear_diagnostics is True
     assert decision.treat_as_landed_outputs is True
     assert decision.reclaim_dead_lifecycle is True
+    assert decision.defer_review_pending is True
+    assert decision.defer_seconds >= DEFAULT_LANDED_REVIEW_DEFER_SECONDS
+    assert decision.soft_complete_board is True
+    assert decision.to_dict()["completion_authoritative"] is False
 
 
 def test_should_recover_skips_active_task(tmp_path: Path) -> None:
@@ -113,4 +120,60 @@ def test_context_insufficient_marker_triggers_recovery(tmp_path: Path) -> None:
         last_failure_text="production source context is unavailable or insufficient",
     )
     assert decision is not None
-    assert decision.reset_attempt_budget is True
+    assert decision.action == "defer_landed_review_pending"
+    assert decision.reset_attempt_budget is False
+    assert decision.soft_complete_board is True
+
+
+def test_landed_review_pending_marker_parks_without_reset(tmp_path: Path) -> None:
+    (tmp_path / "out.py").write_text("ok\n", encoding="utf-8")
+    decision = should_recover_stalled_task(
+        task_id="ASE2-001",
+        outputs=["out.py"],
+        repo_root=tmp_path,
+        attempt_count=1,
+        max_repair_rounds=3,
+        last_returncode=1,
+        last_failure_text="landed_binding_has_no_typed_provider_receipt",
+        selection_idle_reason="implementation_not_integrated",
+    )
+    assert decision is not None
+    assert decision.action == "defer_landed_review_pending"
+    assert decision.reset_attempt_budget is False
+    assert decision.defer_review_pending is True
+    assert decision.soft_complete_board is True
+    assert decision.reason == "landed_outputs_review_pending"
+
+
+def test_already_completed_board_skips_soft_complete(tmp_path: Path) -> None:
+    (tmp_path / "out.py").write_text("ok\n", encoding="utf-8")
+    decision = should_recover_stalled_task(
+        task_id="ASE2-002",
+        outputs=["out.py"],
+        repo_root=tmp_path,
+        attempt_count=1,
+        max_repair_rounds=3,
+        last_returncode=1,
+        last_failure_text="provider_review_pending",
+        board_status="completed",
+    )
+    assert decision is not None
+    assert decision.soft_complete_board is False
+    assert decision.defer_review_pending is True
+
+
+def test_quiet_recognition_does_not_soft_complete(tmp_path: Path) -> None:
+    (tmp_path / "out.py").write_text("ok\n", encoding="utf-8")
+    decision = should_recover_stalled_task(
+        task_id="T",
+        outputs=["out.py"],
+        repo_root=tmp_path,
+        attempt_count=0,
+        max_repair_rounds=3,
+        last_returncode=None,
+        board_status="todo",
+    )
+    assert decision is not None
+    assert decision.action == "recognize_landed_outputs"
+    assert decision.reset_attempt_budget is False
+    assert decision.soft_complete_board is False
