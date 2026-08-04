@@ -1,0 +1,122 @@
+{
+  "agent_authored_approval_forbidden": true,
+  "agent_may_not_mark_complete": true,
+  "approval_complete": false,
+  "canonical_binding": {
+    "adversarial_receipt_digest_sha256": "12f330c257459f3f74a0f541eedb8bacfa4cea159d5d79f431e7e38c0d7a84b7",
+    "approval_scope": "Deployment approval for the project-owned production-authorization-replacement provider only, bound to commit 2bfe7ec446c69d0b5a3c7ec546fa4013bb5d9c4d / tree 99aa0f15216ea0fcc9fca3677c8966171338533b. Does not approve Microsoft SecPAL live use, does not complete FVT-G219, and does not waive publication or supervisor gates.",
+    "clean_room_record_digest_sha256": "7db00c6a27fb35556d1b2080b4ee7e9ca52cbe5ac9964281a9c811a74d05b1bd",
+    "dependency_license_inventory_digest_sha256": "d8b0367face7c3e75fb59dadb408247744784a557aa7344bc7f06eb47e093739",
+    "expiry_or_review_at": "2027-08-04T22:10:53Z",
+    "implementation_commit": "2bfe7ec446c69d0b5a3c7ec546fa4013bb5d9c4d",
+    "implementation_tree": "99aa0f15216ea0fcc9fca3677c8966171338533b",
+    "operational_controls": "In-process Python provider only; no external SecPAL binary install; fail-closed authorization ceiling; denial-safety and deterministic replay required; lazy install does not acquire restricted Microsoft artifacts; deployment remains gated on this G232 envelope and publication gates.",
+    "patent_ip_disposition": "Project-owned clean-room implementation of a separately named production-authorization-replacement provider derived from public formal specifications; no claim of Microsoft SecPAL authority, trademark, or restricted-bytes lineage; independent legal review required.",
+    "residual_risks": [
+      "Microsoft SecPAL research EULA / live vendor (FVT-G219) remains blocked and non-promotable",
+      "AVR publication gates (supervisor, origin/main, gitlinks, post-merge) still open",
+      "Branch not yet reachable from origin/main; live cohort hard-zero is branch-clearable only",
+      "Signature digests in this package are placeholders until external signers attach real signatures"
+    ],
+    "revocation_mechanism": "Revoke by writing status=revoked on the G232 envelope at docs/architecture/formal_verification_authorization_replacement_approval.json with a new receipt_digest_sha256, or by superseding with a later-dated envelope that fails implementation_commit/tree binding; operators must fail closed on expired, wrong-tree, unsigned, or revoked envelopes.",
+    "semantic_receipt_digest_sha256": "68e9ed4318f1756d06720bf0098b0171fa64f310556a6912b0f82d5de2b82691",
+    "supported_platforms": [
+      "linux-aarch64",
+      "linux-x86_64"
+    ],
+    "threat_model_digest_sha256": "3ae8dc7ee8466237cce908845f0e350894c82721f7a9d784755bc3f7db0ff822"
+  },
+  "canonical_binding_digest_sha256": "3805f560a243d65ea40c2effdcf1117796e8f5c97f4d580b1197c65cd9bd41fd",
+  "deployment_owner_approval_complete": false,
+  "disclosures": {
+    "chat_or_roleplay_approval_is_not_a_signature": true,
+    "does_not_claim_microsoft_secpal_authority": true,
+    "does_not_complete_fvt_g219": true,
+    "does_not_embed_privileged_review_material": true,
+    "does_not_mark_g232_complete": true
+  },
+  "goal_id": "FVT-G232",
+  "interface": "AuthorizationReplacementExternalApprovalSignerPackage@1",
+  "legal_approval_complete": false,
+  "observed_at": "2026-08-04T22:10:53Z",
+  "purpose": "Public-safe binding package prepared by the implementation agent for independent external legal/IP, security, and deployment-owner signers. This package is NOT a completed G232 approval. Signers must replace placeholder signature digests with digests of their independent signatures over the canonical binding body and set the official envelope to external_approval_complete only after three distinct human signers sign.",
+  "schema_version": "authorization-replacement-external-approval-signer-package/v1",
+  "security_approval_complete": false,
+  "self_approval_forbidden": true,
+  "signer_instructions": {
+    "required_roles": [
+      "legal_ip_reviewer",
+      "security_reviewer",
+      "deployment_owner"
+    ],
+    "rules": [
+      "Three distinct human identities required (no agent/bot/automation tokens in identity).",
+      "Each signer produces a signature over the canonical_binding JSON (sort_keys, separators comma-colon, ensure_ascii).",
+      "Record signature_digest_sha256 as sha256 hex of the raw signature bytes (or signed statement).",
+      "Do not set approval_complete until all three roles have signed the same binding.",
+      "Copy the completed envelope into formal_verification_authorization_replacement_approval.json only after signing.",
+      "Chat messages are not signatures; this package deliberately remains incomplete."
+    ],
+    "signers_template": {
+      "deployment_owner": {
+        "identity": "<HUMAN_IDENTITY_FOR_DEPLOYMENT_OWNER>",
+        "signature_digest_sha256": null,
+        "signed": false,
+        "signed_statement": "I, as deployment_owner, approve the production-authorization-replacement provider bound to implementation_commit=2bfe7ec446c69d0b5a3c7ec546fa4013bb5d9c4d implementation_tree=99aa0f15216ea0fcc9fca3677c8966171338533b under the approval_scope and residual_risks in canonical_binding."
+      },
+      "legal_ip_reviewer": {
+        "identity": "<HUMAN_IDENTITY_FOR_LEGAL_IP_REVIEWER>",
+        "signature_digest_sha256": null,
+        "signed": false,
+        "signed_statement": "I, as legal_ip_reviewer, approve the production-authorization-replacement provider bound to implementation_commit=2bfe7ec446c69d0b5a3c7ec546fa4013bb5d9c4d implementation_tree=99aa0f15216ea0fcc9fca3677c8966171338533b under the approval_scope and residual_risks in canonical_binding."
+      },
+      "security_reviewer": {
+        "identity": "<HUMAN_IDENTITY_FOR_SECURITY_REVIEWER>",
+        "signature_digest_sha256": null,
+        "signed": false,
+        "signed_statement": "I, as security_reviewer, approve the production-authorization-replacement provider bound to implementation_commit=2bfe7ec446c69d0b5a3c7ec546fa4013bb5d9c4d implementation_tree=99aa0f15216ea0fcc9fca3677c8966171338533b under the approval_scope and residual_risks in canonical_binding."
+      }
+    }
+  },
+  "status": "awaiting_external_signatures",
+  "supporting_records": {
+    "adversarial_sources": [
+      "test/integration/toolchains/test_production_authorization_replacement.py",
+      "test/api/test_logic_receipt_authority_boundary.py"
+    ],
+    "clean_room_record": {
+      "decompiled_code_used": false,
+      "design_basis": "public formal specifications (Becker\u2013Fournet\u2013Gordon style can-say / can-act-as)",
+      "implementation_origin": "project-owned clean-room",
+      "microsoft_msi_used": false,
+      "microsoft_vendor_compatibility_claim": false,
+      "provider_id": "production-authorization-replacement",
+      "provider_module": "ipfs_datasets_py/ipfs_datasets_py/logic/backends/secpal_style_authorization.py",
+      "provider_module_digest_sha256": "398b69ebec0f947dd31c236a4f6728fb0458107d31fc502b0328ebdb31be806c",
+      "restricted_bytes_used": false,
+      "sample_source_used": false,
+      "schema": "formal-verification-clean-room-record@1",
+      "source_receipt": "docs/architecture/formal_verification_production_authorization_replacement_receipt.json",
+      "source_receipt_digest_sha256": "a44814141e357e457acc699e67535c8740d1a9656e059159d1137369cc3e6b1c",
+      "trademark_implication": false
+    },
+    "dependency_license_inventory": {
+      "external_binary_dependencies": [],
+      "implementation_language": "Python",
+      "notes": "In-process replacement provider; no Microsoft SecPAL MSI or restricted bytes.",
+      "project_owned_modules": [
+        {
+          "digest_sha256": "398b69ebec0f947dd31c236a4f6728fb0458107d31fc502b0328ebdb31be806c",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/logic/backends/secpal_style_authorization.py"
+        }
+      ],
+      "provider_id": "production-authorization-replacement",
+      "restricted_vendor_artifacts": [],
+      "schema": "formal-verification-dependency-license-inventory@1"
+    },
+    "production_replacement_receipt": "docs/architecture/formal_verification_production_authorization_replacement_receipt.json",
+    "semantic_receipt_path": "docs/architecture/formal_verification_replayed_hyper_authorization_semantics.json",
+    "threat_model_path": "docs/architecture/agent_supervisor_codebase_proof_zk_threat_model.md"
+  },
+  "task_id": "FVT-099B"
+}

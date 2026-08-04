@@ -11864,11 +11864,63 @@ def _audit_ergoai_authoritative_live(
     }
 
 
+def _observe_checkout_git_identity(checkout: Path) -> dict[str, Any]:
+    """Resolve HEAD/origin only when *checkout* is its own git toplevel.
+
+    Bare or uninitialized submodule directories often contain files while
+    ``git -C <path> rev-parse HEAD`` walks up to a parent repository.  That
+    parent walk must not be treated as a successful gitlink checkout match.
+    """
+
+    if not checkout.is_dir():
+        return {
+            "checkout_present": False,
+            "own_repository": False,
+            "checkout_head": None,
+            "origin_main": None,
+            "working_tree_clean": False,
+        }
+
+    toplevel = _git_stdout(checkout, "rev-parse", "--show-toplevel")
+    try:
+        own_repository = bool(
+            toplevel and Path(toplevel).resolve() == checkout.resolve()
+        )
+    except OSError:
+        own_repository = False
+    if not own_repository:
+        return {
+            "checkout_present": True,
+            "own_repository": False,
+            "checkout_head": None,
+            "origin_main": None,
+            # Not a nested worktree: treat as unclean/unusable for binding.
+            "working_tree_clean": False,
+        }
+
+    head = _git_stdout(checkout, "rev-parse", "HEAD")
+    origin = _git_stdout(checkout, "rev-parse", "origin/main")
+    porcelain = _git_stdout(
+        checkout,
+        "status",
+        "--porcelain",
+        allow_empty=True,
+    )
+    return {
+        "checkout_present": True,
+        "own_repository": True,
+        "checkout_head": head,
+        "origin_main": origin,
+        "working_tree_clean": porcelain == "",
+    }
+
+
 def _observe_recursive_gitlinks(repo_root: Path) -> dict[str, Any]:
     """Inspect checked-out gitlinks recursively without fetching or mutation."""
 
     rows: list[dict[str, Any]] = []
     visited: set[Path] = set()
+    seen_paths: set[str] = set()
 
     def visit(repository: Path, prefix: str) -> None:
         resolved = repository.resolve()
@@ -11891,36 +11943,26 @@ def _observe_recursive_gitlinks(repo_root: Path) -> dict[str, Any]:
                 continue
             pinned = parts[2]
             relative = Path(raw_path)
-            checkout = repository / relative
-            head = (
-                _git_stdout(checkout, "rev-parse", "HEAD")
-                if checkout.is_dir()
-                else None
-            )
-            origin = (
-                _git_stdout(checkout, "rev-parse", "origin/main")
-                if checkout.is_dir()
-                else None
-            )
-            porcelain = (
-                _git_stdout(
-                    checkout,
-                    "status",
-                    "--porcelain",
-                    allow_empty=True,
-                )
-                if checkout.is_dir()
-                else None
-            )
+            # Skip ls-tree noise such as ``submodule/.`` when present.
+            if relative.name in {"", "."}:
+                continue
             path = f"{prefix}/{relative.as_posix()}".lstrip("/")
+            if path in seen_paths:
+                continue
+            seen_paths.add(path)
+            checkout = repository / relative
+            identity = _observe_checkout_git_identity(checkout)
+            head = identity.get("checkout_head")
+            origin = identity.get("origin_main")
             row = {
                 "path": path,
                 "mode": "160000",
                 "pinned_commit": pinned,
-                "checkout_present": checkout.is_dir(),
+                "checkout_present": bool(identity.get("checkout_present")),
+                "own_repository": bool(identity.get("own_repository")),
                 "checkout_head": head,
                 "origin_main": origin,
-                "working_tree_clean": porcelain == "",
+                "working_tree_clean": bool(identity.get("working_tree_clean")),
                 "matches_checkout": bool(head and pinned == head),
                 "published_to_origin_main": bool(origin and pinned == origin),
             }
@@ -11928,19 +11970,21 @@ def _observe_recursive_gitlinks(repo_root: Path) -> dict[str, Any]:
                 row[key] is True
                 for key in (
                     "checkout_present",
+                    "own_repository",
                     "working_tree_clean",
                     "matches_checkout",
                     "published_to_origin_main",
                 )
             )
             rows.append(row)
-            if checkout.is_dir():
+            if identity.get("own_repository"):
                 visit(checkout, path)
 
     visit(repo_root, "")
     return {
         "valid": bool(rows) and all(row["bound"] for row in rows),
         "gitlink_count": len(rows),
+        "bound_count": sum(1 for row in rows if row.get("bound")),
         "rows": rows,
         "network_used": False,
         "fetch_attempted": False,
