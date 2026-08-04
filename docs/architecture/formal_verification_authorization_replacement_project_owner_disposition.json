@@ -1,8 +1,8 @@
 {
   "binding": {
     "external_provider_id_not_used": "secpal",
-    "implementation_commit": "fa16a60981da7ecd3178b60c443b644d15ecea40",
-    "implementation_tree": "5c1d76ba8a348cbab00d8c6b09eb162c44ddef0a",
+    "implementation_commit": "ff3500b34a95c22f88840dc9acab3874fb1e79e9",
+    "implementation_tree": "b1bcbd9fb77b6fe2cbf93c484ac41f7db5d60438",
     "provider_id": "production-authorization-replacement",
     "reference_provider_id": "secpal-authorization"
   },
@@ -28,7 +28,7 @@
   "disposition_complete": true,
   "goal_id": "FVT-G232",
   "interface": "AuthorizationReplacementProjectOwnerDisposition@1",
-  "observed_at": "2026-08-04T23:10:21Z",
+  "observed_at": "2026-08-04T23:12:47Z",
   "policy": {
     "agent_may_not_forge_external_counsel_signatures": true,
     "agent_may_record_owner_directed_disposition": true,
@@ -44,7 +44,7 @@
     "Public authorization-research concepts associated with SecPAL-era papers are decades old; they are not treated as a live patent blocker for shipping own clean-room software that does not use Microsoft artifacts.",
     "FVT-G219 Microsoft SecPAL live authority remains blocked and is not completed by this disposition."
   ],
-  "receipt_digest_sha256": "6292ec5c1839c1567a31a79b6d5b8e995fc5a0a3c1ccbc477397c52edc301134",
+  "receipt_digest_sha256": "d301d7afb6727e4a7b3004f74e0eb3ef583543bf2029d1679a12748a8411e121",
   "satisfies_fvt_g232_deployment_disposition": true,
   "schema_version": "authorization-replacement-project-owner-disposition/v1",
   "status": "project_owner_disposition_complete",
