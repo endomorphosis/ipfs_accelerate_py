@@ -98,8 +98,10 @@ PRODUCTION_ELEVATION_FANIN_VALIDATION_COMMAND: Final = (
 
 # Authoritative vendor release reissue (FVT-G221 / FVT-089).  This is a
 # post-merge *gate*, not a way to manufacture missing external authority.  A
-# blocked receipt is still a useful, content-addressed release artifact: it
-# binds the evidence that was available and names every unmet condition.
+# blocked receipt is still a useful, content-addressed release assessment:
+# assessment_complete may be true while deployment_ready is false whenever any
+# dependency is missing, stale, unsupported, license-ineligible, externally
+# blocked, fixture, shim, proposal-only, or below its authority ceiling.
 AUTHORITATIVE_VENDOR_RELEASE_INTERFACE: Final = (
     "FormalVerificationAuthoritativeVendorRelease@1"
 )
@@ -110,6 +112,50 @@ AUTHORITATIVE_VENDOR_RELEASE_GOAL_ID: Final = "FVT-G221"
 AUTHORITATIVE_VENDOR_RELEASE_TASK_ID: Final = "FVT-089"
 AUTHORITATIVE_VENDOR_RELEASE_PROGRAM: Final = (
     "formal-verification-tactician/authoritative-vendor-release"
+)
+AUTHORITATIVE_VENDOR_RELEASE_DEPENDENCY_KEYS: Final[tuple[str, ...]] = (
+    "end_to_end_assurance_matrix",
+    "secpal_authoritative_live",
+    "ergoai_managed_vendor_live",
+    "role_aware_release_candidate",
+    "post_merge_deployment_attestation",
+    "tactician_completion",
+)
+AUTHORITATIVE_VENDOR_RELEASE_DEPENDENCY_BINDING_KEYS: Final[tuple[str, ...]] = (
+    "path",
+    "present",
+    "reachable",
+    "binding_valid",
+    "fresh",
+    "public_safe",
+    "binding_failures",
+    "freshness",
+    "public_evidence_audit",
+)
+AUTHORITATIVE_VENDOR_RELEASE_ACCEPTANCE_KEYS: Final[tuple[str, ...]] = (
+    "dependencies_reachable",
+    "dependencies_content_identity_bound",
+    "dependencies_fresh",
+    "clean_wheel_evidence_bound",
+    "lazy_install_receipts_bound",
+    "exact_dependency_and_platform_identities_bound",
+    "every_readiness_axis_jointly_ready",
+    "complete_specialized_semantic_cases_bound",
+    "secpal_authoritative_live_receipt_bound",
+    "secpal_production_use_permitted",
+    "ergoai_managed_vendor_live_receipt_bound",
+    "authority_ceilings_bound",
+    "disagreement_quarantines_bound",
+    "public_safe_envelopes_bound",
+    "release_candidate_bound_and_ready",
+    "post_merge_attestation_bound_and_ready",
+    "durable_supervisor_completion_bound",
+    "source_and_merged_trees_bound",
+    "recursive_gitlinks_bound",
+    "origin_publication_bound",
+    "tactician_completion_bound_and_clear",
+    "no_fixture_shim_unsupported_proposal_or_stale_lane",
+    "current_task_future_merge_not_claimed",
 )
 AUTHORITATIVE_VENDOR_RELEASE_VALIDATION_COMMAND: Final = (
     "PYTHONPATH=ipfs_datasets_py python -m pytest "
@@ -11407,6 +11453,127 @@ def _observe_recursive_gitlinks(repo_root: Path) -> dict[str, Any]:
     }
 
 
+def _authoritative_assessment_complete(receipt: Mapping[str, Any]) -> bool:
+    """Validate the shape and internal consistency of an FVT-G221 assessment.
+
+    This deliberately does not require every deployment acceptance flag to be
+    true. Missing, stale, unsupported, or externally blocked evidence is a
+    valid assessment result when it is represented by a complete binding and
+    an exact blocker. Public-surface approval is applied separately, after the
+    candidate assessment claim itself has been included in the audited body.
+    """
+
+    dependencies = receipt.get("dependency_bindings")
+    acceptance = receipt.get("acceptance")
+    blockers = receipt.get("blockers")
+    blocker_details = receipt.get("blocker_details")
+    claims = receipt.get("claims")
+    known = receipt.get("known_secpal_release")
+    evidence = receipt.get("evidence")
+    if not all(
+        isinstance(value, Mapping)
+        for value in (dependencies, acceptance, claims, known, evidence)
+    ):
+        return False
+    if not isinstance(blockers, list) or not all(
+        isinstance(value, str) for value in blockers
+    ):
+        return False
+    if not isinstance(blocker_details, list) or not all(
+        isinstance(value, str) for value in blocker_details
+    ):
+        return False
+
+    expected_dependency_keys = set(AUTHORITATIVE_VENDOR_RELEASE_DEPENDENCY_KEYS)
+    if set(dependencies) != expected_dependency_keys:
+        return False
+    required_binding_keys = set(
+        AUTHORITATIVE_VENDOR_RELEASE_DEPENDENCY_BINDING_KEYS
+    )
+    for key in AUTHORITATIVE_VENDOR_RELEASE_DEPENDENCY_KEYS:
+        binding = dependencies.get(key)
+        if not isinstance(binding, Mapping):
+            return False
+        if not required_binding_keys.issubset(binding):
+            return False
+        if not all(
+            isinstance(binding.get(flag), bool)
+            for flag in (
+                "present",
+                "reachable",
+                "binding_valid",
+                "fresh",
+                "public_safe",
+            )
+        ):
+            return False
+        if not isinstance(binding.get("binding_failures"), list):
+            return False
+        if not isinstance(binding.get("freshness"), Mapping):
+            return False
+        if not isinstance(binding.get("public_evidence_audit"), Mapping):
+            return False
+
+    if set(acceptance) != set(AUTHORITATIVE_VENDOR_RELEASE_ACCEPTANCE_KEYS):
+        return False
+    if not all(
+        isinstance(acceptance.get(key), bool)
+        for key in AUTHORITATIVE_VENDOR_RELEASE_ACCEPTANCE_KEYS
+    ):
+        return False
+    expected_blockers = sorted(
+        key for key, satisfied in acceptance.items() if not satisfied
+    )
+    if blockers != expected_blockers:
+        return False
+    if blocker_details != sorted(set(blocker_details)):
+        return False
+
+    deployment_ready = receipt.get("deployment_ready")
+    assessment_claim = receipt.get("assessment_complete")
+    if not isinstance(deployment_ready, bool):
+        return False
+    if not isinstance(assessment_claim, bool):
+        return False
+    if claims.get("deployment_ready") is not deployment_ready:
+        return False
+    if claims.get("assessment_complete") is not assessment_claim:
+        return False
+    if deployment_ready != all(acceptance.values()):
+        return False
+    expected_status = (
+        "authoritative_vendor_release_ready_for_publication"
+        if deployment_ready
+        else "authoritative_vendor_release_blocked"
+    )
+    if receipt.get("status") != expected_status:
+        return False
+
+    expected_terms = [
+        DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_RELATIVE.as_posix(),
+        DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_TEST_RELATIVE.as_posix(),
+    ]
+    return bool(
+        receipt.get("schema_version")
+        == AUTHORITATIVE_VENDOR_RELEASE_SCHEMA_VERSION
+        and receipt.get("interface") == AUTHORITATIVE_VENDOR_RELEASE_INTERFACE
+        and receipt.get("goal_id") == AUTHORITATIVE_VENDOR_RELEASE_GOAL_ID
+        and receipt.get("task_id") == AUTHORITATIVE_VENDOR_RELEASE_TASK_ID
+        and receipt.get("program") == AUTHORITATIVE_VENDOR_RELEASE_PROGRAM
+        and acceptance.get("current_task_future_merge_not_claimed") is True
+        and claims.get("current_task_merge") is False
+        and claims.get("current_release_artifact_published") is False
+        and claims.get("self_referential_current_tree") is False
+        and known.get("artifact_bytes_embedded") is False
+        and known.get("eula_text_embedded") is False
+        and known.get("msi_sha256") == SECPAL_RESEARCH_RELEASE_MSI_SHA256
+        and known.get("eula_sha256") == SECPAL_RESEARCH_RELEASE_EULA_SHA256
+        and known.get("production_purpose_disposition")
+        == "not_intended_for_live_environment"
+        and evidence.get("objective_evidence_terms") == expected_terms
+    )
+
+
 def build_authoritative_vendor_release(
     *,
     repo_root: Path,
@@ -11745,12 +11912,18 @@ def build_authoritative_vendor_release(
             else "authoritative_vendor_release_blocked"
         ),
         "deployment_ready": deployment_ready,
+        # Derived below and finalized before the public-policy audit so the
+        # exact affirmative claim is part of the body the auditor inspects.
+        "assessment_complete": False,
         "description": (
-            "Content-addressed, fail-closed reissue gate for packaging, lazy "
-            "installers, readiness axes, genuine SecPAL and ErgoAI execution, "
-            "authority ceilings, supervisor completion, trees, gitlinks, and "
-            "origin publication. Authentic provenance never substitutes for "
-            "platform, semantics, license, freshness, or deployment authority."
+            "Content-addressed, fail-closed authoritative-vendor release "
+            "assessment for packaging, lazy installers, readiness axes, "
+            "genuine SecPAL and ErgoAI execution, authority ceilings, "
+            "supervisor completion, trees, gitlinks, and origin publication. "
+            "assessment_complete may be true while deployment_ready is false "
+            "when blockers remain disclosed. Authentic provenance never "
+            "substitutes for platform, semantics, license, freshness, or "
+            "deployment authority."
         ),
         "policy": {
             "max_evidence_age_seconds": max_evidence_age_seconds,
@@ -11812,6 +11985,7 @@ def build_authoritative_vendor_release(
         "blockers": blockers,
         "blocker_details": blocker_details,
         "claims": {
+            "assessment_complete": False,
             "deployment_ready": deployment_ready,
             "current_task_merge": False,
             "current_release_artifact_published": False,
@@ -11830,6 +12004,10 @@ def build_authoritative_vendor_release(
             "validation_command": (
                 AUTHORITATIVE_VENDOR_RELEASE_VALIDATION_COMMAND
             ),
+            "objective_evidence_terms": [
+                DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_RELATIVE.as_posix(),
+                DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_TEST_RELATIVE.as_posix(),
+            ],
         },
         "notes": [
             "The recovered Microsoft MSI signature, hash, ProductCode, and "
@@ -11841,8 +12019,17 @@ def build_authoritative_vendor_release(
             "ErgoAI remains bounded by its advisory authority ceiling even "
             "when genuine managed-vendor execution is complete.",
             "This receipt never attests FVT-089's own future merge or publication.",
+            "assessment_complete records a finished fail-closed fan-in; it does "
+            "not imply deployment_ready when blockers remain disclosed.",
         ],
     }
+    assessment_complete = _authoritative_assessment_complete(receipt)
+    receipt["assessment_complete"] = assessment_complete
+    receipt["claims"]["assessment_complete"] = assessment_complete
+
+    # The public auditor must observe the finalized candidate claim. An audit
+    # failure demotes that claim and the public deployment acceptance; it can
+    # never be repaired by merely recomputing a digest over the final receipt.
     public_policy = _authoritative_public_audit(
         certifier=certifier,
         payload=receipt,
@@ -11851,12 +12038,25 @@ def build_authoritative_vendor_release(
     receipt["public_evidence_policy"] = public_policy
     if public_policy.get("satisfied") is not True:
         receipt["acceptance"]["public_safe_envelopes_bound"] = False
-        receipt["deployment_ready"] = False
-        receipt["claims"]["deployment_ready"] = False
-        receipt["status"] = "authoritative_vendor_release_blocked"
-        if "public_safe_envelopes_bound" not in receipt["blockers"]:
-            receipt["blockers"].append("public_safe_envelopes_bound")
-            receipt["blockers"].sort()
+        receipt["deployment_ready"] = all(receipt["acceptance"].values())
+        receipt["claims"]["deployment_ready"] = receipt["deployment_ready"]
+        receipt["status"] = (
+            "authoritative_vendor_release_ready_for_publication"
+            if receipt["deployment_ready"]
+            else "authoritative_vendor_release_blocked"
+        )
+        receipt["blockers"] = sorted(
+            key
+            for key, satisfied in receipt["acceptance"].items()
+            if not satisfied
+        )
+        receipt["assessment_complete"] = False
+        receipt["claims"]["assessment_complete"] = False
+    elif not _authoritative_assessment_complete(receipt):
+        # Fail closed if an auditor or future extension mutated the assessment
+        # into an internally inconsistent shape during the audit boundary.
+        receipt["assessment_complete"] = False
+        receipt["claims"]["assessment_complete"] = False
     receipt["release_identity"] = content_digest(receipt)
     return receipt
 
