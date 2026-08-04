@@ -11461,6 +11461,246 @@ def test_isolated_gitlink_recording_cacheinfo_without_checkout_when_object_reach
     assert _git(workspace, "rev-parse", "HEAD:libs/child") == merged_commit
 
 
+
+def test_completion_persistence_recovery_coalesces_missing_commits(tmp_path):
+    """Recovery must reconstruct merge tips stored only under proofs."""
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-b", "implementation/auto-persist")
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "AUTO-PERSIST: feature")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", "implementation/auto-persist")
+    merge_commit = _git(repo, "rev-parse", "HEAD")
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_root=tmp_path / "worktrees",
+    )
+    recovery = {
+        "reason": "completion_persistence_failed",
+        "task_id": "AUTO-PERSIST",
+        "implementation_commit": implementation_commit,
+        "landed_commit": "",
+        "merge_commit": "",
+        "cleanup_cleaned": True,
+        "completion_task_cids": {"AUTO-PERSIST": "cid-auto-persist"},
+        "integration_commit_proof": {
+            "passed": True,
+            "implementation_commit": implementation_commit,
+            "integration_commit": merge_commit,
+            "integration_ref": merge_commit,
+            "target_branch": "main",
+            "reasons": [],
+        },
+        "merge_result": {
+            "merged": True,
+            "merge_commit": merge_commit,
+        },
+    }
+    landed, merge = daemon._coalesce_landed_completion_commits(
+        recovery,
+        implementation_commit=implementation_commit,
+    )
+    assert landed == implementation_commit
+    assert merge == merge_commit
+
+    revalidated = daemon._revalidated_landed_completion_recovery(
+        recovery,
+        task_id="AUTO-PERSIST",
+        implementation_commit=implementation_commit,
+        completion_task_cids={"AUTO-PERSIST": "cid-auto-persist"},
+        target_branch="main",
+    )
+    assert revalidated["passed"] is True, revalidated
+    assert revalidated["landed_commit"] == implementation_commit
+    assert revalidated["merge_commit"] == merge_commit
+
+
+def test_invalid_persistence_recovery_falls_through_when_tip_already_on_target(
+    tmp_path,
+):
+    """Invalid recovery evidence must fall through when tip is already on target."""
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "implementation/auto-fallthrough")
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "AUTO-FALL: feature")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", "implementation/auto-fallthrough")
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+    )
+    assert daemon._git_ref_is_ancestor(implementation_commit, "main") is True
+
+    # Broken recovery payload (empty tips, failed proof) would previously
+    # record completion_persistence_recovery_evidence_invalid forever.
+    broken_recovery = {
+        "reason": "completion_persistence_failed",
+        "task_id": "AUTO-FALL",
+        "implementation_commit": implementation_commit,
+        "landed_commit": "",
+        "merge_commit": "",
+        "cleanup_cleaned": False,
+        "completion_task_cids": {"AUTO-FALL": "cid-auto-fall"},
+        "integration_commit_proof": {
+            "passed": False,
+            "reasons": ["integration_commit_missing"],
+            "implementation_commit": "",
+            "integration_commit": "",
+            "integration_ref": "",
+            "target_branch": "main",
+        },
+    }
+    revalidated = daemon._revalidated_landed_completion_recovery(
+        broken_recovery,
+        task_id="AUTO-FALL",
+        implementation_commit=implementation_commit,
+        completion_task_cids={"AUTO-FALL": "cid-auto-fall"},
+        target_branch="main",
+    )
+    assert revalidated["passed"] is False
+
+    recorded: list[tuple[str, dict]] = []
+    daemon._record_event = (  # type: ignore[method-assign]
+        lambda event_type, payload=None, **kwargs: recorded.append(
+            (event_type, dict(payload or {}))
+        )
+    )
+
+    # Drive the recovery branch of reconcile with a synthetic candidate.
+    # Fall-through should emit recovery_bypassed and continue into landed path.
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalTask,
+    )
+
+    task = PortalTask(
+        task_id="AUTO-FALL",
+        title="Already landed feature",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["feature.txt"],
+    )
+    daemon._load_tasks = lambda: [task]  # type: ignore[method-assign]
+    daemon._historical_completion_tasks_and_binding = (  # type: ignore[method-assign]
+        lambda event, current_task: ([current_task], {"AUTO-FALL": "cid-auto-fall"}, "")
+    )
+    daemon._failed_merge_candidates = lambda **kwargs: [  # type: ignore[method-assign]
+        {
+            "task_id": "AUTO-FALL",
+            "attempt": 1,
+            "branch": "implementation/auto-fallthrough",
+            "implementation_commit": implementation_commit,
+            "completion_persistence_recovery": broken_recovery,
+            "validation_proof": {},
+        }
+    ]
+    # Avoid partition filtering.
+    daemon._partition_stale_failed_merge_candidates = (  # type: ignore[method-assign]
+        lambda candidates: (list(candidates), [])
+    )
+    daemon._select_failed_merge_candidates_for_reconciliation = (  # type: ignore[method-assign]
+        lambda candidates, max_merges, deprioritized_task_ids=None: list(candidates)[:max_merges]
+    )
+    daemon._preserve_generated_nested_worktree_directories = (  # type: ignore[method-assign]
+        lambda: []
+    )
+    daemon._reconciliation_blocking_dirty_paths = (  # type: ignore[method-assign]
+        lambda candidates, target_branch: ([], [])
+    )
+    # Landed path will attempt completion; stub to prove fall-through reached it.
+    called = {"landed": False}
+
+    def _fake_declared(*args, **kwargs):
+        called["landed"] = True
+        return {"passed": True, "reason": "ok"}
+
+    daemon._declared_output_tracking_invariant = _fake_declared  # type: ignore[method-assign]
+    daemon._mark_reconciled_completion_in_todo = (  # type: ignore[method-assign]
+        lambda *args, **kwargs: {
+            "updated": True,
+            "updated_task_ids": ["AUTO-FALL"],
+            "already_completed_task_ids": [],
+            "completion_receipts": [
+                {
+                    "task_id": "AUTO-FALL",
+                    "canonical_task_cid": "cid-auto-fall",
+                    "status": "succeeded",
+                }
+            ],
+            "commit_result": {"committed": True, "commit": "abc"},
+        }
+    )
+    daemon._reconciled_completion_persisted = (  # type: ignore[method-assign]
+        lambda todo_update_result, completion_task_cids: {
+            "passed": True,
+            "reason": "ok",
+        }
+    )
+    daemon._cleanup_merged_worktree = (  # type: ignore[method-assign]
+        lambda *args, **kwargs: {"cleaned": True}
+    )
+    daemon._merge_submodule_branches_to_main = (  # type: ignore[method-assign]
+        lambda *args, **kwargs: []
+    )
+    daemon._blocking_submodule_merge_failures = (  # type: ignore[method-assign]
+        lambda *args, **kwargs: []
+    )
+    daemon._immutable_integration_commit = (  # type: ignore[method-assign]
+        lambda merge_result, implementation_commit="", target_branch="": {
+            "passed": True,
+            "integration_commit": _git(repo, "rev-parse", "HEAD"),
+            "implementation_commit": implementation_commit,
+            "integration_ref": _git(repo, "rev-parse", "HEAD"),
+            "target_branch": target_branch,
+            "reasons": [],
+        }
+    )
+
+    results = daemon._reconcile_failed_merges()
+    bypass_events = [item for item in recorded if item[0] == "completion_persistence_recovery_bypassed"]
+    assert bypass_events, recorded
+    assert called["landed"] is True
+    assert results
+    assert any(item.get("resolved") is True for item in results), results
+
+
 def test_implementation_daemon_records_nested_gitlink_chain_and_preserves_local_dirt(
     tmp_path,
 ):

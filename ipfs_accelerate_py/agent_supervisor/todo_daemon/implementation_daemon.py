@@ -40472,6 +40472,42 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 blocking.append(relative)
         return blocking, nonblocking
 
+    @staticmethod
+    def _coalesce_landed_completion_commits(
+        recovery: Mapping[str, Any],
+        *,
+        implementation_commit: str = "",
+    ) -> tuple[str, str]:
+        """Recover landed/merge tips from proof or merge_result when omitted.
+
+        Historical ``completion_persistence_failed`` events often store the
+        durable merge tip only under ``integration_commit_proof`` /
+        ``merge_result`` while top-level ``landed_commit`` / ``merge_commit``
+        are empty. Without coalescing, recovery revalidation fails forever and
+        freezes dependency unlock even though the tip is already on target.
+        """
+
+        proof = recovery.get("integration_commit_proof")
+        proof_map = proof if isinstance(proof, Mapping) else {}
+        merge_result = recovery.get("merge_result")
+        merge_map = merge_result if isinstance(merge_result, Mapping) else {}
+        landed = (
+            str(recovery.get("landed_commit") or "").strip()
+            or str(proof_map.get("implementation_commit") or "").strip()
+            or str(
+                implementation_commit
+                or recovery.get("implementation_commit")
+                or ""
+            ).strip()
+        )
+        merge = (
+            str(recovery.get("merge_commit") or "").strip()
+            or str(proof_map.get("integration_commit") or "").strip()
+            or str(proof_map.get("integration_ref") or "").strip()
+            or str(merge_map.get("merge_commit") or "").strip()
+        )
+        return landed, merge
+
     def _revalidated_landed_completion_recovery(
         self,
         recovery: Mapping[str, Any],
@@ -40483,8 +40519,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     ) -> dict[str, Any]:
         """Revalidate one persistence-only recovery without remerging work."""
 
-        landed_commit = str(recovery.get("landed_commit") or "").strip()
-        merge_commit = str(recovery.get("merge_commit") or "").strip()
+        landed_commit, merge_commit = self._coalesce_landed_completion_commits(
+            recovery,
+            implementation_commit=implementation_commit,
+        )
         recorded_proof = recovery.get("integration_commit_proof")
         recorded_bindings = recovery.get("completion_task_cids")
         expected_bindings = {
@@ -40767,131 +40805,196 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         target_branch=target_branch,
                     )
                 )
-                target_commit = str(
-                    recovery_evidence.get("merge_commit") or ""
-                )
-                integration_commit_proof = recovery_evidence.get(
-                    "integration_commit_proof"
-                )
-                declared_output_invariant = (
-                    self._declared_output_tracking_invariant(
-                        completion_tasks,
-                        repository_ref=target_commit,
-                    )
-                    if (
-                        recovery_evidence.get("passed") is True
-                        and target_commit
-                    )
-                    else {
-                        "passed": False,
-                        "reason": (
-                            "completion_recovery_integration_unproven"
-                        ),
-                        "repository_ref": target_commit,
-                        "recovery_evidence": recovery_evidence,
-                    }
-                )
-                integration_ready = bool(
-                    recovery_evidence.get("passed") is True
-                    and declared_output_invariant.get("passed") is True
-                )
-                todo_update_result = (
-                    self._mark_reconciled_completion_in_todo(
-                        task,
-                        completion_tasks,
-                        completion_task_cids,
-                        implementation_commit=str(
-                            implementation_commit
-                            or recovery_evidence.get("landed_commit")
-                            or ""
-                        ),
-                        merge_commit=str(target_commit or ""),
-                        pre_merge_validation=(
-                            event.get("validation_proof")
-                            if isinstance(event.get("validation_proof"), Mapping)
-                            else None
-                        ),
-                    )
-                    if integration_ready
-                    else {}
-                )
-                completion_persistence = (
-                    self._reconciled_completion_persisted(
-                        todo_update_result,
-                        completion_task_cids,
-                    )
-                    if integration_ready
-                    else {
-                        "passed": False,
-                        "reason": "integration_not_ready",
-                    }
-                )
-                resolved = bool(
-                    integration_ready
-                    and completion_persistence.get("passed") is True
-                )
                 if recovery_evidence.get("passed") is not True:
-                    reconciliation_reason = (
-                        "completion_persistence_recovery_evidence_invalid"
-                    )
-                elif declared_output_invariant.get("passed") is not True:
-                    reconciliation_reason = (
-                        "post_merge_declared_outputs_missing"
-                    )
-                elif completion_persistence.get("passed") is not True:
-                    reconciliation_reason = "completion_persistence_failed"
-                else:
-                    reconciliation_reason = (
-                        "completion_persistence_recovered_from_landed_rewrite"
-                    )
-                result = {
-                    "task_id": task_id,
-                    "attempt": attempt,
-                    "branch": branch,
-                    "implementation_commit": implementation_commit,
-                    "landed_commit": str(
-                        recovery_evidence.get("landed_commit") or ""
-                    ),
-                    "merge_commit": target_commit,
-                    "completion_task_cids": completion_task_cids,
-                    "landed_ref_source": "completion_persistence_recovery",
-                    "resolved": resolved,
-                    "reason": reconciliation_reason,
-                    "merge_result": {
-                        "attempted": False,
-                        "merged": resolved,
-                        "reason": (
-                            "landed_rewrite_already_integrated"
-                            if recovery_evidence.get("passed") is True
-                            else "landed_rewrite_integration_unproven"
-                        ),
-                    },
-                    "cleanup_result": {
-                        "cleaned": (
-                            persistence_recovery.get("cleanup_cleaned")
-                            is True
-                        ),
-                        "reason": "historical_landed_cleanup_revalidated",
-                    },
-                    "post_merge_declared_output_invariant": (
-                        declared_output_invariant
-                    ),
-                    "integration_commit_proof": (
-                        integration_commit_proof
-                        if isinstance(
-                            integration_commit_proof,
-                            Mapping,
+                    # Invalid recovery blobs used to freeze reconciliation
+                    # forever. When the implementation tip is already on the
+                    # merge target, fall through to landed-target completion.
+                    if self._git_ref_is_ancestor(
+                        implementation_commit,
+                        target_branch,
+                    ):
+                        self._record_event(
+                            "completion_persistence_recovery_bypassed",
+                            {
+                                "task_id": task_id,
+                                "attempt": attempt,
+                                "implementation_commit": implementation_commit,
+                                "target_branch": target_branch,
+                                "recovery_reasons": list(
+                                    recovery_evidence.get("reasons") or []
+                                ),
+                                "reason": (
+                                    "fall_through_to_landed_target_reconciliation"
+                                ),
+                            },
                         )
+                    else:
+                        result = {
+                            "task_id": task_id,
+                            "attempt": attempt,
+                            "branch": branch,
+                            "implementation_commit": implementation_commit,
+                            "landed_commit": str(
+                                recovery_evidence.get("landed_commit") or ""
+                            ),
+                            "merge_commit": str(
+                                recovery_evidence.get("merge_commit") or ""
+                            ),
+                            "completion_task_cids": completion_task_cids,
+                            "landed_ref_source": (
+                                "completion_persistence_recovery"
+                            ),
+                            "resolved": False,
+                            "reason": (
+                                "completion_persistence_recovery_evidence_invalid"
+                            ),
+                            "merge_result": {
+                                "attempted": False,
+                                "merged": False,
+                                "reason": (
+                                    "landed_rewrite_integration_unproven"
+                                ),
+                            },
+                            "cleanup_result": {
+                                "cleaned": (
+                                    persistence_recovery.get(
+                                        "cleanup_cleaned"
+                                    )
+                                    is True
+                                ),
+                                "reason": (
+                                    "historical_landed_cleanup_revalidated"
+                                ),
+                            },
+                            "completion_persistence_recovery": (
+                                recovery_evidence
+                            ),
+                            "completion_persistence": {
+                                "passed": False,
+                                "reason": "integration_not_ready",
+                            },
+                        }
+                        self._record_event("merge_reconciled", result)
+                        results.append(result)
+                        continue
+                else:
+                    target_commit = str(
+                        recovery_evidence.get("merge_commit") or ""
+                    )
+                    integration_commit_proof = recovery_evidence.get(
+                        "integration_commit_proof"
+                    )
+                    declared_output_invariant = (
+                        self._declared_output_tracking_invariant(
+                            completion_tasks,
+                            repository_ref=target_commit,
+                        )
+                        if target_commit
+                        else {
+                            "passed": False,
+                            "reason": (
+                                "completion_recovery_integration_unproven"
+                            ),
+                            "repository_ref": target_commit,
+                            "recovery_evidence": recovery_evidence,
+                        }
+                    )
+                    integration_ready = bool(
+                        recovery_evidence.get("passed") is True
+                        and declared_output_invariant.get("passed") is True
+                    )
+                    todo_update_result = (
+                        self._mark_reconciled_completion_in_todo(
+                            task,
+                            completion_tasks,
+                            completion_task_cids,
+                            implementation_commit=str(
+                                implementation_commit
+                                or recovery_evidence.get("landed_commit")
+                                or ""
+                            ),
+                            merge_commit=str(target_commit or ""),
+                            pre_merge_validation=(
+                                event.get("validation_proof")
+                                if isinstance(
+                                    event.get("validation_proof"),
+                                    Mapping,
+                                )
+                                else None
+                            ),
+                        )
+                        if integration_ready
                         else {}
-                    ),
-                    "completion_persistence_recovery": recovery_evidence,
-                    "completion_persistence": completion_persistence,
-                }
-                if todo_update_result:
-                    result["todo_update_result"] = todo_update_result
-                self._record_event("merge_reconciled", result)
-                results.append(result)
-                continue
+                    )
+                    completion_persistence = (
+                        self._reconciled_completion_persisted(
+                            todo_update_result,
+                            completion_task_cids,
+                        )
+                        if integration_ready
+                        else {
+                            "passed": False,
+                            "reason": "integration_not_ready",
+                        }
+                    )
+                    resolved = bool(
+                        integration_ready
+                        and completion_persistence.get("passed") is True
+                    )
+                    if declared_output_invariant.get("passed") is not True:
+                        reconciliation_reason = (
+                            "post_merge_declared_outputs_missing"
+                        )
+                    elif completion_persistence.get("passed") is not True:
+                        reconciliation_reason = "completion_persistence_failed"
+                    else:
+                        reconciliation_reason = (
+                            "completion_persistence_recovered_from_landed_rewrite"
+                        )
+                    result = {
+                        "task_id": task_id,
+                        "attempt": attempt,
+                        "branch": branch,
+                        "implementation_commit": implementation_commit,
+                        "landed_commit": str(
+                            recovery_evidence.get("landed_commit") or ""
+                        ),
+                        "merge_commit": target_commit,
+                        "completion_task_cids": completion_task_cids,
+                        "landed_ref_source": "completion_persistence_recovery",
+                        "resolved": resolved,
+                        "reason": reconciliation_reason,
+                        "merge_result": {
+                            "attempted": False,
+                            "merged": resolved,
+                            "reason": "landed_rewrite_already_integrated",
+                        },
+                        "cleanup_result": {
+                            "cleaned": (
+                                persistence_recovery.get("cleanup_cleaned")
+                                is True
+                            ),
+                            "reason": "historical_landed_cleanup_revalidated",
+                        },
+                        "post_merge_declared_output_invariant": (
+                            declared_output_invariant
+                        ),
+                        "integration_commit_proof": (
+                            integration_commit_proof
+                            if isinstance(
+                                integration_commit_proof,
+                                Mapping,
+                            )
+                            else {}
+                        ),
+                        "completion_persistence_recovery": recovery_evidence,
+                        "completion_persistence": completion_persistence,
+                    }
+                    if todo_update_result:
+                        result["todo_update_result"] = todo_update_result
+                    self._record_event("merge_reconciled", result)
+                    results.append(result)
+                    continue
             branch_exists = bool(branch and self._git_ref_exists(branch))
             landed_ref_source = ""
             if self._git_ref_is_ancestor(implementation_commit, target_branch):
@@ -41368,6 +41471,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             cleanup_result = {}
             cleanup_cleaned = True
             declared_output_invariant: dict[str, Any] = {}
+            target_commit = ""
+            integration_commit_proof: dict[str, Any] = {}
             if merge_result.get("merged"):
                 integration_commit_proof = (
                     self._immutable_integration_commit(
@@ -41469,11 +41574,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 and completion_persistence.get("passed") is not True
             ):
                 reason = "completion_persistence_failed"
+            durable_merge_commit = str(
+                target_commit
+                or merge_result.get("merge_commit")
+                or ""
+            )
             result = {
                 "task_id": task_id,
                 "attempt": attempt,
                 "branch": branch,
                 "implementation_commit": implementation_commit,
+                # Always surface durable tips so persistence-recovery can
+                # revalidate after board mutation lock failures.
+                "landed_commit": str(implementation_commit or ""),
+                "merge_commit": durable_merge_commit,
                 "completion_task_cids": completion_task_cids,
                 "merge_ref": merge_ref,
                 "merge_ref_source": merge_ref_source,
@@ -41738,6 +41852,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 recovery_bindings = recovery_event.get(
                     "completion_task_cids"
                 )
+                coalesced_landed, coalesced_merge = (
+                    self._coalesce_landed_completion_commits(
+                        recovery_event,
+                        implementation_commit=str(
+                            recovery_event.get("implementation_commit")
+                            or implementation_commit
+                            or ""
+                        ),
+                    )
+                )
+                recovery_merge_result = recovery_event.get("merge_result")
                 candidate_event["completion_persistence_recovery"] = {
                     "event_id": str(recovery_event.get("event_id") or ""),
                     "timestamp": str(recovery_event.get("timestamp") or ""),
@@ -41746,14 +41871,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "implementation_commit": str(
                         recovery_event.get("implementation_commit") or ""
                     ),
-                    "landed_commit": str(
-                        recovery_event.get("landed_commit") or ""
-                    ),
+                    "landed_commit": coalesced_landed,
                     "landed_ref_source": str(
                         recovery_event.get("landed_ref_source") or ""
                     ),
-                    "merge_commit": str(
-                        recovery_event.get("merge_commit") or ""
+                    "merge_commit": coalesced_merge,
+                    "merge_result": (
+                        dict(recovery_merge_result)
+                        if isinstance(recovery_merge_result, Mapping)
+                        else {}
                     ),
                     "cleanup_cleaned": bool(
                         isinstance(recovery_cleanup, Mapping)
