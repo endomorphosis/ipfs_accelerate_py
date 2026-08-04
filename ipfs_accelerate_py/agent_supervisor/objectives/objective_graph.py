@@ -12202,6 +12202,9 @@ def build_bundle_task_payloads(
             "source_todo": payload.get("source_todo", ""),
             "objective_bundle_index": str(bundle_index_path),
         }
+        # Zero is the shared unlimited sentinel.  Preserve it explicitly so
+        # the queue payload and its embedded Profile-G TaskSpec cannot diverge
+        # by letting the adapter substitute its bounded default.
         # Keep the worker, queue, and immutable Profile-G TaskSpec on one
         # attempt policy.  Profile-G v1 permits zero as the unlimited sentinel;
         # omitting it here would make the adapter silently substitute its

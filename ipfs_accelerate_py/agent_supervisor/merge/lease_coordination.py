@@ -85,6 +85,49 @@ DEFAULT_SINGLE_FLIGHT_POLL_SECONDS = 0.02
 DEFAULT_SINGLE_FLIGHT_MAX_OUTCOME_BYTES = 256 * 1024
 
 
+def _is_transient_duckdb_lock_error(exc: Exception) -> bool:
+    """Return whether ``exc`` is DuckDB's narrow external-lock conflict."""
+
+    exception_type = type(exc)
+    if (
+        exception_type.__module__ not in {"duckdb", "_duckdb"}
+        or exception_type.__name__ not in {"IOException", "OperationalError"}
+    ):
+        return False
+    message = str(exc).casefold()
+    return "could not set lock" in message and "conflicting lock" in message
+
+
+def profile_g_task_attempt_limit(value: Any, *, default: int = 3) -> int:
+    """Return the supervisor attempt policy accepted beside Profile-G tasks.
+
+    Zero is the unlimited sentinel. Values above the Profile-G v1 boundary
+    are rejected instead of being silently rewritten across queue layers.
+    """
+
+    raw = default if value is None else value
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        raise ValueError("max_attempts must be an integer")
+    if raw < 0 or raw > PROFILE_G_MAX_TASK_ATTEMPTS:
+        raise ValueError(
+            "max_attempts must be between 0 and "
+            f"{PROFILE_G_MAX_TASK_ATTEMPTS} for Profile-G tasks"
+        )
+    return raw
+
+
+def _profile_g_task_spec_attempt_limit(value: Any, *, default: int = 3) -> int:
+    """Translate supervisor attempt policy into strict Profile-G v1 syntax.
+
+    Profile-G v1 has no unlimited sentinel and accepts only values in
+    ``[1, 100]``. The executable bundle retains zero as its authoritative
+    unlimited policy; only the immutable TaskSpec uses the schema ceiling.
+    """
+
+    selected = profile_g_task_attempt_limit(value, default=default)
+    return PROFILE_G_MAX_TASK_ATTEMPTS if selected == 0 else selected
+
+
 def _coordinator_operation(method: Callable[..., Any]) -> Callable[..., Any]:
     """Open one flock-serialized DuckDB connection for a public operation."""
 
@@ -784,6 +827,9 @@ def adapt_goal_bundle(bundle: Mapping[str, Any], *, created_at_ms: int | None = 
         "resource_class": str(bundle.get("resource_class") or "cpu-small"),
         "deadline_ms": int(bundle.get("deadline_ms") or now + 86_400_000),
         "expected_value_millionths": int(bundle.get("expected_value_millionths") or 500_000),
+        "max_attempts": _profile_g_task_spec_attempt_limit(
+            bundle.get("max_attempts"),
+        ),
         "max_attempts": int(bundle.get("max_attempts") or 3),
         "execution_mode": "idempotent",
     }
@@ -808,6 +854,137 @@ def adapt_goal_bundle(bundle: Mapping[str, Any], *, created_at_ms: int | None = 
         "dependency_repair_evidence_count": dependency_repair_count,
         "artifacts": artifacts,
     }
+
+
+def _validated_embedded_profile_g(
+    bundle: Mapping[str, Any],
+    embedded: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate immutable Profile-G bindings before registration trusts them."""
+
+    from ipfs_datasets_py.logic.profile_g import (
+        ProfileGError,
+        validate_profile_g_artifact,
+    )
+
+    outer_limit = profile_g_task_attempt_limit(
+        bundle.get("max_attempts"),
+        default=3,
+    )
+    expected_task_limit = _profile_g_task_spec_attempt_limit(outer_limit)
+    adapted = dict(embedded)
+    artifacts = adapted.get("artifacts")
+    if not isinstance(artifacts, Mapping):
+        raise ValueError("embedded Profile-G artifacts must be a mapping")
+
+    fields = (
+        ("goal", "goal_cid", "mcp++/profile-g/goal@1", "Goal"),
+        ("subgoal", "subgoal_cid", "mcp++/profile-g/subgoal@1", "Subgoal"),
+        (
+            "plan_branch",
+            "plan_branch_cid",
+            "mcp++/profile-g/plan-branch@1",
+            "PlanBranch",
+        ),
+        (
+            "selection",
+            "selection_cid",
+            "mcp++/profile-g/plan-selection@1",
+            "PlanSelection",
+        ),
+        ("task", "task_spec_cid", "mcp++/profile-g/task@1", "TaskSpec"),
+    )
+    validated_cids: dict[str, str] = {}
+    for name, cid_field, schema, artifact_kind in fields:
+        artifact = adapted.get(name)
+        if not isinstance(artifact, Mapping):
+            raise ValueError(f"embedded Profile-G {name} artifact is required")
+        if str(artifact.get("schema") or "") != schema:
+            raise ValueError(f"embedded Profile-G {name} schema is invalid")
+        try:
+            actual_cid = validate_profile_g_artifact(
+                artifact_kind,
+                artifact,
+            )
+        except ProfileGError as exc:
+            raise ValueError(
+                f"embedded Profile-G {name} artifact is invalid: {exc}"
+            ) from exc
+        declared_cid = str(adapted.get(cid_field) or "")
+        if name == "task":
+            task_cid = str(adapted.get("task_cid") or "")
+            if declared_cid != actual_cid or task_cid != actual_cid:
+                raise ValueError("embedded Profile-G TaskSpec CID is inconsistent")
+        elif declared_cid != actual_cid:
+            raise ValueError(f"embedded Profile-G {name} CID is inconsistent")
+        stored_artifact = artifacts.get(actual_cid)
+        if not isinstance(stored_artifact, Mapping) or dict(stored_artifact) != dict(artifact):
+            raise ValueError(f"embedded Profile-G {name} artifact binding is inconsistent")
+        validated_cids[name] = actual_cid
+
+    for cid, artifact in artifacts.items():
+        if (
+            not isinstance(artifact, Mapping)
+            or str(cid) != profile_g_cid(dict(artifact))
+        ):
+            raise ValueError("embedded Profile-G artifact map contains an invalid CID binding")
+
+    task = adapted["task"]
+    if "max_attempts" not in task:
+        raise ValueError("embedded Profile-G TaskSpec max_attempts is required")
+    task_limit = profile_g_task_attempt_limit(task["max_attempts"])
+    if task_limit != expected_task_limit:
+        raise ValueError(
+            "bundle max_attempts does not match embedded Profile-G TaskSpec"
+        )
+
+    expected_links = (
+        (adapted["subgoal"], "goal_cid", validated_cids["goal"]),
+        (adapted["plan_branch"], "subgoal_cid", validated_cids["subgoal"]),
+        (adapted["selection"], "subgoal_cid", validated_cids["subgoal"]),
+        (adapted["selection"], "plan_branch_cid", validated_cids["plan_branch"]),
+        (task, "subgoal_cid", validated_cids["subgoal"]),
+        (task, "plan_branch_cid", validated_cids["plan_branch"]),
+        (task, "selection_cid", validated_cids["selection"]),
+    )
+    for artifact, field, expected in expected_links:
+        if str(artifact.get(field) or "") != expected:
+            raise ValueError(f"embedded Profile-G {field} link is inconsistent")
+
+    canonical_identity = canonical_bundle_identity(bundle)
+    embedded_key = str(adapted.get("canonical_task_key") or "")
+    embedded_cid = str(adapted.get("canonical_task_cid") or "")
+    if embedded_key != canonical_identity.canonical_task_key:
+        raise ValueError("embedded canonical task key does not match bundle")
+    if embedded_cid != canonical_identity.canonical_task_cid:
+        raise ValueError("embedded canonical task CID does not match bundle")
+
+    expected_objective_cid = _link(
+        {
+            "bundle_key": str(bundle.get("bundle_key") or "objective/general"),
+            "source_todo": str(bundle.get("source_todo") or ""),
+            "task_ids": sorted(
+                str(item.get("task_id"))
+                for item in bundle.get("tasks", [])
+                if isinstance(item, Mapping) and item.get("task_id")
+            ),
+        }
+    )
+    if (
+        str(adapted["goal"].get("objective_cid") or "") != expected_objective_cid
+        or str(adapted["subgoal"].get("objective_cid") or "")
+        != expected_objective_cid
+    ):
+        raise ValueError("embedded Profile-G objective does not match bundle")
+    if str(task.get("idempotency_key") or "") != canonical_identity.semantic_fingerprint[:32]:
+        raise ValueError("embedded Profile-G TaskSpec idempotency key does not match bundle")
+    candidate_inputs = adapted["plan_branch"].get("candidate_input_cids")
+    if (
+        not isinstance(candidate_inputs, list)
+        or candidate_inputs != [task.get("input_cid")]
+    ):
+        raise ValueError("embedded Profile-G input binding is inconsistent")
+    return adapted
 
 
 @dataclass(frozen=True)

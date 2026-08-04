@@ -305,6 +305,15 @@ def test_daemon_explicit_merge_resolver_overrides_default(tmp_path: Path, monkey
 
 
 def test_daemon_resolves_relative_worktree_root_for_runner_workspace(tmp_path: Path, monkeypatch):
+    for name in (
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER",
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL",
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL",
+        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT",
+    ):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv(
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
         "codex",

@@ -163,6 +163,7 @@ Thumbs.db
 *.rej
 
 # Local/ephemeral data under data/ (WAL, ad-hoc DBs; keep intentional fixtures)
+/data/agent_supervisor/ipfs_kit_runtime_readiness/
 data/*.db
 data/*.sqlite
 data/*.sqlite3
@@ -191,3 +192,6 @@ state/**/*.out
 !docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
 !docs/architecture/formal_verification_toolchain_certificate.json
 !docs/architecture/formal_verification_role_aware_deployment_receipt.json
+
+# Stable IPFS Kit runtime-readiness scheduler policy is a source artifact.
+!config/agent_supervisor_ipfs_kit_runtime_readiness_scheduler.json

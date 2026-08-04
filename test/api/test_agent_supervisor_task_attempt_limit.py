@@ -1,11 +1,21 @@
 from __future__ import annotations
 
 import json
+import hashlib
+
+import pytest
+from ipfs_datasets_py.logic.profile_g import validate_profile_g_artifact
 
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     build_arg_parser as build_bundle_arg_parser,
     implementation_supervisor_command,
 )
+from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
+    LeaseCoordinator,
+    adapt_goal_bundle,
+    profile_g_cid,
+)
+from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTaskState,
@@ -33,6 +43,175 @@ def _write_single_task_board(path) -> None:
 - Acceptance: A failed first attempt must not launch a second model invocation.
 """,
         encoding="utf-8",
+    )
+
+
+def _idle_heartbeat_projection(**overrides):
+    projection = {
+        "active_task_id": "",
+        "implementation_in_progress": False,
+        "ready_count": 0,
+        "selectable_ready_count": 0,
+        "eligible_ready_count": 0,
+        "blocked_count": 0,
+        "selection_idle_reason": "no_shard_selectable_ready_tasks",
+    }
+    projection.update(overrides)
+    return projection
+
+
+def _framed_grok_quota_stderr(
+    raw_error: str,
+    *,
+    kind: str,
+    http_status: int | None,
+) -> str:
+    from ipfs_accelerate_py.agent_supervisor.grok_cli_runner import (
+        GROK_QUOTA_RECEIPT_SCHEMA,
+    )
+
+    raw_bytes = raw_error.encode("utf-8")
+    receipt = {
+        "schema": GROK_QUOTA_RECEIPT_SCHEMA,
+        "provider": "grok_cli",
+        "model": "grok-4.5",
+        "failure_kind": "quota_or_balance_exhausted",
+        "message": "Grok Build usage balance exhausted",
+        "raw_error_sha256": hashlib.sha256(raw_bytes).hexdigest(),
+        "raw_error_size": len(raw_bytes),
+        "kind": kind,
+        "http_status": http_status,
+    }
+    separator = "" if raw_error.endswith("\n") else "\n"
+    return (
+        raw_error
+        + separator
+        + json.dumps(receipt, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    )
+
+
+def test_heartbeat_fallback_accepts_strict_shard_with_global_ready_work() -> None:
+    assert _projection_is_quiescent_for_heartbeat_fallback(
+        _idle_heartbeat_projection(
+            ready_count=3,
+            blocked_count=2,
+        )
+    )
+
+
+def test_heartbeat_fallback_accepts_resource_claim_deferral() -> None:
+    assert _projection_is_quiescent_for_heartbeat_fallback(
+        _idle_heartbeat_projection(
+            ready_count=1,
+            selection_idle_reason=(
+                "all_selectable_ready_tasks_deferred_by_resource_claim"
+            ),
+        )
+    )
+
+
+def test_heartbeat_fallback_accepts_attempt_limit_backpressure() -> None:
+    assert _projection_is_quiescent_for_heartbeat_fallback(
+        _idle_heartbeat_projection(
+            ready_count=1,
+            selection_idle_reason=(
+                "all_selectable_ready_tasks_reached_max_task_attempts"
+            ),
+        )
+    )
+
+
+def test_heartbeat_fallback_accepts_implementation_retry_deferral() -> None:
+    assert _projection_is_quiescent_for_heartbeat_fallback(
+        _idle_heartbeat_projection(
+            ready_count=1,
+            selection_idle_reason=(
+                "implementation_retry_deferred:provider_capacity_backoff"
+            ),
+        )
+    )
+    assert not _projection_is_quiescent_for_heartbeat_fallback(
+        _idle_heartbeat_projection(
+            ready_count=1,
+            selection_idle_reason="implementation_retry_deferred:",
+        )
+    )
+
+
+def test_heartbeat_fallback_accepts_only_valid_empty_backlog_projection() -> None:
+    empty_projection = _idle_heartbeat_projection(
+        selection_idle_reason="no_tasks_found",
+    )
+    assert _projection_is_quiescent_for_heartbeat_fallback(empty_projection)
+
+    for field_name in (
+        "ready_count",
+        "selectable_ready_count",
+        "eligible_ready_count",
+        "blocked_count",
+    ):
+        assert not _projection_is_quiescent_for_heartbeat_fallback(
+            {
+                **empty_projection,
+                field_name: 1,
+            }
+        )
+
+    for unsafe_reason in ("task_source_invalid", "todo_read_failed"):
+        assert not _projection_is_quiescent_for_heartbeat_fallback(
+            {
+                **empty_projection,
+                "selection_idle_reason": unsafe_reason,
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    ("idle_reason", "selectable_ready_count", "eligible_ready_count"),
+    (
+        ("all_selectable_ready_tasks_deprioritized_as_off_mission", 2, 0),
+        ("no_eligible_ready_tasks_after_selection_filters", 2, 0),
+        ("provider_capacity_backoff", 1, 1),
+        ("resource_claim_deferred:ipfs_kit_py", 1, 1),
+    ),
+)
+def test_heartbeat_fallback_accepts_other_explicit_idle_policies(
+    idle_reason,
+    selectable_ready_count,
+    eligible_ready_count,
+) -> None:
+    assert _projection_is_quiescent_for_heartbeat_fallback(
+        _idle_heartbeat_projection(
+            ready_count=2,
+            selectable_ready_count=selectable_ready_count,
+            eligible_ready_count=eligible_ready_count,
+            selection_idle_reason=idle_reason,
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    ("active_task_id", "implementation_in_progress"),
+    (
+        ("TASK-001", False),
+        ("", True),
+        ("TASK-001", True),
+    ),
+)
+def test_heartbeat_fallback_rejects_active_or_implementing_projection(
+    active_task_id,
+    implementation_in_progress,
+) -> None:
+    assert not _projection_is_quiescent_for_heartbeat_fallback(
+        _idle_heartbeat_projection(
+            active_task_id=active_task_id,
+            implementation_in_progress=implementation_in_progress,
+            ready_count=1,
+            selection_idle_reason=(
+                "implementation_retry_deferred:provider_capacity_backoff"
+            ),
+        )
     )
 
 
@@ -96,6 +275,19 @@ def test_canonical_attempt_limit_blocks_cooldown_fallback_retry(
         "all_selectable_ready_tasks_reached_max_task_attempts"
     )
     assert second_state.implementation_attempts_by_cid[canonical_task_cid] == 1
+    assert _projection_is_quiescent_for_heartbeat_fallback(
+        {
+            "active_task_id": second["active_task_id"],
+            "implementation_in_progress": (
+                second_state.implementation_in_progress
+            ),
+            "ready_count": second["ready_count"],
+            "selectable_ready_count": second["selectable_ready_count"],
+            "eligible_ready_count": second["eligible_ready_count"],
+            "blocked_count": second["blocked_count"],
+            "selection_idle_reason": second["selection_idle_reason"],
+        }
+    )
 
     events = [
         json.loads(line)
@@ -296,6 +488,122 @@ def test_max_task_attempts_defaults_to_unlimited() -> None:
     assert parse_daemon_args([]).max_task_attempts == 0
 
 
+def test_unlimited_attempts_translate_only_at_profile_g_task_spec_boundary() -> None:
+    bundle = {
+        "bundle_key": "objective/runtime",
+        "source_todo": "docs/tasks.todo.md",
+        "tasks": [{"task_id": "TASK-001"}],
+        "max_attempts": 0,
+    }
+
+    adapted = adapt_goal_bundle(bundle, created_at_ms=1_783_872_000_000)
+
+    assert bundle["max_attempts"] == 0
+    assert adapted["task"]["max_attempts"] == 100
+    assert (
+        validate_profile_g_artifact("TaskSpec", adapted["task"])
+        == adapted["task_cid"]
+    )
+
+    finite = adapt_goal_bundle(
+        {**bundle, "max_attempts": 4},
+        created_at_ms=1_783_872_000_000,
+    )
+    assert finite["task"]["max_attempts"] == 4
+
+
+def test_default_planned_lane_is_unlimited_in_worker_and_coordinator(
+    tmp_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    bundle_dir = repo / "bundles"
+    bundle_dir.mkdir()
+    shard_path = bundle_dir / "runtime.todo.md"
+    shard_path.write_text(
+        """## TASK-001 Unlimited task
+
+- Status: todo
+""",
+        encoding="utf-8",
+    )
+    index_path = bundle_dir / "index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "source_todo": "docs/tasks.todo.md",
+                "bundles": {
+                    "objective/runtime": {
+                        "shard_path": "runtime.todo.md",
+                        "parallel_lane": "objective/runtime",
+                        "tasks": [{"task_id": "TASK-001"}],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    [lane] = plan_bundle_lanes(
+        bundle_index_path=index_path,
+        repo_root=repo,
+        state_root=repo / "state",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        task_prefix="TASK-",
+        optimize_bundles=False,
+    )
+
+    worker_flag = lane.command.index("--max-task-attempts")
+    assert lane.command[worker_flag + 1] == "0"
+    assert lane.queue_payload["max_attempts"] == 0
+    profile_g = lane.queue_payload["profile_g"]
+    assert profile_g["task"]["max_attempts"] == 100
+    assert (
+        validate_profile_g_artifact("TaskSpec", profile_g["task"])
+        == profile_g["task_cid"]
+    )
+    with LeaseCoordinator(repo / "coordination.duckdb") as coordinator:
+        registered = coordinator.register_bundle(lane.queue_payload)
+        for expected_attempt in range(1, 5):
+            grant = coordinator.claim(
+                registered["task_cid"],
+                "did:web:lane.example",
+            )
+            assert grant.attempt == expected_attempt
+            coordinator.release(grant, reason="retry")
+
+    task_queue = TaskQueue(str(repo / "task-queue.duckdb"))
+    try:
+        [submitted_id] = submit_bundle_tasks(index_path, queue=task_queue)
+        assert task_queue.get(submitted_id)["max_attempts"] == 0
+        for expected_attempt in range(1, 5):
+            claimed = task_queue.claim_next(worker_id="worker-a")
+            assert claimed is not None
+            assert claimed.attempt == expected_attempt
+            assert claimed.max_attempts == 0
+            assert task_queue.retry(
+                task_id=submitted_id,
+                worker_id="worker-a",
+                error="retryable",
+            )
+        expiring = task_queue.claim_next(
+            worker_id="worker-a",
+            lease_seconds=1,
+        )
+        assert expiring is not None
+        assert expiring.attempt == 5
+        assert expiring.lease_until is not None
+        assert task_queue.recover_expired_leases(
+            now=expiring.lease_until + 1,
+        ) == 1
+        recovered = task_queue.claim_next(worker_id="worker-b")
+        assert recovered is not None
+        assert recovered.attempt == 6
+    finally:
+        task_queue.close()
+
+
 def test_merge_target_branch_threads_from_bundle_to_daemon_command(tmp_path) -> None:
     bundle_args = build_bundle_arg_parser().parse_args(
         [
@@ -444,10 +752,180 @@ def test_classify_provider_capacity_detects_grok_402_balance_exhausted() -> None
         '  "http_status": 402\n'
         "}\n"
     )
-    classified = classify_provider_capacity_failure(text)
+    classified = classify_provider_capacity_failure(
+        _framed_grok_quota_stderr(
+            text,
+            kind="usage_balance_exhausted",
+            http_status=402,
+        ),
+        provider_labels=("grok",),
+        provider_returncode=86,
+    )
     assert classified["exhausted"] is True
-    assert "grok" in classified["providers"] or "provider" in classified["providers"]
+    assert classified["providers"] == ["grok"]
     assert classified["reason"] == "provider_capacity_exhausted"
+    assert classified["capacity_failure_kind"] == "quota_or_balance_exhausted"
+    assert classified["provider_attribution"] == "implementation_command"
+    assert classified["fallback_eligible"] is True
+    assert classified["fallback_trigger"] == "primary_quota_exhausted"
+
+
+def test_classify_generic_usage_limit_uses_dispatched_grok_attribution() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        classify_provider_capacity_failure,
+    )
+
+    classified = classify_provider_capacity_failure(
+        _framed_grok_quota_stderr(
+            "You've hit your usage limit.",
+            kind="usage_limit",
+            http_status=None,
+        ),
+        provider_labels=("grok",),
+        provider_returncode=86,
+    )
+
+    assert classified["providers"] == ["grok"]
+    assert classified["capacity_failure_kind"] == "quota_or_balance_exhausted"
+    assert classified["provider_attribution"] == "implementation_command"
+    assert classified["fallback_eligible"] is True
+
+
+def test_framed_quota_receipt_requires_trusted_runner_exit_code() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        classify_provider_capacity_failure,
+    )
+
+    framed = _framed_grok_quota_stderr(
+        "You've hit your usage limit.",
+        kind="usage_limit",
+        http_status=None,
+    )
+    classified = classify_provider_capacity_failure(
+        framed,
+        provider_labels=("grok",),
+        provider_returncode=1,
+    )
+
+    assert classified["fallback_eligible"] is False
+    assert classified["fallback_trigger"] == ""
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
+        "GitHub API quota exceeded while fetching PR",
+        "Hugging Face usage balance exhausted",
+        "Test fixture: quota exhausted",
+        "nested test says xAI usage balance exhausted",
+    ),
+)
+def test_nested_service_quota_text_does_not_impersonate_grok(
+    text: str,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        classify_provider_capacity_failure,
+    )
+
+    classified = classify_provider_capacity_failure(
+        text,
+        provider_labels=("grok",),
+    )
+
+    assert classified["exhausted"] is False
+    assert classified["providers"] == []
+    assert classified["fallback_eligible"] is False
+    assert classified["fallback_trigger"] == ""
+
+
+def test_unstructured_grok_quota_prose_cannot_authorize_fallback() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        classify_provider_capacity_failure,
+    )
+
+    classified = classify_provider_capacity_failure(
+        "unit fixture status 402 then Grok Build usage balance exhausted",
+        provider_labels=("grok",),
+        provider_returncode=86,
+    )
+
+    assert classified["fallback_eligible"] is False
+    assert classified["fallback_trigger"] == ""
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
+        "xAI HTTP 429: too many requests",
+        "Grok is temporarily overloaded: resource exhausted",
+        "Grok authentication failed; login required",
+        "Grok service unavailable",
+    ),
+)
+def test_classify_grok_nonquota_failures_do_not_authorize_codex_fallback(
+    text: str,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        classify_provider_capacity_failure,
+    )
+
+    classified = classify_provider_capacity_failure(
+        text,
+        provider_labels=("grok",),
+    )
+
+    assert classified["fallback_eligible"] is False
+    assert classified["fallback_trigger"] == ""
+    assert classified["capacity_failure_kind"] != "quota_or_balance_exhausted"
+
+
+@pytest.mark.parametrize(
+    "diagnostic",
+    (
+        "Grok CLI failed without a terminal-correlated native quota record; "
+        "Codex fallback is forbidden",
+        "Independent pinned Grok-4.5 verifier did not confirm quota; "
+        "Codex fallback is forbidden",
+        "The workspace changed while Grok quota was being verified; "
+        "Codex fallback is forbidden",
+    ),
+)
+def test_classify_provider_capacity_ignores_grok_policy_diagnostic(
+    diagnostic: str,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        classify_provider_capacity_failure,
+    )
+
+    text = (
+        "PermissionError: [Errno 13] Permission denied: "
+        "'/run/ipfs-accelerate/prompt.md'\n"
+        f"{diagnostic}\n"
+    )
+
+    classified = classify_provider_capacity_failure(text)
+
+    assert classified == {"exhausted": False, "providers": [], "reason": ""}
+
+
+def test_classify_codex_quota_does_not_poison_grok_capacity() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        classify_provider_capacity_failure,
+    )
+
+    classified = classify_provider_capacity_failure(
+        "You've hit your usage limit. Try again later."
+    )
+
+    assert classified == {
+        "exhausted": True,
+        "providers": ["codex"],
+        "reason": "provider_capacity_exhausted",
+        "capacity_failure_kind": "provider_capacity_exhausted",
+        "provider_attribution": "log_text",
+        "fallback_eligible": False,
+        "fallback_trigger": "",
+    }
 
 
 def test_provider_capacity_deferral_rolls_back_start_charge(tmp_path) -> None:

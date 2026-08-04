@@ -207,6 +207,9 @@ def _read_optional_deps(pyproject_path: Path) -> dict[str, list[str]]:
 this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text() if (this_directory / "README.md").exists() else ""
 
+# requirements.txt is the single source of truth for core dependency contracts.
+# In particular, the urllib3 range and Python-marked FastMCP pin must not be
+# duplicated independently in setup.py.
 # Optional ErgoAI Java API Eclipse Temurin JDK is a reviewed external lazy
 # dependency (tool_id=temurin-jdk) and is intentionally not a pip requirement.
 install_requires = _read_requirements(this_directory / "requirements.txt")

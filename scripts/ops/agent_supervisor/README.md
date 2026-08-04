@@ -10,12 +10,29 @@ objectives, integrations).
 | Script | Role |
 |---|---|
 | `implementation_supervisor_entry.py` | Thin entry for multi-supervisor implementation tracks |
+| `configured_board_scheduler.py` | Fail-closed adapter from sealed scheduler JSON to multi-lane supervisors |
 | `asref_multi_lane.py` | **ASREF-G100** preflight, objective scan, multi-lane launch |
 | `meta_spark_goose_runner.py` | Ops wrapper for Meta Spark + goose implementation runner |
 | `prompt_workflow.py` | Ops wrapper for prompt-workflow CLI |
 | `ipfs_kit_vfs_symbolic_assurance.py` | Thin facade for the IPFS Kit VFS symbolic-assurance job |
 | `ipfs_kit_vfs_symbolic_assurance_control.sh` | Two-shard supervisor control for the VFS assurance board |
 | `validate_ipfs_kit_vfs_symbolic_assurance.py` | Fail-closed preflight for the VFS objective heap and board |
+
+## Sealed scheduler configs
+
+Use the shared adapter when a reviewed `scheduler_config@1` document owns
+lane count, paths, retry policy, sharding, and protection:
+
+```bash
+python scripts/ops/agent_supervisor/configured_board_scheduler.py \
+  --config config/<board>_scheduler.json preflight
+python scripts/ops/agent_supervisor/configured_board_scheduler.py \
+  --config config/<board>_scheduler.json launch --implement --dry-run
+```
+
+Preflight and dry-run do not probe providers. A real launch requires the
+explicit `--implement` flag and re-runs the fail-closed Git, submodule, and
+declared-validator checks.
 
 ## IPFS Kit VFS symbolic assurance (generalized engines)
 

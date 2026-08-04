@@ -1,23 +1,24 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import logging
 import os
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
-from test.api.authoritative_completion_test_utils import real_git_authority
 
 from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
     ContextCompileResult,
@@ -50,11 +51,23 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index import (
 )
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import fibonacci_priority, run_goal_validation
 from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import split_validation_commands
+from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
+    VALIDATION_PYTHON_INTERPRETER_SHA256_ENV,
+    VALIDATION_PYTHON_INTERPRETER_STAT_ENV,
+    VALIDATION_PYTHON_LAUNCHER_MODE_ENV,
+    VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV,
+    VALIDATION_PYTHON_LAUNCHER_SHA256_ENV,
+    build_validation_environment,
+    validation_environment_for_runner,
+)
 from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     dependency_guardrail_records,
     reconciliation_guardrail_plan,
     reconciliation_guardrail_records,
     record_reconciliation_guardrail_findings,
+)
+from ipfs_accelerate_py.agent_supervisor.objectives import (
+    backlog_refinery as backlog_refinery_module,
 )
 from ipfs_accelerate_py.agent_supervisor import merge_resolver
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
@@ -68,8 +81,11 @@ from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     build_namespace_merge_resolver_runner_from_spec,
 )
 from ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback import (
+    CODEX_MERGE_RESOLVER_MODEL,
+    CODEX_MERGE_RESOLVER_REASONING_EFFORT,
+    GROK_MERGE_RESOLVER_MODEL,
     _DEFAULT_CODEX_TIMEOUT_SECONDS,
-    _DEFAULT_COPILOT_TIMEOUT_SECONDS,
+    _DEFAULT_GROK_TIMEOUT_SECONDS,
     _timeout_seconds,
     llm_merge_resolver_fallback_command,
 )
@@ -108,6 +124,12 @@ from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import 
     supervisor_track_payload,
     tracks_from_parsed_args,
 )
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
+    CursorReplayError,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.event_log import (
+    rotate_event_log_if_needed,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     ConfiguredImplementationDaemonRunner,
     ImplementationDaemonDefaults,
@@ -124,6 +146,8 @@ from ipfs_accelerate_py.agent_supervisor import implementation_daemon_runner
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
+    checkout_lock_metadata,
+    checkout_lock_repository_matches,
     checkout_mutation_lock_path,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_runner import (
@@ -143,22 +167,32 @@ from ipfs_accelerate_py.agent_supervisor import git_gc as git_gc_module
 from ipfs_accelerate_py.agent_supervisor import implementation_supervisor_runner
 from ipfs_accelerate_py.agent_supervisor.merge.git_gc import GitGarbageCollector
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon as implementation_daemon_module
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_supervisor as implementation_supervisor_module,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    RETRY_BUDGET_REPAIR_SCHEMA,
     PortalTask,
     TodoTaskState,
     TodoImplementationDaemon,
+    ValidationProjectDependencyPreflightDeferred,
+    WorktreeSubmoduleInitializationDeferred,
     implied_validation_test_output_paths,
     dependency_satisfied_references,
     normalize_implementation_protected_paths,
     parse_task_file,
     parse_args as parse_implementation_daemon_args,
     pending_retry_budget_repair_sources,
+    retry_budget_repair_source,
     retry_budget_repair_validation_paths,
+    task_declared_output_paths,
+    task_evidence_output_paths,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     ObjectiveCompletionArtifactRefreshError,
     TodoImplementationSupervisor,
     TodoSupervisorConfig,
+    _projection_is_quiescent_for_heartbeat_fallback,
     parse_args as parse_implementation_supervisor_args,
     supervisor_config_from_args,
 )
@@ -184,6 +218,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     ChildSummaryHealthSpec,
     ConfiguredSupervisorEntrypoint,
+    ProcessGroupCancelled,
     RestartPolicy,
     SupervisedChild,
     SupervisedChildSpec,
@@ -976,13 +1011,12 @@ def test_default_llm_merge_resolver_command_prefers_env(monkeypatch):
     assert default_llm_merge_resolver_command(primary_env_var="PRIMARY_RESOLVER_COMMAND") == "fallback-command"
 
     monkeypatch.delenv("IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND")
-    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/codex" if name == "codex" else None)
-    assert default_llm_merge_resolver_command(codex_args=("exec", "-")) == "/usr/bin/codex exec -"
-    assert (
-        default_llm_merge_resolver_command()
-        == "/usr/bin/codex exec --ignore-user-config --dangerously-bypass-approvals-and-sandbox "
-        "-c 'model_reasoning_effort=\"high\"' -C . -"
+    packaged = (
+        f"{shlex.quote(sys.executable)} -m "
+        "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback"
     )
+    assert default_llm_merge_resolver_command(codex_args=("exec", "-")) == packaged
+    assert default_llm_merge_resolver_command() == packaged
 
 
 def test_wrapper_utils_android_validation_environment_contract(tmp_path):
@@ -1181,10 +1215,6 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
         implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
         raising=False,
     )
-    monkeypatch.setenv(
-        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        "codex",
-    )
     monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
     monkeypatch.delenv(implementation_daemon_module._CODEX_MODEL_ENV, raising=False)
     monkeypatch.delenv(implementation_daemon_module._CODEX_CONTEXT_WINDOW_ENV, raising=False)
@@ -1204,204 +1234,21 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
 
     command = daemon._build_implementation_command(repo)
 
-    assert command[:5] == [
+    assert command[:6] == [
         "/usr/local/bin/codex",
         "exec",
+        "--ignore-user-config",
         "--dangerously-bypass-approvals-and-sandbox",
         "-C",
         str(repo),
     ]
     assert command[-1] == "-"
-    assert command[command.index("-m") + 1] == "gpt-5.6-sol"
-    context_index = command.index("model_context_window=200000")
-    assert command[context_index - 1 : context_index + 1] == [
-        "-c",
-        "model_context_window=200000",
-    ]
+    context_config_index = command.index("model_context_window=200000")
+    assert command[context_config_index - 1] == "-c"
     assert "-c" in command
     assert 'model_reasoning_effort="high"' in command
     assert "agents.max_threads=10" in command
     assert "agents.max_depth=2" in command
-
-
-def test_task_provider_role_overrides_static_lane_provider(tmp_path, monkeypatch):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    todo_path = repo / "todo.md"
-    todo_path.write_text("# Todos\n", encoding="utf-8")
-    daemon = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    task = PortalTask(
-        task_id="SCA-168",
-        title="Bind repository authority",
-        status="ready",
-        completion="manual",
-        priority="P0",
-        track="snapshot-authority",
-        outputs=["src/repository_authority.py"],
-        metadata={"Provider role": "grok-implement, codex-review"},
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        "codex",
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
-        "1",
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_grok_cli_available",
-        lambda: True,
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_grok_binary",
-        lambda: "/usr/local/bin/grok",
-    )
-
-    command = daemon._build_implementation_command(repo, task=task)
-
-    assert command[0] == sys.executable
-    assert command[1].endswith("grok_cli_runner.py")
-    assert command[command.index("--grok-bin") + 1] == "/usr/local/bin/grok"
-
-
-def test_deterministic_only_task_cannot_dispatch_a_model(tmp_path):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    task = PortalTask(
-        task_id="SCA-120",
-        title="Run symbolic baseline",
-        status="ready",
-        completion="manual",
-        priority="P0",
-        track="baseline",
-        outputs=["data/baseline.json"],
-        metadata={"Provider role": "deterministic-only"},
-    )
-
-    with pytest.raises(RuntimeError, match="model dispatch is forbidden"):
-        daemon._build_implementation_command(repo, task=task)
-    with pytest.raises(
-        implementation_daemon_module.ImplementationRetryDeferred,
-        match="typed local operation",
-    ):
-        daemon._build_implementation_prompt(task, attempt=1)
-
-
-def test_deterministic_only_deferral_persists_selection_cooldown(tmp_path):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    todo_path = repo / "todo.md"
-    todo_path.write_text(
-        """# Todos
-
-## SCA-120 Run symbolic baseline
-
-- Status: todo
-- Completion: manual
-- Priority: P0
-- Track: baseline
-- Outputs: data/baseline.json
-- Provider role: deterministic-only
-- Acceptance: Run the approved typed local operation without a model.
-""",
-        encoding="utf-8",
-    )
-    state_dir = repo / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-        task_header_prefix="## SCA-",
-    )
-    task = parse_task_file(todo_path, task_header_prefix="## SCA-")[0]
-
-    result = daemon._run_implementation(task, TodoTaskState())
-
-    assert result["skipped"] is True
-    assert result["reason"] == "deterministic-only_task_requires_typed_local_operation"
-    assert result["backoff_seconds"] == 300
-    assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task)) is True
-
-    restarted = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-        task_header_prefix="## SCA-",
-    )
-    assert restarted.task_queue.is_cooled_down(restarted._canonical_ref(task)) is True
-    assert (
-        restarted._select_next_task(
-            [task],
-            {task.task_id: "ready"},
-            {},
-            {},
-            {},
-        )
-        is None
-    )
-
-
-def test_strict_execution_metadata_policy_defers_unbounded_task(
-    tmp_path,
-    monkeypatch,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    task = PortalTask(
-        task_id="SCA-190",
-        title="Repair generated task",
-        status="ready",
-        completion="manual",
-        priority="P0",
-        track="ops",
-        outputs=["src/runtime.py"],
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.REQUIRE_TASK_EXECUTION_METADATA_ENV,
-        "1",
-    )
-
-    with pytest.raises(
-        implementation_daemon_module.ImplementationRetryDeferred,
-        match="provider role is required",
-    ):
-        daemon._build_implementation_prompt(task, attempt=1)
-
-    bounded = replace(
-        task,
-        metadata={"Provider role": "grok-implement"},
-    )
-    with pytest.raises(
-        implementation_daemon_module.ImplementationRetryDeferred,
-        match="context budget tokens are required",
-    ):
-        daemon._task_context_token_limit(bounded)
 
 
 def test_implementation_daemon_does_not_seed_modified_tracked_context(tmp_path):
@@ -1504,6 +1351,384 @@ def test_validation_prunes_unchanged_start_context_after_daemon_restart(tmp_path
     assert cleanup["cleaned"] is True
 
 
+def test_validation_restores_known_generated_review_artifact_only(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Agent Test")
+    _git(repo, "config", "user.email", "agent@example.test")
+    generated_review = (
+        repo
+        / "artifacts"
+        / "world-id-idkit-ui-review"
+        / "desktop-chrome"
+        / "proof-center.png"
+    )
+    broad_scope_review = (
+        repo
+        / "wallet_interface"
+        / "ui"
+        / "artifacts"
+        / "ui-review"
+        / "proof-center.png"
+    )
+    release_evidence = repo / "artifacts" / "release-evidence" / "receipt.json"
+    generated_review.parent.mkdir(parents=True)
+    broad_scope_review.parent.mkdir(parents=True)
+    release_evidence.parent.mkdir(parents=True)
+    generated_review.write_bytes(b"baseline screenshot")
+    broad_scope_review.write_bytes(b"baseline broad-scope screenshot")
+    release_evidence.write_text('{"status":"baseline"}\n', encoding="utf-8")
+    _git(repo, "add", "artifacts", "wallet_interface")
+    _git(repo, "commit", "-m", "baseline artifacts")
+
+    generated_review.write_bytes(b"validation screenshot")
+    broad_scope_review.write_bytes(b"validation broad-scope screenshot")
+    release_evidence.write_text('{"status":"candidate"}\n', encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    task = PortalTask(
+        task_id="AUTO-122",
+        title="Validate broad UI changes",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["wallet_interface/ui"],
+    )
+
+    daemon._prepare_worktree_for_validation(repo, task=task)
+
+    assert generated_review.read_bytes() == b"baseline screenshot"
+    assert broad_scope_review.read_bytes() == (
+        b"baseline broad-scope screenshot"
+    )
+    assert release_evidence.read_text(encoding="utf-8") == (
+        '{"status":"candidate"}\n'
+    )
+    assert _git(repo, "status", "--short") == (
+        "M artifacts/release-evidence/receipt.json"
+    )
+
+
+def test_validation_removes_ignored_ephemeral_root_without_touching_protected_overlap(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Agent Test")
+    _git(repo, "config", "user.email", "agent@example.test")
+    (repo / ".gitignore").write_text(
+        "wallet_interface/ui/dist/\n"
+        "wallet_interface/ui/test-results/\n",
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore", "README.md")
+    _git(repo, "commit", "-m", "baseline")
+
+    stale_ignored = (
+        repo / "wallet_interface" / "ui" / "dist" / "stale.js"
+    )
+    protected_relative = (
+        "wallet_interface/ui/test-results/protected-sentinel.txt"
+    )
+    protected_sentinel = repo / protected_relative
+    stale_ignored.parent.mkdir(parents=True)
+    protected_sentinel.parent.mkdir(parents=True)
+    stale_ignored.write_text("stale build\n", encoding="utf-8")
+    protected_sentinel.write_text("operator evidence\n", encoding="utf-8")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implementation_protected_paths=[protected_relative],
+    )
+
+    daemon._prepare_worktree_for_validation(repo)
+
+    assert not stale_ignored.exists()
+    assert protected_sentinel.read_text(encoding="utf-8") == (
+        "operator evidence\n"
+    )
+    assert _git(repo, "status", "--short") == ""
+
+
+def test_validation_does_not_replace_shared_root_with_protected_child(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    protected_relative = (
+        "wallet_interface/ui/node_modules/protected-sentinel.txt"
+    )
+    source_sentinel = repo / protected_relative
+    source_sentinel.parent.mkdir(parents=True)
+    source_sentinel.write_text("shared source\n", encoding="utf-8")
+    worktree_root = tmp_path / "worktrees"
+    worktree = worktree_root / "attempt"
+    target_sentinel = worktree / protected_relative
+    target_sentinel.parent.mkdir(parents=True)
+    target_sentinel.write_text("attempt-local evidence\n", encoding="utf-8")
+    _git(worktree, "init")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_root=worktree_root,
+        implementation_protected_paths=[protected_relative],
+    )
+
+    daemon._prepare_worktree_for_validation(worktree)
+
+    target_root = worktree / "wallet_interface" / "ui" / "node_modules"
+    assert not target_root.is_symlink()
+    assert target_sentinel.read_text(encoding="utf-8") == (
+        "attempt-local evidence\n"
+    )
+
+
+def test_generated_cleanup_refuses_symlinked_ancestor_outside_worktree(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    external = tmp_path / "external"
+    external_dist = external / "ui" / "dist"
+    external_dist.mkdir(parents=True)
+    sentinel = external_dist / "sentinel.txt"
+    sentinel.write_text("must survive\n", encoding="utf-8")
+    (worktree / "wallet_interface").symlink_to(
+        external,
+        target_is_directory=True,
+    )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="generated cleanup path has a symlink ancestor",
+    ):
+        daemon._restore_or_remove_generated_path_for_commit(
+            worktree,
+            "wallet_interface/ui/dist",
+        )
+
+    assert sentinel.read_text(encoding="utf-8") == "must survive\n"
+    assert (worktree / "wallet_interface").is_symlink()
+
+
+def _seed_validation_artifact_restore_repo(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Agent Test")
+    _git(repo, "config", "user.email", "agent@example.test")
+    screenshot = (
+        repo
+        / "artifacts"
+        / "world-id-idkit-ui-review"
+        / "desktop-chrome"
+        / "proof-center.png"
+    )
+    screenshot.parent.mkdir(parents=True)
+    screenshot.write_bytes(b"baseline screenshot")
+    _git(repo, "add", "artifacts")
+    _git(repo, "commit", "-m", "baseline artifact")
+    screenshot.write_bytes(b"validation screenshot")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    return repo, screenshot, daemon
+
+
+def test_validation_artifact_restore_fails_closed_on_initial_status_failure(
+    tmp_path,
+    monkeypatch,
+):
+    repo, screenshot, daemon = _seed_validation_artifact_restore_repo(
+        tmp_path
+    )
+    real_run = implementation_daemon_module.subprocess.run
+
+    def fail_status(command, *args, **kwargs):
+        if command == [
+            "git",
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+        ]:
+            return subprocess.CompletedProcess(
+                command,
+                128,
+                stdout=b"",
+                stderr=b"status unavailable",
+            )
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        fail_status,
+    )
+
+    receipt = daemon._restore_validation_generated_artifacts(
+        repo,
+        reason="test_initial_status_failure",
+    )
+
+    assert receipt["scan_failed"] is True
+    assert receipt["scan_failure_stage"] == "initial"
+    assert receipt["attempted_count"] == 0
+    assert receipt["restored_count"] == 0
+    assert receipt["failed_count"] == 1
+    assert screenshot.read_bytes() == b"validation screenshot"
+
+
+def test_validation_artifact_restore_fails_closed_on_verification_status_failure(
+    tmp_path,
+    monkeypatch,
+):
+    repo, screenshot, daemon = _seed_validation_artifact_restore_repo(
+        tmp_path
+    )
+    real_run = implementation_daemon_module.subprocess.run
+    status_calls = 0
+
+    def fail_second_status(command, *args, **kwargs):
+        nonlocal status_calls
+        if command == [
+            "git",
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+        ]:
+            status_calls += 1
+            if status_calls == 2:
+                return subprocess.CompletedProcess(
+                    command,
+                    128,
+                    stdout=b"",
+                    stderr=b"verification unavailable",
+                )
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        fail_second_status,
+    )
+
+    receipt = daemon._restore_validation_generated_artifacts(
+        repo,
+        reason="test_verification_status_failure",
+    )
+
+    assert receipt["scan_failed"] is True
+    assert receipt["scan_failure_stage"] == "verification"
+    assert receipt["attempted_count"] == 1
+    assert receipt["restored_count"] == 0
+    assert receipt["failed_count"] == 1
+    assert screenshot.read_bytes() == b"baseline screenshot"
+
+
+def test_validation_artifact_restore_exception_is_not_counted_as_restored(
+    tmp_path,
+    monkeypatch,
+):
+    repo, screenshot, daemon = _seed_validation_artifact_restore_repo(
+        tmp_path
+    )
+    restore = daemon._restore_or_remove_generated_path_for_commit
+
+    def restore_then_raise(workspace_path, relative):
+        restore(workspace_path, relative)
+        raise RuntimeError("restore reporting failed")
+
+    monkeypatch.setattr(
+        daemon,
+        "_restore_or_remove_generated_path_for_commit",
+        restore_then_raise,
+    )
+
+    receipt = daemon._restore_validation_generated_artifacts(
+        repo,
+        reason="test_restore_exception",
+    )
+
+    assert receipt["scan_failed"] is False
+    assert receipt["attempted_count"] == 1
+    assert receipt["restored_count"] == 0
+    assert receipt["failed_count"] == 1
+    assert receipt["results"][0]["error_type"] == "RuntimeError"
+    assert screenshot.read_bytes() == b"baseline screenshot"
+
+
+def test_prepare_validation_propagates_generated_artifact_restore_failure(
+    tmp_path,
+    monkeypatch,
+):
+    repo, _screenshot, daemon = _seed_validation_artifact_restore_repo(
+        tmp_path
+    )
+    failed_receipt = {
+        "reason": "pre_validation_generated_artifact",
+        "failed_count": 1,
+        "scan_failed": True,
+        "scan_failure_stage": "initial",
+    }
+    linked: list[Path] = []
+    monkeypatch.setattr(
+        daemon,
+        "_restore_validation_generated_artifacts",
+        lambda *args, **kwargs: failed_receipt,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_link_shared_worktree_paths",
+        lambda path: linked.append(path),
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ValidationGeneratedArtifactRestoreError
+    ) as exc_info:
+        daemon._prepare_worktree_for_validation(repo)
+
+    assert exc_info.value.receipt == failed_receipt
+    assert linked == []
+    assert repo.exists()
+
+
 def test_implementation_daemon_shares_repository_gc_state_across_lanes(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -1585,6 +1810,48 @@ def test_git_gc_first_run_establishes_baseline_without_aggressive_repack(
     assert reloaded.needs_aggressive_gc() is False
 
 
+def test_git_gc_aggressive_timeout_aborts_repack_and_defers_retry(
+    tmp_path,
+    monkeypatch,
+):
+    collector = GitGarbageCollector(
+        repo_root=tmp_path,
+        state_path=tmp_path / "gc-state.json",
+        aggressive_interval=86_400,
+    )
+    collector.state.last_aggressive_gc_time = 1.0
+    monkeypatch.setattr(git_gc_module, "count_loose_objects", lambda _root: 7)
+    monkeypatch.setattr(
+        collector,
+        "_prune_worktrees",
+        lambda: {"step": "prune_worktrees", "success": True},
+    )
+    monkeypatch.setattr(
+        collector,
+        "_expire_reflogs",
+        lambda **_kwargs: {"step": "expire_reflogs", "success": True},
+    )
+    monkeypatch.setattr(
+        collector,
+        "_run_git_gc",
+        lambda **_kwargs: {"step": "git_gc", "error": "timeout"},
+    )
+    repack_calls = []
+    monkeypatch.setattr(
+        collector,
+        "_repack",
+        lambda: repack_calls.append(True) or {"step": "repack", "returncode": 0},
+    )
+
+    result = collector.run()
+
+    assert result["success"] is False
+    assert result["aborted_after"] == "git_gc"
+    assert repack_calls == []
+    assert collector.state.last_aggressive_gc_time > 1.0
+    assert collector.needs_aggressive_gc() is False
+
+
 def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -1602,10 +1869,6 @@ def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, mon
     monkeypatch.delenv(
         implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
         raising=False,
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        "codex",
     )
     monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
     monkeypatch.delenv(implementation_daemon_module._CODEX_MODEL_ENV, raising=False)
@@ -1633,17 +1896,7 @@ def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, mon
     assert command[:2] == ["bash", "-lc"]
     assert "falling back to copilot" in command[2]
     assert command[3:7] == ["bash", "/usr/local/bin/codex", "/usr/local/bin/copilot", str(repo)]
-    assert command[7:] == [
-        "gpt-5.6-sol",
-        "200000",
-        "high",
-        "10",
-        "2",
-        "",
-        "high",
-        "long_context",
-        "30",
-    ]
+    assert command[7:] == ["", "200000", "high", "10", "2", "", "high", "long_context", "30"]
 
 
 def test_implementation_daemon_links_shared_dependencies_only_in_managed_worktrees(tmp_path):
@@ -1672,6 +1925,57 @@ def test_implementation_daemon_links_shared_dependencies_only_in_managed_worktre
     outside.mkdir()
     daemon._link_shared_worktree_paths(outside)
     assert not (outside / "swissknife" / "node_modules").exists()
+
+
+def test_prepare_worktree_for_validation_restores_shared_wallet_ui_dependencies(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Agent Test")
+    _git(repo, "config", "user.email", "agent@example.test")
+    package_json = repo / "wallet_interface" / "ui" / "package.json"
+    package_json.parent.mkdir(parents=True)
+    package_json.write_text('{"scripts":{"build":"tsc"}}\n', encoding="utf-8")
+    (repo / ".gitignore").write_text(
+        "wallet_interface/ui/node_modules\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".gitignore", "wallet_interface/ui/package.json")
+    _git(repo, "commit", "-m", "baseline")
+
+    source = repo / "wallet_interface" / "ui" / "node_modules"
+    tsc = source / ".bin" / "tsc"
+    tsc.parent.mkdir(parents=True)
+    tsc.write_text("#!/bin/sh\n", encoding="utf-8")
+    worktree_root = tmp_path / "worktrees"
+    worktree = worktree_root / "task-attempt"
+    worktree_root.mkdir()
+    _git(repo, "worktree", "add", "-b", "implementation/test", str(worktree))
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+        worktree_pool_enabled=False,
+        merge_target_branch="main",
+    )
+
+    daemon._prepare_worktree_for_validation(
+        worktree,
+        branch_name="implementation/test",
+    )
+
+    target = worktree / "wallet_interface" / "ui" / "node_modules"
+    assert target.is_symlink()
+    assert target.resolve() == source.resolve()
+    assert (target / ".bin" / "tsc").read_text(encoding="utf-8") == "#!/bin/sh\n"
+    assert _git(worktree, "status", "--short", "--untracked-files=all") == ""
 
 
 def test_implementation_daemon_never_nests_shared_dependency_links_inside_their_source(tmp_path):
@@ -1986,6 +2290,11 @@ def test_supervisor_runtime_adopts_matching_child_pid_marker(tmp_path, monkeypat
     pid_path = repo / "state" / "child.pid"
     pid_path.parent.mkdir()
     pid_path.write_text("2468\n", encoding="utf-8")
+    prior_log_path = repo / "logs" / "prior-child.log"
+    prior_log_path.parent.mkdir()
+    prior_log_path.write_text("still running\n", encoding="utf-8")
+    latest_log_path = repo / "logs" / "latest.log"
+    latest_log_path.symlink_to(prior_log_path.name)
 
     monkeypatch.setattr(supervisor_runtime, "pid_alive", lambda pid: int(pid) == 2468)
     monkeypatch.setattr(
@@ -1998,14 +2307,51 @@ def test_supervisor_runtime_adopts_matching_child_pid_marker(tmp_path, monkeypat
         SupervisedChildSpec(
             repo_root=repo,
             command=("python", "worker.py", "--state-dir", "state", "--implement"),
-            log_path=Path("logs/child.log"),
+            log_path=Path("logs/new-supervisor-run.log"),
             child_pid_path=Path("state/child.pid"),
+            latest_log_path=Path("logs/latest.log"),
         )
     )
 
     assert child is not None
     assert child.pid == 2468
     assert child.child_pid_path == pid_path
+    assert child.log_path == prior_log_path
+    assert child.latest_log_path == latest_log_path
+
+
+def test_supervisor_runtime_adoption_ignores_invalid_latest_log_symlink(
+    tmp_path, monkeypatch
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    pid_path = repo / "state" / "child.pid"
+    pid_path.parent.mkdir()
+    pid_path.write_text("2468\n", encoding="utf-8")
+    latest_log_path = repo / "logs" / "latest.log"
+    latest_log_path.parent.mkdir()
+    latest_log_path.symlink_to(latest_log_path.name)
+
+    monkeypatch.setattr(supervisor_runtime, "pid_alive", lambda pid: int(pid) == 2468)
+    monkeypatch.setattr(
+        supervisor_runtime,
+        "process_args",
+        lambda pid: "python worker.py --implement" if int(pid) == 2468 else "",
+    )
+
+    child = adopt_supervised_child(
+        SupervisedChildSpec(
+            repo_root=repo,
+            command=("python", "worker.py", "--implement"),
+            log_path=Path("logs/new-supervisor-run.log"),
+            child_pid_path=Path("state/child.pid"),
+            latest_log_path=Path("logs/latest.log"),
+        )
+    )
+
+    assert child is not None
+    assert child.log_path == repo / "logs" / "new-supervisor-run.log"
+    assert child.latest_log_path == latest_log_path
 
 
 def test_supervisor_loop_adopts_existing_child_before_launch(tmp_path, monkeypatch) -> None:
@@ -3519,15 +3865,271 @@ def test_supervisor_reconciliation_only_can_keep_resolver_when_allowed(tmp_path)
     assert config.llm_merge_resolver_command == "codex exec -"
 
 
+def test_supervisor_fail_on_reconciliation_error_flag_is_opt_in():
+    defaults = parse_implementation_supervisor_args([])
+    enabled = parse_implementation_supervisor_args(
+        ["--fail-on-reconciliation-error"]
+    )
+
+    assert defaults.fail_on_reconciliation_error is False
+    assert enabled.fail_on_reconciliation_error is True
+
+
+@pytest.mark.parametrize(
+    ("run_result", "expected_exit_code"),
+    [
+        pytest.param(
+            {
+                "maintenance_blocked": True,
+                "reason": "implementation_protected_path_attempt_active",
+            },
+            1,
+            id="maintenance-blocked",
+        ),
+        pytest.param(
+            {
+                "maintenance_blocked": False,
+                "worktree_reconciliation_replay": {
+                    "attempted": True,
+                    "reason": "reconciliation_replays_processed",
+                    "pending_count": 1,
+                    "processed_count": 1,
+                    "completed_count": 0,
+                    "failed_count": 1,
+                    "deferred_count": 0,
+                    "results": [
+                        {
+                            "attempted": True,
+                            "completed": False,
+                            "settled": False,
+                        }
+                    ],
+                },
+            },
+            1,
+            id="replay-failed",
+        ),
+        pytest.param(
+            {
+                "maintenance_blocked": False,
+                "worktree_reconciliation_replay": {
+                    "attempted": False,
+                    "reason": "reconciliation_replays_processed",
+                    "pending_count": 1,
+                    "processed_count": 0,
+                    "completed_count": 0,
+                    "failed_count": 0,
+                    "deferred_count": 1,
+                    "results": [
+                        {
+                            "attempted": False,
+                            "completed": False,
+                            "settled": False,
+                        }
+                    ],
+                },
+            },
+            1,
+            id="replay-deferred",
+        ),
+        pytest.param(
+            {
+                "maintenance_blocked": False,
+                "worktree_reconciliation_replay": {
+                    "attempted": True,
+                    "reason": "reconciliation_replays_processed",
+                    "pending_count": 1,
+                    "processed_count": 1,
+                    "completed_count": 0,
+                    "failed_count": 0,
+                    "deferred_count": 0,
+                    "results": [
+                        {
+                            "attempted": True,
+                            "completed": False,
+                            "settled": False,
+                        }
+                    ],
+                },
+            },
+            1,
+            id="replay-attempted-but-unsettled",
+        ),
+        pytest.param(
+            {"maintenance_blocked": False},
+            1,
+            id="replay-result-missing",
+        ),
+        pytest.param(
+            {
+                "maintenance_blocked": False,
+                "worktree_reconciliation_replay": {
+                    "attempted": False,
+                    "reason": "task_board_unavailable",
+                },
+            },
+            1,
+            id="replay-task-board-unavailable",
+        ),
+        pytest.param(
+            {
+                "maintenance_blocked": False,
+                "worktree_reconciliation_replay": {
+                    "attempted": False,
+                    "reason": "worktree_reconciliation_disabled",
+                },
+            },
+            1,
+            id="replay-disabled",
+        ),
+        pytest.param(
+            {
+                "maintenance_blocked": False,
+                "worktree_reconciliation_replay": {
+                    "attempted": True,
+                    "reason": "reconciliation_replays_processed",
+                    "pending_count": 2,
+                    "processed_count": 1,
+                    "completed_count": 1,
+                    "failed_count": 0,
+                    "deferred_count": 0,
+                    "results": [
+                        {
+                            "attempted": True,
+                            "completed": True,
+                            "settled": True,
+                        }
+                    ],
+                },
+            },
+            1,
+            id="replay-partially-processed",
+        ),
+        pytest.param(
+            {
+                "maintenance_blocked": False,
+                "worktree_reconciliation_replay": {
+                    "attempted": True,
+                    "reason": "reconciliation_replays_processed",
+                    "pending_count": 1,
+                    "processed_count": 1,
+                    "completed_count": 1,
+                    "failed_count": 0,
+                    "deferred_count": 0,
+                    "results": [
+                        {
+                            "attempted": True,
+                            "completed": True,
+                            "settled": True,
+                        }
+                    ],
+                },
+            },
+            0,
+            id="replay-completed",
+        ),
+        pytest.param(
+            {
+                "maintenance_blocked": False,
+                "worktree_reconciliation_replay": {
+                    "attempted": True,
+                    "reason": "reconciliation_replays_processed",
+                    "pending_count": 1,
+                    "processed_count": 1,
+                    "completed_count": 0,
+                    "failed_count": 0,
+                    "deferred_count": 0,
+                    "results": [
+                        {
+                            "attempted": True,
+                            "completed": False,
+                            "queued": True,
+                            "settled": True,
+                        }
+                    ],
+                },
+            },
+            0,
+            id="replay-queued-and-settled",
+        ),
+        pytest.param(
+            {
+                "maintenance_blocked": False,
+                "worktree_reconciliation_replay": {
+                    "attempted": False,
+                    "reason": "no_pending_reconciliation_replays",
+                    "pending_count": 0,
+                    "processed_count": 0,
+                    "completed_count": 0,
+                    "failed_count": 0,
+                    "deferred_count": 0,
+                    "results": [],
+                },
+            },
+            0,
+            id="no-pending-replay",
+        ),
+    ],
+)
+def test_supervisor_once_can_fail_closed_on_reconciliation_result(
+    monkeypatch,
+    run_result,
+    expected_exit_code,
+):
+    observed: dict[str, object] = {}
+
+    class StubSupervisor:
+        def __init__(self, config):
+            observed["config"] = config
+
+        def run_once(self, **_kwargs):
+            observed["run_once_called"] = True
+            return run_result
+
+        def run_forever(self):
+            raise AssertionError("--once must not start the supervisor loop")
+
+    sentinel_config = object()
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "supervisor_config_from_args",
+        lambda _args, *, repo_root: sentinel_config,
+    )
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "PortalImplementationSupervisor",
+        StubSupervisor,
+    )
+
+    exit_code = implementation_supervisor_module.main(
+        [
+            "--once",
+            "--reconciliation-only",
+            "--fail-on-reconciliation-error",
+        ]
+    )
+
+    assert exit_code == expected_exit_code
+    assert observed == {
+        "config": sentinel_config,
+        "run_once_called": True,
+    }
+
+
 def test_multi_supervisor_runner_parses_and_runs_short_track(tmp_path):
     worker = tmp_path / "worker.py"
     worker.write_text(
         "\n".join(
             [
+                "import os",
                 "import signal",
                 "import sys",
                 "import time",
+                "from pathlib import Path",
                 "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))",
+                "Path('state').mkdir(exist_ok=True)",
+                "Path('state/observed.pid').write_text(str(os.getpid()), encoding='utf-8')",
+                "Path('state/daemon.pid').write_text(str(os.getpid()), encoding='utf-8')",
                 "print('worker started', flush=True)",
                 "while True:",
                 "    time.sleep(0.05)",
@@ -3557,13 +4159,21 @@ def test_multi_supervisor_runner_parses_and_runs_short_track(tmp_path):
         output=output.append,
     )
 
-    pid = int((tmp_path / "state" / "supervisor.pid").read_text(encoding="utf-8").strip())
+    pid = int((tmp_path / "state" / "observed.pid").read_text(encoding="utf-8").strip())
     assert result["completed"] is True
     assert result["track_count"] == 1
-    assert (tmp_path / "state" / "master.pid").read_text(encoding="utf-8").strip() == str(os.getpid())
+    assert result["all_trees_fenced"] is True
+    assert result["master_pid_removed"] is True
+    assert set(result["removed_runtime_markers"]) == {
+        str(tmp_path / "state" / "supervisor.pid"),
+        str(tmp_path / "state" / "daemon.pid"),
+    }
     assert "worker started" in (tmp_path / "logs" / "RUN.log").read_text(encoding="utf-8")
     assert any("started T supervisor" in line for line in output)
     assert not pid_alive(pid)
+    assert not (tmp_path / "state" / "master.pid").exists()
+    assert not (tmp_path / "state" / "supervisor.pid").exists()
+    assert not (tmp_path / "state" / "daemon.pid").exists()
 
 
 def test_pid_alive_treats_an_unreaped_zombie_as_stopped():
@@ -3850,7 +4460,7 @@ def test_implementation_supervisor_common_args_include_long_run_defaults():
 
     assert args[:3] == ["--implement", "--objective-refill-scan", "--codebase-refill-scan"]
     assert args[args.index("--implementation-command") + 1] == "bash resolve.sh"
-    assert args[args.index("--llm-merge-resolver-command") + 1] == "bash resolve.sh"
+    assert "--llm-merge-resolver-command" not in args
     assert args[args.index("--objective-scan-min-open-tasks") + 1] == "21"
     assert args[args.index("--objective-scan-max-findings") + 1] == "13"
     assert args[args.index("--objective-refill-timeout-seconds") + 1] == "602"
@@ -3863,18 +4473,35 @@ def test_implementation_supervisor_common_args_include_long_run_defaults():
 def test_implementation_multi_supervisor_env_defaults_are_reusable():
     assert implementation_multi_supervisor_env_defaults() == {
         "PYTHONUNBUFFERED": "1",
-        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "900",
-        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "600",
+        "GROK_MERGE_RESOLVER_TIMEOUT_SECONDS": "900",
+        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "600",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "grok_cli",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER": "codex",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER": (
+            "primary_quota_exhausted"
+        ),
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.5",
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
+        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "medium",
     }
     assert implementation_multi_supervisor_env_defaults(
         python_unbuffered=False,
+        grok_merge_resolver_timeout_seconds=0,
         codex_merge_resolver_timeout_seconds=0,
+        copilot_merge_resolver_timeout_seconds=123,
         prefer_copilot_merge_resolver=True,
     ) == {
         "PYTHONUNBUFFERED": "0",
+        "GROK_MERGE_RESOLVER_TIMEOUT_SECONDS": "0",
         "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "0",
-        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "600",
-        "PREFER_COPILOT_MERGE_RESOLVER": "1",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "grok_cli",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER": "codex",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER": (
+            "primary_quota_exhausted"
+        ),
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.5",
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
+        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "medium",
     }
 
 
@@ -3898,7 +4525,7 @@ def test_multi_supervisor_common_args_from_parsed_defaults(monkeypatch):
     assert "--objective-refill-scan" in args
     assert "--codebase-refill-scan" in args
     assert args[args.index("--implementation-command") + 1] == "bash resolve.sh"
-    assert args[args.index("--llm-merge-resolver-command") + 1] == "bash resolve.sh"
+    assert "--llm-merge-resolver-command" not in args
     assert args[args.index("--objective-scan-min-open-tasks") + 1] == "22"
     assert args[-2:] == ["--objective-scan-min-open-tasks", "99"]
     assert supervisor_track_payload(tracks[0])["log_path"].endswith("/agent_8h_run_" + parsed.stamp + ".log")
@@ -4045,6 +4672,9 @@ def test_repo_implementation_multi_supervisor_launcher_uses_repo_defaults(tmp_pa
 
     monkeypatch.setattr(multi_supervisor_runner, "main", fake_main)
     monkeypatch.delenv("MULTI_SUPERVISOR_REPO_DEFAULT", raising=False)
+    ordered_defaults = implementation_multi_supervisor_env_defaults()
+    for name in ordered_defaults:
+        monkeypatch.delenv(name, raising=False)
 
     launcher = build_repo_implementation_multi_supervisor_launcher(
         repo_root=tmp_path,
@@ -4079,6 +4709,10 @@ def test_repo_implementation_multi_supervisor_launcher_uses_repo_defaults(tmp_pa
 
     assert launcher.run(["--duration-seconds", "0.01"]) == 0
     assert os.environ["MULTI_SUPERVISOR_REPO_DEFAULT"] == "1"
+    assert {
+        name: os.environ[name]
+        for name in ordered_defaults
+    } == ordered_defaults
     assert prepared == ["called"]
     assert captured["argv"][-2:] == ("--duration-seconds", "0.01")
 
@@ -4117,31 +4751,8 @@ def test_repo_implementation_multi_supervisor_launcher_uses_packaged_resolver_de
     )
 
 
-def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):
-    codex_log = tmp_path / "codex.prompt"
-    codex_argv_log = tmp_path / "codex.argv"
-    codex_bin = tmp_path / "codex"
-    codex_bin.write_text(
-        "#!/usr/bin/env bash\n"
-        f"printf '%s\\n' \"$@\" > {shlex.quote(str(codex_argv_log))}\n"
-        "while (($#)); do\n"
-        "  if [[ \"$1\" == \"-C\" ]]; then shift; workspace=\"$1\"; fi\n"
-        "  shift || true\n"
-        "done\n"
-        "cat > \"$workspace/codex.prompt\"\n",
-        encoding="utf-8",
-    )
-    codex_bin.chmod(0o755)
-    env = {
-        **os.environ,
-        "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
-        "CODEX_BIN": str(codex_bin),
-        "COPILOT_BIN": "",
-        "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "",
-        "AGENT_RESOLVER_LOCK_BYPASS": "1",
-    }
-
-    completed = subprocess.run(
+def _run_packaged_merge_resolver(tmp_path: Path, env: dict[str, str]):
+    return subprocess.run(
         [
             sys.executable,
             "-m",
@@ -4151,120 +4762,237 @@ def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):
         input="resolve this conflict",
         text=True,
         capture_output=True,
-        env=env,
+        env={
+            **os.environ,
+            "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
+            "AGENT_RESOLVER_LOCK_BYPASS": "1",
+            "_AGENT_RESOLVER_INVOCATION_DEPTH": "0",
+            **env,
+        },
         check=False,
     )
 
+
+def test_llm_merge_resolver_fallback_module_uses_exact_grok_first(tmp_path):
+    grok_prompt = tmp_path / "grok.prompt"
+    grok_args = tmp_path / "grok.args"
+    codex_marker = tmp_path / "codex.invoked"
+    grok_bin = tmp_path / "grok"
+    codex_bin = tmp_path / "codex"
+    grok_bin.write_text(
+        "#!/usr/bin/env bash\n"
+        "while (($#)); do\n"
+        f"  printf '%s\\n' \"$1\" >> {shlex.quote(str(grok_args))}\n"
+        "  if [[ \"$1\" == \"--prompt-file\" ]]; then shift; prompt_file=\"$1\"; fi\n"
+        "  shift || true\n"
+        "done\n"
+        f"cat \"$prompt_file\" > {shlex.quote(str(grok_prompt))}\n",
+        encoding="utf-8",
+    )
+    codex_bin.write_text(
+        f"#!/usr/bin/env bash\nprintf invoked > {shlex.quote(str(codex_marker))}\n",
+        encoding="utf-8",
+    )
+    grok_bin.chmod(0o755)
+    codex_bin.chmod(0o755)
+    completed = _run_packaged_merge_resolver(
+        tmp_path,
+        {
+            "IPFS_ACCELERATE_AGENT_GROK_BIN": str(grok_bin),
+            "CODEX_BIN": str(codex_bin),
+            "IPFS_ACCELERATE_AGENT_GROK_MODEL": "wrong-grok-model",
+        },
+    )
+
     assert completed.returncode == 0, completed.stderr
-    assert codex_log.read_text(encoding="utf-8") == "resolve this conflict"
-    codex_argv = codex_argv_log.read_text(encoding="utf-8").splitlines()
-    assert codex_argv[codex_argv.index("-m") + 1] == "gpt-5.6-sol"
+    assert grok_prompt.read_text(encoding="utf-8") == "resolve this conflict"
+    grok_argv = grok_args.read_text(encoding="utf-8").splitlines()
+    assert grok_argv[grok_argv.index("--model") + 1] == GROK_MERGE_RESOLVER_MODEL
+    assert not codex_marker.exists()
 
 
 def test_llm_merge_resolver_provider_defaults_fit_outer_budget(monkeypatch):
+    monkeypatch.delenv("GROK_MERGE_RESOLVER_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS", raising=False)
-    monkeypatch.delenv("COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS", raising=False)
 
+    grok_timeout = _timeout_seconds(
+        "GROK_MERGE_RESOLVER_TIMEOUT_SECONDS",
+        _DEFAULT_GROK_TIMEOUT_SECONDS,
+    )
     codex_timeout = _timeout_seconds(
-        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS",
-        _DEFAULT_CODEX_TIMEOUT_SECONDS,
-    )
-    copilot_timeout = _timeout_seconds(
-        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS",
-        _DEFAULT_COPILOT_TIMEOUT_SECONDS,
+        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS", _DEFAULT_CODEX_TIMEOUT_SECONDS
     )
 
-    assert codex_timeout == 900
-    assert copilot_timeout == 600
+    assert grok_timeout == 900
+    assert codex_timeout == 600
     assert (
-        codex_timeout + copilot_timeout
+        grok_timeout + codex_timeout
         < merge_resolver.DEFAULT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS
     )
 
 
-def test_llm_merge_resolver_fallback_uses_copilot_after_codex_timeout(tmp_path):
+def test_llm_merge_resolver_uses_exact_codex_only_after_grok_quota(tmp_path):
+    grok_bin = tmp_path / "grok"
     codex_bin = tmp_path / "codex"
     copilot_bin = tmp_path / "copilot"
-    copilot_log = tmp_path / "copilot.prompt"
-    codex_bin.write_text("#!/usr/bin/env bash\nsleep 5\n", encoding="utf-8")
-    copilot_bin.write_text(
+    codex_prompt = tmp_path / "codex.prompt"
+    codex_args = tmp_path / "codex.args"
+    copilot_marker = tmp_path / "copilot.invoked"
+    grok_bin.write_text(
         "#!/usr/bin/env bash\n"
-        "while (($#)); do\n"
-        "  if [[ \"$1\" == \"--prompt\" ]]; then shift; printf '%s' \"$1\" > "
-        f"{shlex.quote(str(copilot_log))}; fi\n"
-        "  shift || true\n"
-        "done\n",
+        "printf '%s\\n' 'Internal error: {\"message\":\"API error (status 402 Payment Required): Grok Build usage balance exhausted\",\"http_status\":402}' >&2\n"
+        "exit 42\n",
         encoding="utf-8",
     )
+    codex_bin.write_text(
+        "#!/usr/bin/env bash\n"
+        "while (($#)); do\n"
+        f"  printf '%s\\n' \"$1\" >> {shlex.quote(str(codex_args))}\n"
+        "  shift || true\n"
+        "done\n"
+        f"cat > {shlex.quote(str(codex_prompt))}\n",
+        encoding="utf-8",
+    )
+    copilot_bin.write_text(
+        f"#!/usr/bin/env bash\nprintf invoked > {shlex.quote(str(copilot_marker))}\n",
+        encoding="utf-8",
+    )
+    grok_bin.chmod(0o755)
     codex_bin.chmod(0o755)
     copilot_bin.chmod(0o755)
-    env = {
-        **os.environ,
-        "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
-        "CODEX_BIN": str(codex_bin),
-        "COPILOT_BIN": str(copilot_bin),
-        "COPILOT_GITHUB_TOKEN": "test-token",
-        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "0.05",
-        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "2",
-        "AGENT_RESOLVER_LOCK_BYPASS": "1",
-    }
-
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback",
-            str(tmp_path),
-        ],
-        input="resolve this conflict",
-        text=True,
-        capture_output=True,
-        env=env,
-        check=False,
+    completed = _run_packaged_merge_resolver(
+        tmp_path,
+        {
+            "IPFS_ACCELERATE_AGENT_GROK_BIN": str(grok_bin),
+            "CODEX_BIN": str(codex_bin),
+            "COPILOT_BIN": str(copilot_bin),
+            "COPILOT_GITHUB_TOKEN": "test-token",
+            "IPFS_ACCELERATE_AGENT_GROK_MODEL": "wrong-grok-model",
+            "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "wrong-codex-model",
+            "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "ultra",
+        },
     )
 
     assert completed.returncode == 0, completed.stderr
-    assert "codex merge resolver timed out" in completed.stderr
-    assert copilot_log.read_text(encoding="utf-8") == "resolve this conflict"
+    assert "authorizing Codex fallback" in completed.stderr
+    assert codex_prompt.read_text(encoding="utf-8") == "resolve this conflict"
+    codex_argv = codex_args.read_text(encoding="utf-8").splitlines()
+    assert codex_argv[codex_argv.index("-m") + 1] == CODEX_MERGE_RESOLVER_MODEL
+    assert (
+        codex_argv[codex_argv.index("-c") + 1]
+        == f'model_reasoning_effort="{CODEX_MERGE_RESOLVER_REASONING_EFFORT}"'
+    )
+    assert not copilot_marker.exists()
 
 
-def test_llm_merge_resolver_fallback_skips_unauthenticated_copilot(tmp_path):
+def test_llm_merge_resolver_stdout_quota_text_is_not_authority(tmp_path):
+    grok_bin = tmp_path / "grok"
     codex_bin = tmp_path / "codex"
-    copilot_bin = tmp_path / "copilot"
-    copilot_log = tmp_path / "copilot.log"
-    codex_bin.write_text("#!/bin/bash\nexit 42\n", encoding="utf-8")
-    copilot_bin.write_text(f"#!/bin/bash\nprintf invoked > {shlex.quote(str(copilot_log))}\n", encoding="utf-8")
+    codex_marker = tmp_path / "codex.invoked"
+    grok_bin.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf 'Grok usage balance exhausted'\n"
+        "printf 'ordinary implementation failure' >&2\n"
+        "exit 42\n",
+        encoding="utf-8",
+    )
+    codex_bin.write_text(
+        f"#!/usr/bin/env bash\nprintf invoked > {shlex.quote(str(codex_marker))}\n",
+        encoding="utf-8",
+    )
+    grok_bin.chmod(0o755)
     codex_bin.chmod(0o755)
-    copilot_bin.chmod(0o755)
-    env = {
-        **os.environ,
-        "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
-        "CODEX_BIN": str(codex_bin),
-        "COPILOT_BIN": str(copilot_bin),
-        "COPILOT_GITHUB_TOKEN": "",
-        "GH_TOKEN": "",
-        "GITHUB_TOKEN": "",
-        "PATH": str(tmp_path),
-        "AGENT_RESOLVER_LOCK_BYPASS": "1",
-    }
 
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback",
-            str(tmp_path),
-        ],
-        input="resolve this conflict",
-        text=True,
-        capture_output=True,
-        env=env,
-        check=False,
+    completed = _run_packaged_merge_resolver(
+        tmp_path,
+        {
+            "IPFS_ACCELERATE_AGENT_GROK_BIN": str(grok_bin),
+            "CODEX_BIN": str(codex_bin),
+        },
     )
 
     assert completed.returncode == 42
-    assert "copilot fallback is not authenticated" in completed.stderr
-    assert not copilot_log.exists()
+    assert "Codex fallback is forbidden" in completed.stderr
+    assert not codex_marker.exists()
+
+
+@pytest.mark.parametrize(
+    "failure_text",
+    (
+        "xAI HTTP 429 rate limited",
+        "Grok authentication failed",
+        "Grok timed out",
+        "Grok service unavailable",
+        "Grok quota exhausted after HTTP 429 rate limit",
+        "generic Grok failure",
+    ),
+)
+def test_llm_merge_resolver_nonquota_grok_failures_never_fallback(
+    tmp_path,
+    failure_text,
+):
+    grok_bin = tmp_path / "grok"
+    codex_bin = tmp_path / "codex"
+    copilot_bin = tmp_path / "copilot"
+    codex_marker = tmp_path / "codex.invoked"
+    copilot_marker = tmp_path / "copilot.invoked"
+    grok_bin.write_text(
+        "#!/usr/bin/env bash\n"
+        f"printf '%s' {shlex.quote(failure_text)} >&2\n"
+        "exit 42\n",
+        encoding="utf-8",
+    )
+    codex_bin.write_text(
+        f"#!/usr/bin/env bash\nprintf invoked > {shlex.quote(str(codex_marker))}\n",
+        encoding="utf-8",
+    )
+    copilot_bin.write_text(
+        f"#!/usr/bin/env bash\nprintf invoked > {shlex.quote(str(copilot_marker))}\n",
+        encoding="utf-8",
+    )
+    grok_bin.chmod(0o755)
+    codex_bin.chmod(0o755)
+    copilot_bin.chmod(0o755)
+    completed = _run_packaged_merge_resolver(
+        tmp_path,
+        {
+            "IPFS_ACCELERATE_AGENT_GROK_BIN": str(grok_bin),
+            "CODEX_BIN": str(codex_bin),
+            "COPILOT_BIN": str(copilot_bin),
+            "COPILOT_GITHUB_TOKEN": "test-token",
+        },
+    )
+
+    assert completed.returncode == 42
+    assert "Codex fallback is forbidden" in completed.stderr
+    assert not codex_marker.exists()
+    assert not copilot_marker.exists()
+
+
+def test_llm_merge_resolver_grok_timeout_fails_closed(tmp_path):
+    grok_bin = tmp_path / "grok"
+    codex_bin = tmp_path / "codex"
+    codex_marker = tmp_path / "codex.invoked"
+    grok_bin.write_text("#!/usr/bin/env bash\nsleep 5\n", encoding="utf-8")
+    codex_bin.write_text(
+        f"#!/usr/bin/env bash\nprintf invoked > {shlex.quote(str(codex_marker))}\n",
+        encoding="utf-8",
+    )
+    grok_bin.chmod(0o755)
+    codex_bin.chmod(0o755)
+
+    completed = _run_packaged_merge_resolver(
+        tmp_path,
+        {
+            "IPFS_ACCELERATE_AGENT_GROK_BIN": str(grok_bin),
+            "CODEX_BIN": str(codex_bin),
+            "GROK_MERGE_RESOLVER_TIMEOUT_SECONDS": "0.05",
+        },
+    )
+
+    assert completed.returncode == 124
+    assert "Codex fallback is forbidden" in completed.stderr
+    assert not codex_marker.exists()
 
 
 def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
@@ -4293,6 +5021,192 @@ def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
     _git(submodule, "config", "user.name", "Test User")
     _git(submodule, "config", "user.email", "test@example.invalid")
     return repo, submodule
+
+
+def _seed_parent_with_nested_submodules(
+    tmp_path: Path,
+) -> tuple[Path, Path, Path]:
+    leaf_source = tmp_path / "leaf-source"
+    leaf_source.mkdir()
+    _git(leaf_source, "init")
+    _git(leaf_source, "checkout", "-b", "main")
+    _git(leaf_source, "config", "user.name", "Test User")
+    _git(leaf_source, "config", "user.email", "test@example.invalid")
+    (leaf_source / "leaf.txt").write_text("leaf base\n", encoding="utf-8")
+    _git(leaf_source, "add", "leaf.txt")
+    _git(leaf_source, "commit", "-m", "leaf base")
+
+    child_source = tmp_path / "nested-child-source"
+    child_source.mkdir()
+    _git(child_source, "init")
+    _git(child_source, "checkout", "-b", "main")
+    _git(child_source, "config", "user.name", "Test User")
+    _git(child_source, "config", "user.email", "test@example.invalid")
+    (child_source / "child.txt").write_text(
+        "child base\n",
+        encoding="utf-8",
+    )
+    _git(child_source, "add", "child.txt")
+    _git(child_source, "commit", "-m", "child base")
+    _git(
+        child_source,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(leaf_source),
+        "vendor/leaf",
+    )
+    _git(child_source, "commit", "-am", "add nested leaf")
+
+    repo = tmp_path / "nested-parent"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child_source),
+        "libs/child",
+    )
+    _git(repo, "commit", "-am", "add child")
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "update",
+        "--init",
+        "--recursive",
+    )
+    child = repo / "libs" / "child"
+    leaf = child / "vendor" / "leaf"
+    for target in (child, leaf):
+        _git(target, "config", "user.name", "Test User")
+        _git(target, "config", "user.email", "test@example.invalid")
+    return repo, child, leaf
+
+
+def _protected_submodule_cleanup_daemon(
+    repo: Path,
+    tmp_path: Path,
+    protected_paths: list[str],
+) -> TodoImplementationDaemon:
+    state_dir = tmp_path / "protected-submodule-state"
+    return TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task-state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+        implementation_protected_paths=protected_paths,
+    )
+
+
+def test_submodule_commit_cleanup_preserves_direct_and_nested_protected_artifacts(
+    tmp_path: Path,
+):
+    repo, child, leaf = _seed_parent_with_nested_submodules(tmp_path)
+    direct_protected = ".pytest_cache/direct-sentinel"
+    nested_protected = ".pytest_cache/nested-sentinel"
+    direct_keep = child / direct_protected
+    nested_keep = leaf / nested_protected
+    direct_remove = child / "test-results" / "direct-output.txt"
+    nested_remove = leaf / "test-results" / "nested-output.txt"
+    for target, content in (
+        (direct_keep, "direct protected\n"),
+        (nested_keep, "nested protected\n"),
+        (direct_remove, "direct generated\n"),
+        (nested_remove, "nested generated\n"),
+    ):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+    for name, target in (("child", child), ("leaf", leaf)):
+        excludes = tmp_path / f"{name}.exclude"
+        excludes.write_text(
+            ".pytest_cache/\ntest-results/\n",
+            encoding="utf-8",
+        )
+        _git(target, "config", "core.excludesfile", str(excludes))
+    (leaf / "leaf.txt").write_text(
+        "nested implementation\n",
+        encoding="utf-8",
+    )
+    daemon = _protected_submodule_cleanup_daemon(
+        repo,
+        tmp_path,
+        [
+            f"libs/child/{direct_protected}",
+            f"libs/child/vendor/leaf/{nested_protected}",
+        ],
+    )
+
+    results = daemon._commit_worktree_submodule_changes(
+        repo,
+        _submodule_proposal_task("libs/child/vendor/leaf/leaf.txt"),
+        1,
+    )
+
+    assert results[0]["committed"] is True
+    assert results[0]["nested_submodule_results"][0]["committed"] is True
+    assert direct_keep.read_text(encoding="utf-8") == "direct protected\n"
+    assert nested_keep.read_text(encoding="utf-8") == "nested protected\n"
+    assert not direct_remove.exists()
+    assert not nested_remove.exists()
+
+
+def test_staged_generated_cleanup_preserves_prefixed_protected_submodule_paths(
+    tmp_path: Path,
+):
+    repo, child, leaf = _seed_parent_with_nested_submodules(tmp_path)
+    protected = {
+        child: (
+            "libs/child",
+            ".pytest_cache/direct-staged.pyc",
+        ),
+        leaf: (
+            "libs/child/vendor/leaf",
+            ".pytest_cache/nested-staged.pyc",
+        ),
+    }
+    daemon = _protected_submodule_cleanup_daemon(
+        repo,
+        tmp_path,
+        [
+            f"{prefix}/{relative}"
+            for prefix, relative in protected.values()
+        ],
+    )
+
+    for target, (prefix, relative) in protected.items():
+        keep = target / relative
+        remove = target / "test-results" / "unprotected-staged.pyc"
+        keep.parent.mkdir(parents=True, exist_ok=True)
+        remove.parent.mkdir(parents=True, exist_ok=True)
+        keep.write_bytes(b"protected bytecode")
+        remove.write_bytes(b"generated bytecode")
+        _git(
+            target,
+            "add",
+            "-f",
+            relative,
+            "test-results/unprotected-staged.pyc",
+        )
+
+        daemon._remove_generated_paths_from_index(
+            target,
+            protected_path_prefix=prefix,
+        )
+
+        assert keep.read_bytes() == b"protected bytecode"
+        assert not remove.exists()
+        assert _git(target, "diff", "--cached", "--name-only") == relative
 
 
 def _submodule_proposal_daemon(
@@ -4326,826 +5240,6 @@ def _submodule_proposal_task(output: str | list[str]) -> PortalTask:
     )
 
 
-def _submodule_integration_preflight_daemon(
-    repo: Path,
-    tmp_path: Path,
-    *,
-    implement: bool = False,
-) -> TodoImplementationDaemon:
-    state_dir = tmp_path / "submodule-preflight-state"
-    return TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=state_dir / "task-state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-        implement=implement,
-        use_ephemeral_worktree=True,
-        worktree_root=tmp_path / "submodule-preflight-worktrees",
-        merge_target_branch="main",
-        worktree_submodule_paths=["libs/child"],
-    )
-
-
-def _configure_child_main_in_root_target(repo: Path) -> None:
-    _git(
-        repo,
-        "config",
-        "-f",
-        ".gitmodules",
-        "submodule.libs/child.branch",
-        "main",
-    )
-    _git(repo, "add", ".gitmodules")
-    _git(repo, "commit", "-m", "configure child integration branch")
-
-
-def _create_preflight_bound_child_candidate(
-    repo: Path,
-    submodule: Path,
-    daemon: TodoImplementationDaemon,
-    task: PortalTask,
-    *,
-    branch_name: str,
-) -> tuple[dict[str, object], dict[str, dict[str, str]], str, str]:
-    preflight = daemon._preflight_task_owned_submodule_integration(task)
-    assert preflight["passed"] is True
-    approved_targets = (
-        daemon._approved_task_owned_submodule_integration_targets(
-            preflight
-        )
-    )
-    root_target_commit = str(preflight["root_target_commit"])
-    gitlink_baseline = str(
-        approved_targets["libs/child"]["gitlink_baseline"]
-    )
-    _git(repo, "checkout", "-b", branch_name, root_target_commit)
-    child_branch = daemon._submodule_worktree_branch_name(
-        branch_name,
-        "libs/child",
-    )
-    _git(submodule, "checkout", "-b", child_branch, gitlink_baseline)
-    (submodule / "validated-candidate.txt").write_text(
-        "validated child candidate\n",
-        encoding="utf-8",
-    )
-    _git(submodule, "add", "validated-candidate.txt")
-    _git(submodule, "commit", "-m", f"{task.task_id}: child candidate")
-    child_candidate = _git(submodule, "rev-parse", "HEAD")
-    _git(repo, "add", "libs/child")
-    _git(repo, "commit", "-m", f"{task.task_id}: bind child candidate")
-    root_candidate = _git(repo, "rev-parse", "HEAD")
-    _git(repo, "checkout", "main")
-    _git(submodule, "checkout", "main")
-    assert _git(repo, "status", "--porcelain") == ""
-    return (
-        preflight,
-        approved_targets,
-        root_candidate,
-        child_candidate,
-    )
-
-
-def _diverge_root_gitlink_from_child_main(
-    repo: Path,
-    submodule: Path,
-) -> tuple[str, str, str]:
-    common_base = _git(submodule, "rev-parse", "main")
-    _git(submodule, "checkout", "-b", "gitlink-side", common_base)
-    (submodule / "gitlink-side.txt").write_text(
-        "root target side\n",
-        encoding="utf-8",
-    )
-    _git(submodule, "add", "gitlink-side.txt")
-    _git(submodule, "commit", "-m", "root target child side")
-    gitlink_commit = _git(submodule, "rev-parse", "HEAD")
-    _git(repo, "add", "libs/child")
-    _git(repo, "commit", "-m", "advance root child gitlink independently")
-
-    _git(submodule, "checkout", "main")
-    (submodule / "integration-side.txt").write_text(
-        "child integration side\n",
-        encoding="utf-8",
-    )
-    _git(submodule, "add", "integration-side.txt")
-    _git(submodule, "commit", "-m", "advance child integration independently")
-    integration_commit = _git(submodule, "rev-parse", "main")
-    return common_base, gitlink_commit, integration_commit
-
-
-@pytest.mark.parametrize(
-    ("topology", "expected_relation", "expected_merge_mode"),
-    [
-        ("equal", "equal", "ff-only"),
-        (
-            "integration-target-ancestor",
-            "integration_target_ancestor",
-            "ff-only",
-        ),
-    ],
-)
-def test_task_owned_submodule_integration_preflight_allows_linear_topology(
-    tmp_path,
-    topology,
-    expected_relation,
-    expected_merge_mode,
-):
-    repo, submodule = _seed_parent_with_submodule(tmp_path)
-    _configure_child_main_in_root_target(repo)
-    common_base = _git(submodule, "rev-parse", "main")
-    if topology == "integration-target-ancestor":
-        _git(submodule, "checkout", "-b", "gitlink-ahead", common_base)
-        (submodule / "gitlink-ahead.txt").write_text("ahead\n", encoding="utf-8")
-        _git(submodule, "add", "gitlink-ahead.txt")
-        _git(submodule, "commit", "-m", "advance only the root gitlink side")
-        _git(repo, "add", "libs/child")
-        _git(repo, "commit", "-m", "record child commit ahead of main")
-        _git(submodule, "checkout", "main")
-    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
-    result = daemon._preflight_task_owned_submodule_integration(
-        _submodule_proposal_task("libs/child/child.txt")
-    )
-
-    assert result["passed"] is True
-    assert result["reason"] == "compatible"
-    assert result["blocked_paths"] == []
-    assert len(result["submodules"]) == 1
-    assert result["submodules"][0]["relation"] == expected_relation
-    assert result["submodules"][0]["expected_merge_mode"] == expected_merge_mode
-
-
-def test_task_owned_submodule_integration_preflight_blocks_stale_root_gitlink(
-    tmp_path,
-):
-    repo, submodule = _seed_parent_with_submodule(tmp_path)
-    _configure_child_main_in_root_target(repo)
-    (submodule / "main-ahead.txt").write_text("ahead\n", encoding="utf-8")
-    _git(submodule, "add", "main-ahead.txt")
-    _git(submodule, "commit", "-m", "advance child main beyond root gitlink")
-    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
-    task = _submodule_proposal_task("libs/child/child.txt")
-
-    preflight = daemon._preflight_task_owned_submodule_integration(task)
-    implementation = daemon._run_implementation(task, TodoTaskState())
-
-    assert preflight["passed"] is False
-    assert preflight["reason"] == "gitlink_baseline_stale"
-    assert preflight["submodules"][0]["relation"] == (
-        "gitlink_baseline_ancestor"
-    )
-    assert preflight["submodules"][0]["reason"] == "gitlink_baseline_stale"
-    assert implementation["reason"] == (
-        "task_owned_submodule_gitlink_baseline_stale"
-    )
-    assert implementation["attempt_consumed"] is False
-
-
-def test_task_owned_submodule_integration_preflight_blocks_preexisting_divergence(
-    tmp_path,
-):
-    repo, submodule = _seed_parent_with_submodule(tmp_path)
-    _configure_child_main_in_root_target(repo)
-    common_base, gitlink_commit, integration_commit = (
-        _diverge_root_gitlink_from_child_main(repo, submodule)
-    )
-    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
-    daemon._build_implementation_prompt = lambda *_args, **_kwargs: pytest.fail(  # type: ignore[method-assign]
-        "pre-existing submodule divergence reached provider dispatch"
-    )
-    task = _submodule_proposal_task("libs/child/child.txt")
-
-    preflight = daemon._preflight_task_owned_submodule_integration(task)
-    implementation = daemon._run_implementation(task, TodoTaskState())
-
-    assert preflight["passed"] is False
-    assert preflight["reason"] == "preexisting_divergence"
-    assert preflight["blocked_paths"] == ["libs/child"]
-    assert preflight["submodules"][0]["gitlink_baseline"] == gitlink_commit
-    assert preflight["submodules"][0]["integration_target"] == integration_commit
-    assert preflight["submodules"][0]["merge_bases"] == [common_base]
-    assert implementation["reason"] == (
-        "task_owned_submodule_preexisting_divergence"
-    )
-    assert implementation["provider_call_allowed"] is False
-    assert implementation["attempt_consumed"] is False
-    assert implementation["retryable"] is True
-    assert implementation["submodule_integration_preflight"] == preflight
-    events = daemon.events_path.read_text(encoding="utf-8")
-    assert "implementation_submodule_integration_preflight_blocked" in events
-
-
-def test_submodule_preflight_rechecks_after_implementation_lock(tmp_path):
-    repo, submodule = _seed_parent_with_submodule(tmp_path)
-    _configure_child_main_in_root_target(repo)
-    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
-    task = _submodule_proposal_task("libs/child/child.txt")
-    checks = iter(
-        [
-            {
-                "passed": True,
-                "reason": "compatible",
-                "root_target_commit": "root-before",
-            },
-            {
-                "passed": False,
-                "reason": "preexisting_divergence",
-                "root_target_commit": "root-after",
-                "blocked_paths": ["libs/child"],
-            },
-        ]
-    )
-    daemon._preflight_task_owned_submodule_integration = (  # type: ignore[method-assign]
-        lambda _task: next(checks)
-    )
-    daemon._build_implementation_prompt = lambda *_args, **_kwargs: "prompt"  # type: ignore[method-assign]
-    daemon._run_implementation_in_ephemeral_worktree = lambda **_kwargs: pytest.fail(  # type: ignore[method-assign]
-        "provider worktree started after locked preflight failed"
-    )
-
-    result = daemon._run_implementation(task, TodoTaskState())
-
-    assert result["reason"] == "task_owned_submodule_preexisting_divergence"
-    assert result["preflight_phase"] == "implementation_lock_acquired"
-    assert result["submodule_integration_preflight"]["root_target_commit"] == (
-        "root-after"
-    )
-    with pytest.raises(StopIteration):
-        next(checks)
-
-
-def test_locked_submodule_preflight_commit_is_forwarded_to_ephemeral_worktree(
-    tmp_path,
-):
-    repo, submodule = _seed_parent_with_submodule(tmp_path)
-    _configure_child_main_in_root_target(repo)
-    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
-    task = _submodule_proposal_task("libs/child/child.txt")
-    root_target_commit = _git(repo, "rev-parse", "main")
-    captured: dict[str, object] = {}
-
-    daemon._build_implementation_prompt = lambda *_args, **_kwargs: "prompt"  # type: ignore[method-assign]
-    daemon._persist_implementation_context_receipt = (  # type: ignore[method-assign]
-        lambda *_args, **_kwargs: tmp_path / "context-receipt.json"
-    )
-
-    def capture_ephemeral(**kwargs):
-        captured.update(kwargs)
-        return {"returncode": 0}
-
-    daemon._run_implementation_in_ephemeral_worktree = capture_ephemeral  # type: ignore[method-assign]
-
-    result = daemon._run_implementation(task, TodoTaskState())
-
-    assert result["returncode"] == 0
-    assert captured["approved_root_target_commit"] == root_target_commit
-    approved_targets = captured[
-        "approved_submodule_integration_targets"
-    ]
-    assert isinstance(approved_targets, dict)
-    assert approved_targets == {
-        "libs/child": {
-            "path": "libs/child",
-            "integration_branch": "main",
-            "integration_target": _git(submodule, "rev-parse", "main"),
-            "gitlink_baseline": _git(
-                repo,
-                "rev-parse",
-                f"{root_target_commit}:libs/child",
-            ),
-            "expected_merge_mode": "ff-only",
-            "relation": "equal",
-        }
-    }
-
-
-def test_seeded_worktree_uses_approved_preflight_commit_after_target_advances(
-    tmp_path,
-):
-    repo, _submodule = _seed_parent_with_submodule(tmp_path)
-    _configure_child_main_in_root_target(repo)
-    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
-    daemon.worktree_pool = None
-    task = _submodule_proposal_task("libs/child/child.txt")
-    preflight = daemon._preflight_task_owned_submodule_integration(task)
-    approved_commit = preflight["root_target_commit"]
-
-    (repo / "concurrent-main-change.txt").write_text(
-        "advanced after locked preflight\n",
-        encoding="utf-8",
-    )
-    _git(repo, "add", "concurrent-main-change.txt")
-    _git(repo, "commit", "-m", "advance target after preflight")
-    advanced_commit = _git(repo, "rev-parse", "main")
-    worktree_path = tmp_path / "approved-baseline-worktree"
-    branch_name = "implementation/approved-baseline"
-
-    baseline_ref = daemon._create_seeded_worktree(
-        worktree_path,
-        branch_name,
-        task=task,
-        base_ref=approved_commit,
-    )
-
-    assert preflight["passed"] is True
-    assert advanced_commit != approved_commit
-    assert baseline_ref == approved_commit
-    assert _git(worktree_path, "rev-parse", "HEAD") == approved_commit
-
-
-def test_validated_submodule_target_binding_is_durable_merge_metadata(
-    tmp_path,
-):
-    repo, submodule = _seed_parent_with_submodule(tmp_path)
-    _configure_child_main_in_root_target(repo)
-    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
-    task = _submodule_proposal_task("libs/child/child.txt")
-    branch_name = "implementation/auto-121-durable-binding"
-    (
-        preflight,
-        approved_targets,
-        root_candidate,
-        _child_candidate,
-    ) = _create_preflight_bound_child_candidate(
-        repo,
-        submodule,
-        daemon,
-        task,
-        branch_name=branch_name,
-    )
-
-    request, _result = daemon._enqueue_merge_candidate(
-        branch_name=branch_name,
-        implementation_commit=root_candidate,
-        baseline_ref=str(preflight["root_target_commit"]),
-        worktree_path=None,
-        task=task,
-        attempt=1,
-        changed_submodule_paths=["libs/child"],
-        approved_submodule_integration_targets=approved_targets,
-        validation_result={
-            "passed": True,
-            "returncode": 0,
-            "selection": {"scope": "pre_merge"},
-            "results": [],
-        },
-    )
-
-    binding = request.metadata[
-        "task_owned_submodule_integration_binding"
-    ]
-    parsed, error = (
-        daemon._parse_task_owned_submodule_integration_binding(
-            binding,
-            baseline_ref=str(preflight["root_target_commit"]),
-            changed_submodule_paths={"libs/child"},
-        )
-    )
-    assert error == ""
-    assert parsed == approved_targets
-    assert binding["schema"] == (
-        implementation_daemon_module
-        .TASK_OWNED_SUBMODULE_INTEGRATION_BINDING_SCHEMA
-    )
-
-
-def test_submodule_binding_rejects_unbound_nested_repository_change(
-    tmp_path,
-):
-    repo, _submodule = _seed_parent_with_submodule(tmp_path)
-    _configure_child_main_in_root_target(repo)
-    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
-    task = _submodule_proposal_task(
-        "libs/child/vendor/nested/file.py"
-    )
-    preflight = daemon._preflight_task_owned_submodule_integration(task)
-    approved_targets = (
-        daemon._approved_task_owned_submodule_integration_targets(
-            preflight
-        )
-    )
-    binding = daemon._task_owned_submodule_integration_binding_payload(
-        root_target_commit=str(preflight["root_target_commit"]),
-        approved_targets=approved_targets,
-    )
-
-    parsed, error = (
-        daemon._parse_task_owned_submodule_integration_binding(
-            binding,
-            baseline_ref=str(preflight["root_target_commit"]),
-            changed_submodule_paths={
-                "libs/child",
-                "libs/child/vendor/nested",
-            },
-        )
-    )
-
-    assert parsed == {}
-    assert error == (
-        "changed_submodule_path_missing_integration_binding"
-    )
-
-
-def test_merge_rejects_child_target_movement_after_locked_preflight(
-    tmp_path,
-    monkeypatch,
-):
-    repo, submodule = _seed_parent_with_submodule(tmp_path)
-    _configure_child_main_in_root_target(repo)
-    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
-    task = _submodule_proposal_task("libs/child/child.txt")
-    branch_name = "implementation/auto-121-target-race"
-    (
-        preflight,
-        approved_targets,
-        root_candidate,
-        child_candidate,
-    ) = _create_preflight_bound_child_candidate(
-        repo,
-        submodule,
-        daemon,
-        task,
-        branch_name=branch_name,
-    )
-    root_main_before = _git(repo, "rev-parse", "main")
-    (submodule / "concurrent-main.txt").write_text(
-        "advanced after validation\n",
-        encoding="utf-8",
-    )
-    _git(submodule, "add", "concurrent-main.txt")
-    _git(submodule, "commit", "-m", "advance child target after validation")
-    moved_target = _git(submodule, "rev-parse", "main")
-    monkeypatch.setattr(
-        daemon,
-        "_invoke_llm_merge_resolver_for_failed_merge",
-        lambda *_args, **_kwargs: pytest.fail(
-            "a stale validated topology reached merge repair"
-        ),
-    )
-
-    result = daemon._merge_branch_to_main(
-        branch_name,
-        task,
-        1,
-        baseline_ref=str(preflight["root_target_commit"]),
-        changed_submodule_paths={"libs/child"},
-        approved_submodule_integration_targets=approved_targets,
-    )
-
-    assert result["merged"] is False
-    assert result["attempted"] is False
-    assert result["reason"] == (
-        "task_owned_submodule_integration_binding_stale"
-    )
-    child_result = result["submodule_merge_results"][0]
-    assert child_result["reason"] == (
-        "submodule_integration_target_changed_since_validation"
-    )
-    assert child_result["integration_binding_check"][
-        "expected_integration_target"
-    ] == approved_targets["libs/child"]["integration_target"]
-    assert child_result["integration_binding_check"][
-        "actual_integration_target"
-    ] == moved_target
-    assert _git(repo, "rev-parse", "main") == root_main_before
-    assert _git(repo, "rev-parse", branch_name) == root_candidate
-    assert _git(submodule, "rev-parse", "main") == moved_target
-    assert _git(
-        submodule,
-        "rev-parse",
-        daemon._submodule_worktree_branch_name(
-            branch_name,
-            "libs/child",
-        ),
-    ) == child_candidate
-
-
-def test_preflight_bound_submodule_merge_never_falls_back_from_ff_only(
-    tmp_path,
-    monkeypatch,
-):
-    repo, submodule = _seed_parent_with_submodule(tmp_path)
-    _configure_child_main_in_root_target(repo)
-    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
-    task = _submodule_proposal_task("libs/child/child.txt")
-    branch_name = "implementation/auto-121-ff-only"
-    (
-        preflight,
-        approved_targets,
-        _root_candidate,
-        _child_candidate,
-    ) = _create_preflight_bound_child_candidate(
-        repo,
-        submodule,
-        daemon,
-        task,
-        branch_name=branch_name,
-    )
-    approved_child_target = _git(submodule, "rev-parse", "main")
-    real_run = subprocess.run
-    observed_merge_commands: list[list[str]] = []
-
-    def force_ff_only_failure(command, *args, **kwargs):
-        rendered = [str(item) for item in command]
-        command_cwd = Path(kwargs.get("cwd") or ".").resolve()
-        if (
-            rendered[:3] == ["git", "merge", "--ff-only"]
-            and command_cwd == submodule.resolve()
-        ):
-            observed_merge_commands.append(rendered)
-            return subprocess.CompletedProcess(
-                command,
-                1,
-                "",
-                "forced fast-forward race",
-            )
-        if (
-            rendered[:3] == ["git", "merge", "--no-ff"]
-            and command_cwd == submodule.resolve()
-        ):
-            pytest.fail("preflight-bound child merge used non-ff fallback")
-        return real_run(command, *args, **kwargs)
-
-    monkeypatch.setattr(
-        implementation_daemon_module.subprocess,
-        "run",
-        force_ff_only_failure,
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_invoke_llm_merge_resolver_for_failed_merge",
-        lambda *_args, **_kwargs: pytest.fail(
-            "preflight-bound child merge invoked LLM repair"
-        ),
-    )
-
-    results = daemon._merge_submodule_branches_to_main(
-        branch_name,
-        task=task,
-        attempt=1,
-        baseline_ref=str(preflight["root_target_commit"]),
-        changed_submodule_paths={"libs/child"},
-        approved_submodule_integration_targets=approved_targets,
-    )
-
-    assert len(results) == 1
-    assert results[0]["merged"] is False
-    assert results[0]["reason"] == (
-        "task_owned_submodule_ff_only_merge_required"
-    )
-    assert results[0]["command"][:3] == ["git", "merge", "--ff-only"]
-    assert observed_merge_commands == [
-        [
-            "git",
-            "merge",
-            "--ff-only",
-            daemon._submodule_worktree_branch_name(
-                branch_name,
-                "libs/child",
-            ),
-        ]
-    ]
-    assert _git(submodule, "rev-parse", "main") == approved_child_target
-
-
-def test_preflight_bound_submodule_merge_rechecks_exact_post_merge_commit(
-    tmp_path,
-    monkeypatch,
-):
-    repo, submodule = _seed_parent_with_submodule(tmp_path)
-    _configure_child_main_in_root_target(repo)
-    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
-    task = _submodule_proposal_task("libs/child/child.txt")
-    branch_name = "implementation/auto-121-post-merge-race"
-    (
-        preflight,
-        approved_targets,
-        _root_candidate,
-        child_candidate,
-    ) = _create_preflight_bound_child_candidate(
-        repo,
-        submodule,
-        daemon,
-        task,
-        branch_name=branch_name,
-    )
-    approved_child_target = _git(submodule, "rev-parse", "main")
-    _git(
-        submodule,
-        "checkout",
-        "-b",
-        "concurrent-post-guard",
-        approved_child_target,
-    )
-    (submodule / "post-guard-race.txt").write_text(
-        "concurrent target movement\n",
-        encoding="utf-8",
-    )
-    _git(submodule, "add", "post-guard-race.txt")
-    _git(submodule, "commit", "-m", "concurrent target movement")
-    concurrent_target = _git(submodule, "rev-parse", "HEAD")
-    _git(submodule, "checkout", "main")
-    real_run = subprocess.run
-
-    def move_target_during_ff_only(command, *args, **kwargs):
-        rendered = [str(item) for item in command]
-        command_cwd = Path(kwargs.get("cwd") or ".").resolve()
-        if (
-            rendered[:3] == ["git", "merge", "--ff-only"]
-            and command_cwd == submodule.resolve()
-        ):
-            update = real_run(
-                [
-                    "git",
-                    "update-ref",
-                    "refs/heads/main",
-                    concurrent_target,
-                    approved_child_target,
-                ],
-                cwd=submodule,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            assert update.returncode == 0
-            return subprocess.CompletedProcess(command, 0, "", "")
-        return real_run(command, *args, **kwargs)
-
-    monkeypatch.setattr(
-        implementation_daemon_module.subprocess,
-        "run",
-        move_target_during_ff_only,
-    )
-
-    results = daemon._merge_submodule_branches_to_main(
-        branch_name,
-        task=task,
-        attempt=1,
-        baseline_ref=str(preflight["root_target_commit"]),
-        changed_submodule_paths={"libs/child"},
-        approved_submodule_integration_targets=approved_targets,
-    )
-
-    assert len(results) == 1
-    assert results[0]["merged"] is False
-    assert results[0]["returncode"] == 2
-    assert results[0]["reason"] == (
-        "submodule_integration_target_changed_during_ff_only_merge"
-    )
-    assert results[0]["expected_candidate_commit"] == child_candidate
-    assert results[0]["actual_integration_commit"] == concurrent_target
-    assert results[0]["commit"] == ""
-
-
-def test_submodule_preflight_deferral_clears_active_task_and_preserves_attempt(
-    tmp_path,
-):
-    repo, submodule = _seed_parent_with_submodule(tmp_path)
-    _configure_child_main_in_root_target(repo)
-    _diverge_root_gitlink_from_child_main(repo, submodule)
-    (repo / "todo.md").write_text(
-        """# Todos
-
-## AUTO-121 Reconcile child behavior
-
-- Status: todo
-- Completion: manual
-- Priority: P0
-- Track: runtime
-- Outputs: libs/child/child.txt
-- Validation: test -f libs/child/child.txt
-- Acceptance: Update the task-owned child source.
-""",
-        encoding="utf-8",
-    )
-    daemon = _submodule_integration_preflight_daemon(
-        repo,
-        tmp_path,
-        implement=True,
-    )
-    daemon.task_header_prefix = "## AUTO-"
-
-    result = daemon.run_once()
-    state = TodoTaskState.load(daemon.state_path)
-
-    assert result["implementation_result"]["reason"] == (
-        "task_owned_submodule_preexisting_divergence"
-    )
-    assert result["implementation_result"]["active_task_cleared"] is True
-    assert result["active_task_id"] == ""
-    assert state.active_task_id == ""
-    assert state.implementation_in_progress is False
-    assert state.implementation_attempts == {}
-    assert state.implementation_attempts_by_cid == {}
-    assert "task_selection_retry_at" in result
-
-
-def test_submodule_preflight_does_not_clear_revised_same_id_selection(tmp_path):
-    repo, submodule = _seed_parent_with_submodule(tmp_path)
-    _configure_child_main_in_root_target(repo)
-    _diverge_root_gitlink_from_child_main(repo, submodule)
-    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
-    task = _submodule_proposal_task("libs/child/child.txt")
-    revised_state = TodoTaskState(
-        active_task_id=task.task_id,
-        active_task_cid="cid-revised-task",
-        active_task_title="Revised task",
-    )
-    revised_state.save(daemon.state_path)
-
-    result = daemon._run_implementation(task, revised_state)
-    persisted = TodoTaskState.load(daemon.state_path)
-
-    assert result["active_task_cleared"] is False
-    assert persisted.active_task_id == task.task_id
-    assert persisted.active_task_cid == "cid-revised-task"
-
-
-def test_submodule_integration_preflight_ignores_unowned_configured_submodule(
-    tmp_path,
-):
-    repo, submodule = _seed_parent_with_submodule(tmp_path)
-    _configure_child_main_in_root_target(repo)
-    _diverge_root_gitlink_from_child_main(repo, submodule)
-    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
-
-    result = daemon._preflight_task_owned_submodule_integration(
-        _submodule_proposal_task("README.md")
-    )
-
-    assert result["passed"] is True
-    assert result["reason"] == "no_task_owned_managed_submodules"
-    assert result["checked_paths"] == []
-    assert result["submodules"] == []
-
-
-def test_submodule_integration_preflight_covers_exact_submodule_root_scope(
-    tmp_path,
-):
-    repo, submodule = _seed_parent_with_submodule(tmp_path)
-    _configure_child_main_in_root_target(repo)
-    _diverge_root_gitlink_from_child_main(repo, submodule)
-    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
-
-    result = daemon._preflight_task_owned_submodule_integration(
-        _submodule_proposal_task("libs/child")
-    )
-
-    assert result["passed"] is False
-    assert result["reason"] == "preexisting_divergence"
-    assert result["checked_paths"] == ["libs/child"]
-
-
-def test_submodule_integration_preflight_resolves_same_branch_policy(tmp_path):
-    repo, _submodule = _seed_parent_with_submodule(tmp_path)
-    _git(
-        repo,
-        "config",
-        "-f",
-        ".gitmodules",
-        "submodule.libs/child.branch",
-        ".",
-    )
-    _git(repo, "add", ".gitmodules")
-    _git(repo, "commit", "-m", "inherit root target branch for child")
-    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
-
-    result = daemon._preflight_task_owned_submodule_integration(
-        _submodule_proposal_task("libs/child/child.txt")
-    )
-
-    assert result["passed"] is True
-    assert result["submodules"][0]["integration_branch"] == "main"
-    assert result["submodules"][0]["relation"] == "equal"
-
-
-def test_task_owned_submodule_integration_preflight_blocks_missing_target_ref(
-    tmp_path,
-):
-    repo, _submodule = _seed_parent_with_submodule(tmp_path)
-    _git(
-        repo,
-        "config",
-        "-f",
-        ".gitmodules",
-        "submodule.libs/child.branch",
-        "missing-integration-target",
-    )
-    _git(repo, "add", ".gitmodules")
-    _git(repo, "commit", "-m", "configure a missing child target")
-    daemon = _submodule_integration_preflight_daemon(repo, tmp_path)
-
-    result = daemon._preflight_task_owned_submodule_integration(
-        _submodule_proposal_task("libs/child/child.txt")
-    )
-
-    assert result["passed"] is False
-    assert result["reason"] == "unverifiable_topology"
-    assert result["blocked_paths"] == ["libs/child"]
-    assert result["submodules"][0]["reason"] == (
-        "integration_target_commit_unavailable"
-    )
-
-
 def test_implementation_proposal_materializes_committed_submodule_change(tmp_path: Path):
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     baseline = _git(repo, "rev-parse", "HEAD")
@@ -5167,6 +5261,34 @@ def test_implementation_proposal_materializes_committed_submodule_change(tmp_pat
     assert result.proposal.changed_paths == ("libs/child/child.txt",)
     assert "diff --git a/libs/child/child.txt b/libs/child/child.txt" in (
         result.proposal.patch_text
+    )
+    assert "Subproject commit" not in result.proposal.patch_text
+
+
+def test_implementation_proposal_materializes_declared_submodule_root(tmp_path: Path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (submodule / "child.txt").write_text(
+        "root-owned candidate\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "commit", "-am", "update root-owned child")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance root-owned child gitlink")
+
+    result = _submodule_proposal_daemon(
+        repo,
+        tmp_path,
+    )._validate_implementation_patch(
+        repo,
+        _submodule_proposal_task("libs/child"),
+        baseline_ref=baseline,
+    )
+
+    assert result.accepted is True
+    assert result.proposal.changed_paths == ("libs/child/child.txt",)
+    assert result.proposal.candidate_diff[0].after_source == (
+        "root-owned candidate\n"
     )
     assert "Subproject commit" not in result.proposal.patch_text
 
@@ -5209,6 +5331,150 @@ def test_implementation_proposal_materializes_untracked_submodule_file(tmp_path:
     assert "diff --git a/libs/child/added.txt b/libs/child/added.txt" in (
         result.proposal.patch_text
     )
+
+
+def test_implementation_proposal_uses_child_ignore_rules_for_exact_outputs(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    (repo / ".gitignore").write_text("core\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-m", "ignore parent core directories")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    operation_contract = submodule / "core" / "operation_contracts.py"
+    operation_contract.parent.mkdir()
+    operation_contract.write_text("CONTRACT_VERSION = 1\n", encoding="utf-8")
+    contract_test = submodule / "tests" / "test_operation_contracts.py"
+    contract_test.parent.mkdir()
+    contract_test.write_text(
+        "def test_contract_version():\n"
+        "    assert 1 == 1\n",
+        encoding="utf-8",
+    )
+
+    parent_ignore = subprocess.run(
+        [
+            "git",
+            "check-ignore",
+            "--no-index",
+            "--quiet",
+            "--",
+            "libs/child/core/operation_contracts.py",
+        ],
+        cwd=repo,
+        check=False,
+    )
+    child_ignore = subprocess.run(
+        [
+            "git",
+            "check-ignore",
+            "--no-index",
+            "--quiet",
+            "--",
+            "core/operation_contracts.py",
+        ],
+        cwd=submodule,
+        check=False,
+    )
+    result = _submodule_proposal_daemon(
+        repo,
+        tmp_path,
+    )._validate_implementation_patch(
+        repo,
+        _submodule_proposal_task(
+            [
+                "libs/child/core/operation_contracts.py",
+                "libs/child/tests/test_operation_contracts.py",
+            ]
+        ),
+        baseline_ref=baseline,
+    )
+
+    assert parent_ignore.returncode == 0
+    assert child_ignore.returncode == 1
+    assert result.accepted is True
+    assert result.proposal.changed_paths == (
+        "libs/child/core/operation_contracts.py",
+        "libs/child/tests/test_operation_contracts.py",
+    )
+    assert _git(submodule, "diff", "--cached", "--name-only") == ""
+
+
+def test_implementation_proposal_force_stages_exact_child_ignored_output(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    (submodule / ".gitignore").write_text(
+        "artifacts/*.json\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", ".gitignore")
+    _git(submodule, "commit", "-m", "ignore child artifacts")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "record child ignore policy")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    deliverable = submodule / "artifacts" / "proof.json"
+    deliverable.parent.mkdir()
+    deliverable.write_text('{"proved": true}\n', encoding="utf-8")
+    unrelated = submodule / "artifacts" / "unrelated.json"
+    unrelated.write_text('{"unrelated": true}\n', encoding="utf-8")
+
+    result = _submodule_proposal_daemon(
+        repo,
+        tmp_path,
+    )._validate_implementation_patch(
+        repo,
+        _submodule_proposal_task("libs/child/artifacts/proof.json"),
+        baseline_ref=baseline,
+    )
+
+    assert result.accepted is True
+    assert result.proposal.changed_paths == (
+        "libs/child/artifacts/proof.json",
+    )
+    assert _git(submodule, "diff", "--cached", "--name-only") == (
+        "artifacts/proof.json"
+    )
+    assert _git(
+        repo,
+        "ls-files",
+        "--",
+        "libs/child/artifacts/proof.json",
+    ) == ""
+
+
+def test_implementation_proposal_does_not_stage_unmanaged_child_output(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    (submodule / ".gitignore").write_text(
+        "artifacts/*.json\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", ".gitignore")
+    _git(submodule, "commit", "-m", "ignore child artifacts")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "record child ignore policy")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    deliverable = submodule / "artifacts" / "proof.json"
+    deliverable.parent.mkdir()
+    deliverable.write_text('{"proved": true}\n', encoding="utf-8")
+
+    result = _submodule_proposal_daemon(
+        repo,
+        tmp_path,
+        configured=False,
+    )._validate_implementation_patch(
+        repo,
+        _submodule_proposal_task("libs/child/artifacts/proof.json"),
+        baseline_ref=baseline,
+    )
+
+    assert result.accepted is False
+    assert "expected_output_ignored_or_unstaged" in {
+        finding.code.value for finding in result.findings
+    }
+    assert _git(submodule, "diff", "--cached", "--name-only") == ""
 
 
 def test_implementation_proposal_materializes_submodule_rename(tmp_path: Path):
@@ -5357,9 +5623,8 @@ def test_post_validation_candidate_binding_rejects_late_source_change(
     assert changed["candidate_binding"]["verified"] is False
 
 
-def test_clean_already_satisfied_candidate_runs_declared_validation(
+def test_post_validation_candidate_binding_restores_known_artifact_only(
     tmp_path: Path,
-    monkeypatch,
 ):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -5367,10 +5632,20 @@ def test_clean_already_satisfied_candidate_runs_declared_validation(
     _git(repo, "checkout", "-b", "main")
     _git(repo, "config", "user.name", "Test User")
     _git(repo, "config", "user.email", "test@example.invalid")
-    (repo / "README.md").write_text("already complete\n", encoding="utf-8")
-    _git(repo, "add", "README.md")
+    screenshot = (
+        repo
+        / "artifacts"
+        / "world-id-idkit-ui-review"
+        / "desktop-chrome"
+        / "proof-center.png"
+    )
+    screenshot.parent.mkdir(parents=True)
+    screenshot.write_bytes(b"baseline screenshot")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "artifacts")
     _git(repo, "commit", "-m", "base")
     baseline = _git(repo, "rev-parse", "HEAD")
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
     state_dir = tmp_path / "state"
     daemon = TodoImplementationDaemon(
         todo_path=repo / "todo.md",
@@ -5381,141 +5656,85 @@ def test_clean_already_satisfied_candidate_runs_declared_validation(
         worktree_submodule_paths=[],
     )
     task = PortalTask(
-        task_id="AUTO-123",
-        title="Validate an already satisfied task",
+        task_id="AUTO-123A",
+        title="Restore validation screenshots before binding",
         status="todo",
         completion="manual",
         priority="P0",
         track="ops",
-        outputs=["README.md"],
+        outputs=["feature.py"],
         validation=["python -m pytest"],
-        acceptance="Declared validation proves the existing implementation.",
+        acceptance="Generated validation evidence cannot alter the candidate.",
     )
-    calls: list[dict[str, object]] = []
-
-    def run_validation(*_args, **kwargs):
-        calls.append(dict(kwargs))
-        return {
-            "attempted": True,
-            "passed": True,
-            "returncode": 0,
-            "results": [],
-            "selection": {"changed_files": []},
-        }
-
-    monkeypatch.setattr(daemon, "_run_validation_commands", run_validation)
-    monkeypatch.setattr(
-        daemon,
-        "_validate_implementation_patch",
-        lambda *_args, **_kwargs: pytest.fail(
-            "a clean candidate must validate before the empty-patch gate"
-        ),
-    )
-
-    result = daemon._run_validation_with_candidate_binding(
+    proposal_validation = daemon._validate_implementation_patch(
         repo,
         task,
-        state_dir / "implementation.log",
         baseline_ref=baseline,
     )
-
-    assert len(calls) == 1
-    assert calls[0]["force_uncached"] is True
-    assert result["passed"] is True
-    assert result["candidate_binding"]["verified"] is True
-    assert result["proposal_gate"] == {
-        "attempted": False,
-        "accepted": True,
-        "reason": "validated_no_change_candidate",
-        "changed_paths": [],
-        "reason_codes": [],
+    passed_validation = {
+        "attempted": True,
+        "passed": True,
+        "returncode": 0,
+        "results": [],
     }
 
-
-def test_clean_candidate_rebinds_validation_materialized_output(
-    tmp_path: Path,
-    monkeypatch,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _git(repo, "init")
-    _git(repo, "checkout", "-b", "main")
-    _git(repo, "config", "user.name", "Test User")
-    _git(repo, "config", "user.email", "test@example.invalid")
-    (repo / ".gitignore").write_text("coverage.json\n", encoding="utf-8")
-    _git(repo, "add", ".gitignore")
-    _git(repo, "commit", "-m", "base")
-    baseline = _git(repo, "rev-parse", "HEAD")
-    state_dir = tmp_path / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-        worktree_submodule_paths=[],
-    )
-    task = PortalTask(
-        task_id="AUTO-123",
-        title="Materialize deterministic evidence",
-        status="todo",
-        completion="manual",
-        priority="P0",
-        track="analysis",
-        outputs=["coverage.json"],
-        validation=["python -m generate_coverage"],
-        acceptance="Generated evidence is proposal-bound at a fixed point.",
-    )
-    calls = 0
-
-    def run_validation(*_args, **_kwargs):
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            (repo / "coverage.json").write_text(
-                '{"coverage":1}\n',
-                encoding="utf-8",
-            )
-        return {
-            "attempted": True,
-            "passed": True,
-            "returncode": 0,
-            "results": [],
-        }
-
-    monkeypatch.setattr(daemon, "_run_validation_commands", run_validation)
-
-    result = daemon._run_validation_with_candidate_binding(
+    screenshot.write_bytes(b"validation screenshot")
+    restored = daemon._restore_and_verify_post_validation_candidate(
         repo,
         task,
-        state_dir / "implementation.log",
         baseline_ref=baseline,
+        proposal_validation=proposal_validation,
+        validation_result=passed_validation,
     )
 
-    assert calls == 2
-    assert result["passed"] is True
-    assert result["candidate_binding"]["verified"] is True
-    assert result["candidate_rebind"]["accepted"] is True
-    assert result["candidate_rebind"]["stabilized"] is True
-    assert result["candidate_rebind"]["changed_paths"] == ["coverage.json"]
+    assert proposal_validation.accepted is True
+    assert restored["passed"] is True
+    assert restored["candidate_binding"]["verified"] is True
+    assert screenshot.read_bytes() == b"baseline screenshot"
+    receipt = restored["generated_dirty_restore"]
+    assert receipt["attempted_count"] == 1
+    assert receipt["restored_count"] == 1
+    assert receipt["failed_count"] == 0
+    assert receipt["results"][0]["path"].endswith("proof-center.png")
+
+    screenshot.write_bytes(b"second validation screenshot")
+    (repo / "README.md").write_text(
+        "unexpected source mutation\n",
+        encoding="utf-8",
+    )
+    source_changed = daemon._restore_and_verify_post_validation_candidate(
+        repo,
+        task,
+        baseline_ref=baseline,
+        proposal_validation=proposal_validation,
+        validation_result=passed_validation,
+    )
+
+    assert screenshot.read_bytes() == b"baseline screenshot"
+    assert (repo / "README.md").read_text(encoding="utf-8") == (
+        "unexpected source mutation\n"
+    )
+    assert source_changed["passed"] is False
+    assert source_changed["reason"] == "candidate_changed_during_validation"
+    assert source_changed["candidate_binding"]["verified"] is False
 
 
-def test_validation_rebinds_declared_generated_output_at_fixed_point(
-    tmp_path: Path,
-    monkeypatch,
-):
+def _post_validation_stabilization_case(tmp_path: Path) -> SimpleNamespace:
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
     _git(repo, "checkout", "-b", "main")
     _git(repo, "config", "user.name", "Test User")
     _git(repo, "config", "user.email", "test@example.invalid")
-    (repo / "summary.md").write_text("base\n", encoding="utf-8")
-    (repo / ".gitignore").write_text("coverage.json\n", encoding="utf-8")
-    _git(repo, "add", ".gitignore", "summary.md")
+    (repo / "artifact.json").write_text('{"value": "base"}\n', encoding="utf-8")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "artifact.json", "README.md")
     _git(repo, "commit", "-m", "base")
     baseline = _git(repo, "rev-parse", "HEAD")
-    (repo / "summary.md").write_text("candidate\n", encoding="utf-8")
+    (repo / "artifact.json").write_text(
+        '{"value": "candidate"}\n',
+        encoding="utf-8",
+    )
     state_dir = tmp_path / "state"
     daemon = TodoImplementationDaemon(
         todo_path=repo / "todo.md",
@@ -5526,126 +5745,334 @@ def test_validation_rebinds_declared_generated_output_at_fixed_point(
         worktree_submodule_paths=[],
     )
     task = PortalTask(
-        task_id="AUTO-123",
-        title="Generate deterministic evidence",
+        task_id="AUTO-STABILIZE",
+        title="Stabilize one deterministic generated output",
         status="todo",
         completion="manual",
         priority="P0",
-        track="analysis",
-        outputs=["summary.md", "coverage.json"],
-        validation=["python -m generate_coverage"],
-        acceptance="The generated evidence is stable and source-bound.",
+        track="ops",
+        outputs=["artifact.json"],
+        validation=["python generate_artifact.py"],
+        acceptance="The generated output reaches a validated fixed point.",
     )
-    calls = 0
+    proposal_validation = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline,
+    )
+    assert proposal_validation.accepted is True
+    return SimpleNamespace(
+        repo=repo,
+        daemon=daemon,
+        task=task,
+        baseline=baseline,
+        proposal_validation=proposal_validation,
+        log_path=state_dir / "validation.log",
+        passed_validation={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+        },
+    )
 
-    def run_validation(*_args, **_kwargs):
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            (repo / "coverage.json").write_text(
-                '{"coverage":1}\n',
-                encoding="utf-8",
+
+def test_post_validation_candidate_stabilizes_once_after_fresh_gate(
+    tmp_path: Path,
+    monkeypatch,
+):
+    case = _post_validation_stabilization_case(tmp_path)
+    artifact = case.repo / "artifact.json"
+    artifact.write_text('{"value": "generated"}\n', encoding="utf-8")
+    original_validate = case.daemon._validate_implementation_patch
+    gate_calls = []
+    validation_calls = []
+
+    def revalidate(workspace_path, task, **kwargs):
+        gate_calls.append(dict(kwargs))
+        return original_validate(workspace_path, task, **kwargs)
+
+    def rerun(
+        workspace_path,
+        task,
+        log_path,
+        *,
+        state=None,
+        proposal_validation=None,
+    ):
+        validation_calls.append(
+            (
+                workspace_path,
+                task.task_id,
+                log_path,
+                state,
+                proposal_validation.proposal.proposal_id,
             )
+        )
         return {
             "attempted": True,
             "passed": True,
             "returncode": 0,
             "results": [],
+            "proposal_gate": case.daemon._compact_proposal_validation(
+                proposal_validation
+            ),
         }
 
     monkeypatch.setattr(
-        daemon,
-        "_run_validation_commands",
-        run_validation,
+        case.daemon,
+        "_validate_implementation_patch",
+        revalidate,
+    )
+    monkeypatch.setattr(case.daemon, "_run_validation_commands", rerun)
+
+    result = case.daemon._restore_and_verify_post_validation_candidate(
+        case.repo,
+        case.task,
+        baseline_ref=case.baseline,
+        proposal_validation=case.proposal_validation,
+        validation_result=case.passed_validation,
+        log_path=case.log_path,
+        attempt=2,
+        allow_candidate_stabilization=True,
     )
 
-    result = daemon._run_validation_with_candidate_binding(
-        repo,
-        task,
-        state_dir / "implementation.log",
-        baseline_ref=baseline,
-    )
-
-    assert calls == 2
     assert result["passed"] is True
     assert result["candidate_binding"]["verified"] is True
-    assert result["candidate_rebind"]["accepted"] is True
-    assert result["candidate_rebind"]["stabilized"] is True
-    assert result["candidate_rebind"]["changed_paths"] == [
-        "coverage.json",
-        "summary.md",
-    ]
-    assert "coverage.json" in _git(
-        repo,
-        "diff",
-        "--cached",
-        "--name-only",
-    ).splitlines()
-    _git(repo, "reset", "--quiet", "HEAD", "--", "coverage.json")
-    assert "coverage.json" not in _git(
-        repo,
-        "diff",
-        "--cached",
-        "--name-only",
-    ).splitlines()
-
-    commit_result = daemon._commit_worktree_changes_unchecked(
-        repo,
-        task,
-        1,
-        baseline_ref=baseline,
+    assert result["candidate_stabilization"]["outcome"] == "stabilized"
+    assert result["candidate_stabilization"]["cycle_count"] == 1
+    assert len(gate_calls) == 1
+    assert gate_calls[0]["allow_scope_adjudication"] is False
+    assert "replayable_consumed_proposal_ids" not in gate_calls[0]
+    assert len(validation_calls) == 1
+    assert validation_calls[0][2] == case.log_path
+    assert result["proposal_gate"]["proposal_id"] == validation_calls[0][4]
+    assert artifact.read_text(encoding="utf-8") == (
+        '{"value": "generated"}\n'
     )
-    assert commit_result["committed"] is True
-    assert _git(
-        repo,
-        "show",
-        f"{commit_result['commit']}:coverage.json",
-    ) == '{"coverage":1}'
 
 
-def test_validation_rebind_rejects_generated_change_outside_task_scope(
+def test_post_validation_candidate_stabilization_rejects_output_expansion(
     tmp_path: Path,
     monkeypatch,
 ):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _git(repo, "init")
-    _git(repo, "checkout", "-b", "main")
-    _git(repo, "config", "user.name", "Test User")
-    _git(repo, "config", "user.email", "test@example.invalid")
-    (repo / "README.md").write_text("base\n", encoding="utf-8")
-    (repo / "summary.md").write_text("base\n", encoding="utf-8")
-    _git(repo, "add", "README.md", "summary.md")
-    _git(repo, "commit", "-m", "base")
-    baseline = _git(repo, "rev-parse", "HEAD")
-    (repo / "summary.md").write_text("candidate\n", encoding="utf-8")
-    state_dir = tmp_path / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-        worktree_submodule_paths=[],
+    case = _post_validation_stabilization_case(tmp_path)
+    (case.repo / "artifact.json").write_text(
+        '{"value": "generated"}\n',
+        encoding="utf-8",
     )
-    task = PortalTask(
-        task_id="AUTO-123",
-        title="Reject out-of-scope validation changes",
-        status="todo",
-        completion="manual",
-        priority="P0",
-        track="analysis",
-        outputs=["summary.md"],
-        validation=["python -m generate_coverage"],
-        acceptance="Validation cannot mutate undeclared source.",
+    (case.repo / "README.md").write_text(
+        "validation changed an undeclared output\n",
+        encoding="utf-8",
     )
-    calls = 0
 
-    def run_validation(*_args, **_kwargs):
-        nonlocal calls
-        calls += 1
-        (repo / "README.md").write_text(
-            "changed by validation\n",
+    def must_not_run(*args, **kwargs):
+        raise AssertionError("outside-output mutation must not be dispatched")
+
+    monkeypatch.setattr(
+        case.daemon,
+        "_validate_implementation_patch",
+        must_not_run,
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_run_validation_commands",
+        must_not_run,
+    )
+
+    result = case.daemon._restore_and_verify_post_validation_candidate(
+        case.repo,
+        case.task,
+        baseline_ref=case.baseline,
+        proposal_validation=case.proposal_validation,
+        validation_result=case.passed_validation,
+        log_path=case.log_path,
+        allow_candidate_stabilization=True,
+    )
+
+    assert result["passed"] is False
+    assert result["returncode"] == 78
+    assert (
+        result["reason"]
+        == "candidate_stabilization_outside_output_scope"
+    )
+    assert result["candidate_stabilization"]["cycle_count"] == 0
+    assert result["candidate_stabilization"]["current_candidate_paths"] == [
+        "README.md",
+        "artifact.json",
+    ]
+
+
+def test_post_validation_candidate_stabilization_rejects_protected_path(
+    tmp_path: Path,
+    monkeypatch,
+):
+    case = _post_validation_stabilization_case(tmp_path)
+    (case.repo / "artifact.json").write_text(
+        '{"value": "generated"}\n',
+        encoding="utf-8",
+    )
+    case.daemon.implementation_protected_paths = ("artifact.json",)
+
+    def must_not_run(*args, **kwargs):
+        raise AssertionError("protected mutation must not be re-proposed")
+
+    monkeypatch.setattr(
+        case.daemon,
+        "_validate_implementation_patch",
+        must_not_run,
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_run_validation_commands",
+        must_not_run,
+    )
+
+    result = case.daemon._restore_and_verify_post_validation_candidate(
+        case.repo,
+        case.task,
+        baseline_ref=case.baseline,
+        proposal_validation=case.proposal_validation,
+        validation_result=case.passed_validation,
+        log_path=case.log_path,
+        allow_candidate_stabilization=True,
+    )
+
+    assert result["passed"] is False
+    assert result["reason"] == "candidate_stabilization_protected_path"
+    assert result["candidate_stabilization"]["protected_paths"] == [
+        "artifact.json"
+    ]
+    assert result["candidate_stabilization"]["cycle_count"] == 0
+
+
+def test_post_validation_candidate_stabilization_rejects_fresh_gate(
+    tmp_path: Path,
+    monkeypatch,
+):
+    case = _post_validation_stabilization_case(tmp_path)
+    (case.repo / "artifact.json").write_text(
+        '{"value": "generated"}\n',
+        encoding="utf-8",
+    )
+    gate_calls = []
+
+    def reject_reproposal(workspace_path, task, **kwargs):
+        gate_calls.append((workspace_path, task.task_id, dict(kwargs)))
+        return SimpleNamespace(
+            accepted=False,
+            proposal=case.proposal_validation.proposal,
+            policy=case.proposal_validation.policy,
+            receipt=case.proposal_validation.receipt,
+            findings=(),
+        )
+
+    def must_not_run(*args, **kwargs):
+        raise AssertionError("a rejected fresh proposal must not be dispatched")
+
+    monkeypatch.setattr(
+        case.daemon,
+        "_validate_implementation_patch",
+        reject_reproposal,
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_run_validation_commands",
+        must_not_run,
+    )
+
+    result = case.daemon._restore_and_verify_post_validation_candidate(
+        case.repo,
+        case.task,
+        baseline_ref=case.baseline,
+        proposal_validation=case.proposal_validation,
+        validation_result=case.passed_validation,
+        log_path=case.log_path,
+        allow_candidate_stabilization=True,
+    )
+
+    assert result["passed"] is False
+    assert result["reason"] == "candidate_stabilization_reproposal_failed"
+    assert len(gate_calls) == 1
+    assert gate_calls[0][2] == {
+        "baseline_ref": case.baseline,
+        "allow_scope_adjudication": False,
+    }
+    assert (
+        result["candidate_stabilization"]["refreshed_proposal_gate"][
+            "accepted"
+        ]
+        is False
+    )
+
+
+def test_post_validation_candidate_stabilization_real_secret_is_not_dispatched(
+    tmp_path: Path,
+    monkeypatch,
+):
+    case = _post_validation_stabilization_case(tmp_path)
+    (case.repo / "artifact.json").write_text(
+        '{"api_key": "concrete-production-credential-12345"}\n',
+        encoding="utf-8",
+    )
+    validation_calls = []
+
+    def must_not_run(*args, **kwargs):
+        validation_calls.append((args, kwargs))
+        raise AssertionError("secret-bearing proposals must not be dispatched")
+
+    monkeypatch.setattr(
+        case.daemon,
+        "_run_validation_commands",
+        must_not_run,
+    )
+
+    result = case.daemon._restore_and_verify_post_validation_candidate(
+        case.repo,
+        case.task,
+        baseline_ref=case.baseline,
+        proposal_validation=case.proposal_validation,
+        validation_result=case.passed_validation,
+        log_path=case.log_path,
+        allow_candidate_stabilization=True,
+    )
+
+    assert result["passed"] is False
+    assert result["reason"] == "candidate_stabilization_reproposal_failed"
+    assert validation_calls == []
+    refreshed_gate = result["proposal_gate"]
+    assert refreshed_gate["accepted"] is False
+    assert "secret_change_forbidden" in refreshed_gate["reason_codes"]
+    assert (
+        result["candidate_stabilization"]["refreshed_proposal_gate"]
+        == refreshed_gate
+    )
+
+
+def test_post_validation_candidate_stabilization_is_nonrecursive(
+    tmp_path: Path,
+    monkeypatch,
+):
+    case = _post_validation_stabilization_case(tmp_path)
+    artifact = case.repo / "artifact.json"
+    artifact.write_text('{"value": "generated-once"}\n', encoding="utf-8")
+    validation_calls = []
+
+    def rerun(
+        workspace_path,
+        task,
+        log_path,
+        *,
+        state=None,
+        proposal_validation=None,
+    ):
+        validation_calls.append(proposal_validation.proposal.proposal_id)
+        artifact.write_text(
+            '{"value": "generated-twice"}\n',
+            encoding="utf-8",
+        )
+        (workspace_path / "README.md").write_text(
+            "second-run protected and outside-output drift\n",
             encoding="utf-8",
         )
         return {
@@ -5653,27 +6080,124 @@ def test_validation_rebind_rejects_generated_change_outside_task_scope(
             "passed": True,
             "returncode": 0,
             "results": [],
+            "proposal_gate": case.daemon._compact_proposal_validation(
+                proposal_validation
+            ),
         }
 
+    case.daemon.implementation_protected_paths = ("README.md",)
+    monkeypatch.setattr(case.daemon, "_run_validation_commands", rerun)
+
+    result = case.daemon._restore_and_verify_post_validation_candidate(
+        case.repo,
+        case.task,
+        baseline_ref=case.baseline,
+        proposal_validation=case.proposal_validation,
+        validation_result=case.passed_validation,
+        log_path=case.log_path,
+        allow_candidate_stabilization=True,
+    )
+
+    assert result["passed"] is False
+    assert result["reason"] == "candidate_stabilization_nonconvergent"
+    assert result["candidate_binding"]["verified"] is False
+    assert result["candidate_stabilization"]["cycle_count"] == 1
+    assert len(validation_calls) == 1
+    assert artifact.read_text(encoding="utf-8") == (
+        '{"value": "generated-twice"}\n'
+    )
+
+
+def test_post_validation_candidate_collection_error_never_stabilizes(
+    tmp_path: Path,
+    monkeypatch,
+):
+    case = _post_validation_stabilization_case(tmp_path)
+    (case.repo / "artifact.json").write_text(
+        '{"value": "generated"}\n',
+        encoding="utf-8",
+    )
+
+    def collection_failure(*args, **kwargs):
+        raise RuntimeError("candidate collection unavailable")
+
+    def must_not_run(*args, **kwargs):
+        raise AssertionError("collection failures must not be retried")
+
     monkeypatch.setattr(
-        daemon,
+        case.daemon,
+        "_collect_proposal_candidate_diff",
+        collection_failure,
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_validate_implementation_patch",
+        must_not_run,
+    )
+    monkeypatch.setattr(
+        case.daemon,
         "_run_validation_commands",
-        run_validation,
+        must_not_run,
     )
 
-    result = daemon._run_validation_with_candidate_binding(
-        repo,
-        task,
-        state_dir / "implementation.log",
-        baseline_ref=baseline,
+    result = case.daemon._restore_and_verify_post_validation_candidate(
+        case.repo,
+        case.task,
+        baseline_ref=case.baseline,
+        proposal_validation=case.proposal_validation,
+        validation_result=case.passed_validation,
+        log_path=case.log_path,
+        allow_candidate_stabilization=True,
     )
 
-    assert calls == 1
     assert result["passed"] is False
     assert result["reason"] == "candidate_changed_during_validation"
-    assert result["candidate_rebind"]["accepted"] is False
-    assert result["candidate_rebind"]["stabilized"] is False
-    assert "path_outside_scope" in result["candidate_rebind"]["reason_codes"]
+    assert result["candidate_binding"]["collection_error"] == "RuntimeError"
+    assert "candidate_stabilization" not in result
+
+
+def test_post_validation_candidate_stabilization_call_site_policy():
+    source = Path(implementation_daemon_module.__file__).read_text(
+        encoding="utf-8"
+    )
+    tree = ast.parse(source)
+    daemon_class = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+        and node.name == "PortalImplementationDaemon"
+    )
+    policies = {}
+    for method in daemon_class.body:
+        if not isinstance(
+            method,
+            (ast.FunctionDef, ast.AsyncFunctionDef),
+        ):
+            continue
+        values = []
+        for node in ast.walk(method):
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr
+                == "_restore_and_verify_post_validation_candidate"
+            ):
+                continue
+            keyword = next(
+                item
+                for item in node.keywords
+                if item.arg == "allow_candidate_stabilization"
+            )
+            assert isinstance(keyword.value, ast.Constant)
+            values.append(keyword.value.value)
+        if values:
+            policies[method.name] = values
+
+    assert policies == {
+        "_run_implementation": [True],
+        "reconcile_validated_worktree_candidate": [False],
+        "_run_implementation_in_ephemeral_worktree": [True, True],
+    }
 
 
 def test_implementation_proposal_accepts_exact_task_declared_and_chain(
@@ -5733,6 +6257,76 @@ def test_implementation_proposal_accepts_exact_task_declared_and_chain(
         "benchmarks/check.py",
         "--offline",
     )
+
+
+def test_implementation_proposal_accepts_only_typed_path_evidence_authority(
+    tmp_path: Path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    manifest_path = (
+        "data/datasets_contract_analysis/manifests/coverage.json"
+    )
+    manifest = repo / manifest_path
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text('{"coverage": []}\n', encoding="utf-8")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    common_metadata = {
+        "missing evidence": manifest_path,
+        "evidence subset": manifest_path,
+    }
+    typed_task = PortalTask(
+        task_id="DSCON-003",
+        title="Write repository coverage evidence",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="datasets-contract-analysis",
+        outputs=["README.md"],
+        validation=["git diff --check"],
+        metadata={
+            **common_metadata,
+            "evidence outputs": manifest_path,
+        },
+    )
+    prose_only_task = replace(
+        typed_task,
+        metadata=common_metadata,
+    )
+
+    accepted = daemon._validate_implementation_patch(
+        repo,
+        typed_task,
+        baseline_ref=baseline,
+    )
+    denied = daemon._validate_implementation_patch(
+        repo,
+        prose_only_task,
+        baseline_ref=baseline,
+    )
+
+    assert accepted.accepted is True
+    assert accepted.proposal.changed_paths == (manifest_path,)
+    assert denied.accepted is False
+    assert "path_outside_scope" in {
+        finding.code.value for finding in denied.findings
+    }
 
 
 def test_stale_submodule_rebase_skips_branch_already_merged_without_switching_checkout(
@@ -5799,44 +6393,6 @@ def test_stale_submodule_rebase_restores_canonical_checkout(tmp_path: Path):
     assert result["checkout_restore"]["branch"] == "main"
     assert _git(repo, "branch", "--show-current") == "main"
     assert _git(repo, "merge-base", "--is-ancestor", "main", branch_name) == ""
-
-
-def test_stale_submodule_rebase_preserves_dirty_canonical_checkout(tmp_path: Path):
-    repo, submodule = _seed_parent_with_submodule(tmp_path)
-    branch_name = "implementation/rebase-with-dirty-checkout"
-    _git(repo, "checkout", "-b", branch_name)
-    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
-    _git(repo, "add", "feature.txt")
-    _git(repo, "commit", "-m", "implementation feature")
-    branch_commit = _git(repo, "rev-parse", "HEAD")
-    _git(repo, "checkout", "main")
-
-    (submodule / "later.txt").write_text("later\n", encoding="utf-8")
-    _git(submodule, "add", "later.txt")
-    _git(submodule, "commit", "-m", "advance child")
-    _git(repo, "add", "libs/child")
-    _git(repo, "commit", "-m", "advance child on main")
-    operator_note = repo / "operator-note.txt"
-    operator_note.write_text("preserve me\n", encoding="utf-8")
-
-    state_dir = repo / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-        worktree_submodule_paths=["libs/child"],
-    )
-
-    result = daemon._rebase_stale_submodule_pointers(branch_name, "main")
-
-    assert result["attempted"] is False
-    assert result["reason"] == "shared_checkout_dirty_preserved"
-    assert result["dirty_paths"] == ["operator-note.txt"]
-    assert _git(repo, "branch", "--show-current") == "main"
-    assert _git(repo, "rev-parse", branch_name) == branch_commit
-    assert operator_note.read_text(encoding="utf-8") == "preserve me\n"
 
 
 def test_implementation_daemon_recreates_missing_registered_submodule_worktree(
@@ -6336,6 +6892,41 @@ def test_implementation_daemon_defers_nested_submodule_with_missing_gitlink(
     assert deferred_event["reason"] == "gitlink_ref_unavailable"
 
 
+def test_implementation_daemon_bounds_recursive_submodule_worktree_branch_names():
+    branch = "implementation/cvesir-013-attempt-2"
+    first_relative = "/".join(
+        [
+            "ipfs_datasets_py",
+            ".tools/ipfs_kit_py",
+            "ipfs_accelerate_py",
+            "ipfs_datasets_py",
+        ]
+        * 10
+    )
+    second_relative = f"{first_relative}/different-tail"
+
+    first = TodoImplementationDaemon._submodule_worktree_branch_name(
+        branch,
+        first_relative,
+    )
+    second = TodoImplementationDaemon._submodule_worktree_branch_name(
+        branch,
+        second_relative,
+    )
+
+    assert len(first.encode("utf-8")) <= 200
+    assert len(second.encode("utf-8")) <= 200
+    assert first.startswith(f"{branch}-submodule-")
+    assert second.startswith(f"{branch}-submodule-")
+    assert first != second
+    first_digest = first.rsplit("-", 1)[-1]
+    second_digest = second.rsplit("-", 1)[-1]
+    assert len(first_digest) == 16
+    assert all(character in "0123456789abcdef" for character in first_digest)
+    assert len(second_digest) == 16
+    assert all(character in "0123456789abcdef" for character in second_digest)
+
+
 def test_implementation_daemon_creates_parent_handoff_for_submodule_only_commit(
     tmp_path: Path,
     monkeypatch,
@@ -6439,6 +7030,50 @@ def test_implementation_daemon_handoffs_clean_provider_submodule_commit(
     )
 
 
+def test_implementation_daemon_handoffs_declared_submodule_root_commit(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (submodule / "child.txt").write_text(
+        "root-owned provider commit\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "commit", "-am", "provider root-owned child change")
+    child_commit = _git(submodule, "rev-parse", "HEAD")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    result = daemon._commit_worktree_changes(
+        repo,
+        _submodule_proposal_task("libs/child"),
+        1,
+    )
+
+    assert result["committed"] is True
+    assert result["commit"] != baseline
+    assert result["submodule_results"] == [
+        {
+            "path": "libs/child",
+            "committed": True,
+            "commit": child_commit,
+            "recorded_commit": _git(repo, "rev-parse", f"{baseline}:libs/child"),
+            "reason": "existing_commit",
+        }
+    ]
+    assert _git(repo, "rev-parse", "HEAD:libs/child") == child_commit
+    assert _git(repo, "diff", "--name-only", baseline, result["commit"]) == (
+        "libs/child"
+    )
+
+
 def test_implementation_daemon_handoffs_clean_provider_superproject_commit(
     tmp_path: Path,
 ):
@@ -6488,6 +7123,67 @@ def test_implementation_daemon_handoffs_clean_provider_superproject_commit(
     }
     assert _git(repo, "rev-parse", "HEAD") == provider_commit
     assert _git(repo, "log", "--format=%s", "-1") == "provider root change"
+
+
+def test_prior_attempt_seed_failure_guidance_stays_outside_candidate_worktree(
+    tmp_path: Path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    task = PortalTask(
+        task_id="AUTO-121R",
+        title="Recover a prior implementation",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=("README.md",),
+    )
+
+    daemon._record_prior_attempt_seed_failure(
+        task=task,
+        attempt=2,
+        seed_plan={
+            "prior_commit": "a" * 40,
+            "prior_branch": "rescue/auto-121r",
+        },
+        seed_apply={"reason": "prior_seed_accepted_proposal_missing"},
+        worktree_path=repo,
+        branch_name="implementation/auto-121r-attempt-2",
+    )
+
+    assert _git(repo, "status", "--porcelain") == ""
+    assert not (repo / "docs" / "agent-supervisor" / "rescue").exists()
+    guide = (
+        state_dir
+        / "implementation_logs"
+        / "seed_recovery"
+        / "auto-121r-attempt-2-seed-recovery.md"
+    )
+    assert guide.is_file()
+    assert "prior_seed_accepted_proposal_missing" in guide.read_text(
+        encoding="utf-8"
+    )
+    event = json.loads(
+        (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()[-1]
+    )
+    assert event["type"] == "implementation_prior_attempt_seed_failed"
+    assert event["guidance_path"] == str(guide)
 
 
 def test_implementation_daemon_handoffs_provider_committed_gitlink(
@@ -6597,8 +7293,14 @@ def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(
     (repo / "README.md").write_text("base\n", encoding="utf-8")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-m", "base")
-    candidate = _git(repo, "rev-parse", "HEAD")
     branch_name = "implementation/ref-040-recovery"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "candidate.txt").write_text("candidate\n", encoding="utf-8")
+    _git(repo, "add", "candidate.txt")
+    _git(repo, "commit", "-m", "candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(repo, "branch", "-D", branch_name)
 
     state_dir = tmp_path / "state"
     todo_path = repo / "todo.md"
@@ -6633,11 +7335,6 @@ def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(
             "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
             "target_repository_id": daemon.merge_target_repository_id,
             "target_branch": daemon.resolved_merge_target_branch,
-            "validation_proof": {
-                "passed": True,
-                "returncode": 0,
-                "selection": {"scope": "pre_merge"},
-            },
             "task": {
                 "task_id": "REF-040",
                 "title": "Recover merge handoff",
@@ -6655,8 +7352,7 @@ def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(
     assert result["branch_rehydration"]["rehydrated"] is True
     assert observed == {"branch": branch_name, "commit": candidate}
     assert _git(repo, "rev-parse", branch_name) == candidate
-    assert result["completion_authoritative"] is False
-    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
 
     (repo / "later.txt").write_text("later\n", encoding="utf-8")
     _git(repo, "add", "later.txt")
@@ -6672,6 +7368,531 @@ def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(
     assert mismatch["ready"] is False
     assert mismatch["reason"] == "merge_branch_candidate_mismatch"
     assert mismatch["branch_commit"] == later
+
+
+def test_merge_train_rejects_changed_current_task_revision(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## REF-043 Bind current task revision
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Outputs: feature.py
+- Validation: python -m py_compile feature.py
+- Acceptance: Deliver the first task revision.
+""",
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/ref-043-current-cid"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "REF-043: feature")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## REF-",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    request, _result = daemon._enqueue_merge_candidate(
+        branch_name=branch_name,
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+    )
+    assert (
+        request.metadata["schema"]
+        == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+    )
+    assert request.metadata["completion_task_cids"] == {
+        "REF-043": daemon._identity_for_task(task).canonical_task_cid
+    }
+
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "Deliver the first task revision.",
+            "Deliver a materially revised task contract.",
+        ),
+        encoding="utf-8",
+    )
+    merge_calls: list[str] = []
+    monkeypatch.setattr(
+        daemon,
+        "_merge_branch_to_main",
+        lambda selected_branch, *_args, **_kwargs: (
+            merge_calls.append(selected_branch)
+            or {"merged": True, "returncode": 0}
+        ),
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is False
+    assert result["reason"] == "merge_candidate_task_revision_mismatch"
+    assert (
+        result["completion_binding_error"]["reason"]
+        == "completion_task_revision_changed"
+    )
+    assert merge_calls == []
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+
+
+def test_merge_candidate_v3_threads_completion_cids_into_todo_mutation(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## REF-045 Fence the completion mutation
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Outputs: feature.py
+- Acceptance: Complete only the queued task revision.
+""",
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/ref-045-completion-cid"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "REF-045: feature")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## REF-",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    expected_task_cids = {
+        task.task_id: daemon._identity_for_task(task).canonical_task_cid
+    }
+    request, _result = daemon._enqueue_merge_candidate(
+        branch_name=branch_name,
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+    )
+    observed: dict[str, object] = {}
+
+    def record_todo_mutation(
+        task_ids,
+        *,
+        primary_task_id,
+        completion_reason,
+        bundle_work_order=None,
+        expected_task_cids=None,
+    ):
+        observed.update(
+            {
+                "task_ids": list(task_ids),
+                "primary_task_id": primary_task_id,
+                "completion_reason": completion_reason,
+                "bundle_work_order": bundle_work_order,
+                "expected_task_cids": expected_task_cids,
+            }
+        )
+        return {
+            "updated": True,
+            "updated_task_ids": list(task_ids),
+            "completion_receipts": [
+                {
+                    "task_id": task_id,
+                    "canonical_task_cid": expected_task_cids[task_id],
+                }
+                for task_id in task_ids
+            ],
+        }
+
+    def integrate_candidate(selected_branch, *_args, **_kwargs):
+        _git(repo, "merge", "--ff-only", selected_branch)
+        return {
+            "merged": True,
+            "returncode": 0,
+            "merge_commit": _git(repo, "rev-parse", "HEAD"),
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_merge_branch_to_main",
+        integrate_candidate,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_mark_tasks_completed_in_todo",
+        record_todo_mutation,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completed_task_binding_error",
+        lambda _metadata: {},
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is True
+    assert observed == {
+        "task_ids": ["REF-045"],
+        "primary_task_id": "REF-045",
+        "completion_reason": "single_task",
+        "bundle_work_order": None,
+        "expected_task_cids": expected_task_cids,
+    }
+
+
+def test_merge_candidate_v3_refuses_markdown_completion_when_revision_changes_at_mutation_boundary(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## REF-046 Fence the Markdown mutation boundary
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Outputs: feature.py
+- Acceptance: Complete the original contract.
+""",
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/ref-046-mutation-boundary"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "REF-046: feature")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## REF-",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    request, _result = daemon._enqueue_merge_candidate(
+        branch_name=branch_name,
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+    )
+
+    real_locked_taskboard = implementation_daemon_module.locked_taskboard
+
+    @contextmanager
+    def revise_task_at_mutation_boundary(path):
+        todo_path.write_text(
+            todo_path.read_text(encoding="utf-8").replace(
+                "Complete the original contract.",
+                "Complete a revised contract that was not queued.",
+            ),
+            encoding="utf-8",
+        )
+        with real_locked_taskboard(path) as taskboard:
+            yield taskboard
+
+    def integrate_candidate(selected_branch, *_args, **_kwargs):
+        _git(repo, "merge", "--ff-only", selected_branch)
+        return {
+            "merged": True,
+            "returncode": 0,
+            "merge_commit": _git(repo, "rev-parse", "HEAD"),
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_merge_branch_to_main",
+        integrate_candidate,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "locked_taskboard",
+        revise_task_at_mutation_boundary,
+    )
+
+    result = daemon._merge_train_callback(request)
+    rendered = todo_path.read_text(encoding="utf-8")
+
+    assert result["merged"] is False
+    assert result["integration_occurred"] is True
+    assert result["todo_update_result"]["updated"] is False
+    assert (
+        result["todo_update_result"]["reason"]
+        == "completion_task_revision_changed"
+    )
+    assert "- Status: todo" in rendered
+    assert "Complete a revised contract that was not queued." in rendered
+
+
+def test_merge_candidate_v3_refuses_atomic_bundle_completion_when_member_revision_changes_at_mutation_boundary(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## REF-047 Complete the bundle
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Outputs: feature.py
+- Acceptance: Complete the queued bundle primary.
+
+## REF-048 Complete the bundle member
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Outputs: feature.py
+- Acceptance: Complete the queued bundle member.
+""",
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/ref-047-bundle-boundary"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "REF-047: feature")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## REF-",
+        worktree_submodule_paths=[],
+    )
+    tasks = {task.task_id: task for task in daemon._load_tasks()}
+    bundle_payload = {
+        "primary_task_id": "REF-047",
+        "covered_task_ids": ["REF-048"],
+        "packet_key": "packet/ref-047",
+        "goal_ids": [],
+        "work_item_count": 2,
+        "index_path": "todo.md",
+    }
+    work_order = SimpleNamespace(
+        task_ids=["REF-047", "REF-048"],
+        to_dict=lambda: bundle_payload,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_bundle_work_order_for_task",
+        lambda _task: work_order,
+    )
+    request, _result = daemon._enqueue_merge_candidate(
+        branch_name=branch_name,
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=tasks["REF-047"],
+        attempt=1,
+    )
+    assert request.metadata["completion_task_cids"] == {
+        task_id: daemon._identity_for_task(task).canonical_task_cid
+        for task_id, task in tasks.items()
+    }
+
+    real_locked_taskboard = implementation_daemon_module.locked_taskboard
+
+    @contextmanager
+    def revise_bundle_member_at_mutation_boundary(path):
+        todo_path.write_text(
+            todo_path.read_text(encoding="utf-8").replace(
+                "Complete the queued bundle member.",
+                "Complete a revised bundle member that was not queued.",
+            ),
+            encoding="utf-8",
+        )
+        with real_locked_taskboard(path) as taskboard:
+            yield taskboard
+
+    def integrate_candidate(selected_branch, *_args, **_kwargs):
+        _git(repo, "merge", "--ff-only", selected_branch)
+        return {
+            "merged": True,
+            "returncode": 0,
+            "merge_commit": _git(repo, "rev-parse", "HEAD"),
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_merge_branch_to_main",
+        integrate_candidate,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "locked_taskboard",
+        revise_bundle_member_at_mutation_boundary,
+    )
+
+    result = daemon._merge_train_callback(request)
+    statuses = {
+        task.task_id: task.status
+        for task in parse_task_file(
+            todo_path,
+            task_header_prefix="## REF-",
+        )
+    }
+
+    assert result["merged"] is False
+    assert result["integration_occurred"] is True
+    assert result["todo_update_result"]["updated"] is False
+    assert (
+        result["todo_update_result"]["reason"]
+        == "completion_task_revision_changed"
+    )
+    assert (
+        result["todo_update_result"]["mismatches"]["REF-048"][
+            "expected_task_cid"
+        ]
+        == request.metadata["completion_task_cids"]["REF-048"]
+    )
+    assert statuses == {"REF-047": "todo", "REF-048": "todo"}
+
+
+def test_queued_ancestry_is_not_a_completion_receipt(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## REF-044 Wait for merge callback
+
+- Status: todo
+- Completion: manual
+- Outputs: README.md
+- Acceptance: Require a completed queue receipt.
+""",
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## REF-",
+    )
+    task = daemon._load_tasks()[0]
+    task_cid = daemon._identity_for_task(task).canonical_task_cid
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": task.task_id,
+            "task_cid": task_cid,
+            "implementation_commit": candidate,
+            "returncode": 0,
+            "merge_result": {
+                "merged": False,
+                "queued": True,
+                "request_id": "queued-only",
+                "completion_task_cids": {
+                    task.task_id: task_cid,
+                },
+            },
+        },
+    )
+
+    assert daemon._successfully_merged_task_ids() == set()
 
 
 def test_merge_train_accepts_commit_integrated_by_merge_resolver(tmp_path: Path, monkeypatch):
@@ -6730,11 +7951,6 @@ def test_merge_train_accepts_commit_integrated_by_merge_resolver(tmp_path: Path,
             "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
             "target_repository_id": daemon.merge_target_repository_id,
             "target_branch": daemon.resolved_merge_target_branch,
-            "validation_proof": {
-                "passed": True,
-                "returncode": 0,
-                "selection": {"scope": "pre_merge"},
-            },
             "task": {
                 "task_id": "REF-041",
                 "title": "Accept resolver merge",
@@ -6755,8 +7971,199 @@ def test_merge_train_accepts_commit_integrated_by_merge_resolver(tmp_path: Path,
         "merge_branch_missing_after_resolver"
     )
     assert _git(repo, "merge-base", "--is-ancestor", candidate, "main") == ""
-    assert result["completion_authoritative"] is False
-    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+
+
+def test_merge_train_recovers_integrated_quarantine_without_mutating_dirty_divergent_submodule(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """## REF-041Q Recover integrated queue candidate
+
+- Status: todo
+- Completion: manual
+- Outputs: integrated.txt
+""",
+        encoding="utf-8",
+    )
+    (repo / "integrated.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "todo.md", "integrated.txt")
+    _git(repo, "commit", "-m", "queue recovery base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+
+    branch_name = "implementation/ref-041q"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "integrated.txt").write_text("candidate\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "REF-041Q: candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", branch_name)
+
+    child_base = _git(submodule, "rev-parse", "HEAD")
+    stale_submodule_branch = (
+        f"{branch_name}-submodule-libs-child"
+    )
+    _git(
+        submodule,
+        "checkout",
+        "-b",
+        stale_submodule_branch,
+        child_base,
+    )
+    (submodule / "stale.txt").write_text(
+        "stale task branch\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "stale.txt")
+    _git(submodule, "commit", "-m", "stale task submodule result")
+    stale_submodule_head = _git(submodule, "rev-parse", "HEAD")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "record divergent child gitlink")
+    divergent_parent_candidate = _git(repo, "rev-parse", "HEAD")
+    _git(submodule, "checkout", "main")
+    (submodule / "child.txt").write_text(
+        "target child\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "commit", "-am", "advance target child")
+    target_submodule_head = _git(submodule, "rev-parse", "HEAD")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance target child gitlink")
+
+    # Keep unrelated nested work dirty.  The old task branch is now divergent
+    # from the target submodule branch and must not be checked out or merged.
+    (submodule / "child.txt").write_text(
+        "dirty nested content that must survive\n",
+        encoding="utf-8",
+    )
+    submodule_before = {
+        "head": _git(submodule, "rev-parse", "HEAD"),
+        "branch": _git(submodule, "symbolic-ref", "--short", "HEAD"),
+        "index": _git(submodule, "write-tree"),
+        "status": _git(
+            submodule,
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+        ),
+        "stale_branch": _git(
+            submodule,
+            "rev-parse",
+            stale_submodule_branch,
+        ),
+        "target_branch": _git(submodule, "rev-parse", "main"),
+        "content": (submodule / "child.txt").read_text(
+            encoding="utf-8"
+        ),
+    }
+    assert submodule_before["head"] == target_submodule_head
+    assert submodule_before["stale_branch"] == stale_submodule_head
+    assert submodule_before["status"]
+
+    state_dir = tmp_path / "integrated-quarantine-state"
+    queue = MergeQueue(
+        tmp_path / "integrated-quarantine-queue",
+        max_attempts=3,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## REF-",
+        worktree_submodule_paths=["libs/child"],
+        merge_queue=queue,
+    )
+    task = daemon._load_tasks()[0]
+    unsafe_request = queue.enqueue(
+        branch_name="implementation/ref-041q-divergent",
+        task_id="REF-041Q-DIVERGENT",
+        canonical_task_id="canonical-ref-041q-divergent",
+        commit_sha=divergent_parent_candidate,
+        metadata={"changed_submodule_paths": ["libs/child"]},
+        target_repository_id=daemon.merge_target_repository_id,
+        target_branch=daemon.resolved_merge_target_branch,
+    )
+    unsafe_claim = queue.dequeue(consumer_id="merge-train:crashed")
+    assert unsafe_claim is not None
+    queue.quarantine(
+        unsafe_claim,
+        reason="divergent nested handoff must remain quarantined",
+    )
+    request, _ = daemon._enqueue_merge_candidate(
+        branch_name=branch_name,
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=3,
+        changed_submodule_paths=["libs/child"],
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:crashed")
+    assert claimed is not None
+    queue.quarantine(
+        claimed,
+        reason="crashed worker exhausted attempts",
+        metadata={"failure_count": 3},
+    )
+    assert queue.get(request.request_id).status == "quarantined"  # type: ignore[union-attr]
+
+    result = daemon._consume_one_merge_candidate()
+
+    assert result is not None
+    assert result["status"] == "already_merged"
+    assert result["merge_result"]["mutation_short_circuited"] is True
+    assert (
+        result["merge_result"]["integrated_handoff_proof"]["passed"]
+        is True
+    )
+    assert (
+        result["merge_result"]["integrated_handoff_proof"]["paths"][0][
+            "chain"
+        ][0]["relationship"]
+        == "ancestor"
+    )
+    stored = queue.get(request.request_id)
+    assert stored is not None and stored.status == "completed"
+    assert stored.failure_count == 0
+    unsafe_stored = queue.get(unsafe_request.request_id)
+    assert unsafe_stored is not None
+    assert unsafe_stored.status == "quarantined"
+    assert unsafe_stored.failure_reason == (
+        "divergent nested handoff must remain quarantined"
+    )
+    assert stored.metadata["revivals"][-1]["previous_failure_reason"] == (
+        "crashed worker exhausted attempts"
+    )
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+    replay = daemon._merge_train_callback(request)
+    assert replay["already_merged"] is True
+    assert replay["todo_update_result"]["reason"] == "already_completed"
+
+    submodule_after = {
+        "head": _git(submodule, "rev-parse", "HEAD"),
+        "branch": _git(submodule, "symbolic-ref", "--short", "HEAD"),
+        "index": _git(submodule, "write-tree"),
+        "status": _git(
+            submodule,
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+        ),
+        "stale_branch": _git(
+            submodule,
+            "rev-parse",
+            stale_submodule_branch,
+        ),
+        "target_branch": _git(submodule, "rev-parse", "main"),
+        "content": (submodule / "child.txt").read_text(
+            encoding="utf-8"
+        ),
+    }
+    assert submodule_after == submodule_before
 
 
 def test_merge_train_rejects_resolver_merge_with_unverified_changed_submodule(
@@ -6795,18 +8202,15 @@ def test_merge_train_rejects_resolver_merge_with_unverified_changed_submodule(
         task_header_prefix="REF-",
         worktree_submodule_paths=["libs/child"],
     )
+    target_before = _git(repo, "rev-parse", "main")
 
-    def resolver_integrates_only_root(selected_branch, *_args, **_kwargs):
-        _git(repo, "merge", "--no-ff", "--no-edit", selected_branch)
-        return {
-            "attempted": True,
-            "merged": False,
-            "returncode": 1,
-            "reason": "resolver_committed_merge",
-            "submodule_merge_results": [],
-        }
-
-    monkeypatch.setattr(daemon, "_merge_branch_to_main", resolver_integrates_only_root)
+    monkeypatch.setattr(
+        daemon,
+        "_merge_branch_to_main",
+        lambda *_args, **_kwargs: pytest.fail(
+            "durability rejection must happen before target mutation"
+        ),
+    )
     request = SimpleNamespace(
         branch_name=branch_name,
         commit_sha=candidate,
@@ -6818,11 +8222,6 @@ def test_merge_train_rejects_resolver_merge_with_unverified_changed_submodule(
             "target_repository_id": daemon.merge_target_repository_id,
             "target_branch": daemon.resolved_merge_target_branch,
             "changed_submodule_paths": ["libs/child"],
-            "validation_proof": {
-                "passed": True,
-                "returncode": 0,
-                "selection": {"scope": "pre_merge"},
-            },
             "task": {
                 "task_id": "REF-042",
                 "title": "Verify nested merge",
@@ -6838,16 +8237,758 @@ def test_merge_train_rejects_resolver_merge_with_unverified_changed_submodule(
 
     assert result["merged"] is False
     assert result["returncode"] == 2
-    assert result["reason"] == "changed_submodule_merge_unverified"
+    assert result["reason"] == "changed_submodule_durability_unverified"
     assert result["missing_changed_submodule_paths"] == ["libs/child"]
+    assert result["submodule_durability_preflight"]["failures"] == [
+        {
+            "path": "libs/child",
+            "reason": "changed_path_not_declared_gitlink",
+            "unresolved_suffix": "libs/child",
+            "parent_commit": candidate,
+        }
+    ]
     assert result["submodule_verification"] == {
         "verified": False,
+        "stage": "pre_merge_durability",
         "expected_paths": ["libs/child"],
         "reported_paths": [],
-        "previous_reason": "resolver_committed_merge",
+        "previous_reason": "changed_submodule_durability_unverified",
     }
-    assert _git(repo, "merge-base", "--is-ancestor", candidate, "main") == ""
+    assert _git(repo, "rev-parse", "main") == target_before
+    assert (
+        subprocess.run(
+            ["git", "merge-base", "--is-ancestor", candidate, "main"],
+            cwd=repo,
+            capture_output=True,
+            check=False,
+        ).returncode
+        != 0
+    )
     assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+
+
+def test_merge_train_rejects_gitlink_missing_from_canonical_submodule_store(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo, canonical_submodule = _seed_parent_with_submodule(tmp_path)
+    branch_name = "implementation/ref-043-noncanonical"
+    state_dir = tmp_path / "state"
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## REF-043 Verify durable gitlink\n\n- Status: todo\n- Completion: manual\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    isolated_submodule = tmp_path / "isolated-child"
+    isolated_submodule.mkdir()
+    _git(
+        isolated_submodule,
+        "clone",
+        str(tmp_path / "child-source"),
+        ".",
+    )
+    _git(isolated_submodule, "config", "user.name", "Test User")
+    _git(isolated_submodule, "config", "user.email", "test@example.invalid")
+    task_submodule_branch = daemon._submodule_worktree_branch_name(
+        branch_name,
+        "libs/child",
+    )
+    _git(isolated_submodule, "checkout", "-b", task_submodule_branch)
+    (isolated_submodule / "isolated.txt").write_text(
+        "only in task-local object store\n",
+        encoding="utf-8",
+    )
+    _git(isolated_submodule, "add", "isolated.txt")
+    _git(isolated_submodule, "commit", "-m", "REF-043: isolated child")
+    isolated_commit = _git(isolated_submodule, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "-b", branch_name)
+    _git(
+        repo,
+        "update-index",
+        "--cacheinfo",
+        f"160000,{isolated_commit},libs/child",
+    )
+    _git(repo, "commit", "-m", "REF-043: point at isolated child")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    target_before = _git(repo, "rev-parse", "main")
+    assert (
+        subprocess.run(
+            ["git", "cat-file", "-e", f"{isolated_commit}^{{commit}}"],
+            cwd=canonical_submodule,
+            capture_output=True,
+            check=False,
+        ).returncode
+        != 0
+    )
+
+    monkeypatch.setattr(
+        daemon,
+        "_merge_branch_to_main",
+        lambda *_args, **_kwargs: pytest.fail(
+            "noncanonical gitlink must be rejected before target mutation"
+        ),
+    )
+    request = SimpleNamespace(
+        branch_name=branch_name,
+        commit_sha=candidate,
+        task_id="REF-043",
+        priority="P0",
+        attempt=1,
+        metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
+            "changed_submodule_paths": ["libs/child"],
+            "task": {
+                "task_id": "REF-043",
+                "title": "Verify durable gitlink",
+                "status": "todo",
+                "completion": "manual",
+                "priority": "P0",
+                "track": "ops",
+            },
+        },
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["reason"] == "changed_submodule_durability_unverified"
+    assert result["submodule_durability_preflight"]["failures"] == [
+        {
+            "path": "libs/child",
+            "reason": "canonical_gitlink_object_missing",
+            "gitlink_path": "libs/child",
+            "gitlink_commit": isolated_commit,
+            "canonical_git_dir": str(
+                (repo / ".git" / "modules" / "libs" / "child").resolve()
+            ),
+        }
+    ]
+    assert _git(repo, "rev-parse", "main") == target_before
+
+
+def test_submodule_durability_accepts_store_owned_by_linked_parent_worktree(
+    tmp_path: Path,
+):
+    primary, _primary_submodule = _seed_parent_with_submodule(tmp_path)
+    linked = tmp_path / "linked-parent"
+    _git(
+        primary,
+        "worktree",
+        "add",
+        "-b",
+        "supervisor/linked-parent",
+        str(linked),
+        "main",
+    )
+    _git(
+        linked,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "update",
+        "--init",
+        "--",
+        "libs/child",
+    )
+    linked_submodule = linked / "libs" / "child"
+    _git(linked_submodule, "config", "user.name", "Test User")
+    _git(linked_submodule, "config", "user.email", "test@example.invalid")
+
+    state_dir = tmp_path / "linked-state"
+    todo_path = linked / "todo.md"
+    todo_path.write_text(
+        "## REF-043L Verify linked-worktree gitlink\n\n"
+        "- Status: todo\n- Completion: manual\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=linked,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=["libs/child"],
+    )
+    branch_name = "implementation/ref-043-linked-parent"
+    task_submodule_branch = daemon._submodule_worktree_branch_name(
+        branch_name,
+        "libs/child",
+    )
+    _git(linked_submodule, "checkout", "-b", task_submodule_branch)
+    (linked_submodule / "linked.txt").write_text(
+        "durable in the linked merge target's store\n",
+        encoding="utf-8",
+    )
+    _git(linked_submodule, "add", "linked.txt")
+    _git(linked_submodule, "commit", "-m", "REF-043L: linked child")
+    child_commit = _git(linked_submodule, "rev-parse", "HEAD")
+
+    _git(linked, "checkout", "-b", branch_name)
+    _git(linked, "add", "libs/child")
+    _git(linked, "commit", "-m", "REF-043L: advance linked child")
+    candidate = _git(linked, "rev-parse", "HEAD")
+    _git(linked, "checkout", "supervisor/linked-parent")
+    _git(linked_submodule, "checkout", "main")
+
+    root_common_dir = daemon._git_common_dir(linked)
+    child_common_dir = daemon._git_common_dir(linked_submodule)
+    assert root_common_dir is not None
+    assert child_common_dir is not None
+    child_common_dir.relative_to(root_common_dir)
+    assert child_common_dir != (
+        root_common_dir / "modules" / "libs/child"
+    ).resolve()
+
+    receipt = daemon._changed_submodule_durability_preflight(
+        branch_name=branch_name,
+        implementation_commit=candidate,
+        changed_submodule_paths={"libs/child"},
+    )
+
+    assert receipt["verified"] is True
+    assert receipt["failures"] == []
+    assert receipt["paths"] == [
+        {
+            "path": "libs/child",
+            "verified": True,
+            "hops": [
+                {
+                    "path": "libs/child",
+                    "gitlink_commit": child_commit,
+                    "canonical_git_dir": str(child_common_dir),
+                    "canonical_object_available": True,
+                    "canonical_checkout": True,
+                    "checkout_git_dir": str(child_common_dir),
+                    "configured_git_dir": str(
+                        (
+                            root_common_dir / "modules" / "libs/child"
+                        ).resolve()
+                    ),
+                    "target_store_layout": "linked_parent_worktree",
+                }
+            ],
+            "gitlink_commit": child_commit,
+            "canonical_git_dir": str(child_common_dir),
+            "task_branch": task_submodule_branch,
+            "task_branch_commit": child_commit,
+            "task_branch_contains_gitlink": True,
+            "reason": "canonical_task_branch_verified",
+            "durability": "canonical_task_branch",
+        }
+    ]
+
+
+def test_merge_train_rehydrates_legacy_submodule_task_branch_before_merge(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline = _git(repo, "rev-parse", "main")
+    branch_name = "implementation/ref-043r-reconciled"
+    state_dir = tmp_path / "state"
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## REF-043R Recover legacy gitlink\n\n"
+        "- Status: todo\n- Completion: manual\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=["libs/child"],
+    )
+    task_submodule_branch = daemon._submodule_worktree_branch_name(
+        branch_name,
+        "libs/child",
+    )
+    _git(submodule, "checkout", "-b", "legacy/ref-043r-child")
+    (submodule / "recovered.txt").write_text(
+        "validated legacy child\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "recovered.txt")
+    _git(submodule, "commit", "-m", "REF-043R: legacy child")
+    child_commit = _git(submodule, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "-b", branch_name)
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "REF-043R: recover legacy child")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(submodule, "checkout", "main")
+    target_before = _git(repo, "rev-parse", "main")
+    assert (
+        subprocess.run(
+            [
+                "git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                task_submodule_branch,
+            ],
+            cwd=submodule,
+            capture_output=True,
+            check=False,
+        ).returncode
+        != 0
+    )
+
+    request = SimpleNamespace(
+        branch_name=branch_name,
+        commit_sha=candidate,
+        task_id="REF-043R",
+        priority="P0",
+        attempt=1,
+        metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
+            "baseline_ref": baseline,
+            "changed_submodule_paths": ["libs/child"],
+            "task": {
+                "task_id": "REF-043R",
+                "title": "Recover legacy gitlink",
+                "status": "todo",
+                "completion": "manual",
+                "priority": "P0",
+                "track": "ops",
+            },
+        },
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is True
+    assert result["returncode"] == 0
+    assert _git(submodule, "rev-parse", task_submodule_branch) == child_commit
+    preflight = result["submodule_durability_preflight"]
+    assert preflight["verified"] is True
+    assert preflight["paths"][0]["reason"] == (
+        "canonical_task_branch_verified"
+    )
+    rehydration = preflight["legacy_task_branch_rehydration"]
+    assert rehydration["verified"] is True
+    assert rehydration["rehydrated_count"] == 1
+    assert rehydration["paths"][0]["reason"] == (
+        "canonical_task_branch_rehydrated"
+    )
+    assert rehydration["paths"][0]["durable_refs"] == [
+        "refs/heads/legacy/ref-043r-child"
+    ]
+    assert _git(repo, "rev-parse", "main") != target_before
+    assert (
+        subprocess.run(
+            ["git", "merge-base", "--is-ancestor", candidate, "main"],
+            cwd=repo,
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
+def test_merge_train_rejects_raced_legacy_submodule_rehydration_before_merge(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline = _git(repo, "rev-parse", "main")
+    child_baseline = _git(submodule, "rev-parse", "main")
+    branch_name = "implementation/ref-043x-reconciled"
+    state_dir = tmp_path / "state"
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## REF-043X Reject raced legacy gitlink\n\n"
+        "- Status: todo\n- Completion: manual\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=["libs/child"],
+    )
+    task_submodule_branch = daemon._submodule_worktree_branch_name(
+        branch_name,
+        "libs/child",
+    )
+    _git(submodule, "checkout", "-b", "legacy/ref-043x-child")
+    (submodule / "raced.txt").write_text(
+        "candidate child\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "raced.txt")
+    _git(submodule, "commit", "-m", "REF-043X: legacy child")
+    child_commit = _git(submodule, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "-b", branch_name)
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "REF-043X: recover legacy child")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(submodule, "checkout", "main")
+    target_before = _git(repo, "rev-parse", "main")
+    original_rehydrate = (
+        daemon._rehydrate_legacy_submodule_task_branches
+    )
+
+    def race_task_branch_creation(**kwargs):
+        _git(submodule, "branch", task_submodule_branch, "main")
+        return original_rehydrate(**kwargs)
+
+    monkeypatch.setattr(
+        daemon,
+        "_rehydrate_legacy_submodule_task_branches",
+        race_task_branch_creation,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_merge_branch_to_main",
+        lambda *_args, **_kwargs: pytest.fail(
+            "raced task branch must fail before target mutation"
+        ),
+    )
+    request = SimpleNamespace(
+        branch_name=branch_name,
+        commit_sha=candidate,
+        task_id="REF-043X",
+        priority="P0",
+        attempt=1,
+        metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
+            "baseline_ref": baseline,
+            "changed_submodule_paths": ["libs/child"],
+            "task": {
+                "task_id": "REF-043X",
+                "title": "Reject raced legacy gitlink",
+                "status": "todo",
+                "completion": "manual",
+                "priority": "P0",
+                "track": "ops",
+            },
+        },
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is False
+    assert result["reason"] == "changed_submodule_durability_unverified"
+    preflight = result["submodule_durability_preflight"]
+    assert preflight["verified"] is False
+    assert {
+        failure["reason"] for failure in preflight["failures"]
+    } == {
+        "canonical_task_branch_does_not_contain_gitlink",
+        "canonical_task_branch_rehydration_raced",
+    }
+    rehydration = preflight["legacy_task_branch_rehydration"]
+    assert rehydration["verified"] is False
+    assert rehydration["paths"][0]["gitlink_commit"] == child_commit
+    assert (
+        rehydration["paths"][0]["observed_task_branch_commit"]
+        == child_baseline
+    )
+    assert _git(repo, "rev-parse", "main") == target_before
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+
+
+def test_merge_train_rolls_back_parent_when_verified_submodule_result_disappears(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline = _git(repo, "rev-parse", "main")
+    branch_name = "implementation/ref-044-atomic"
+    state_dir = tmp_path / "state"
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## REF-044 Keep merge atomic\n\n- Status: todo\n- Completion: manual\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=["libs/child"],
+    )
+    task_submodule_branch = daemon._submodule_worktree_branch_name(
+        branch_name,
+        "libs/child",
+    )
+    _git(submodule, "checkout", "-b", task_submodule_branch)
+    (submodule / "atomic.txt").write_text(
+        "durable canonical child\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "atomic.txt")
+    _git(submodule, "commit", "-m", "REF-044: canonical child")
+
+    _git(repo, "checkout", "-b", branch_name)
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "REF-044: advance durable child")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(submodule, "checkout", "main")
+    target_before = _git(repo, "rev-parse", "main")
+
+    monkeypatch.setattr(
+        daemon,
+        "_merge_submodule_branches_to_main",
+        lambda *_args, **_kwargs: [],
+    )
+    request = SimpleNamespace(
+        branch_name=branch_name,
+        commit_sha=candidate,
+        task_id="REF-044",
+        priority="P0",
+        attempt=1,
+        metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
+            "baseline_ref": baseline,
+            "changed_submodule_paths": ["libs/child"],
+            "task": {
+                "task_id": "REF-044",
+                "title": "Keep merge atomic",
+                "status": "todo",
+                "completion": "manual",
+                "priority": "P0",
+                "track": "ops",
+            },
+        },
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["reason"] == "changed_submodule_merge_unverified"
+    assert result["submodule_durability_preflight"]["verified"] is True
+    assert result["missing_changed_submodule_paths"] == ["libs/child"]
+    assert result["submodule_failure_rollback"]["rolled_back"] is True
+    assert _git(repo, "rev-parse", "main") == target_before
+    assert (
+        subprocess.run(
+            ["git", "merge-base", "--is-ancestor", candidate, "main"],
+            cwd=repo,
+            capture_output=True,
+            check=False,
+        ).returncode
+        != 0
+    )
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+
+
+def test_merge_train_does_not_complete_when_parent_omits_reconciled_gitlink(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo, submodule, _base, target_submodule, candidate_submodule = (
+        _seed_parent_with_divergent_gitlinks(tmp_path)
+    )
+    branch_name = "implementation/auto-116"
+    candidate = _git(repo, "rev-parse", branch_name)
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## AUTO-116 Verify reconciled gitlink\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "add task board")
+    _git(submodule, "merge", "--no-ff", "--no-edit", "child-side")
+    reconciled_submodule = _git(submodule, "rev-parse", "HEAD")
+    assert _git(
+        submodule,
+        "merge-base",
+        "--is-ancestor",
+        candidate_submodule,
+        reconciled_submodule,
+    ) == ""
+    assert _git(
+        submodule,
+        "merge-base",
+        "--is-ancestor",
+        target_submodule,
+        reconciled_submodule,
+    ) == ""
+
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="AUTO-",
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    def integrate_parent_but_omit_reconciled_gitlink(
+        selected_branch,
+        *_args,
+        **_kwargs,
+    ):
+        target_before = _git(repo, "rev-parse", "main")
+        target_tree = _git(repo, "rev-parse", f"{target_before}^{{tree}}")
+        merge_commit = _git(
+            repo,
+            "commit-tree",
+            target_tree,
+            "-p",
+            target_before,
+            "-p",
+            candidate,
+            "-m",
+            "merge parent without reconciled child gitlink",
+        )
+        _git(
+            repo,
+            "update-ref",
+            "refs/heads/main",
+            merge_commit,
+            target_before,
+        )
+        assert _git(repo, "rev-parse", "main:libs/child") == target_submodule
+        return {
+            "attempted": True,
+            "merged": True,
+            "returncode": 0,
+            "branch": selected_branch,
+            "merge_commit": merge_commit,
+            "submodule_merge_results": [
+                {
+                    "path": "libs/child",
+                    "merged": True,
+                    "commit": reconciled_submodule,
+                }
+            ],
+            "merged_gitlink_recording": {
+                "attempted": True,
+                "ok": True,
+                "committed": False,
+                "reason": "false_positive_fixture",
+            },
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_merge_branch_to_main",
+        integrate_parent_but_omit_reconciled_gitlink,
+    )
+    request = SimpleNamespace(
+        branch_name=branch_name,
+        commit_sha=candidate,
+        task_id="AUTO-116",
+        priority="P0",
+        attempt=1,
+        metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
+            "changed_submodule_paths": ["libs/child"],
+            "task": {
+                "task_id": "AUTO-116",
+                "title": "Verify reconciled gitlink",
+                "status": "todo",
+                "completion": "manual",
+                "priority": "P0",
+                "track": "ops",
+            },
+        },
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is False
+    assert result["returncode"] == 2
+    assert result["reason"] == "post_merge_submodule_invariant_failed"
+    assert result["completion_skipped"] is True
+    invariant = result["post_merge_submodule_invariant"]
+    assert invariant["passed"] is False
+    assert (
+        invariant["integrated_handoff_proof"]["reason"]
+        == "changed_submodule_gitlink_not_integrated"
+    )
+    assert _git(repo, "merge-base", "--is-ancestor", candidate, "main") == ""
+    assert _git(repo, "rev-parse", "main:libs/child") == target_submodule
+    assert _git(repo, "rev-parse", "main:libs/child") != reconciled_submodule
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+
+    # Candidate containment alone is also insufficient: the parent must record
+    # the exact child reconciliation commit produced by this merge.
+    _git(
+        repo,
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        f"160000,{candidate_submodule},libs/child",
+    )
+    _git(repo, "commit", "-m", "record candidate but omit reconciliation")
+    candidate_only_target = _git(repo, "rev-parse", "HEAD")
+    exact_invariant = daemon._post_merge_changed_submodule_invariant(
+        candidate_commit=candidate,
+        target_commit=candidate_only_target,
+        changed_submodule_paths=["libs/child"],
+        submodule_merge_results=[
+            {
+                "path": "libs/child",
+                "merged": True,
+                "commit": reconciled_submodule,
+            }
+        ],
+    )
+    assert exact_invariant["integrated_handoff_proof"]["passed"] is True
+    assert exact_invariant["passed"] is False
+    assert exact_invariant["reason"] == "reconciled_submodule_gitlink_mismatch"
+
+    _git(
+        repo,
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        f"160000,{reconciled_submodule},libs/child",
+    )
+    _git(repo, "commit", "-m", "record exact child reconciliation")
+    recorded_target = _git(repo, "rev-parse", "HEAD")
+    recorded_invariant = daemon._post_merge_changed_submodule_invariant(
+        candidate_commit=candidate,
+        target_commit=recorded_target,
+        changed_submodule_paths=["libs/child"],
+        submodule_merge_results=[
+            {
+                "path": "libs/child",
+                "merged": True,
+                "commit": reconciled_submodule,
+            }
+        ],
+    )
+    assert recorded_invariant["passed"] is True
 
 
 def _seed_parent_with_divergent_gitlinks(
@@ -6934,6 +9075,49 @@ def test_implementation_daemon_submodule_gitlink_reconciliation_uses_verified_re
     assert diagnostic["latest"]["repaired"] is True
     assert diagnostic["latest"]["retryable"] is False
     assert diagnostic["latest"]["conflicts"][0]["selected_commit"] == selected
+
+
+@pytest.mark.parametrize("missing_stage", ["2", "3"])
+def test_implementation_daemon_submodule_gitlink_resolution_fails_closed_when_candidate_unavailable(
+    tmp_path,
+    missing_stage,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    available = _git(submodule, "rev-parse", "HEAD")
+    unavailable = "f" * 40
+    stages = {
+        "1": available,
+        "2": available,
+        "3": available,
+        missing_stage: unavailable,
+    }
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    result = daemon._submodule_gitlink_resolution(
+        "libs/child",
+        stages,
+        task=PortalTask(
+            task_id="AUTO-MISSING",
+            title="Reject incomplete gitlink ancestry",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+    )
+
+    assert result["selected_commit"] == ""
+    assert result["selection_reason"] == ""
+    assert result["missing_candidates"] == [unavailable]
+    assert result["reason"] == "gitlink_candidate_unavailable"
 
 
 def test_implementation_daemon_anchors_relative_recovery_worktrees_to_repo_root(tmp_path):
@@ -7377,6 +9561,356 @@ def test_implementation_daemon_detects_changed_submodule_gitlink_without_error(t
     ) is True
 
 
+def test_merge_anchors_submodule_to_target_gitlink_without_advancing_ambient_main(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline_ref = _git(repo, "rev-parse", "HEAD")
+    target_gitlink = _git(repo, "rev-parse", "HEAD:libs/child")
+    parent_branch = "implementation/auto-target-isolation"
+    submodule_branch = (
+        f"{parent_branch}-submodule-libs-child"
+    )
+
+    _git(submodule, "checkout", "-b", submodule_branch, target_gitlink)
+    (submodule / "task-owned.txt").write_text(
+        "target-scoped task work\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "task-owned.txt")
+    _git(submodule, "commit", "-m", "AUTO-TARGET: child task")
+    task_commit = _git(submodule, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-b", parent_branch)
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "AUTO-TARGET: parent task pointer")
+    _git(repo, "checkout", "main")
+
+    _git(submodule, "checkout", "main")
+    (submodule / "ambient-only.txt").write_text(
+        "unrelated ambient main work\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "ambient-only.txt")
+    _git(submodule, "commit", "-m", "unrelated ambient child main")
+    ambient_main = _git(submodule, "rev-parse", "main")
+    _git(submodule, "checkout", "--detach", target_gitlink)
+    assert _git(repo, "status", "--porcelain") == ""
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+        merge_target_branch="main",
+    )
+
+    result = daemon._merge_branch_to_main(
+        parent_branch,
+        PortalTask(
+            task_id="AUTO-TARGET",
+            title="Keep child integration scoped to parent target",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        1,
+        baseline_ref=baseline_ref,
+        changed_submodule_paths={"libs/child"},
+    )
+
+    assert result["merged"] is True
+    child_result = result["submodule_merge_results"][0]
+    assert child_result["isolated_target"] is True
+    assert child_result["target_base_commit"] == target_gitlink
+    integrated_commit = child_result["commit"]
+    assert _git(submodule, "merge-base", "--is-ancestor", target_gitlink, integrated_commit) == ""
+    assert _git(submodule, "merge-base", "--is-ancestor", task_commit, integrated_commit) == ""
+    assert subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ambient_main, integrated_commit],
+        cwd=submodule,
+        capture_output=True,
+        check=False,
+    ).returncode != 0
+    assert _git(submodule, "rev-parse", "main") == ambient_main
+    assert _git(submodule, "rev-parse", "HEAD") == integrated_commit
+    assert _git(repo, "rev-parse", "main:libs/child") == integrated_commit
+    assert _git(repo, "status", "--porcelain") == ""
+
+
+def test_merge_fast_forwards_stale_submodule_target_ref_to_authoritative_gitlink(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    stale_commit = _git(submodule, "rev-parse", "HEAD")
+    (submodule / "target-owned.txt").write_text(
+        "already published target work\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "target-owned.txt")
+    _git(submodule, "commit", "-m", "advance authoritative target")
+    target_base = _git(submodule, "rev-parse", "HEAD")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "record authoritative target gitlink")
+
+    submodule_branch = "implementation/auto-target-stale-submodule-libs-child"
+    _git(submodule, "checkout", "-b", submodule_branch, target_base)
+    (submodule / "task-owned.txt").write_text(
+        "task work after target advance\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "task-owned.txt")
+    _git(submodule, "commit", "-m", "task work after target advance")
+    task_commit = _git(submodule, "rev-parse", "HEAD")
+    _git(submodule, "checkout", "--detach", target_base)
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+        merge_target_branch="main",
+    )
+    integration_ref = daemon._submodule_target_integration_ref(
+        target_scope="main",
+        full_relative="libs/child",
+    )
+    _git(submodule, "update-ref", integration_ref, stale_commit)
+
+    result = daemon._merge_submodule_branch_to_target_ref(
+        source=submodule,
+        full_relative="libs/child",
+        submodule_branch=submodule_branch,
+        target_base_commit=target_base,
+        target_scope="main",
+        task=PortalTask(
+            task_id="AUTO-TARGET-STALE",
+            title="Advance a stale target cursor",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=1,
+    )
+
+    assert result["merged"] is True
+    assert result["integration_ref_fast_forwarded_from"] == stale_commit
+    assert result["integration_ref_fast_forwarded_to"] == target_base
+    assert result["commit"] == task_commit
+    assert _git(submodule, "rev-parse", integration_ref) == task_commit
+
+
+def test_merge_rejects_submodule_target_ref_ahead_of_authoritative_gitlink(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    target_base = _git(submodule, "rev-parse", "HEAD")
+    submodule_branch = "implementation/auto-target-ahead-submodule-libs-child"
+    _git(submodule, "checkout", "-b", submodule_branch, target_base)
+    (submodule / "ahead.txt").write_text("cursor ahead\n", encoding="utf-8")
+    _git(submodule, "add", "ahead.txt")
+    _git(submodule, "commit", "-m", "advance cursor ahead of target")
+    ahead_commit = _git(submodule, "rev-parse", "HEAD")
+    _git(submodule, "checkout", "--detach", target_base)
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+        merge_target_branch="main",
+    )
+    integration_ref = daemon._submodule_target_integration_ref(
+        target_scope="main",
+        full_relative="libs/child",
+    )
+    _git(submodule, "update-ref", integration_ref, ahead_commit)
+
+    result = daemon._merge_submodule_branch_to_target_ref(
+        source=submodule,
+        full_relative="libs/child",
+        submodule_branch=submodule_branch,
+        target_base_commit=target_base,
+        target_scope="main",
+        task=PortalTask(
+            task_id="AUTO-TARGET-AHEAD",
+            title="Reject a target-behind cursor",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=1,
+    )
+
+    assert result["merged"] is False
+    assert result["reason"] == "submodule_target_ref_drift"
+    assert result["drift_kind"] == "target_behind"
+    assert _git(submodule, "rev-parse", integration_ref) == ahead_commit
+
+
+def test_merge_rejects_divergent_submodule_target_ref(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    common_base = _git(submodule, "rev-parse", "HEAD")
+    (submodule / "target-owned.txt").write_text(
+        "authoritative target branch\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "target-owned.txt")
+    _git(submodule, "commit", "-m", "advance authoritative target")
+    target_base = _git(submodule, "rev-parse", "HEAD")
+
+    submodule_branch = "implementation/auto-target-diverged-submodule-libs-child"
+    _git(submodule, "checkout", "-b", submodule_branch, common_base)
+    (submodule / "task-owned.txt").write_text(
+        "divergent task branch\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "task-owned.txt")
+    _git(submodule, "commit", "-m", "create divergent task cursor")
+    divergent_commit = _git(submodule, "rev-parse", "HEAD")
+    _git(submodule, "checkout", "--detach", target_base)
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+        merge_target_branch="main",
+    )
+    integration_ref = daemon._submodule_target_integration_ref(
+        target_scope="main",
+        full_relative="libs/child",
+    )
+    _git(submodule, "update-ref", integration_ref, divergent_commit)
+
+    result = daemon._merge_submodule_branch_to_target_ref(
+        source=submodule,
+        full_relative="libs/child",
+        submodule_branch=submodule_branch,
+        target_base_commit=target_base,
+        target_scope="main",
+        task=PortalTask(
+            task_id="AUTO-TARGET-DIVERGED",
+            title="Reject a divergent target cursor",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=1,
+    )
+
+    assert result["merged"] is False
+    assert result["reason"] == "submodule_target_ref_drift"
+    assert result["drift_kind"] == "diverged"
+    assert _git(submodule, "rev-parse", integration_ref) == divergent_commit
+
+
+def test_merge_rejects_stale_submodule_target_ref_compare_and_swap_race(
+    tmp_path,
+    monkeypatch,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    stale_commit = _git(submodule, "rev-parse", "HEAD")
+    (submodule / "target-owned.txt").write_text(
+        "authoritative target work\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "target-owned.txt")
+    _git(submodule, "commit", "-m", "advance authoritative target")
+    target_base = _git(submodule, "rev-parse", "HEAD")
+
+    submodule_branch = "implementation/auto-target-race-submodule-libs-child"
+    _git(submodule, "checkout", "-b", submodule_branch, target_base)
+    (submodule / "task-owned.txt").write_text("task work\n", encoding="utf-8")
+    _git(submodule, "add", "task-owned.txt")
+    _git(submodule, "commit", "-m", "task work")
+    _git(submodule, "checkout", "--detach", target_base)
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+        merge_target_branch="main",
+    )
+    integration_ref = daemon._submodule_target_integration_ref(
+        target_scope="main",
+        full_relative="libs/child",
+    )
+    _git(submodule, "update-ref", integration_ref, stale_commit)
+    expected_cas = [
+        "git",
+        "update-ref",
+        integration_ref,
+        target_base,
+        stale_commit,
+    ]
+    original_run = implementation_daemon_module.subprocess.run
+    raced = False
+
+    def race_target_ref_update(command, *args, **kwargs):
+        nonlocal raced
+        if not raced and command == expected_cas:
+            raced = True
+            competitor = original_run(
+                expected_cas,
+                cwd=submodule,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            assert competitor.returncode == 0
+        return original_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        race_target_ref_update,
+    )
+
+    result = daemon._merge_submodule_branch_to_target_ref(
+        source=submodule,
+        full_relative="libs/child",
+        submodule_branch=submodule_branch,
+        target_base_commit=target_base,
+        target_scope="main",
+        task=PortalTask(
+            task_id="AUTO-TARGET-RACE",
+            title="Reject a raced target cursor update",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=1,
+    )
+
+    assert raced is True
+    assert result["merged"] is False
+    assert result["reason"] == "submodule_target_ref_compare_and_swap_failed"
+    assert result["compare_and_swap_phase"] == "advance_stale_integration_ref"
+    assert result["integration_ref_commit_after_failure"] == target_base
+    assert _git(submodule, "rev-parse", integration_ref) == target_base
+
+
 def test_implementation_daemon_treats_nested_configured_path_as_changed(tmp_path):
     repo, _submodule = _seed_parent_with_submodule(tmp_path)
     baseline_ref = _git(repo, "rev-parse", "HEAD")
@@ -7436,6 +9970,122 @@ def test_implementation_daemon_merges_submodule_with_nonoverlapping_dirty_paths(
     assert results[0]["preserved_dirty_paths"] == ["child.txt"]
     assert _git(submodule, "merge-base", "--is-ancestor", task_commit, "main") == ""
     assert (submodule / "child.txt").read_text(encoding="utf-8") == "preserved local dirt\n"
+
+
+@pytest.mark.parametrize("detached_shared_checkout", [False, True])
+def test_failed_submodule_merge_restores_shared_checkout_index_and_nested_dirt(
+    tmp_path: Path,
+    monkeypatch,
+    detached_shared_checkout: bool,
+):
+    repo, child, leaf = _seed_parent_with_nested_submodules(tmp_path)
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+        llm_merge_resolver_command="",
+    )
+    parent_branch = "implementation/auto-rollback"
+    task_branch = daemon._submodule_worktree_branch_name(
+        parent_branch, "libs/child"
+    )
+    base = _git(child, "rev-parse", "HEAD")
+
+    _git(child, "checkout", "-b", task_branch, base)
+    (child / "child.txt").write_text("task side\n", encoding="utf-8")
+    _git(child, "commit", "-am", "task-side conflict")
+    _git(child, "checkout", "main")
+    (child / "child.txt").write_text("main side\n", encoding="utf-8")
+    _git(child, "commit", "-am", "main-side conflict")
+    main_head = _git(child, "rev-parse", "HEAD")
+
+    shared_branch = "supervisor/live-checkout"
+    _git(child, "checkout", "-b", shared_branch)
+    (child / "supervisor.txt").write_text("shared state\n", encoding="utf-8")
+    _git(child, "add", "supervisor.txt")
+    _git(child, "commit", "-m", "supervisor checkout state")
+    shared_head = _git(child, "rev-parse", "HEAD")
+    if detached_shared_checkout:
+        _git(child, "checkout", "--detach", shared_head)
+    _git(repo, "add", "libs/child")
+
+    _git(leaf, "checkout", "-b", "supervisor/dirty-leaf")
+    leaf_head = _git(leaf, "rev-parse", "HEAD")
+    (leaf / "leaf.txt").write_text("pre-existing nested dirt\n", encoding="utf-8")
+    leaf_status_before = daemon._submodule_transaction_status(leaf).stdout
+    child_status_before = daemon._submodule_transaction_status(child).stdout
+    parent_status_before = daemon._submodule_transaction_status(repo).stdout
+    parent_index_before = subprocess.run(
+        ["git", "ls-files", "--stage", "-z", "--", "libs/child"],
+        cwd=repo,
+        stdout=subprocess.PIPE,
+        check=True,
+    ).stdout
+    original_abort = daemon._abort_failed_merge
+
+    def abort_with_exposed_parent_index_drift(cwd: Path):
+        abort_result = original_abort(cwd)
+        subprocess.run(
+            [
+                "git",
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                f"160000,{main_head},libs/child",
+            ],
+            cwd=repo,
+            check=True,
+        )
+        return abort_result
+
+    monkeypatch.setattr(
+        daemon,
+        "_abort_failed_merge",
+        abort_with_exposed_parent_index_drift,
+    )
+
+    results = daemon._merge_submodule_branches_to_main(
+        parent_branch,
+        task=PortalTask(
+            task_id="AUTO-ROLLBACK",
+            title="Preserve shared checkout after child conflict",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=1,
+        changed_submodule_paths={"libs/child"},
+    )
+
+    result = results[0]
+    assert result["merged"] is False
+    assert result["transaction_rollback"]["restored"] is True
+    assert result["transaction_rollback"]["failures"] == []
+    assert _git(child, "branch", "--show-current") == (
+        "" if detached_shared_checkout else shared_branch
+    )
+    assert _git(child, "rev-parse", "HEAD") == shared_head
+    assert _git(child, "rev-parse", "main") == main_head
+    assert daemon._submodule_transaction_status(child).stdout == child_status_before
+    assert subprocess.run(
+        ["git", "ls-files", "--stage", "-z", "--", "libs/child"],
+        cwd=repo,
+        stdout=subprocess.PIPE,
+        check=True,
+    ).stdout == parent_index_before
+    assert daemon._submodule_transaction_status(repo).stdout == parent_status_before
+    assert _git(leaf, "branch", "--show-current") == "supervisor/dirty-leaf"
+    assert _git(leaf, "rev-parse", "HEAD") == leaf_head
+    assert daemon._submodule_transaction_status(leaf).stdout == leaf_status_before
+    assert (leaf / "leaf.txt").read_text(encoding="utf-8") == (
+        "pre-existing nested dirt\n"
+    )
+    assert not (state_dir / "submodule-merge-rollback-guardrail.json").exists()
 
 
 def test_implementation_daemon_records_merged_root_submodule_gitlink(tmp_path):
@@ -7669,6 +10319,80 @@ def test_implementation_daemon_preserves_nested_tmp_and_allows_unchanged_dirty_s
     assert (submodule / "child.txt").read_text(encoding="utf-8") == "unrelated user dirt\n"
 
 
+def test_implementation_daemon_allows_candidate_submodule_advance_with_unchanged_nested_dirt(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    nested_source = tmp_path / "nested-source"
+    nested_source.mkdir()
+    _git(nested_source, "init")
+    _git(nested_source, "checkout", "-b", "main")
+    _git(nested_source, "config", "user.name", "Test User")
+    _git(nested_source, "config", "user.email", "test@example.invalid")
+    (nested_source / "nested.txt").write_text("base\n", encoding="utf-8")
+    _git(nested_source, "add", "nested.txt")
+    _git(nested_source, "commit", "-m", "nested base")
+
+    _git(
+        submodule,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(nested_source),
+        "nested/tool",
+    )
+    _git(submodule, "add", ".gitmodules", "nested/tool")
+    _git(submodule, "commit", "-m", "add nested tool")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "record nested tool")
+
+    _git(submodule, "checkout", "-b", "implementation/auto-126-submodule-libs-child")
+    (submodule / "candidate.txt").write_text("candidate\n", encoding="utf-8")
+    _git(submodule, "add", "candidate.txt")
+    _git(submodule, "commit", "-m", "AUTO-126: candidate child work")
+    _git(repo, "checkout", "-b", "implementation/auto-126")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "AUTO-126: advance child gitlink")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "main")
+    _git(submodule, "checkout", "main")
+    nested_checkout = submodule / "nested" / "tool"
+    (nested_checkout / "nested.txt").write_text(
+        "unrelated user dirt\n",
+        encoding="utf-8",
+    )
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    candidates = [
+        {
+            "task_id": "AUTO-126",
+            "branch": "implementation/auto-126",
+            "implementation_commit": implementation_commit,
+        }
+    ]
+
+    blocking, nonblocking = daemon._reconciliation_blocking_dirty_paths(
+        candidates,
+        target_branch="main",
+    )
+
+    assert blocking == []
+    assert nonblocking == ["libs/child"]
+    assert (nested_checkout / "nested.txt").read_text(encoding="utf-8") == (
+        "unrelated user dirt\n"
+    )
+
+
 def test_implementation_daemon_failed_merge_reconciliation_remains_retryable(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -7752,6 +10476,7 @@ def test_implementation_daemon_retries_submodule_after_parent_commit_already_lan
     _git(submodule, "commit", "-m", "AUTO-116: child change")
     submodule_commit = _git(submodule, "rev-parse", "HEAD")
     _git(submodule, "checkout", "main")
+    ambient_main = _git(submodule, "rev-parse", "main")
     (submodule / "feature.txt").write_text("temporarily dirty\n", encoding="utf-8")
 
     state_dir = tmp_path / "supervisor-state"
@@ -7772,6 +10497,23 @@ def test_implementation_daemon_retries_submodule_after_parent_commit_already_lan
         priority="P0",
         track="ops",
     )
+    daemon._load_tasks = lambda: [task]  # type: ignore[method-assign]
+    task_cid = daemon._identity_for_task(task).canonical_task_cid
+    daemon._mark_reconciled_completion_in_todo = (  # type: ignore[method-assign]
+        lambda *_args, **_kwargs: {
+            "updated": False,
+            "reason": "already_completed",
+            "updated_task_ids": [],
+            "already_completed_task_ids": [task.task_id],
+            "completion_receipts": [
+                {
+                    "task_id": task.task_id,
+                    "canonical_task_cid": task_cid,
+                    "status": "succeeded",
+                }
+            ],
+        }
+    )
     first = daemon._merge_branch_to_main("implementation/auto-116", task, 1)
 
     assert first["merged"] is False
@@ -7789,6 +10531,9 @@ def test_implementation_daemon_retries_submodule_after_parent_commit_already_lan
         "implementation_finished",
         {
             "task_id": task.task_id,
+            "task_cid": daemon._identity_for_task(
+                task
+            ).canonical_task_cid,
             "attempt": 1,
             "branch": "implementation/auto-116",
             "implementation_commit": implementation_commit,
@@ -7800,8 +10545,278 @@ def test_implementation_daemon_retries_submodule_after_parent_commit_already_lan
     assert reconciliation[-1]["resolved"] is True
     assert reconciliation[-1]["reason"] == "implementation_commit_already_merged"
     assert reconciliation[-1]["submodule_merge_results"][0]["merged"] is True
-    assert _git(submodule, "merge-base", "--is-ancestor", submodule_commit, "main") == ""
+    assert _git(submodule, "rev-parse", "main") == ambient_main
+    assert _git(submodule, "rev-parse", "HEAD") == submodule_commit
+    assert _git(repo, "rev-parse", "main:libs/child") == submodule_commit
     assert not checkpoint_path.exists()
+
+
+@pytest.mark.parametrize(
+    "integration_record_location",
+    ["top_level", "nested_train_callback"],
+)
+def test_implementation_daemon_reconciles_rewritten_branch_already_landed(
+    tmp_path,
+    integration_record_location,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "base")
+
+    branch = "implementation/auto-117"
+    _git(repo, "checkout", "-b", branch)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "AUTO-117: feature")
+    original_implementation_commit = _git(repo, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "main")
+    (repo / "concurrent.txt").write_text("concurrent\n", encoding="utf-8")
+    _git(repo, "add", "concurrent.txt")
+    _git(repo, "commit", "-m", "concurrent target change")
+    _git(repo, "checkout", branch)
+    _git(repo, "rebase", "main")
+    rewritten_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", branch)
+    rewritten_merge_commit = _git(repo, "rev-parse", "HEAD")
+
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## AUTO-117 Accept rewritten merge\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "add task board")
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="AUTO-",
+    )
+    task = daemon._load_tasks()[0]
+    implementation_event = {
+        "task_id": "AUTO-117",
+        "task_cid": daemon._identity_for_task(
+            task
+        ).canonical_task_cid,
+        "attempt": 1,
+        "branch": branch,
+        "implementation_commit": original_implementation_commit,
+        "merge_result": {
+            "attempted": True,
+            "merged": False,
+            "reason": "merge_retry_failed",
+        },
+    }
+    if integration_record_location == "top_level":
+        implementation_event["target_commit"] = rewritten_merge_commit
+    else:
+        implementation_event["merge_result"]["train_result"] = {
+            "integrated": False,
+            "merge_result": {
+                "merged": False,
+                "reason": "post_merge_integration_commit_unproven",
+                "integration_occurred": True,
+                "merge_commit": rewritten_merge_commit,
+            },
+        }
+    daemon._record_event(
+        "implementation_finished",
+        implementation_event,
+    )
+
+    reconciliation = daemon._reconcile_failed_merges()
+
+    assert reconciliation[-1]["resolved"] is True
+    assert reconciliation[-1]["reason"] == "implementation_branch_already_merged"
+    assert reconciliation[-1]["landed_ref_source"] == "branch"
+    assert reconciliation[-1]["merge_commit"] == rewritten_merge_commit
+    assert _git(repo, "merge-base", "--is-ancestor", rewritten_commit, "main") == ""
+    assert not daemon._git_ref_is_ancestor(original_implementation_commit, "main")
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+    assert daemon._successfully_merged_task_ids() == {"AUTO-117"}
+
+
+def test_implementation_daemon_recovers_landed_merge_after_lock_deferral(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## AUTO-119 Recover a queued merge\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n"
+        "- Outputs: feature.txt\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "base.txt", "todo.md")
+    _git(repo, "commit", "-m", "baseline")
+
+    branch = "implementation/auto-119"
+    _git(repo, "checkout", "-b", branch)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "AUTO-119: feature")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="AUTO-",
+        merge_target_branch="main",
+    )
+    task = daemon._load_tasks()[0]
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": task.task_id,
+            "task_cid": daemon._identity_for_task(
+                task
+            ).canonical_task_cid,
+            "attempt": 1,
+            "branch": branch,
+            "implementation_commit": implementation_commit,
+            "validation_result": {
+                "attempted": True,
+                "passed": True,
+            },
+            "merge_result": {
+                "attempted": False,
+                "merged": False,
+                "reason": "lock_exists",
+                "branch": branch,
+            },
+        },
+    )
+
+    # Simulate the queued merge landing after the lock-deferral event but
+    # before the next reconciliation pass. The target is consequently stable
+    # for the entire recovery invocation and there is no cached merge ref.
+    _git(repo, "merge", "--no-ff", "--no-edit", branch)
+    integration_commit = _git(repo, "rev-parse", "HEAD")
+
+    reconciliation = daemon._reconcile_failed_merges()
+
+    assert reconciliation[-1]["resolved"] is True
+    assert reconciliation[-1]["reason"] == (
+        "implementation_commit_already_merged"
+    )
+    assert reconciliation[-1]["landed_commit"] == implementation_commit
+    assert reconciliation[-1]["merge_commit"] == integration_commit
+    assert reconciliation[-1]["integration_commit_proof"]["passed"] is True
+    assert reconciliation[-1][
+        "post_merge_declared_output_invariant"
+    ]["passed"] is True
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+    assert daemon._successfully_merged_task_ids() == {"AUTO-119"}
+
+
+def test_implementation_daemon_rejects_rewritten_branch_with_stale_target_commit(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "base")
+
+    branch = "implementation/auto-118"
+    _git(repo, "checkout", "-b", branch)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "AUTO-118: feature")
+    original_implementation_commit = _git(repo, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "main")
+    (repo / "concurrent.txt").write_text("concurrent\n", encoding="utf-8")
+    _git(repo, "add", "concurrent.txt")
+    _git(repo, "commit", "-m", "concurrent target change")
+    stale_target_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", branch)
+    _git(repo, "rebase", "main")
+    rewritten_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", branch)
+
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## AUTO-118 Reject stale integration tree\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "add task board")
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="AUTO-",
+    )
+    task = daemon._load_tasks()[0]
+    daemon._cleanup_merged_worktree = lambda *_args, **_kwargs: {  # type: ignore[method-assign]
+        "cleaned": True,
+    }
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": task.task_id,
+            "task_cid": daemon._identity_for_task(
+                task
+            ).canonical_task_cid,
+            "attempt": 1,
+            "branch": branch,
+            "implementation_commit": original_implementation_commit,
+            "target_commit": stale_target_commit,
+            "merge_result": {
+                "attempted": True,
+                "merged": False,
+                "reason": "merge_retry_failed",
+            },
+        },
+    )
+
+    reconciliation = daemon._reconcile_failed_merges()
+
+    assert reconciliation[-1]["resolved"] is False
+    assert reconciliation[-1]["landed_ref_source"] == "branch"
+    assert reconciliation[-1]["landed_commit"] == rewritten_commit
+    assert reconciliation[-1]["integration_commit_proof"]["passed"] is False
+    assert (
+        "implementation_not_ancestor_of_integration_commit"
+        in reconciliation[-1]["integration_commit_proof"]["reasons"]
+    )
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
 
 
 def test_todo_daemon_runtime_is_ported_to_accelerate_package():
@@ -8035,6 +11050,73 @@ def test_supervisor_loop_publishes_cached_worker_status(tmp_path):
     assert stopped["worker_descendant_count"] == 0
 
 
+def test_supervisor_loop_accepts_fresh_child_log_when_semantic_heartbeat_is_stale(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    status_path = state_dir / "daemon_status.json"
+    status_path.write_text(
+        json.dumps({"heartbeat_at": "2000-01-01T00:00:00+00:00"}),
+        encoding="utf-8",
+    )
+    child_log_path = state_dir / "child.log"
+    child_log_path.write_text("healthy idle pass\n", encoding="utf-8")
+    spec = ManagedDaemonSpec(
+        name="test-daemon",
+        schema="test.daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=(sys.executable, "-c", "pass"),
+        status_path=status_path,
+        supervisor_status_path=state_dir / "supervisor_status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure_status.json",
+        ensure_check_path=state_dir / "ensure_check.json",
+    )
+    child = SimpleNamespace(pid=os.getpid(), log_path=child_log_path)
+    strict_loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=(sys.executable, "-c", "pass"),
+            log_prefix="child",
+            watchdog_stale_after_seconds=60,
+        )
+    )
+    strict = strict_loop.watchdog_decision(child)
+    assert strict.reason == "stale_heartbeat"
+    assert strict.detail["child_log_fallback_enabled"] is False
+
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=(sys.executable, "-c", "pass"),
+            log_prefix="child",
+            watchdog_stale_after_seconds=60,
+            watchdog_accept_fresh_child_log=True,
+        )
+    )
+
+    assert loop.watchdog_decision(child).action == "continue"
+
+    os.utime(child_log_path, (1, 1))
+
+    stale = loop.watchdog_decision(child)
+    assert stale.reason == "stale_heartbeat"
+    assert stale.detail["child_log_fresh"] is False
+    assert stale.detail["child_log_age_seconds"] > 60
+
+    child_log_path.unlink()
+
+    missing = loop.watchdog_decision(child)
+    assert missing.reason == "stale_heartbeat"
+    assert missing.detail["child_log_age_seconds"] is None
+
+
 def test_supervisor_loop_starts_stall_clock_when_worker_disappears(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -8095,103 +11177,6 @@ def test_supervisor_loop_starts_stall_clock_when_worker_disappears(tmp_path):
     assert expired["stalled_without_active_worker"] is True
 
 
-def test_implementation_supervisor_keeps_nonconsuming_provider_backoff_alive(
-    tmp_path,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    state_dir = repo / "state"
-    state_dir.mkdir()
-    state_path = state_dir / "task_state.json"
-    now = datetime.now(timezone.utc)
-    TodoTaskState(
-        heartbeat_at=(now - timedelta(hours=3)).isoformat(),
-        last_progress_at=(now - timedelta(hours=3)).isoformat(),
-        ready_count=1,
-        ready_task_ids=["AUTO-001"],
-        selectable_ready_count=1,
-        selectable_ready_task_ids=["AUTO-001"],
-        eligible_ready_count=1,
-        eligible_ready_task_ids=["AUTO-001"],
-        selection_idle_reason="provider_capacity_backoff",
-    ).save(state_path)
-    daemon_events_path = state_dir / "portal_events.jsonl"
-    exhausted = {
-        "type": "implementation_provider_exhausted",
-        "reason": "provider_capacity_exhausted",
-        "task_id": "AUTO-001",
-        "providers": ["grok"],
-        "deferred": True,
-        "attempt_consumed": False,
-        "retry_at": (now + timedelta(minutes=10)).isoformat(),
-    }
-    daemon_events_path.write_text(
-        json.dumps(exhausted) + "\n",
-        encoding="utf-8",
-    )
-    supervisor = TodoImplementationSupervisor(
-        TodoSupervisorConfig(
-            todo_path=repo / "todo.md",
-            state_path=state_path,
-            strategy_path=state_dir / "strategy.json",
-            events_path=state_dir / "supervisor_events.jsonl",
-            state_dir=state_dir,
-            repo_root=repo,
-            stale_seconds=1,
-            implementation_timeout=1,
-            check_interval=1,
-        )
-    )
-    loop = SupervisorLoop(
-        supervisor.build_supervisor_loop_config(),
-        stale_heartbeat_hook=(
-            supervisor._provider_backoff_stale_heartbeat_decision
-        ),
-    )
-    child = SimpleNamespace(pid=os.getpid())
-    before = (state_path.read_bytes(), daemon_events_path.read_bytes())
-
-    decision = loop.watchdog_decision(child)
-
-    assert decision.action == "continue"
-    assert decision.reason == "provider_capacity_backoff"
-    assert decision.detail["task_id"] == "AUTO-001"
-    assert decision.detail["providers"] == ["grok"]
-    assert decision.detail["attempt_consumed"] is False
-    assert (state_path.read_bytes(), daemon_events_path.read_bytes()) == before
-
-    exhausted["attempt_consumed"] = True
-    daemon_events_path.write_text(
-        json.dumps(exhausted) + "\n",
-        encoding="utf-8",
-    )
-    consuming = loop.watchdog_decision(child)
-    assert consuming.action == "recycle"
-    assert consuming.reason == "stale_heartbeat"
-
-    exhausted["attempt_consumed"] = False
-    exhausted["retry_at"] = (now - timedelta(minutes=10)).isoformat()
-    daemon_events_path.write_text(
-        json.dumps(exhausted) + "\n",
-        encoding="utf-8",
-    )
-    expired = loop.watchdog_decision(child)
-    assert expired.action == "recycle"
-    assert expired.reason == "stale_heartbeat"
-
-    exhausted["retry_at"] = (now + timedelta(minutes=10)).isoformat()
-    daemon_events_path.write_text(
-        json.dumps(exhausted)
-        + "\n"
-        + json.dumps({"type": "implementation_started", "task_id": "AUTO-001"})
-        + "\n",
-        encoding="utf-8",
-    )
-    superseded = loop.watchdog_decision(child)
-    assert superseded.action == "recycle"
-    assert superseded.reason == "stale_heartbeat"
-
-
 def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -8201,16 +11186,9 @@ def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(
     class RecoveringLoop:
         calls = 0
 
-        def __init__(
-            self,
-            config,
-            *,
-            watchdog_hook=None,
-            stale_heartbeat_hook=None,
-        ):
+        def __init__(self, config, *, watchdog_hook=None):
             self.config = config
             self.watchdog_hook = watchdog_hook
-            self.stale_heartbeat_hook = stale_heartbeat_hook
 
         def run(self):
             RecoveringLoop.calls += 1
@@ -8291,6 +11269,22 @@ def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
             repo_root=repo,
         )
     )
+    supervisor_status_path = state_dir / "portal_supervisor_status.json"
+    supervisor_status_path.write_text(
+        json.dumps(
+            {
+                "status": "running",
+                "supervisor_pid": os.getpid(),
+                "supervisor_pid_alive": True,
+                "daemon_pid": 4321,
+                "daemon_pid_alive": True,
+                "active_worker_count": 1,
+                "active_worker_pids": [9876],
+                "worker_descendant_count": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
 
     handlers = {
         signal.SIGTERM: "previous-term",
@@ -8319,7 +11313,24 @@ def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
     monkeypatch.setattr(
         supervisor,
         "_terminate_managed_daemon_tree",
-        lambda: cleanup_calls.append(True) or {"pid": 4321, "terminated": True},
+        lambda: cleanup_calls.append(True)
+        or {
+            "pid": 4321,
+            "terminated": True,
+            "quiesced": True,
+            "remaining_pid": None,
+        },
+    )
+    reconciliation_calls = []
+    monkeypatch.setattr(
+        supervisor,
+        "_reconcile_interrupted_implementation_after_shutdown",
+        lambda: reconciliation_calls.append(True)
+        or {
+            "reconciled": True,
+            "blocked": False,
+            "reason": "quiesced_active_attempt_reconciled",
+        },
     )
     monkeypatch.setattr(
         supervisor,
@@ -8332,12 +11343,23 @@ def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
 
     assert exc_info.value.code == 128 + signal.SIGTERM
     assert cleanup_calls == [True]
+    assert reconciliation_calls == [True]
     assert recorded == [
         (
             "supervisor_signal_shutdown",
             {
                 "signal": signal.SIGTERM,
-                "managed_daemon_cleanup": {"pid": 4321, "terminated": True},
+                "managed_daemon_cleanup": {
+                    "pid": 4321,
+                    "terminated": True,
+                    "quiesced": True,
+                    "remaining_pid": None,
+                },
+                "interrupted_implementation_reconciliation": {
+                    "reconciled": True,
+                    "blocked": False,
+                    "reason": "quiesced_active_attempt_reconciled",
+                },
             },
         )
     ]
@@ -8346,6 +11368,23 @@ def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
         signal.SIGINT: "previous-int",
     }
     assert len(transitions) == 4
+    stopped = json.loads(supervisor_status_path.read_text(encoding="utf-8"))
+    assert stopped["status"] == "stopped"
+    assert stopped["supervisor_pid"] == os.getpid()
+    assert stopped["supervisor_pid_alive"] is False
+    assert stopped["daemon_pid"] is None
+    assert stopped["daemon_pid_alive"] is False
+    assert stopped["active_worker_count"] == 0
+    assert stopped["active_worker_pids"] == []
+    assert stopped["worker_descendant_count"] == 0
+    assert stopped["stop_signal"] == signal.SIGTERM
+    assert stopped["last_exit_code"] == 128 + signal.SIGTERM
+    assert stopped["last_recycle_reason"] == "supervisor_signal_shutdown"
+    assert stopped["managed_daemon_cleanup"]["terminated"] is True
+    assert (
+        stopped["interrupted_implementation_reconciliation"]["reconciled"]
+        is True
+    )
 
 
 def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
@@ -8551,6 +11590,104 @@ def test_daemon_refill_callbacks_honor_cli_scan_overrides(tmp_path):
     assert captured["codebase"]["bundle_dir"] == tmp_path / "bundles"
 
 
+def test_run_once_repairs_exact_completion_receipt_after_state_save_crash(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "README.md").write_text("completed\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Completed before its receipt was appended
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on:
+- Outputs: README.md
+- Validation: test -f README.md
+- Acceptance: The completed revision has one durable exact receipt.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    state_path = state_dir / "task_state.json"
+    events_path = state_dir / "events.jsonl"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=events_path,
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    [task] = parse_task_file(
+        todo_path,
+        task_header_prefix="## ACCEL-",
+    )
+    identity = daemon._identity_for_task(task)
+    # Model the old crash window: the task projection reached disk after the
+    # board became completed, but task_completed never reached the event log.
+    TodoTaskState(
+        completed_task_ids=[task.task_id],
+        completed_count=1,
+        task_count=1,
+        task_statuses={task.task_id: "completed"},
+        task_identities={task.task_id: identity.to_dict()},
+    ).save(state_path)
+
+    first = daemon.run_once()
+    first_events = [
+        json.loads(line)
+        for line in events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    first_receipts = [
+        event
+        for event in first_events
+        if event.get("type") == "task_completed"
+    ]
+
+    assert len(first_receipts) == 1
+    assert first_receipts[0]["task_id"] == task.task_id
+    assert (
+        first_receipts[0]["canonical_task_key"]
+        == identity.canonical_task_key
+    )
+    assert (
+        first_receipts[0]["canonical_task_cid"]
+        == identity.canonical_task_cid
+    )
+    assert first_receipts[0]["completion_receipt_repair"] is True
+    assert first["completion_receipt_writes"] == [
+        {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "board_namespace": identity.board_namespace,
+            "completion_receipt_repair": True,
+            "reason": "missing_exact_completion_receipt",
+        }
+    ]
+
+    second = daemon.run_once()
+    second_events = [
+        json.loads(line)
+        for line in events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    second_receipts = [
+        event
+        for event in second_events
+        if event.get("type") == "task_completed"
+    ]
+
+    assert len(second_receipts) == 1
+    assert second["unchanged"] is True
+    assert second["write_count"] == 0
+
+
 def test_implementation_daemon_run_once_cleans_already_merged_worktree(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -8727,158 +11864,6 @@ def test_implementation_daemon_fences_preparing_worktree_from_peer_merged_cleanu
     assert owner_cleanup.get("cleaned") is True
     assert not worktree_path.exists()
     assert FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID
-
-
-def test_implementation_daemon_reclaims_dead_same_lane_owner_on_opt_in_restart(
-    tmp_path,
-    monkeypatch,
-):
-    from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
-        ProcessBirthIdentity,
-        WorkspaceLifecycleState,
-        WorktreeLifecycleStore,
-    )
-
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _git(repo, "init")
-    _git(repo, "checkout", "-b", "main")
-    state_dir = repo / "state"
-    workspace = repo / "worktrees" / "stale"
-    store = WorktreeLifecycleStore(repo_root=repo)
-    store.begin_preparing(
-        task_id="ACCEL-RESTART",
-        canonical_task_cid="cid:accel-restart",
-        attempt=1,
-        lane_id="lane-1",
-        workspace_path=workspace,
-        branch="implementation/accel-restart",
-        merge_target="main",
-        state_dir=str(state_dir.resolve()),
-        owner=ProcessBirthIdentity(
-            pid=2**30 - 11,
-            start_time_ticks=1,
-            boot_id="dead-boot",
-        ),
-    )
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_RECLAIM_DEAD_WORKTREE_LEASES_ON_STARTUP",
-        "1",
-    )
-
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-        task_header_prefix="## ACCEL-",
-    )
-
-    assert len(daemon.worktree_lifecycle_restart_recovery) == 1
-    recovered = daemon.worktree_lifecycle.load_workspace(workspace)
-    assert recovered is not None
-    assert recovered.state is WorkspaceLifecycleState.TERMINAL
-    assert recovered.terminal_reason == "controlled_restart_dead_owner"
-
-
-def test_ephemeral_lifecycle_race_defers_without_consuming_attempt(
-    tmp_path,
-    monkeypatch,
-):
-    from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
-        DuplicateAttemptError,
-        LifecycleFailureKind,
-        WorkspaceLifecycleState,
-    )
-
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _git(repo, "init")
-    _git(repo, "checkout", "-b", "main")
-    _git(repo, "config", "user.name", "Test User")
-    _git(repo, "config", "user.email", "test@example.invalid")
-    (repo / "README.md").write_text("base\n", encoding="utf-8")
-    _git(repo, "add", "README.md")
-    _git(repo, "commit", "-m", "base")
-    state_dir = repo / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-        task_header_prefix="## ACCEL-",
-        implement=True,
-        implementation_command="provider-must-not-run",
-        use_ephemeral_worktree=True,
-        worktree_root=repo / "worktrees",
-        worktree_pool_enabled=False,
-    )
-    task = PortalTask(
-        task_id="ACCEL-001",
-        title="Retry lifecycle setup",
-        status="todo",
-        completion="manual",
-        priority="P1",
-        track="ops",
-        validation=["true"],
-    )
-    canonical_task_cid = daemon._canonical_ref(task)
-    state = TodoTaskState(
-        implementation_attempts={task.task_id: 1},
-        implementation_attempts_by_cid={canonical_task_cid: 1},
-    )
-
-    def fake_seed(worktree_path, _branch_name, *, task=None):
-        worktree_path.mkdir(parents=True)
-        return "baseline"
-
-    monkeypatch.setattr(daemon, "_build_implementation_prompt", lambda *_args: "")
-    monkeypatch.setattr(
-        daemon,
-        "_persist_implementation_context_receipt",
-        lambda *_args, **_kwargs: state_dir / "context.json",
-    )
-    monkeypatch.setattr(daemon, "_create_seeded_worktree", fake_seed)
-    monkeypatch.setattr(
-        daemon,
-        "_sync_worktree_lifecycle_workspace",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            DuplicateAttemptError("target lease has not expired")
-        ),
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_cleanup_failed_setup_worktree",
-        lambda *_args, **_kwargs: {
-            "cleaned": False,
-            "reason": "lifecycle_fenced",
-        },
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "run_process_group_stream",
-        lambda *_args, **_kwargs: pytest.fail("provider must not run"),
-    )
-
-    result = daemon._run_implementation(task, state)
-    persisted = TodoTaskState.load(daemon.state_path)
-
-    assert result["lifecycle_race"] is True
-    assert result["failure_kind"] == LifecycleFailureKind.LIFECYCLE_RACE.value
-    assert result["provider_call_allowed"] is False
-    assert result["attempt_consumed"] is False
-    assert result["deferred"] is True
-    assert result["backoff_seconds"] == 30
-    assert persisted.implementation_attempts[task.task_id] == 1
-    assert persisted.implementation_attempts_by_cid[canonical_task_cid] == 1
-    assert daemon.task_queue.is_cooled_down(canonical_task_cid)
-    records = list(daemon.worktree_lifecycle.iter_records())
-    assert not any(
-        record.state is not WorkspaceLifecycleState.TERMINAL
-        for record in records
-    )
 
 
 def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monkeypatch):
@@ -9445,7 +12430,7 @@ def test_implementation_daemon_accepts_planner_proven_external_dependency(tmp_pa
     assert state.ready_task_ids == ["ACCEL-002"]
 
 
-def test_shared_merge_receipts_do_not_grant_board_completion_across_lanes(tmp_path):
+def test_implementation_daemon_uses_shared_merge_receipts_across_lanes(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -9506,16 +12491,16 @@ def test_shared_merge_receipts_do_not_grant_board_completion_across_lanes(tmp_pa
     result = daemon.run_once()
     state = TodoTaskState.load(daemon.state_path)
 
-    assert result["active_task_id"] == "ACCEL-001"
+    assert result["active_task_id"] == "ACCEL-003"
     assert result["shared_completed_task_ids"] == ["ACCEL-001"]
     assert result["shared_active_merge_task_ids"] == ["ACCEL-002"]
-    assert parse_task_file(todo_path, "## ACCEL-")[0].status == "todo"
-    assert state.task_statuses["ACCEL-001"] == "ready"
+    assert parse_task_file(todo_path, "## ACCEL-")[0].status == "completed"
+    assert state.task_statuses["ACCEL-001"] == "completed"
     assert state.task_statuses["ACCEL-002"] == "merge-queued"
     assert state.task_statuses["ACCEL-003"] == "ready"
 
 
-def test_bundle_runtime_taskboard_preserves_reviewed_shard_without_authoritative_completion(
+def test_bundle_runtime_taskboard_preserves_reviewed_shard_digest_on_shared_completion(
     tmp_path,
 ):
     repo = tmp_path / "repo"
@@ -9610,16 +12595,12 @@ def test_bundle_runtime_taskboard_preserves_reviewed_shard_without_authoritative
     assert [
         task.status
         for task in parse_task_file(lane.runtime_todo_path, "## ACCEL-")
-    ] == ["todo", "blocked"]
+    ] == ["completed", "todo"]
     assert result["shared_completed_task_ids"] == ["ACCEL-001"]
-    assert result["merged_status_repair"] == {
-        "updated": False,
-        "reason": "authoritative_completion_evidence_required",
-        "pending_task_ids": ["ACCEL-001"],
-    }
+    assert result["merged_status_repair"]["updated_task_ids"] == ["ACCEL-001"]
     state = TodoTaskState.load(daemon.state_path)
-    assert state.task_statuses["ACCEL-001"] == "ready"
-    assert state.task_statuses["ACCEL-002"] == "blocked"
+    assert state.task_statuses["ACCEL-001"] == "completed"
+    assert state.task_statuses["ACCEL-002"] == "ready"
     runtime_after_completion = lane.runtime_todo_path.read_bytes()
 
     reused = materialize_bundle_lane_taskboard(lane, repo_root=repo)
@@ -9773,25 +12754,445 @@ def test_implementation_daemon_skips_repo_wide_task_claim_collision(tmp_path):
     assert result["lock_owner_state_dir"] == str((repo / "other-lane").resolve())
 
 
-def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(
+def test_implementation_daemon_defers_cross_lane_submodule_resource_collision(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_command_line",
+        lambda _pid: f"python -m pytest {Path(sys.argv[0]).name}",
+    )
+    common = {
+        "todo_path": repo / "todo.md",
+        "repo_root": repo,
+        "task_header_prefix": "## ACCEL-",
+        "implement": True,
+        "worktree_submodule_paths": ("modules/alpha", "modules/beta"),
+    }
+    first_daemon = TodoImplementationDaemon(
+        **common,
+        state_path=repo / "lane-a" / "state.json",
+        strategy_path=repo / "lane-a" / "strategy.json",
+        events_path=repo / "lane-a" / "events.jsonl",
+    )
+    second_daemon = TodoImplementationDaemon(
+        **common,
+        state_path=repo / "lane-b" / "state.json",
+        strategy_path=repo / "lane-b" / "strategy.json",
+        events_path=repo / "lane-b" / "events.jsonl",
+    )
+    first_task = PortalTask(
+        task_id="ACCEL-001",
+        title="Modify alpha model",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["modules/alpha/src/model.py"],
+    )
+    second_task = PortalTask(
+        task_id="ACCEL-002",
+        title="Modify alpha registry",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["modules/alpha/src/registry.py"],
+    )
+
+    first_claims, unavailable, reason, _existing = (
+        first_daemon._acquire_implementation_resource_claims(
+            first_task,
+            attempt=1,
+            started_at="2026-01-01T00:00:00+00:00",
+        )
+    )
+    assert unavailable == ""
+    assert reason == "acquired"
+    assert len(first_claims) == 1
+
+    selected_state = TodoTaskState()
+    selected_state.active_task_id = second_task.task_id
+    selected_state.active_task_cid = second_daemon._canonical_ref(
+        second_task
+    )
+    selected_state.active_task_key = second_daemon._identity_for_task(
+        second_task
+    ).canonical_task_key
+    selected_state.recommended_task_id = second_task.task_id
+    selected_state.save(second_daemon.state_path)
+    result = second_daemon._run_implementation(
+        second_task,
+        selected_state,
+    )
+    persisted_state = TodoTaskState.load(second_daemon.state_path)
+
+    assert result["skipped"] is True
+    assert result["deferred"] is True
+    assert result["reason"] == "resource_claim_lock_exists"
+    assert result["attempt_consumed"] is False
+    assert result["provider_dispatched"] is False
+    assert result["resource_kind"] == "submodule"
+    assert result["resource_path"] == "modules/alpha"
+    assert result["active_task_cleared"] is True
+    assert result["lock_owner_task_id"] == first_task.task_id
+    assert result["lock_owner_state_dir"] == str(
+        (repo / "lane-a").resolve()
+    )
+    assert persisted_state.active_task_id == ""
+    assert persisted_state.active_task_cid == ""
+    assert persisted_state.recommended_task_id == ""
+    assert persisted_state.selection_idle_reason == (
+        "resource_claim_deferred:modules/alpha"
+    )
+    assert not second_daemon._implementation_task_claim_path(
+        second_task.task_id,
+        canonical_task_cid=second_daemon._canonical_ref(second_task),
+    ).exists()
+
+    assert first_daemon._release_implementation_resource_claims(
+        first_claims
+    )
+    second_claims, unavailable, reason, _existing = (
+        second_daemon._acquire_implementation_resource_claims(
+            second_task,
+            attempt=1,
+            started_at="2026-01-01T00:00:01+00:00",
+        )
+    )
+    assert unavailable == ""
+    assert reason == "acquired"
+    assert second_daemon._release_implementation_resource_claims(
+        second_claims
+    )
+
+
+def test_resource_claim_deferral_passes_do_not_grow_state_or_events(
     tmp_path,
     monkeypatch,
 ):
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-002 Modify alpha registry
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: modules/alpha/src/registry.py
+- Validation:
+- Acceptance: Update the alpha registry after its shared resource is available.
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_command_line",
+        lambda _pid: f"python -m pytest {Path(sys.argv[0]).name}",
+    )
+    common = {
+        "todo_path": todo_path,
+        "repo_root": repo,
+        "task_header_prefix": "## ACCEL-",
+        "implement": True,
+        "worktree_submodule_paths": ("modules/alpha",),
+    }
+    holder = TodoImplementationDaemon(
+        **common,
+        state_path=repo / "lane-a" / "state.json",
+        strategy_path=repo / "lane-a" / "strategy.json",
+        events_path=repo / "lane-a" / "events.jsonl",
+    )
+    contender = TodoImplementationDaemon(
+        **common,
+        state_path=repo / "lane-b" / "state.json",
+        strategy_path=repo / "lane-b" / "strategy.json",
+        events_path=repo / "lane-b" / "events.jsonl",
+    )
+    holder_task = PortalTask(
+        task_id="ACCEL-001",
+        title="Modify alpha model",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["modules/alpha/src/model.py"],
+    )
+    contender._ensure_runtime_wake_coordinator()
+    holder_claims, unavailable, reason, _existing = (
+        holder._acquire_implementation_resource_claims(
+            holder_task,
+            attempt=1,
+            started_at="2026-01-01T00:00:00+00:00",
+        )
+    )
+    assert unavailable == ""
+    assert reason == "acquired"
+
+    lease_event = contender.wait_for_wake(timeout=1.0)[0]
+    assert "lease" in {
+        str(getattr(kind, "value", kind))
+        for kind in lease_event.kinds
+    }
+    first = contender.run_once()
+    state_after_deferral = contender.state_path.read_bytes()
+    events_after_deferral = contender.events_path.read_bytes()
+
+    assert first["implementation_result"] is None
+    assert first["active_task_id"] == ""
+    assert first["resource_reserved_task_ids"] == ["ACCEL-002"]
+    assert first["selection_idle_reason"] == (
+        "all_selectable_ready_tasks_deferred_by_resource_claim"
+    )
+    assert {
+        entry.attempt_count
+        for entry in contender.task_queue.entries.values()
+    } == {0}
+    assert TodoTaskState.load(
+        contender.state_path
+    ).implementation_attempts == {}
+
+    initialization_event = contender.wait_for_wake(timeout=0.05)[0]
+    assert "lease" not in {
+        str(getattr(kind, "value", kind))
+        for kind in initialization_event.kinds
+    }
+    second = contender.run_once()
+
+    assert second["implementation_result"] is None
+    assert second["write_count"] == 0
+    assert {
+        entry.attempt_count
+        for entry in contender.task_queue.entries.values()
+    } == {0}
+    assert contender.state_path.read_bytes() == state_after_deferral
+    assert contender.events_path.read_bytes() == events_after_deferral
+
+    contender.close_event_runtime()
+    assert holder._release_implementation_resource_claims(holder_claims)
+
+
+def test_implementation_resource_claims_preserve_disjoint_submodule_parallelism(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_command_line",
+        lambda _pid: f"python -m pytest {Path(sys.argv[0]).name}",
+    )
+    common = {
+        "todo_path": repo / "todo.md",
+        "repo_root": repo,
+        "task_header_prefix": "## ACCEL-",
+        "implement": True,
+        "worktree_submodule_paths": ("modules/alpha", "modules/beta"),
+    }
+    alpha_daemon = TodoImplementationDaemon(
+        **common,
+        state_path=repo / "lane-a" / "state.json",
+        strategy_path=repo / "lane-a" / "strategy.json",
+        events_path=repo / "lane-a" / "events.jsonl",
+    )
+    beta_daemon = TodoImplementationDaemon(
+        **common,
+        state_path=repo / "lane-b" / "state.json",
+        strategy_path=repo / "lane-b" / "strategy.json",
+        events_path=repo / "lane-b" / "events.jsonl",
+    )
+    alpha_task = PortalTask(
+        task_id="ACCEL-001",
+        title="Modify alpha",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["modules/alpha/src/model.py"],
+    )
+    beta_task = PortalTask(
+        task_id="ACCEL-002",
+        title="Modify beta",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["modules/beta/src/model.py"],
+    )
+
+    alpha_claims, alpha_unavailable, _reason, _existing = (
+        alpha_daemon._acquire_implementation_resource_claims(
+            alpha_task,
+            attempt=1,
+            started_at="2026-01-01T00:00:00+00:00",
+        )
+    )
+    beta_claims, beta_unavailable, _reason, _existing = (
+        beta_daemon._acquire_implementation_resource_claims(
+            beta_task,
+            attempt=1,
+            started_at="2026-01-01T00:00:00+00:00",
+        )
+    )
+
+    assert alpha_unavailable == ""
+    assert beta_unavailable == ""
+    assert len(alpha_claims) == len(beta_claims) == 1
+    assert alpha_claims[0][0] != beta_claims[0][0]
+    assert alpha_daemon._release_implementation_resource_claims(
+        alpha_claims
+    )
+    assert beta_daemon._release_implementation_resource_claims(
+        beta_claims
+    )
+
+
+def test_implementation_resource_claim_reclaims_stale_owner(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "lane" / "state.json",
+        strategy_path=repo / "lane" / "strategy.json",
+        events_path=repo / "lane" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        worktree_submodule_paths=("modules/alpha",),
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Reclaim alpha",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["modules/alpha/src/model.py"],
+    )
+    claim_path = daemon._implementation_resource_claim_path(
+        "modules/alpha"
+    )
+    claim_path.parent.mkdir(parents=True, exist_ok=True)
+    claim_path.write_text(
+        json.dumps(
+            {
+                "kind": "implementation_resource_claim",
+                "lease_id": "stale-owner",
+                "pid": 999_999_999,
+                "owner_script": "implementation_daemon.py",
+                "repo_root": str(repo.resolve()),
+                "state_dir": str((repo / "dead-lane").resolve()),
+                "task_id": "ACCEL-DEAD",
+                "resource_kind": "submodule",
+                "resource_path": "modules/alpha",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    claims, unavailable, reason, _existing = (
+        daemon._acquire_implementation_resource_claims(
+            task,
+            attempt=1,
+            started_at="2026-01-01T00:00:00+00:00",
+        )
+    )
+
+    assert unavailable == ""
+    assert reason == "acquired"
+    replacement = json.loads(claim_path.read_text(encoding="utf-8"))
+    assert replacement["pid"] == os.getpid()
+    assert replacement["task_id"] == task.task_id
+    assert replacement["lease_id"] != "stale-owner"
+    events = [
+        json.loads(line)
+        for line in (repo / "lane" / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert any(
+        event["type"] == "implementation_resource_claim_lock_cleared"
+        for event in events
+    )
+    assert daemon._release_implementation_resource_claims(claims)
+
+
+def test_prompt_failure_releases_published_submodule_resource_claim(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        worktree_submodule_paths=("modules/alpha",),
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Prompt failure",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["modules/alpha/src/model.py"],
+    )
+    claim_path = daemon._implementation_resource_claim_path(
+        "modules/alpha"
+    )
+    observed_claim: dict[str, object] = {}
+
+    def fail_after_claim_published(_selected, _attempt):
+        observed_claim.update(
+            json.loads(claim_path.read_text(encoding="utf-8"))
+        )
+        raise RuntimeError("prompt compilation failed")
+
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        fail_after_claim_published,
+    )
+
+    with pytest.raises(RuntimeError, match="prompt compilation failed"):
+        daemon._run_implementation(task, TodoTaskState())
+
+    assert observed_claim["resource_kind"] == "submodule"
+    assert observed_claim["resource_path"] == "modules/alpha"
+    assert observed_claim["canonical_task_cid"] == daemon._canonical_ref(task)
+    assert observed_claim["lease_id"]
+    assert not claim_path.exists()
+    assert not daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    ).exists()
+
+
+def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
     todo_path.write_text("# Todos\n", encoding="utf-8")
     quota_script = repo / "quota.sh"
-    secret = "provider-account-secret-must-not-reach-events"
     quota_script.write_text(
-        f"printf \"ERROR: You've hit your usage limit. token={secret}\\n\"\n"
+        "printf \"ERROR: You've hit your usage limit.\\n\"\n"
         "printf \"You've reached your additional usage limit.\\n\"\n"
         "exit 1\n",
         encoding="utf-8",
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
-        "1",
     )
     state_path = repo / "state" / "task_state.json"
     daemon = TodoImplementationDaemon(
@@ -9819,28 +13220,1734 @@ def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(
 
     assert first["deferred"] is True
     assert first["reason"] == "provider_capacity_exhausted"
-    assert first["providers"] == ["codex", "copilot", "grok"]
+    assert first["providers"] == ["codex", "copilot"]
     assert first["attempt_consumed"] is False
-    assert first["evidence"] == [
-        "provider_capacity_pattern:codex",
-        "provider_capacity_pattern:copilot",
-        "provider_capacity_pattern:grok",
-    ]
-    assert secret not in json.dumps(first)
     assert persisted.implementation_attempts == {}
     assert daemon._find_live_inflight_implementation() is None
     assert second["skipped"] is True
-    assert second["deferred"] is True
     assert second["reason"] == "provider_capacity_backoff"
-    assert second["attempt_consumed"] is False
-    assert second["provider_call_allowed"] is False
     events = [
         json.loads(line)
         for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()
     ]
-    assert secret not in json.dumps(events)
     assert any(event["type"] == "implementation_provider_exhausted" for event in events)
     assert not any(event["type"] == "implementation_finished" for event in events)
+
+
+def test_provider_declared_retry_reset_and_explicit_command_attribution(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 7, 30, 9, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+        raising=False,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    codex_command = repo / "codex"
+    codex_command.write_text(
+        "#!/bin/sh\n"
+        "printf \"ERROR: You've hit your usage limit.\\n\"\n"
+        "printf \"Try again at Aug 5th, 2026 4:09 AM.\\n\"\n"
+        "exit 1\n",
+        encoding="utf-8",
+    )
+    codex_command.chmod(0o755)
+    state_dir = repo / "state"
+    state_path = state_dir / "task_state.json"
+    events_path = state_dir / "events.jsonl"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=events_path,
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command=str(codex_command),
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Honor the provider reset horizon",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["deferred"] is True
+    assert result["providers"] == ["codex"]
+    assert result["retry_at"] == "2026-08-05T04:09:00+00:00"
+    assert result["retry_at_source"] == "provider_declared"
+
+    monkeypatch.delenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/bin/codex" if name == "codex" else None,
+    )
+    grok_daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=events_path,
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="/usr/local/bin/grok --mode agent",
+    )
+
+    assert grok_daemon._active_provider_capacity_backoff() == {}
+
+
+def test_auto_provider_with_codex_model_ignores_grok_capacity_latch(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 1, 20, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+        raising=False,
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "auto",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        "gpt-5.6-terra",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_copilot_has_auth",
+        lambda: False,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+    )
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "providers": ["grok"],
+            "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
+        },
+    )
+
+    assert daemon._current_implementation_provider_labels() == {
+        "codex",
+        "copilot",
+        "provider",
+    }
+    assert daemon._active_provider_capacity_backoff() == {}
+    command = daemon._build_implementation_command(repo)
+    assert command[:2] == ["/usr/local/bin/codex", "exec"]
+    assert "--ignore-user-config" in command
+    assert command[command.index("-m") + 1] == "gpt-5.6-terra"
+
+
+def _seal_ordered_grok_codex_route(monkeypatch) -> None:
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+        "primary_quota_exhausted",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._GROK_MODEL_ENV,
+        "grok-4.5",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        "gpt-5.6-terra",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
+        "medium",
+    )
+
+
+def _clear_ordered_grok_codex_route(monkeypatch) -> None:
+    """Give legacy custom-resolver tests an explicit unsealed environment."""
+
+    for name in (
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+        implementation_daemon_module._GROK_MODEL_ENV,
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_ordered_grok_codex_route_environment(monkeypatch) -> None:
+    """Keep production route defaults from changing legacy unit-test semantics."""
+
+    _clear_ordered_grok_codex_route(monkeypatch)
+
+
+def _issue_ordered_grok_quota_authority(
+    daemon,
+    *,
+    task,
+    workspace,
+    attempt=1,
+    command=None,
+):
+    state = TodoTaskState()
+    started_at = "2026-08-03T02:00:00+00:00"
+    log_path = workspace / "grok-quota.log"
+    command = (
+        list(command)
+        if command is not None
+        else implementation_daemon_module._grok_cli_command(
+            workspace_path=workspace,
+        )
+    )
+    daemon._mark_implementation_started(
+        state,
+        task=task,
+        attempt=attempt,
+        started_at=started_at,
+        log_path=log_path,
+    )
+    identity = daemon._identity_for_task(task)
+    started_event = daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "attempt": attempt,
+            "command": command,
+            "log_path": str(log_path),
+        },
+    )
+    raw_error = (
+        'Internal error: {"message":"API error (status 402 Payment '
+        'Required): Grok Build usage balance exhausted","http_status":402}'
+        "\n"
+    ).encode("utf-8")
+    runner_receipt = {
+        "schema": implementation_daemon_module.GROK_QUOTA_RECEIPT_SCHEMA,
+        "provider": "grok_cli",
+        "model": "grok-4.5",
+        "failure_kind": "quota_or_balance_exhausted",
+        "message": "Grok Build usage balance exhausted",
+        "raw_error_sha256": hashlib.sha256(raw_error).hexdigest(),
+        "raw_error_size": len(raw_error),
+        "kind": "usage_balance_exhausted",
+        "http_status": 402,
+    }
+    log_path.write_bytes(
+        raw_error
+        + json.dumps(
+            runner_receipt,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        + b"\n"
+    )
+    failure = daemon._provider_capacity_failure_from_text(
+        log_path.read_text(encoding="utf-8"),
+        command=command,
+        provider_output_only=True,
+        provider_output_start_offset=0,
+        provider_error_channel_identity={
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "anonymous-provider-error-channel@1"
+            ),
+            "device": 1,
+            "inode": 1,
+            "size": log_path.stat().st_size,
+            "sha256": hashlib.sha256(log_path.read_bytes()).hexdigest(),
+            "tail_start_offset": 0,
+        },
+        provider_returncode=(
+            implementation_daemon_module.GROK_QUOTA_EXHAUSTED_EXIT_CODE
+        ),
+    )
+    result = daemon._record_provider_capacity_deferral(
+        task=task,
+        state=state,
+        attempt=attempt,
+        started_at=started_at,
+        returncode=(
+            implementation_daemon_module.GROK_QUOTA_EXHAUSTED_EXIT_CODE
+        ),
+        log_path=log_path,
+        failure=failure,
+        command=command,
+        implementation_started_event=started_event,
+    )
+    return result, command
+
+
+def _prime_ordered_fallback_runtime_state(daemon, tasks):
+    state = TodoTaskState.load(daemon.state_path)
+    state.task_count = len(tasks)
+    state.ready_count = len(tasks)
+    state.selectable_ready_task_ids = [task.task_id for task in tasks]
+    state.selectable_ready_count = len(tasks)
+    state.eligible_ready_task_ids = [task.task_id for task in tasks]
+    state.eligible_ready_count = len(tasks)
+    state.task_statuses = {task.task_id: "ready" for task in tasks}
+    state.task_identities = {
+        task.task_id: daemon._identity_for_task(task).to_dict()
+        for task in tasks
+    }
+    state.save(daemon.state_path)
+    source_digest, _sources = daemon._runtime_source_head()
+    daemon._runtime_last_source_digest = source_digest
+    daemon._runtime_last_result = {"active_task_id": ""}
+    return state
+
+
+def test_ordered_grok_route_uses_reviewed_primary_model_and_labels_fallback(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setenv(
+        implementation_daemon_module._GROK_MODEL_ENV,
+        "grok-4.5",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        "gpt-5.6-terra",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: (
+            f"/usr/local/bin/{name}"
+            if name in {"codex", "copilot"}
+            else None
+        ),
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+
+    command = daemon._build_implementation_command(repo)
+
+    assert command[0] == sys.executable
+    assert command[1].endswith("grok_cli_runner.py")
+    assert command[command.index("--model") + 1] == "grok-4.5"
+    assert daemon._current_implementation_provider_labels() == {
+        "grok",
+        "xai",
+        "provider",
+    }
+
+
+@pytest.mark.parametrize(
+    ("environment_name", "invalid_value"),
+    (
+        (implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV, "grok"),
+        (
+            implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+            "openai",
+        ),
+        (implementation_daemon_module._GROK_MODEL_ENV, "grok-4"),
+        (implementation_daemon_module._CODEX_MODEL_ENV, "gpt-5.6"),
+        (
+            implementation_daemon_module.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+            "primary_unavailable",
+        ),
+        (
+            implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
+            "high",
+        ),
+    ),
+)
+def test_ordered_grok_route_rejects_inexact_policy_fields(
+    tmp_path,
+    monkeypatch,
+    environment_name,
+    invalid_value,
+):
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setenv(environment_name, invalid_value)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+
+    assert daemon._ordered_grok_codex_route_configured() is False
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="requires exact grok_cli/grok-4.5",
+    ):
+        daemon._build_implementation_command(repo)
+
+
+def test_ordered_grok_route_fails_closed_when_primary_is_unavailable(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setenv(
+        implementation_daemon_module._GROK_MODEL_ENV,
+        "grok-4.5",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        "gpt-5.6-terra",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._GROK_CONTEXT_WINDOW_ENV,
+        "11111",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_CONTEXT_WINDOW_ENV,
+        "22222",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: (
+            f"/usr/local/bin/{name}"
+            if name in {"codex", "copilot"}
+            else None
+        ),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_copilot_has_auth",
+        lambda: True,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    task = PortalTask(
+        task_id="ACCEL-ORDERED-000",
+        title="Use fallback-specific context",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider",
+        outputs=["src/provider.py"],
+        metadata={"Provider role": "grok-implement, codex-review"},
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="live explicit Grok quota/balance exhaustion proof",
+    ):
+        daemon._build_implementation_command(repo, task=task)
+
+    assert daemon._implementation_context_window(task) == 11_111
+
+
+@pytest.mark.parametrize(
+    ("constructor_command", "ambient_command", "expected"),
+    (
+        ("codex exec -", "", "explicit implementation command override"),
+        (
+            "",
+            "codex exec -",
+            "ambient IMPLEMENTATION_DAEMON_COMMAND override",
+        ),
+    ),
+)
+def test_sealed_ordered_route_rejects_command_overrides(
+    tmp_path,
+    monkeypatch,
+    constructor_command,
+    ambient_command,
+    expected,
+):
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    if ambient_command:
+        monkeypatch.setenv("IMPLEMENTATION_DAEMON_COMMAND", ambient_command)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command=constructor_command,
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match=expected,
+    ):
+        daemon._build_implementation_command(repo)
+
+
+def test_sealed_ordered_route_rejects_task_declared_codex_without_quota_proof(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Attempt a provider override",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["src/provider.py"],
+        metadata={"Provider role": "codex-implement"},
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="task-declared Codex dispatch",
+    ):
+        daemon._build_implementation_command(repo, task=task)
+
+
+@pytest.mark.parametrize(
+    "receipt_fields",
+    (
+        {},
+        {
+            "capacity_failure_kind": "provider_capacity_exhausted",
+            "provider_attribution": "implementation_command",
+            "fallback_eligible": False,
+            "fallback_trigger": "",
+            "evidence": ["xAI HTTP 429 rate limited"],
+        },
+        {
+            "capacity_failure_kind": "quota_or_balance_exhausted",
+            "provider_attribution": "log_text",
+            "fallback_eligible": True,
+            "fallback_trigger": "primary_quota_exhausted",
+            "evidence": ["Grok quota exhausted"],
+        },
+    ),
+)
+def test_ordered_codex_fallback_rejects_non_proof_grok_latches(
+    tmp_path,
+    monkeypatch,
+    receipt_fields,
+):
+    fixed_now = datetime(2026, 8, 3, 2, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "providers": ["grok"],
+            "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
+            **receipt_fields,
+        },
+    )
+
+    assert daemon._active_grok_quota_fallback_proof() == {}
+    assert daemon._ordered_grok_codex_selected_provider() == ""
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="live explicit Grok quota/balance exhaustion proof",
+    ):
+        daemon._build_implementation_command(repo)
+
+
+def test_ordered_codex_fallback_requires_live_exact_daemon_authority(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 3, 2, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    task = PortalTask(
+        task_id="ACCEL-ORDERED-AUTHORITY",
+        title="Use exact quota authority",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider",
+        outputs=["src/provider.py"],
+        metadata={"Provider role": "grok-implement, codex-review"},
+    )
+    result, failed_grok_command = _issue_ordered_grok_quota_authority(
+        daemon,
+        task=task,
+        workspace=repo,
+    )
+
+    authority = result["grok_quota_fallback_authority"]
+    assert authority["model_id"] == "grok-4.5"
+    assert authority["command"] == failed_grok_command
+    assert authority["command_cid"]
+    assert authority["implementation_started_event_id"]
+    assert daemon._active_grok_quota_fallback_proof(
+        task,
+        attempt=1,
+    )["receipt_id"] == authority["receipt_id"]
+    assert daemon._active_provider_capacity_backoff(
+        task,
+        attempt=1,
+    ) == {}
+    assert daemon._active_provider_capacity_backoff()["active"] is True
+
+    command = daemon._build_implementation_command(
+        repo,
+        task=task,
+        attempt=1,
+    )
+    assert command[:2] == ["/usr/local/bin/codex", "exec"]
+    assert command[command.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="medium"' in command
+
+    changed_task = replace(task, title="Changed canonical task revision")
+    assert daemon._active_grok_quota_fallback_proof(
+        changed_task,
+        attempt=1,
+    ) == {}
+    assert daemon._active_grok_quota_fallback_proof(
+        task,
+        attempt=2,
+    ) == {}
+
+    daemon._grok_quota_fallback_authority._issued[
+        authority["receipt_id"]
+    ]["attempt"] = 2
+    assert daemon._active_grok_quota_fallback_proof(
+        task,
+        attempt=1,
+    ) == {}
+
+    restarted = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    assert restarted._active_grok_quota_fallback_proof(
+        task,
+        attempt=1,
+    ) == {}
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="live explicit Grok quota/balance exhaustion proof",
+    ):
+        restarted._build_implementation_command(
+            repo,
+            task=task,
+            attempt=1,
+        )
+
+
+def test_ordered_fallback_is_due_through_unchanged_runtime_fast_path(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 3, 2, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-FALLBACK-A Repair with the authorized fallback
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: provider
+- Depends on:
+- Outputs: src/provider.py
+- Validation:
+- Acceptance: The exact fallback implementation is selected.
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+    )
+    [task] = parse_task_file(
+        todo_path,
+        task_header_prefix="## ACCEL-",
+    )
+    _issue_ordered_grok_quota_authority(
+        daemon,
+        task=task,
+        workspace=repo,
+    )
+    _prime_ordered_fallback_runtime_state(daemon, [task])
+    observed = {}
+
+    def capture_implementation(selected, state):
+        attempt = daemon._task_attempt(state, selected)
+        observed["task_id"] = selected.task_id
+        observed["command"] = daemon._build_implementation_command(
+            repo,
+            task=selected,
+            attempt=attempt,
+        )
+        return {
+            "task_id": selected.task_id,
+            "attempt": attempt,
+            "returncode": 0,
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation",
+        capture_implementation,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_unchanged_runtime_result",
+        lambda **_kwargs: pytest.fail(
+            "matching quota authority must bypass the unchanged fast path"
+        ),
+    )
+
+    result = daemon.run_once()
+
+    assert result["implementation_result"]["task_id"] == task.task_id
+    assert observed["task_id"] == task.task_id
+    command = observed["command"]
+    assert command[:2] == ["/usr/local/bin/codex", "exec"]
+    assert command[command.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="medium"' in command
+
+
+def test_ordered_fallback_prioritizes_receipt_owner_over_earlier_task(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 3, 2, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-FALLBACK-B Higher-ranked unrelated task
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: provider
+- Depends on:
+- Outputs: src/unrelated.py
+- Validation:
+- Acceptance: This task has no fallback authority.
+
+## ACCEL-FALLBACK-A Receipt-owning task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: provider
+- Depends on:
+- Outputs: src/provider.py
+- Validation:
+- Acceptance: This task owns the exact fallback authority.
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+    )
+    tasks = parse_task_file(
+        todo_path,
+        task_header_prefix="## ACCEL-",
+    )
+    task_by_id = {task.task_id: task for task in tasks}
+    receipt_owner = task_by_id["ACCEL-FALLBACK-A"]
+    _issue_ordered_grok_quota_authority(
+        daemon,
+        task=receipt_owner,
+        workspace=repo,
+    )
+    _prime_ordered_fallback_runtime_state(daemon, tasks)
+    observed = {}
+
+    def capture_implementation(selected, state):
+        observed["task_id"] = selected.task_id
+        attempt = daemon._task_attempt(state, selected)
+        try:
+            observed["command"] = daemon._build_implementation_command(
+                repo,
+                task=selected,
+                attempt=attempt,
+            )
+        except implementation_daemon_module.ImplementationRetryDeferred:
+            observed["command"] = []
+        return {
+            "task_id": selected.task_id,
+            "attempt": attempt,
+            "returncode": 0,
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation",
+        capture_implementation,
+    )
+
+    result = daemon.run_once()
+
+    assert result["implementation_result"]["task_id"] == receipt_owner.task_id
+    assert observed["task_id"] == receipt_owner.task_id
+    command = observed["command"]
+    assert command[:2] == ["/usr/local/bin/codex", "exec"]
+    assert command[command.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="medium"' in command
+
+
+def test_ordered_quota_classifier_excludes_supervisor_log_headers(
+    tmp_path,
+    monkeypatch,
+):
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    command = implementation_daemon_module._grok_cli_command(
+        workspace_path=repo,
+    )
+    supervisor_header = "Task: Grok usage balance exhausted\n"
+    log_path = repo / "provider.log"
+    log_path.write_text(
+        supervisor_header + "ordinary child failure\n",
+        encoding="utf-8",
+    )
+
+    unbounded = daemon._provider_capacity_failure_from_log(
+        log_path,
+        command=command,
+    )
+    child_only = daemon._provider_capacity_failure_from_log(
+        log_path,
+        command=command,
+        provider_output_start_offset=len(
+            supervisor_header.encode("utf-8")
+        ),
+    )
+
+    assert unbounded["fallback_eligible"] is False
+    assert child_only["exhausted"] is False
+    assert child_only["provider_output_only"] is True
+
+
+def test_ordered_quota_authority_rejects_inexact_grok_command(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 3, 2, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    task = PortalTask(
+        task_id="ACCEL-INEXACT-GROK",
+        title="Reject inexact Grok dispatch",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider",
+        outputs=["src/provider.py"],
+    )
+    command = implementation_daemon_module._grok_cli_command(
+        workspace_path=repo,
+    )
+    command[command.index("--model") + 1] = "grok-4"
+
+    result, _ = _issue_ordered_grok_quota_authority(
+        daemon,
+        task=task,
+        workspace=repo,
+        command=command,
+    )
+
+    assert "grok_quota_fallback_authority" not in result
+    assert daemon._active_grok_quota_fallback_proof(
+        task,
+        attempt=1,
+    ) == {}
+
+
+def test_ordered_grok_route_uses_grok_when_codex_is_missing(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda _name: None,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+
+    command = daemon._build_implementation_command(repo)
+
+    assert command[1].endswith("grok_cli_runner.py")
+
+
+def test_ordered_grok_route_fails_closed_when_both_providers_are_unavailable(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda _name: None,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="live explicit Grok quota/balance exhaustion proof",
+    ):
+        daemon._build_implementation_command(repo)
+
+
+def test_legacy_auto_labels_codex_when_grok_is_unavailable(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "auto",
+    )
+    monkeypatch.delenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        raising=False,
+    )
+    monkeypatch.delenv(
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+
+    assert daemon._current_implementation_provider_labels() == {
+        "codex",
+        "copilot",
+        "provider",
+    }
+    assert daemon._build_implementation_command(repo)[:2] == [
+        "/usr/local/bin/codex",
+        "exec",
+    ]
+
+
+def test_task_declared_grok_partial_ordered_route_fails_closed(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    for name in (
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+        implementation_daemon_module._GROK_MODEL_ENV,
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    task = PortalTask(
+        task_id="ACCEL-ORDERED-001",
+        title="Keep task-owned Grok authority",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider",
+        outputs=["src/provider.py"],
+        metadata={"Provider role": "grok-implement"},
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="requires exact grok_cli/grok-4.5",
+    ):
+        daemon._build_implementation_command(repo, task=task)
+
+    assert daemon._current_implementation_provider_labels(task) == {
+        "grok",
+        "xai",
+        "provider",
+    }
+
+
+def test_task_declared_codex_is_exact_and_never_substitutes_copilot(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "auto",
+    )
+    monkeypatch.delenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: (
+            f"/usr/local/bin/{name}"
+            if name in {"codex", "copilot"}
+            else None
+        ),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_copilot_has_auth",
+        lambda: True,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    task = PortalTask(
+        task_id="ACCEL-ORDERED-002",
+        title="Keep task-owned Codex authority",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider",
+        outputs=["src/provider.py"],
+        metadata={"Provider role": "codex-implement"},
+    )
+
+    command = daemon._build_implementation_command(repo, task=task)
+
+    assert command[:2] == ["/usr/local/bin/codex", "exec"]
+    assert command[0] != "bash"
+    assert daemon._current_implementation_provider_labels(task) == {
+        "codex",
+        "provider",
+    }
+
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/copilot" if name == "copilot" else None,
+    )
+    with pytest.raises(RuntimeError, match="requires the Codex CLI"):
+        daemon._build_implementation_command(repo, task=task)
+
+
+def test_grok_readiness_requires_resolved_binary_and_headless_auth(
+    monkeypatch,
+):
+    from ipfs_accelerate_py import llm_router
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        llm_router,
+        "_grok_cli_auth_available",
+        lambda: False,
+    )
+
+    assert implementation_daemon_module._grok_cli_available() is False
+
+    monkeypatch.setattr(
+        llm_router,
+        "_grok_cli_auth_available",
+        lambda: True,
+    )
+    assert implementation_daemon_module._grok_cli_available() is True
+
+
+def test_grok_readiness_accepts_supervisor_binary_override(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py import llm_router
+
+    grok_bin = tmp_path / "custom-grok"
+    grok_bin.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    grok_bin.chmod(0o755)
+    monkeypatch.setenv(
+        implementation_daemon_module._GROK_BIN_ENV,
+        str(grok_bin),
+    )
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-path"))
+    monkeypatch.setattr(
+        llm_router,
+        "_grok_cli_auth_available",
+        lambda: True,
+    )
+
+    assert implementation_daemon_module._grok_binary() == str(grok_bin)
+    assert implementation_daemon_module._grok_cli_available() is True
+    command = implementation_daemon_module._grok_cli_command(
+        workspace_path=tmp_path,
+    )
+    assert command[command.index("--grok-bin") + 1] == str(grok_bin)
+
+
+@pytest.mark.parametrize(
+    "retry_line",
+    (
+        "",
+        "Try again at Aug 32nd, 2026 4:09 AM.",
+    ),
+)
+def test_provider_retry_reset_absent_or_invalid_uses_configured_fallback(
+    tmp_path,
+    monkeypatch,
+    retry_line,
+):
+    fixed_now = datetime(2026, 7, 30, 9, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+        raising=False,
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.PROVIDER_CAPACITY_BACKOFF_ENV,
+        "300",
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    codex_command = repo / "codex"
+    codex_command.write_text(
+        "#!/bin/sh\n"
+        "printf \"ERROR: You've hit your usage limit.\\n\"\n"
+        f"printf \"%s\\n\" {shlex.quote(retry_line)}\n"
+        "exit 1\n",
+        encoding="utf-8",
+    )
+    codex_command.chmod(0o755)
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command=str(codex_command),
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Use the bounded provider fallback",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["deferred"] is True
+    assert result["providers"] == ["codex"]
+    assert result["retry_at"] == "2026-07-30T09:05:00+00:00"
+    assert result["retry_at_source"] == "configured_backoff"
+
+
+def test_provider_capacity_schedule_skips_provider_probe_without_exhaustion(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=False,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_current_implementation_provider_labels",
+        lambda: pytest.fail(
+            "provider discovery must stay lazy without a capacity event"
+        ),
+    )
+
+    assert daemon._provider_capacity_backoff_schedule() == {}
+
+
+def test_provider_capacity_schedule_probes_provider_for_exhaustion(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 7, 30, 9, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+        raising=False,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=False,
+    )
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "providers": ["codex"],
+            "retry_at": "2026-07-30T09:05:00+00:00",
+        },
+    )
+    probes = []
+
+    def provider_labels():
+        probes.append(True)
+        return {"codex", "provider"}
+
+    monkeypatch.setattr(
+        daemon,
+        "_current_implementation_provider_labels",
+        provider_labels,
+    )
+
+    assert daemon._provider_capacity_backoff_schedule() == {
+        "active": True,
+        "retry_at": "2026-07-30T09:05:00+00:00",
+        "retry_after_seconds": 300.0,
+        "providers": ["codex"],
+    }
+    assert probes == [True]
+
+
+def test_local_retry_proof_events_preserve_provider_capacity_latch(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 3, 9, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+        raising=False,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=False,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_current_implementation_provider_labels",
+        lambda *_args, **_kwargs: {"codex", "provider"},
+    )
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "providers": ["codex"],
+            "retry_at": "2026-08-03T09:10:00+00:00",
+        },
+    )
+    daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": "ACCEL-002",
+            "command": [],
+            "provider_dispatched": False,
+        },
+    )
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": "ACCEL-002",
+            "provider_dispatched": False,
+        },
+    )
+
+    assert daemon._provider_capacity_backoff_schedule()["active"] is True
+    assert daemon._provider_capacity_backoff_schedule_for_labels(
+        {"codex"}
+    )["active"] is True
+
+    daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": "ACCEL-003",
+            "command": ["codex", "exec"],
+            "provider_dispatched": True,
+        },
+    )
+
+    assert daemon._provider_capacity_backoff_schedule() == {}
+    assert daemon._provider_capacity_backoff_schedule_for_labels(
+        {"codex"}
+    ) == {}
 
 
 def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
@@ -9871,18 +14978,12 @@ def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
         "printf \"ERROR: You've hit your usage limit.\\n\"\nexit 1\n",
         encoding="utf-8",
     )
-    lease_manifest_path = repo / "lease-heartbeat.json"
-    lease_manifest_path.write_text('{"revision":0}\n', encoding="utf-8")
     state_dir = repo / "state"
     state_path = state_dir / "task_state.json"
     events_path = state_dir / "events.jsonl"
     monkeypatch.setenv(
         "IPFS_ACCELERATE_AGENT_PROVIDER_CAPACITY_BACKOFF_SECONDS",
         "600",
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
-        "1",
     )
     daemon = TodoImplementationDaemon(
         todo_path=todo_path,
@@ -9893,17 +14994,12 @@ def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
         task_header_prefix="## ACCEL-",
         implement=True,
         implementation_command="bash quota.sh",
-        external_reservation_manifest_paths=(lease_manifest_path,),
     )
 
     first = daemon.run_once()
     first_retry_at = first["implementation_result"]["retry_at"]
     state_after_failure = state_path.read_bytes()
     events_after_failure = events_path.read_bytes()
-    queue_path = state_dir / "task_queue.json"
-    queue_after_failure = queue_path.read_bytes()
-    queue_key = daemon.task_queue.resolve_key("ACCEL-001")
-    assert daemon.task_queue.entries[queue_key].attempt_count == 1
 
     second = daemon.run_once()
 
@@ -9914,7 +15010,6 @@ def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
     assert second["write_count"] == 0
     assert state_path.read_bytes() == state_after_failure
     assert events_path.read_bytes() == events_after_failure
-    assert queue_path.read_bytes() == queue_after_failure
 
     third = daemon.run_once()
 
@@ -9924,131 +15019,12 @@ def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
     assert 0 < third["next_wake_after_seconds"] <= second["next_wake_after_seconds"]
     assert state_path.read_bytes() == state_after_failure
     assert events_path.read_bytes() == events_after_failure
-    assert queue_path.read_bytes() == queue_after_failure
-
-    load_calls = 0
-    source_head_calls = 0
-    original_load_tasks = daemon._load_tasks
-    original_runtime_source_head = daemon._runtime_source_head
-
-    def counted_load_tasks():
-        nonlocal load_calls
-        load_calls += 1
-        return original_load_tasks()
-
-    def counted_runtime_source_head():
-        nonlocal source_head_calls
-        source_head_calls += 1
-        return original_runtime_source_head()
-
-    monkeypatch.setattr(daemon, "_load_tasks", counted_load_tasks)
-    monkeypatch.setattr(
-        daemon,
-        "_runtime_source_head",
-        counted_runtime_source_head,
-    )
-
-    # Lease sources also carry merge, fencing, claim, maintenance, and external
-    # reservation state.  They therefore remain actionable even while the
-    # provider latch is active, but must not manufacture another attempt or
-    # grow the task/event/queue streams when the resulting projection is idle.
-    for revision in range(1, 6):
-        previous_load_calls = load_calls
-        previous_source_head_calls = source_head_calls
-        lease_manifest_path.write_text(
-            json.dumps({"revision": revision}) + "\n",
-            encoding="utf-8",
-        )
-        daemon._pending_runtime_wake_events.append({"kind": "lease"})
-        lease_wake = daemon.run_once()
-        assert lease_wake["wake_kinds"] == ["lease"]
-        assert load_calls > previous_load_calls
-        assert source_head_calls > previous_source_head_calls
-        assert lease_wake["implementation_result"]["deferred"] is True
-        assert (
-            lease_wake["implementation_result"]["reason"]
-            == "provider_capacity_backoff"
-        )
-        assert lease_wake["unchanged"] is True
-        assert state_path.read_bytes() == state_after_failure
-        assert events_path.read_bytes() == events_after_failure
-        assert queue_path.read_bytes() == queue_after_failure
-
-    # An observation wake must reconcile a selectable task whose cooldown is
-    # already due; otherwise typed/local work could starve behind an unrelated
-    # provider-capacity latch.
-    previous_load_calls = load_calls
-    previous_source_head_calls = source_head_calls
-    daemon._pending_runtime_wake_events.append(
-        {"kind": "observation_window"}
-    )
-    observation = daemon.run_once()
-    assert observation["implementation_result"]["deferred"] is True
-    assert observation["unchanged"] is True
-    assert load_calls > previous_load_calls
-    assert source_head_calls > previous_source_head_calls
-
-    # Repository, validation, task-board, policy, provider-capacity, and child
-    # wakes remain actionable. A no-op reconciliation of the same deferred
-    # task may report the latch in its return value, but cannot manufacture a
-    # selection attempt or duplicate durable event.
-    actionable_kinds = (
-        "repository",
-        "validation",
-        "task_board",
-        "policy",
-        "provider_capacity",
-        "child_process",
-        "objective",
-    )
-    for kind in actionable_kinds:
-        previous_load_calls = load_calls
-        previous_source_head_calls = source_head_calls
-        daemon._pending_runtime_wake_events.append({"kind": kind})
-        actionable = daemon.run_once()
-        assert load_calls > previous_load_calls
-        assert source_head_calls > previous_source_head_calls
-        assert actionable["wake_kinds"] == [kind]
-        assert actionable["implementation_result"]["deferred"] is True
-        assert (
-            actionable["implementation_result"]["reason"]
-            == "provider_capacity_backoff"
-        )
-        assert actionable["implementation_result"]["attempt_consumed"] is False
-        assert (
-            actionable["implementation_result"]["provider_call_allowed"]
-            is False
-        )
-        assert actionable["unchanged"] is True
-        assert queue_path.read_bytes() == queue_after_failure
-
-    # The normal unchanged-head shortcut must not disable the independent
-    # safety pass.
-    daemon._last_safety_reconciliation_monotonic = (
-        time.monotonic()
-        - implementation_daemon_module.DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS
-        - 1.0
-    )
-    daemon._pending_runtime_wake_events.append(
-        {"kind": "observation_window"}
-    )
-    previous_load_calls = load_calls
-    previous_source_head_calls = source_head_calls
-    safety_reconciliation = daemon.run_once()
-    assert load_calls > previous_load_calls
-    assert source_head_calls > previous_source_head_calls
-    assert safety_reconciliation["implementation_result"]["deferred"] is True
-    assert safety_reconciliation["unchanged"] is True
-
-    assert daemon.task_queue.entries[queue_key].attempt_count == 1
-    assert state_path.read_bytes() == state_after_failure
-    assert events_path.read_bytes() == events_after_failure
-    assert queue_path.read_bytes() == queue_after_failure
 
 
+@pytest.mark.parametrize("worktree_pool_enabled", [False, True])
 def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(
     tmp_path,
-    monkeypatch,
+    worktree_pool_enabled,
 ):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -10059,17 +15035,11 @@ def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(
     todo_path = repo / "todo.md"
     todo_path.write_text("# Todos\n", encoding="utf-8")
     (repo / "quota.sh").write_text(
-        "printf 'partial provider work\\n' > partial.txt\n"
-        "printf \"ERROR: You've hit your usage limit.\\n\"\n"
-        "exit 1\n",
+        "printf \"ERROR: You've hit your usage limit.\\n\"\nexit 1\n",
         encoding="utf-8",
     )
     _git(repo, "add", "todo.md", "quota.sh")
     _git(repo, "commit", "-m", "seed")
-    monkeypatch.setenv(
-        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
-        "1",
-    )
     state_path = repo / "state" / "task_state.json"
     daemon = TodoImplementationDaemon(
         todo_path=todo_path,
@@ -10082,7 +15052,7 @@ def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(
         implementation_command="bash quota.sh",
         use_ephemeral_worktree=True,
         worktree_root=repo / "worktrees",
-        worktree_pool_enabled=False,
+        worktree_pool_enabled=worktree_pool_enabled,
     )
     task = PortalTask(
         task_id="ACCEL-001",
@@ -10099,99 +15069,37 @@ def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(
     assert result["deferred"] is True
     assert result["reason"] == "provider_capacity_exhausted"
     assert result["attempt_consumed"] is False
-    assert persisted.implementation_attempts == {}
-    assert daemon._find_live_inflight_implementation() is None
-    preservation = result["provider_capacity_preservation"]
-    assert preservation["preserved"] is True
-    rescue_branch = preservation["rescue_branch"]
-    assert rescue_branch.startswith("rescue/")
-    assert _git(repo, "show", f"{rescue_branch}:partial.txt") == (
-        "partial provider work"
-    )
-    assert result["cleanup_result"]["lifecycle_finalize"]["finalized"] is True
-
-
-def test_missing_ephemeral_workspace_capacity_signal_finalizes_lifecycle(
-    tmp_path,
-    monkeypatch,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _git(repo, "init")
-    _git(repo, "checkout", "-b", "main")
-    _git(repo, "config", "user.name", "Test User")
-    _git(repo, "config", "user.email", "test@example.invalid")
-    todo_path = repo / "todo.md"
-    todo_path.write_text("# Todos\n", encoding="utf-8")
-    _git(repo, "add", "todo.md")
-    _git(repo, "commit", "-m", "seed")
-    monkeypatch.setenv(
-        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
-        "1",
-    )
-    state_path = repo / "state" / "task_state.json"
-    daemon = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=state_path,
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-        task_header_prefix="## ACCEL-",
-        implement=True,
-        implementation_command="fake-agent",
-        use_ephemeral_worktree=True,
-        worktree_root=repo / "worktrees",
-        worktree_pool_enabled=False,
-    )
-    task = PortalTask(
-        task_id="ACCEL-001",
-        title="Recover a disappeared provider workspace",
-        status="todo",
-        completion="manual",
-        priority="P1",
-        track="ops",
-    )
-
-    def remove_workspace(command, *, cwd, stdout, **_kwargs):
-        stdout.write("workspace is not a directory\n")
-        stdout.flush()
-        _git(repo, "worktree", "remove", "--force", str(cwd))
-        return subprocess.CompletedProcess(command, 1)
-
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "run_process_group_stream",
-        remove_workspace,
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_require_implementation_protected_snapshot",
-        lambda **_kwargs: {},
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_implementation_protected_path_violation",
-        lambda **_kwargs: {},
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_finalize_implementation_protected_path_fence",
-        lambda **_kwargs: {},
-    )
-
-    result = daemon._run_implementation(task, TodoTaskState())
-
-    assert result["deferred"] is True
-    assert result["reason"] == "provider_capacity_exhausted"
-    assert result["providers"] == ["infrastructure"]
-    assert result["attempt_consumed"] is False
     assert result["cleanup_result"]["cleaned"] is True
     assert result["cleanup_result"]["lifecycle_finalize"]["finalized"] is True
-    assert daemon.worktree_lifecycle.load_task_attempt(
-        canonical_task_cid=daemon._canonical_ref(task),
+    assert persisted.implementation_attempts == {}
+    assert daemon._find_live_inflight_implementation() is None
+    assert daemon._active_worktree_lifecycle is None
+    assert (
+        daemon.worktree_lifecycle.load_workspace(Path(result["worktree_path"]))
+        is None
+    )
+
+    retry_workspace = repo / "retry-workspace"
+    retry_record = daemon.worktree_lifecycle.begin_preparing(
         task_id=task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
         attempt=1,
-    ) is None
+        lane_id="same-daemon-retry",
+        workspace_path=retry_workspace,
+        branch="implementation/accel-001-retry",
+        merge_target="main",
+    )
+    terminal = daemon.worktree_lifecycle.mark_terminal(
+        retry_workspace,
+        lease_id=retry_record.lease_id,
+        expected_fence=retry_record.fence,
+        reason="test_complete",
+    )
+    assert daemon.worktree_lifecycle.compare_and_delete(
+        retry_workspace,
+        expected_fence=terminal.fence,
+        lease_id=terminal.lease_id,
+    )
 
 
 def test_retry_deferral_reconciles_idle_projection_for_supervisor_maintenance(
@@ -11089,7 +15997,7 @@ def test_implementation_supervisor_check_records_worktree_summary_counts(tmp_pat
     monkeypatch.setattr(
         supervisor,
         "reconcile_backlogged_worktrees",
-        lambda: {
+        lambda **_kwargs: {
             "candidate_count": 5,
             "processed_count": 3,
             "reconciled_count": 1,
@@ -11806,6 +16714,421 @@ def test_generated_dirty_repair_owns_checkout_lock_and_defers_foreign_owner(
     assert "docs/generated.todo.md" in _git(repo, "status", "--short")
 
 
+def test_managed_daemon_fences_supervisor_protected_recovery_journal(
+    tmp_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "docs" / "generated.todo.md"
+    todo_path.parent.mkdir()
+    todo_path.write_text("# Generated board\n", encoding="utf-8")
+    _git(repo, "add", "docs/generated.todo.md")
+    _git(
+        repo,
+        "-c",
+        "user.name=Test User",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-m",
+        "seed generated board",
+    )
+    state_dir = tmp_path / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "supervisor_task_state.json",
+            strategy_path=state_dir / "supervisor_strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            implementation_protected_paths=("docs/generated.todo.md",),
+        )
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "daemon_task_state.json",
+        strategy_path=state_dir / "daemon_strategy.json",
+        events_path=state_dir / "daemon_events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## AUTO-",
+        implementation_protected_paths=("docs/generated.todo.md",),
+    )
+    observed: dict[str, object] = {}
+
+    def inspect_supervisor_journal() -> dict[str, object]:
+        lock_path = checkout_mutation_lock_path(repo)
+        journal_before = lock_path.read_bytes()
+        observed["daemon_context_empty_before"] = (
+            daemon._current_checkout_mutation_lease() is None
+        )
+        observed.update(daemon._adopt_protected_checkout_recovery())
+        observed["journal_unchanged"] = (
+            lock_path.read_bytes() == journal_before
+        )
+        observed["daemon_context_empty_after"] = (
+            daemon._current_checkout_mutation_lease() is None
+        )
+        return {"inspected": True}
+
+    result = supervisor._run_generated_board_producer(
+        producer="cross-component-test",
+        commit_outputs=True,
+        operation="generated_dirty_repair",
+        callback=inspect_supervisor_journal,
+    )
+
+    assert result == {"inspected": True}
+    assert observed["required"] is True
+    assert observed["blocked"] is True
+    assert observed["reason"] == (
+        "external_protected_checkout_recovery_required"
+    )
+    assert observed["protected_recovery_owner"] == (
+        "implementation_supervisor"
+    )
+    assert observed["journal_unchanged"] is True
+    assert observed["daemon_context_empty_before"] is True
+    assert observed["daemon_context_empty_after"] is True
+    assert not checkout_mutation_lock_path(repo).exists()
+
+
+def test_daemon_recovery_journal_preserves_legacy_and_repository_fences(
+    tmp_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Generated board\n", encoding="utf-8")
+    _git(repo, "add", "todo.md")
+    _git(
+        repo,
+        "-c",
+        "user.name=Test User",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-m",
+        "seed generated board",
+    )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## AUTO-",
+        implementation_protected_paths=("todo.md",),
+    )
+    guard = daemon._protected_checkout_release_guard((todo_path,))
+    intent: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "protected-checkout-recovery-intent@1"
+        ),
+        "operation": "mark_tasks_completed",
+        "task_id": "AUTO-001",
+        "attempt": 1,
+        "protected_paths": ["todo.md"],
+        "subjects": {"todo.md": "AUTO-001: mark todo completed"},
+        "guard_id": guard["guard_id"],
+    }
+    intent["intent_id"] = implementation_daemon_module.content_identity(
+        intent
+    )
+    metadata = checkout_lock_metadata(
+        kind="merge",
+        repo_root=repo,
+        task_id="AUTO-001",
+        attempt=1,
+        extra={"operation": "mark_tasks_completed"},
+    )
+    metadata.update(
+        {
+            "protected_recovery_required": True,
+            "protected_paths": ["todo.md"],
+            "protected_release_guard": guard,
+            "protected_recovery_intent": intent,
+        }
+    )
+    lock_path = checkout_mutation_lock_path(repo)
+
+    # Ownerless journals predate the owner tag and remain recoverable.
+    lock_path.write_text(
+        json.dumps(metadata, sort_keys=True),
+        encoding="utf-8",
+    )
+    legacy = daemon._adopt_protected_checkout_recovery()
+
+    assert legacy["required"] is True
+    assert legacy["attached"] is True
+    assert daemon._release_checkout_mutation_lease(legacy["lease"]) is True
+    daemon._clear_checkout_mutation_context()
+
+    # An explicitly daemon-owned, internally content-valid guard must still
+    # fail closed when it names a different physical repository.
+    foreign_guard = dict(guard)
+    foreign_guard["repository_id"] = "repository:foreign"
+    foreign_guard.pop("guard_id")
+    foreign_guard["guard_id"] = (
+        implementation_daemon_module.content_identity(foreign_guard)
+    )
+    foreign_intent = dict(intent)
+    foreign_intent["guard_id"] = foreign_guard["guard_id"]
+    foreign_intent.pop("intent_id")
+    foreign_intent["intent_id"] = (
+        implementation_daemon_module.content_identity(foreign_intent)
+    )
+    foreign_metadata = {
+        **metadata,
+        "protected_recovery_owner": "implementation_daemon",
+        "protected_release_guard": foreign_guard,
+        "protected_recovery_intent": foreign_intent,
+    }
+    lock_path.write_text(
+        json.dumps(foreign_metadata, sort_keys=True),
+        encoding="utf-8",
+    )
+    rejected = daemon._adopt_protected_checkout_recovery()
+
+    assert rejected["reason"] == "protected_recovery_journal_invalid"
+    assert rejected["journal_error"] == "guard_repository_mismatch"
+    lock_path.unlink()
+
+
+def test_shared_claim_and_supervisor_liveness_use_common_git_identity(
+    tmp_path,
+) -> None:
+    repo, _objective_path, todo_path = _seed_repo(tmp_path)
+    sibling = tmp_path / "sibling"
+    _git(repo, "worktree", "add", "-b", "sibling", str(sibling))
+    (tmp_path / "foreign").mkdir()
+    foreign, _foreign_objective, foreign_todo = _seed_repo(
+        tmp_path / "foreign"
+    )
+
+    def daemon_for(
+        checkout: Path,
+        checkout_todo: Path,
+        state_name: str,
+    ) -> TodoImplementationDaemon:
+        state_dir = tmp_path / "state" / state_name
+        return TodoImplementationDaemon(
+            todo_path=checkout_todo,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            repo_root=checkout,
+            task_header_prefix="## AUTO-",
+        )
+
+    def supervisor_for(
+        checkout: Path,
+        checkout_todo: Path,
+        state_name: str,
+    ) -> TodoImplementationSupervisor:
+        state_dir = tmp_path / "supervisor-state" / state_name
+        return TodoImplementationSupervisor(
+            TodoSupervisorConfig(
+                todo_path=checkout_todo,
+                state_path=state_dir / "task_state.json",
+                strategy_path=state_dir / "strategy.json",
+                events_path=state_dir / "events.jsonl",
+                state_dir=state_dir,
+                repo_root=checkout,
+            )
+        )
+
+    primary_daemon = daemon_for(repo, todo_path, "primary")
+    sibling_daemon = daemon_for(
+        sibling,
+        sibling / todo_path.relative_to(repo),
+        "sibling",
+    )
+    foreign_daemon = daemon_for(foreign, foreign_todo, "foreign")
+    claim_path = primary_daemon._implementation_task_claim_path("AUTO-001")
+    assert claim_path == sibling_daemon._implementation_task_claim_path(
+        "AUTO-001"
+    )
+    claim_metadata = checkout_lock_metadata(
+        kind=implementation_daemon_module.IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+        repo_root=repo,
+        task_id="AUTO-001",
+        owner_script="",
+    )
+    claimed, reason, incumbent = (
+        primary_daemon._try_acquire_implementation_task_claim(
+            claim_path,
+            claim_metadata,
+        )
+    )
+    assert claimed is True
+    assert reason == "acquired"
+    assert incumbent is None
+    assert sibling_daemon._implementation_task_claim_owner_is_active(
+        claim_metadata
+    )
+    assert checkout_lock_repository_matches(claim_metadata, foreign) is False
+    # Task-claim liveness is also the reclamation guard.  A record supplied
+    # from outside the foreign repository's own shared claim namespace must
+    # therefore remain incumbent ("active") rather than letting a repository
+    # mismatch become deletion authority.
+    assert foreign_daemon._implementation_task_claim_owner_is_active(
+        claim_metadata
+    )
+
+    sibling_metadata = checkout_lock_metadata(
+        kind=implementation_daemon_module.IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+        repo_root=sibling,
+        task_id="AUTO-001",
+        owner_script="",
+    )
+    claimed, reason, incumbent = (
+        sibling_daemon._try_acquire_implementation_task_claim(
+            claim_path,
+            sibling_metadata,
+        )
+    )
+    assert claimed is False
+    assert reason == "lock_exists"
+    assert incumbent == claim_metadata
+
+    legacy_metadata = dict(claim_metadata)
+    legacy_metadata.pop("repository_id")
+    legacy_metadata.pop("worktree_root")
+    legacy_metadata["repo_root"] = str(repo.resolve())
+    assert sibling_daemon._implementation_task_claim_owner_is_active(
+        legacy_metadata
+    )
+    assert checkout_lock_repository_matches(legacy_metadata, foreign) is False
+    assert foreign_daemon._implementation_task_claim_owner_is_active(
+        legacy_metadata
+    )
+    assert primary_daemon._release_implementation_task_claim(
+        claim_path,
+        claim_metadata,
+    )
+
+    primary_supervisor = supervisor_for(repo, todo_path, "primary")
+    sibling_supervisor = supervisor_for(
+        sibling,
+        sibling / todo_path.relative_to(repo),
+        "sibling",
+    )
+    foreign_supervisor = supervisor_for(
+        foreign,
+        foreign_todo,
+        "foreign",
+    )
+    merge_metadata = checkout_lock_metadata(
+        kind="merge",
+        repo_root=repo,
+        owner_script="",
+        extra={"operation": "generated_dirty_repair"},
+    )
+    assert sibling_supervisor._checkout_lock_owner_is_active(
+        merge_metadata
+    )
+    assert not foreign_supervisor._checkout_lock_owner_is_active(
+        merge_metadata
+    )
+    assert (
+        sibling_daemon._protected_recovery_journal_validation_error(
+            merge_metadata,
+            (sibling / todo_path.relative_to(repo),),
+            {},
+            {},
+        )
+        == "repository_path_mismatch"
+    )
+    assert (
+        sibling_supervisor._supervisor_recovery_journal_error(
+            merge_metadata
+        )
+        == "repository_mismatch"
+    )
+    legacy_sibling_recovery = dict(merge_metadata)
+    legacy_sibling_recovery.pop("repository_id")
+    legacy_sibling_recovery.pop("worktree_root")
+    legacy_sibling_recovery["repo_root"] = str(sibling.resolve())
+    assert (
+        sibling_daemon._protected_recovery_journal_validation_error(
+            legacy_sibling_recovery,
+            (sibling / todo_path.relative_to(repo),),
+            {},
+            {},
+        )
+        == "protected_paths_mismatch"
+    )
+    assert (
+        sibling_supervisor._supervisor_recovery_journal_error(
+            legacy_sibling_recovery
+        )
+        == "protected_paths_mismatch"
+    )
+
+    maintenance_metadata = (
+        primary_supervisor._protected_path_maintenance_lease_metadata()
+    )
+    assert maintenance_metadata["repo_root"] == ""
+    assert maintenance_metadata["worktree_root"] == str(repo.resolve())
+    assert sibling_supervisor._protected_path_maintenance_owner_is_active(
+        maintenance_metadata
+    )
+    assert not foreign_supervisor._protected_path_maintenance_owner_is_active(
+        maintenance_metadata
+    )
+
+
+def test_blocked_protected_recovery_acknowledges_runtime_wake(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    wake_event = {"kind": "lease", "revision": "test"}
+    acknowledged: list[object] = []
+
+    class WakeCoordinator:
+        def acknowledge(self, event):
+            acknowledged.append(event)
+
+    daemon._runtime_wake_coordinator = WakeCoordinator()
+    daemon._pending_runtime_wake_events = [wake_event]
+    monkeypatch.setattr(
+        daemon,
+        "_recover_protected_checkout_mutation",
+        lambda: {
+            "required": True,
+            "recovered": False,
+            "blocked": True,
+            "reason": "external_protected_checkout_recovery_required",
+        },
+    )
+
+    result = daemon.run_once()
+
+    assert result["blocked"] is True
+    assert result["unchanged"] is True
+    assert result["wake_kinds"] == ["lease"]
+    assert daemon._pending_runtime_wake_events == []
+    assert daemon._current_runtime_wake_events == []
+    assert acknowledged == [wake_event]
+
+
 def test_implementation_supervisor_repairs_implementation_without_worker(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -12113,58 +17436,122 @@ def test_implementation_supervisor_configures_worker_stall_watchdog(tmp_path):
     loop_config = TodoImplementationSupervisor(config).build_supervisor_loop_config()
 
     assert loop_config.status_static_fields["worktree_no_child_stall_seconds"] == 42
+    assert loop_config.watchdog_log_heartbeat_fallback is True
     assert loop_config.watchdog_startup_grace_seconds == 300
     assert loop_config.watchdog_stale_after_seconds >= (
         config.implementation_timeout + max(30.0, config.check_interval * 2.0)
     )
+    assert loop_config.watchdog_accept_fresh_child_log is True
 
 
-def test_implementation_supervisor_propagates_source_checkout_pythonpath(
+def test_supervisor_loop_accepts_fresh_child_log_for_empty_backlog_projection(
     tmp_path,
-    monkeypatch,
 ):
     repo = tmp_path / "repo"
     repo.mkdir()
     state_dir = repo / "state"
-    monkeypatch.setenv("PYTHONPATH", "/existing-pythonpath")
-    config = TodoSupervisorConfig(
-        todo_path=repo / "todo.md",
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        state_dir=state_dir,
+    state_dir.mkdir()
+    latest_log = state_dir / "latest.log"
+    latest_log.write_text("idle daemon pass complete\n", encoding="utf-8")
+    spec = ManagedDaemonSpec(
+        name="test-daemon",
+        schema="test.daemon",
         repo_root=repo,
+        daemon_dir=state_dir,
+        runner=(sys.executable, "-c", "pass"),
+        status_path=state_dir / "daemon_status.json",
+        supervisor_status_path=state_dir / "supervisor_status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure_status.json",
+        ensure_check_path=state_dir / "ensure_check.json",
+        latest_log_path=latest_log,
     )
-
-    loop_config = TodoImplementationSupervisor(
-        config
-    ).build_supervisor_loop_config()
-    pythonpath = loop_config.child_env["PYTHONPATH"].split(os.pathsep)
-    source_root = str(
-        Path(todo_supervisor_module.__file__).resolve().parents[3]
-    )
-
-    assert pythonpath[0] == source_root
-    assert "/existing-pythonpath" in pythonpath
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            (
-                "from ipfs_accelerate_py.agent_supervisor.todo_daemon "
-                "import implementation_daemon"
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=(sys.executable, "-c", "pass"),
+            log_prefix="child",
+            watchdog_stale_after_seconds=60,
+            watchdog_log_heartbeat_fallback=True,
+            watchdog_quiescent_status_predicate=(
+                _projection_is_quiescent_for_heartbeat_fallback
             ),
-        ],
-        cwd=repo,
-        env={
-            "PYTHONNOUSERSITE": "1",
-            "PYTHONPATH": loop_config.child_env["PYTHONPATH"],
-        },
-        check=False,
-        capture_output=True,
-        text=True,
+        )
     )
-    assert completed.returncode == 0, completed.stderr
+    loop.last_log_path = str(latest_log)
+    stale_status = {
+        "heartbeat_at": "2000-01-01T00:00:00+00:00",
+        "heartbeat_pid": os.getpid(),
+        "active_task_id": "",
+        "implementation_in_progress": False,
+        "ready_count": 0,
+        "selectable_ready_count": 0,
+        "eligible_ready_count": 0,
+        "blocked_count": 0,
+        "selection_idle_reason": "no_tasks_found",
+    }
+
+    decision = loop.default_watchdog(
+        SupervisedChild(
+            pid=os.getpid(),
+            command=(sys.executable, "-c", "pass"),
+            log_path=latest_log,
+            latest_log_path=latest_log,
+            child_pid_path=state_dir / "child.pid",
+        ),
+        stale_status,
+    )
+
+    assert decision.action == "continue"
+
+
+def test_supervisor_loop_recycles_when_state_and_child_log_are_stale(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    latest_log = state_dir / "latest.log"
+    latest_log.write_text("stale idle daemon pass\n", encoding="utf-8")
+    os.utime(latest_log, (1, 1))
+    spec = ManagedDaemonSpec(
+        name="test-daemon",
+        schema="test.daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=(sys.executable, "-c", "pass"),
+        status_path=state_dir / "daemon_status.json",
+        supervisor_status_path=state_dir / "supervisor_status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure_status.json",
+        ensure_check_path=state_dir / "ensure_check.json",
+        latest_log_path=latest_log,
+    )
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=(sys.executable, "-c", "pass"),
+            log_prefix="child",
+            watchdog_stale_after_seconds=60,
+            watchdog_log_heartbeat_fallback=True,
+        )
+    )
+    loop.last_log_path = str(latest_log)
+    stale_status = {
+        "heartbeat_at": "2000-01-01T00:00:00+00:00",
+        "heartbeat_pid": os.getpid(),
+    }
+
+    decision = loop.default_watchdog(
+        SimpleNamespace(pid=os.getpid()),
+        stale_status,
+    )
+
+    assert decision.action == "recycle"
+    assert decision.reason == "stale_heartbeat"
 
 
 def test_implementation_supervisor_allows_startup_grace_override(tmp_path):
@@ -12322,10 +17709,433 @@ def test_implementation_daemon_records_unreadable_todo_text(tmp_path):
     assert events[-1]["reason"] == "todo_read_failed"
 
 
-def test_implementation_daemon_records_non_ephemeral_setup_exception(
+def test_implementation_dispatch_cancels_fresh_canonical_completion_before_provider(
     tmp_path,
     monkeypatch,
 ):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-050 Retire stale implementation
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/retired.py
+- Validation: python -m pytest -q
+- Acceptance: The canonical board retires this exact task revision.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="provider-must-not-run",
+        worktree_submodule_paths=("src",),
+    )
+    [completed_task] = daemon._load_tasks()
+    stale_selected_task = replace(completed_task, status="todo")
+    canonical_cid = daemon._canonical_ref(stale_selected_task)
+    state = TodoTaskState(
+        active_task_id=stale_selected_task.task_id,
+        active_task_cid=canonical_cid,
+        active_task_title=stale_selected_task.title,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: pytest.fail("completed task reached prompt build"),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail("completed task launched provider"),
+    )
+
+    result = daemon._run_implementation(stale_selected_task, state)
+
+    assert result["cancelled"] is True
+    assert result["reason"] == "canonical_task_completed"
+    assert result["canonical_task_cid"] == canonical_cid
+    assert result["board_observation"]["completed_task_cids"] == {
+        stale_selected_task.task_id: canonical_cid
+    }
+    assert result["provider_dispatched"] is False
+    assert result["attempt_consumed"] is False
+    assert result["active_task_cleared"] is True
+    persisted = TodoTaskState.load(daemon.state_path)
+    assert persisted.active_task_id == ""
+    assert persisted.implementation_in_progress is False
+    assert persisted.implementation_attempts == {}
+    assert not daemon._implementation_task_claim_path(
+        stale_selected_task.task_id,
+        canonical_task_cid=canonical_cid,
+    ).exists()
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert [event["type"] for event in events] == [
+        "implementation_cancelled"
+    ]
+
+    revised = replace(
+        stale_selected_task,
+        title="A different task revision",
+        canonical_task_key="",
+        canonical_task_cid="",
+    )
+    revision_cancel = daemon._canonical_implementation_cancellation(revised)
+    assert revision_cancel["reason"] == "canonical_task_revision_changed"
+
+
+def test_running_implementation_cancels_when_exact_board_task_completes(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_text = """# Agent Todos
+
+## ACCEL-050 Retire running implementation
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/retired.py
+- Validation: python -m pytest -q
+- Acceptance: A peer may retire this exact task while its provider runs.
+"""
+    todo_path.write_text(todo_text, encoding="utf-8")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-provider",
+        use_ephemeral_worktree=False,
+        worktree_submodule_paths=("src",),
+    )
+    [task] = daemon._load_tasks()
+    queue_outcomes: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: "implement",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_validation_project_dependency_preflight",
+        lambda **_kwargs: {"passed": True, "receipt_id": "dependency-ok"},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *args, **_kwargs: queue_outcomes.append(args),
+    )
+
+    def complete_board_and_cancel(_command, **kwargs):
+        todo_path.write_text(
+            todo_text.replace("- Status: todo", "- Status: completed"),
+            encoding="utf-8",
+        )
+        reason = kwargs["cancel_requested"]()
+        assert reason == "canonical_task_completed"
+        raise ProcessGroupCancelled(reason)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        complete_board_and_cancel,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["cancelled"] is True
+    assert result["reason"] == "canonical_task_completed"
+    assert result["provider_dispatched"] is True
+    assert result["attempt_consumed"] is False
+    assert result["returncode"] == 0
+    assert queue_outcomes == []
+    persisted = TodoTaskState.load(daemon.state_path)
+    assert persisted.active_task_id == ""
+    assert persisted.implementation_in_progress is False
+    assert persisted.implementation_attempts == {}
+    task_claim = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    resource_claim = daemon._implementation_resource_claim_path("src")
+    assert not task_claim.exists()
+    assert not resource_claim.exists()
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["type"] == "implementation_started" for event in events)
+    assert any(event["type"] == "implementation_cancelled" for event in events)
+    assert not any(event["type"] == "merge_candidate_enqueued" for event in events)
+
+
+def test_canonical_cancellation_raw_board_delta_latches_under_checkout_lock(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_text = """# Agent Todos
+
+## ACCEL-050 Fence cancellation reproof
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/retired.py
+- Validation:
+- Acceptance: A provider cannot authorize its own protected-board mutation.
+"""
+    todo_path.write_text(todo_text, encoding="utf-8")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implementation_protected_paths=("todo.md",),
+    )
+    [task] = daemon._load_tasks()
+    before = daemon._implementation_protected_path_snapshot(repo)
+    todo_path.write_text(
+        todo_text.replace("- Status: todo", "- Status: completed"),
+        encoding="utf-8",
+    )
+    cancellation = daemon._canonical_implementation_cancellation(task)
+    assert cancellation["reason"] == "canonical_task_completed"
+
+    lock_path = checkout_mutation_lock_path(repo)
+    observations: list[str] = []
+    real_snapshot = daemon._implementation_protected_path_snapshot
+    real_clear = daemon._clear_implementation_protected_snapshot
+    real_latch = daemon._latch_implementation_protected_incident
+    real_release = daemon._release_implementation_protected_verification_lock
+
+    def locked_snapshot(path):
+        assert lock_path.exists()
+        observations.append("snapshot")
+        return real_snapshot(path)
+
+    def locked_clear(**kwargs):
+        assert lock_path.exists()
+        observations.append("clear")
+        return real_clear(**kwargs)
+
+    def locked_latch(payload):
+        assert lock_path.exists()
+        observations.append("latch")
+        return real_latch(payload)
+
+    def locked_release(lock_result):
+        assert lock_path.exists()
+        observations.append("release")
+        return real_release(lock_result)
+
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_snapshot",
+        locked_snapshot,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_clear_implementation_protected_snapshot",
+        locked_clear,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_latch_implementation_protected_incident",
+        locked_latch,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_release_implementation_protected_verification_lock",
+        locked_release,
+    )
+
+    result = daemon._finalize_canonical_task_cancellation_fence(
+        task=task,
+        attempt=1,
+        workspace_path=repo,
+        before=before,
+        cancellation=cancellation,
+    )
+
+    assert result["reason"] == "implementation_protected_path_mutated"
+    assert result["protected_paths"] == ["todo.md"]
+    assert observations == [
+        "snapshot",
+        "snapshot",
+        "latch",
+        "release",
+    ]
+    incident = json.loads(
+        daemon._implementation_protected_incident_path().read_text(
+            encoding="utf-8"
+        )
+    )
+    assert incident["requires_operator_clearance"] is True
+    assert not lock_path.exists()
+
+
+def test_ephemeral_implementation_cancels_when_exact_board_task_completes(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_text = """# Agent Todos
+
+## ACCEL-050 Retire ephemeral implementation
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: README.md
+- Validation:
+- Acceptance: A peer may retire this exact task while its provider runs.
+"""
+    todo_path.write_text(todo_text, encoding="utf-8")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / ".gitignore").write_text("state/\n", encoding="utf-8")
+    _git(repo, "add", "todo.md", "README.md", ".gitignore")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-provider",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=(),
+        merge_target_branch="main",
+    )
+    [task] = daemon._load_tasks()
+    queue_outcomes: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: "implement",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_validation_project_dependency_preflight",
+        lambda **_kwargs: {"passed": True, "receipt_id": "dependency-ok"},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *args, **_kwargs: queue_outcomes.append(args),
+    )
+
+    def complete_board_and_cancel(_command, **kwargs):
+        todo_path.write_text(
+            todo_text.replace("- Status: todo", "- Status: completed"),
+            encoding="utf-8",
+        )
+        reason = kwargs["cancel_requested"]()
+        assert reason == "canonical_task_completed"
+        raise ProcessGroupCancelled(reason)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        complete_board_and_cancel,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["cancelled"] is True
+    assert result["reason"] == "canonical_task_completed"
+    assert result["provider_dispatched"] is True
+    assert result["attempt_consumed"] is False
+    assert result["returncode"] == 0
+    assert result["merge_result"]["reason"] == "not_attempted"
+    assert queue_outcomes == []
+    assert result["cleanup_result"]["cleaned"] is True
+    assert not Path(result["worktree_path"]).exists()
+    persisted = TodoTaskState.load(daemon.state_path)
+    assert persisted.active_task_id == ""
+    assert persisted.implementation_in_progress is False
+    assert persisted.implementation_attempts == {}
+    task_claim = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    assert not task_claim.exists()
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["type"] == "implementation_started" for event in events)
+    assert any(event["type"] == "implementation_cancelled" for event in events)
+    assert not any(event["type"] == "merge_candidate_enqueued" for event in events)
+
+
+def test_implementation_daemon_records_non_ephemeral_setup_exception(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -12346,10 +18156,6 @@ def test_implementation_daemon_records_non_ephemeral_setup_exception(
         encoding="utf-8",
     )
     state_dir = repo / "state"
-    monkeypatch.setenv(
-        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
-        "1",
-    )
     daemon = TodoImplementationDaemon(
         todo_path=todo_path,
         state_path=state_dir / "task_state.json",
@@ -12373,6 +18179,979 @@ def test_implementation_daemon_records_non_ephemeral_setup_exception(
     assert events[-1]["type"] == "daemon_pass"
 
 
+def test_non_ephemeral_provider_completes_already_satisfied_task_without_proposal(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("already complete\n", encoding="utf-8")
+    (repo / ".gitignore").write_text("state/\n", encoding="utf-8")
+    _git(repo, "add", "README.md", ".gitignore")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=False,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Accept an already satisfied in-place task",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="The tracked baseline already satisfies the contract.",
+    )
+    durable_completion = {
+        "updated": True,
+        "durable": True,
+        "completion_publication": {"published": True},
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: "verify existing code",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_validation_project_dependency_preflight",
+        lambda **_kwargs: {"passed": True, "receipt_id": "dependency-ok"},
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_tasks_for_declared_output_gate",
+        lambda *_args, **_kwargs: ([task], ""),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_publication_intent",
+        lambda *_args, **_kwargs: {"task_id": task.task_id},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_or_bundle_completed_in_todo",
+        lambda *_args, **_kwargs: durable_completion,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["returncode"] == 0
+    assert result["validation_result"]["proposal_gate"]["accepted"] is False
+    assert result["validation_result"]["no_change_policy_gate"]["accepted"] is True
+    assert result["validation_result"]["no_change_guard"]["allowed"] is True
+    assert result["validation_result"]["candidate_binding"]["verified"] is True
+    assert result["todo_update_result"] == durable_completion
+    assert result["attempt_consumed"] is True
+
+
+def test_non_ephemeral_retry_repair_does_not_probe_shared_checkout(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("already complete\n", encoding="utf-8")
+    (repo / ".gitignore").write_text("state/\n", encoding="utf-8")
+    _git(repo, "add", "README.md", ".gitignore")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=False,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-002",
+        title="Resolve implementation retry-budget failure for ACCEL-001",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Remove ACCEL-001 from strategy blocked_tasks.",
+        metadata={
+            "Generated by": implementation_daemon_module.RETRY_BUDGET_REPAIR_SCHEMA,
+            "Retry repair source": "ACCEL-001",
+            "Retry failure kind": "implementation",
+        },
+    )
+    durable_completion = {
+        "updated": True,
+        "durable": True,
+        "completion_publication": {"published": True},
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: "provider prompt must remain unused",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_validation_project_dependency_preflight",
+        lambda **_kwargs: {"passed": True, "receipt_id": "dependency-ok"},
+    )
+    provider_calls = []
+
+    def run_provider(*_args, **_kwargs):
+        provider_calls.append(True)
+        return subprocess.CompletedProcess(args=(), returncode=0)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        run_provider,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_tasks_for_declared_output_gate",
+        lambda *_args, **_kwargs: ([task], ""),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_publication_intent",
+        lambda *_args, **_kwargs: {"task_id": task.task_id},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_or_bundle_completed_in_todo",
+        lambda *_args, **_kwargs: durable_completion,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["returncode"] == 0
+    assert result["provider_dispatched"] is True
+    assert provider_calls == [True]
+    assert result["validation_result"]["candidate_binding"]["verified"] is True
+    assert result["validation_result"]["no_change_guard"]["allowed"] is True
+    assert "pre_dispatch_no_change" not in result["validation_result"]
+    assert result["todo_update_result"] == durable_completion
+
+
+def test_bounded_merge_proof_projection_contains_no_floats():
+    projected = implementation_daemon_module._bounded_merge_proof_value(
+        {
+            "duration_seconds": 0.25,
+            "nested": [
+                {"ratio": 1.5, "passed": True, "returncode": 0},
+                float("inf"),
+            ],
+        },
+        field_name="validation",
+    )
+
+    def assert_no_floats(value):
+        assert not isinstance(value, float)
+        if isinstance(value, dict):
+            for item in value.values():
+                assert_no_floats(item)
+        elif isinstance(value, list):
+            for item in value:
+                assert_no_floats(item)
+
+    assert_no_floats(projected)
+    assert projected["duration_seconds"] == "0.25"
+    assert projected["nested"][1] == "<non-finite-number>"
+    assert implementation_daemon_module.content_identity(
+        {"validation": projected}
+    )
+
+
+def test_failed_ephemeral_attempt_finalizes_worktree_lifecycle(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-012",
+        title="Release a failed provider lifecycle claim",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+    )
+    state = TodoTaskState()
+
+    def fake_seed(worktree_path, _branch_name, *, task=None):
+        worktree_path.mkdir(parents=True)
+        return "baseline-commit"
+
+    monkeypatch.setattr(daemon, "_create_seeded_worktree", fake_seed)
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_failed_attempt_retry_context",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 1),
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=state,
+        attempt=1,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        log_path=state_dir / "implementation.log",
+        prompt="implement",
+    )
+
+    assert result["returncode"] == 1
+    assert result["merge_result"].get("queued") is not True
+    assert result["lifecycle_finalize"]["finalized"] is True
+    assert result["lifecycle_finalize"]["reason"] == (
+        "implementation_attempt_finished"
+    )
+    assert daemon._active_worktree_lifecycle is None
+    assert (
+        daemon.worktree_lifecycle.load_workspace(result["worktree_path"])
+        is None
+    )
+
+
+def test_ephemeral_provider_completes_already_satisfied_task_without_proposal(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("already complete\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-012",
+        title="Accept an already satisfied provider task",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="The tracked baseline already satisfies the contract.",
+    )
+    durable_completion = {
+        "updated": True,
+        "durable": True,
+        "completion_publication": {"published": True},
+    }
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_tasks_for_declared_output_gate",
+        lambda *_args, **_kwargs: ([task], ""),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_publication_intent",
+        lambda *_args, **_kwargs: {"task_id": task.task_id},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_or_bundle_completed_in_todo",
+        lambda *_args, **_kwargs: durable_completion,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=TodoTaskState(),
+        attempt=1,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        log_path=state_dir / "implementation.log",
+        prompt="verify the existing implementation",
+    )
+
+    assert result["returncode"] == 0
+    assert result["implementation_commit"] == ""
+    assert result["commit_result"]["reason"] == "no_changes"
+    assert result["commit_result"]["no_change_guard"]["allowed"] is True
+    assert result["validation_result"]["proposal_gate"]["accepted"] is False
+    assert result["validation_result"]["no_change_policy_gate"]["accepted"] is True
+    assert result["validation_result"]["candidate_binding"]["verified"] is True
+    assert result["board_completion"]["complete"] is True
+    assert result["todo_update_result"] == durable_completion
+
+
+def test_ephemeral_retry_repair_proves_satisfaction_before_provider_dispatch(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("already complete\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-012",
+        title="Resolve implementation retry-budget failure for ACCEL-011",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance=(
+            "The repair must remove ACCEL-011 from strategy blocked_tasks."
+        ),
+        metadata={
+            "Generated by": implementation_daemon_module.RETRY_BUDGET_REPAIR_SCHEMA,
+            "Retry repair source": "ACCEL-011",
+            "Retry failure kind": "implementation",
+        },
+    )
+    durable_completion = {
+        "updated": True,
+        "durable": True,
+        "completion_publication": {"published": True},
+    }
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail(
+            "an already-satisfied retry repair must not dispatch a provider"
+        ),
+    )
+    for provider_only_method in (
+        "_active_provider_capacity_backoff",
+        "_build_implementation_prompt",
+        "_persist_implementation_context_receipt",
+        "_build_implementation_command",
+    ):
+        monkeypatch.setattr(
+            daemon,
+            provider_only_method,
+            lambda *_args, _method=provider_only_method, **_kwargs: pytest.fail(
+                f"local retry proof must precede {_method}"
+            ),
+        )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_tasks_for_declared_output_gate",
+        lambda *_args, **_kwargs: ([task], ""),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_publication_intent",
+        lambda *_args, **_kwargs: {"task_id": task.task_id},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_or_bundle_completed_in_todo",
+        lambda *_args, **_kwargs: durable_completion,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["returncode"] == 0
+    assert result["provider_dispatched"] is False
+    assert result["implementation_commit"] == ""
+    assert result["commit_result"]["reason"] == "no_changes"
+    assert result["commit_result"]["no_change_guard"]["allowed"] is True
+    assert result["validation_result"]["candidate_binding"]["verified"] is True
+    assert result["validation_result"]["pre_dispatch_no_change"]["reason"] == (
+        "declared_validation_proved_existing_contract"
+    )
+    assert result["board_completion"]["complete"] is True
+    assert result["todo_update_result"] == durable_completion
+    assert "context_receipt_path" not in result
+
+
+def test_failed_retry_probe_discards_ignored_side_effect_before_provider(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(".ignored-probe-sentinel\n", encoding="utf-8")
+    _git(repo, "add", "README.md", ".gitignore")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-022",
+        title="Resolve implementation retry-budget failure for ACCEL-021",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Remove ACCEL-021 from strategy blocked_tasks.",
+        metadata={
+            "Generated by": implementation_daemon_module.RETRY_BUDGET_REPAIR_SCHEMA,
+            "Retry repair source": "ACCEL-021",
+            "Retry failure kind": "implementation",
+        },
+    )
+    probe_paths = []
+
+    def failed_probe(workspace_path, *_args, **_kwargs):
+        probe_paths.append(Path(workspace_path))
+        (Path(workspace_path) / ".ignored-probe-sentinel").write_text(
+            "must not reach provider\n",
+            encoding="utf-8",
+        )
+        return {
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "results": [],
+            "no_change_policy_gate": {"accepted": True},
+        }
+
+    provider_paths = []
+
+    def run_provider(_command, *, cwd, **_kwargs):
+        provider_path = Path(cwd)
+        provider_paths.append(provider_path)
+        assert "local-probe" not in provider_path.name
+        assert not (provider_path / ".ignored-probe-sentinel").exists()
+        return subprocess.CompletedProcess(args=(), returncode=1)
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_clean_candidate_validation",
+        failed_probe,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_active_provider_capacity_backoff",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: "repair from the clean baseline",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_command",
+        lambda *_args, **_kwargs: ["fake-agent"],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        run_provider,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["provider_dispatched"] is True
+    assert len(probe_paths) == 1
+    assert len(provider_paths) == 1
+    assert probe_paths[0] != provider_paths[0]
+    assert not probe_paths[0].exists()
+    assert result["retry_probe_result"]["cleanup_result"]["cleaned"] is True
+    assert result["retry_probe_result"]["attempt_consumed"] is False
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    assert any(
+        event.get("type") == "implementation_finished"
+        and event.get("execution_mode") == "local-retry-proof"
+        and event.get("provider_dispatched") is False
+        for event in events
+    )
+
+
+def test_failed_retry_probe_honors_capacity_before_fresh_provider_workspace(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-032",
+        title="Resolve implementation retry-budget failure for ACCEL-031",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Remove ACCEL-031 from strategy blocked_tasks.",
+        metadata={
+            "Generated by": implementation_daemon_module.RETRY_BUDGET_REPAIR_SCHEMA,
+            "Retry repair source": "ACCEL-031",
+            "Retry failure kind": "implementation",
+        },
+    )
+    probe_calls = []
+
+    def run_probe(**kwargs):
+        probe_calls.append(kwargs["retry_no_change_probe_only"])
+        return {
+            "task_id": task.task_id,
+            "attempt": 1,
+            "returncode": 1,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "retry_probe_requires_fresh_provider_workspace": True,
+            "cleanup_result": {"cleaned": True},
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation_in_ephemeral_worktree",
+        run_probe,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_active_provider_capacity_backoff",
+        lambda *_args, **_kwargs: {
+            "active": True,
+            "retry_at": "2026-08-03T10:00:00+00:00",
+            "retry_after_seconds": 120.0,
+            "providers": ["grok"],
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: pytest.fail(
+            "capacity must gate provider prompt after a failed probe"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: pytest.fail(
+            "capacity must gate provider context after a failed probe"
+        ),
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert probe_calls == [True]
+    assert result["reason"] == "provider_capacity_backoff"
+    assert result["provider_dispatched"] is False
+    assert result["attempt_consumed"] is False
+    assert result["retry_at"] == "2026-08-03T10:00:00+00:00"
+
+
+def test_cancelled_retry_probe_never_launches_or_consumes_attempt(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-042",
+        title="Resolve implementation retry-budget failure for ACCEL-041",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Remove ACCEL-041 from strategy blocked_tasks.",
+        metadata={
+            "Generated by": implementation_daemon_module.RETRY_BUDGET_REPAIR_SCHEMA,
+            "Retry repair source": "ACCEL-041",
+            "Retry failure kind": "implementation",
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_cancel_requested",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation_in_ephemeral_worktree",
+        lambda **_kwargs: pytest.fail(
+            "cancelled retry proof must not create a worktree"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_active_provider_capacity_backoff",
+        lambda *_args, **_kwargs: pytest.fail(
+            "cancelled retry proof must not probe provider capacity"
+        ),
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["skipped"] is True
+    assert result["reason"] == "implementation_dispatch_cancelled"
+    assert TodoTaskState.load(daemon.state_path).implementation_attempts == {}
+    assert not daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    ).exists()
+
+
+def test_blocked_retry_probe_records_failure_outcome_and_diagnostic(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-052",
+        title="Resolve implementation retry-budget failure for ACCEL-051",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Remove ACCEL-051 from strategy blocked_tasks.",
+        metadata={
+            "Generated by": implementation_daemon_module.RETRY_BUDGET_REPAIR_SCHEMA,
+            "Retry repair source": "ACCEL-051",
+            "Retry failure kind": "implementation",
+        },
+    )
+    outcomes = []
+    monkeypatch.setattr(
+        daemon,
+        "_run_retry_no_change_pre_dispatch_validation",
+        lambda *_args, **_kwargs: {
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "pre_dispatch_probe_changed_candidate",
+            "pre_dispatch_no_change": {
+                "reason": "pre_dispatch_probe_changed_candidate"
+            },
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *args, **kwargs: outcomes.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_failed_attempt_retry_context",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            receipt_id="diagnostic-receipt"
+        ),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail(
+            "blocked local proof must not dispatch a provider"
+        ),
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["attempt_consumed"] is True
+    assert result["provider_dispatched"] is False
+    assert result["reason"] == "pre_dispatch_probe_changed_candidate"
+    assert result["diagnostic_receipt_id"] == "diagnostic-receipt"
+    assert len(outcomes) == 1
+    assert outcomes[0][0][1] == 1
+    assert outcomes[0][1]["reason"] == (
+        "pre_dispatch_probe_changed_candidate"
+    )
+
+
 def test_provider_superproject_commit_is_queued_before_todo_completion(
     tmp_path,
     monkeypatch,
@@ -12380,10 +19159,6 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
     repo = tmp_path / "repo"
     repo.mkdir()
     state_dir = repo / "state"
-    monkeypatch.setenv(
-        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
-        "1",
-    )
     daemon = TodoImplementationDaemon(
         todo_path=repo / "todo.md",
         state_path=state_dir / "task_state.json",
@@ -12409,6 +19184,7 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
     state = TodoTaskState()
     enqueued: list[dict[str, object]] = []
     queue_outcomes: list[tuple[object, ...]] = []
+    validation_order: list[str] = []
 
     def fake_seed(worktree_path, _branch_name, *, task=None):
         worktree_path.mkdir(parents=True)
@@ -12424,15 +19200,23 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
         "_require_implementation_protected_snapshot",
         lambda **_kwargs: {},
     )
+    def protected_check(**_kwargs):
+        validation_order.append("protected_check")
+        return {}
+
+    def finalize_fence(**_kwargs):
+        validation_order.append("finalize_fence")
+        return {}
+
     monkeypatch.setattr(
         daemon,
         "_implementation_protected_path_violation",
-        lambda **_kwargs: {},
+        protected_check,
     )
     monkeypatch.setattr(
         daemon,
         "_finalize_implementation_protected_path_fence",
-        lambda **_kwargs: {},
+        finalize_fence,
     )
     monkeypatch.setattr(
         daemon,
@@ -12458,8 +19242,11 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
     )
     monkeypatch.setattr(
         daemon,
-        "_verify_post_validation_candidate_binding",
-        lambda *_args, validation_result, **_kwargs: dict(validation_result),
+        "_restore_and_verify_post_validation_candidate",
+        lambda *_args, validation_result, **_kwargs: (
+            validation_order.append("restore_then_bind")
+            or dict(validation_result)
+        ),
     )
     monkeypatch.setattr(
         daemon,
@@ -12505,6 +19292,189 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
     assert enqueued[0]["implementation_commit"] == "provider-root-commit"
     assert "todo_update_result" not in result
     assert queue_outcomes == []
+    assert validation_order[-3:] == [
+        "protected_check",
+        "restore_then_bind",
+        "finalize_fence",
+    ]
+
+
+def test_integrated_merge_reuses_durable_completion_with_float_validation(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+    )
+    task = PortalTask(
+        task_id="ACCEL-014",
+        title="Reuse immediate merge completion",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python -m pytest"],
+    )
+    state = TodoTaskState()
+    queue_outcomes: list[tuple[object, ...]] = []
+    durable_completion = {
+        "updated": True,
+        "durable": True,
+        "completion_publication": {
+            "published": False,
+            "reason": "decision_runtime_unconfigured",
+        },
+    }
+
+    def fake_seed(worktree_path, _branch_name, *, task=None):
+        worktree_path.mkdir(parents=True)
+        return "baseline-commit"
+
+    monkeypatch.setattr(daemon, "_create_seeded_worktree", fake_seed)
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_prepare_worktree_for_validation",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_validate_implementation_patch",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            proposal=SimpleNamespace(candidate_diff=())
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_commands",
+        lambda *_args, **_kwargs: {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "duration_seconds": 0.25,
+            "results": [
+                {
+                    "command": "python -m pytest",
+                    "returncode": 0,
+                    "duration_seconds": 0.125,
+                }
+            ],
+            "proof": {"confidence": 0.875},
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_verify_post_validation_candidate_binding",
+        lambda *_args, validation_result, **_kwargs: dict(
+            validation_result
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_commit_worktree_changes",
+        lambda *_args, **_kwargs: {
+            "committed": True,
+            "commit": "provider-root-commit",
+            "reason": "existing_commit",
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_enqueue_validated_worktree",
+        lambda **_kwargs: {
+            "queued": False,
+            "merged": True,
+            "reason": "merged",
+            "merge_commit": "integrated-merge-commit",
+            "todo_update_result": durable_completion,
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_publication_intent",
+        lambda *_args, **_kwargs: pytest.fail(
+            "merge callback already published the completion intent"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_or_bundle_completed_in_todo",
+        lambda *_args, **_kwargs: pytest.fail(
+            "merge callback already completed the board"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_decision_runtime_completion",
+        lambda *_args, **_kwargs: pytest.fail(
+            "merge callback already routed the completion decision"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *args, **_kwargs: queue_outcomes.append(args),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+        ),
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=state,
+        attempt=1,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        log_path=state_dir / "implementation.log",
+        prompt="implement",
+    )
+
+    assert result["returncode"] == 0
+    assert result["board_completion"]["complete"] is True
+    assert result["todo_update_result"] == durable_completion
+    assert result["attempt_consumed"] is True
+    assert queue_outcomes == []
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    assert not any(
+        event["type"] == "implementation_exception"
+        for event in events
+    )
 
 
 def test_implementation_daemon_promotes_fully_validated_timeout_work(
@@ -12514,10 +19484,6 @@ def test_implementation_daemon_promotes_fully_validated_timeout_work(
     repo = tmp_path / "repo"
     repo.mkdir()
     state_dir = repo / "state"
-    monkeypatch.setenv(
-        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
-        "1",
-    )
     daemon = TodoImplementationDaemon(
         todo_path=repo / "todo.md",
         state_path=state_dir / "task_state.json",
@@ -12542,6 +19508,7 @@ def test_implementation_daemon_promotes_fully_validated_timeout_work(
     )
     state = TodoTaskState()
     enqueued: list[dict[str, object]] = []
+    validation_order: list[str] = []
 
     def fake_seed(worktree_path, _branch_name, *, task=None):
         worktree_path.mkdir(parents=True)
@@ -12569,8 +19536,25 @@ def test_implementation_daemon_promotes_fully_validated_timeout_work(
     )
     monkeypatch.setattr(
         daemon,
-        "_verify_post_validation_candidate_binding",
-        lambda *_args, validation_result, **_kwargs: dict(validation_result),
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: (
+            validation_order.append("protected_check") or {}
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: (
+            validation_order.append("finalize_fence") or {}
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_restore_and_verify_post_validation_candidate",
+        lambda *_args, validation_result, **_kwargs: (
+            validation_order.append("restore_then_bind")
+            or dict(validation_result)
+        ),
     )
     monkeypatch.setattr(
         daemon,
@@ -12598,11 +19582,242 @@ def test_implementation_daemon_promotes_fully_validated_timeout_work(
     assert result["implementation_commit"] == "validated-timeout-commit"
     assert result["merge_result"]["queued"] is True
     assert enqueued[0]["baseline_ref"] == "baseline"
+    assert validation_order[-3:] == [
+        "protected_check",
+        "restore_then_bind",
+        "finalize_fence",
+    ]
     events = [
         json.loads(line)
         for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert any(event["type"] == "implementation_timeout_salvaged" for event in events)
+
+
+def test_timeout_salvage_completes_already_satisfied_task_without_proposal(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("already complete\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        implementation_timeout=0.1,
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Salvage an already satisfied timeout",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="The unchanged baseline remains valid after timeout.",
+    )
+    durable_completion = {
+        "updated": True,
+        "durable": True,
+        "completion_publication": {"published": True},
+    }
+
+    def timeout_runner(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(["fake-agent"], timeout=0.1)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        timeout_runner,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_tasks_for_declared_output_gate",
+        lambda *_args, **_kwargs: ([task], ""),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_publication_intent",
+        lambda *_args, **_kwargs: {"task_id": task.task_id},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_or_bundle_completed_in_todo",
+        lambda *_args, **_kwargs: durable_completion,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=TodoTaskState(),
+        attempt=1,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        log_path=state_dir / "implementation.log",
+        prompt="verify the existing implementation",
+    )
+
+    assert result["returncode"] == 0
+    assert result["timeout_result"]["salvaged"] is True
+    assert result["implementation_commit"] == ""
+    assert result["commit_result"]["reason"] == "no_changes"
+    assert result["commit_result"]["no_change_guard"]["allowed"] is True
+    assert result["validation_result"]["proposal_gate"]["accepted"] is False
+    assert result["validation_result"]["no_change_policy_gate"]["accepted"] is True
+    assert result["board_completion"]["complete"] is True
+    assert result["todo_update_result"] == durable_completion
+
+
+def test_timeout_salvage_preserves_typed_artifact_restore_failure(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        implementation_timeout=0.1,
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-RESTORE",
+        title="Preserve a timeout restore failure",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="A typed restore failure is preserved without dispatch.",
+    )
+    failed_receipt = {
+        "reason": "pre_validation_generated_artifact",
+        "failed_count": 1,
+        "scan_failed": True,
+        "scan_failure_stage": "initial",
+    }
+
+    def timeout_runner(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(["fake-agent"], timeout=0.1)
+
+    def fail_restore(*_args, **_kwargs):
+        raise implementation_daemon_module.ValidationGeneratedArtifactRestoreError(
+            failed_receipt
+        )
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        timeout_runner,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_prepare_worktree_for_validation",
+        fail_restore,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_preserve_timed_out_worktree",
+        lambda *_args, **_kwargs: {
+            "preserved": True,
+            "commit_result": {
+                "committed": False,
+                "reason": "validation_failed",
+            },
+            "cleanup_result": {"cleaned": False, "preserved": True},
+        },
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=TodoTaskState(),
+        attempt=1,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        log_path=state_dir / "implementation.log",
+        prompt="time out before validation",
+    )
+
+    assert result["returncode"] != 0
+    assert result["validation_result"]["reason"] == (
+        "validation_generated_artifact_restore_failed"
+    )
+    assert result["validation_result"]["generated_dirty_restore"] == (
+        failed_receipt
+    )
+    assert result["timeout_result"]["salvaged"] is False
+    assert result["timeout_result"].get("salvage_error_type") != (
+        "UnboundLocalError"
+    )
+    assert result["timeout_result"]["preservation_result"]["preserved"] is True
 
 
 def test_implementation_daemon_preserves_timed_out_work_on_rescue_branch(
@@ -12710,7 +19925,7 @@ def test_implementation_supervisor_creates_missing_todo_before_refill(tmp_path):
 - Priority: P1
 - Goal: Prove that runtime bridge dispatch supports virtual AI OS execution.
 - Evidence: RuntimeBridge.dispatch, missing_runtime_contract
-- Outputs: src/runtime_bridge.py, tests
+- Outputs: docs/plan.md, docs/todo.md, src/runtime_bridge.py, tests
 - Validation: test -f objective-heap.md
 - Acceptance: Runtime bridge dispatch has a current validated contract proof.
 - Gap task: Add the missing runtime contract proof.
@@ -12731,6 +19946,10 @@ def test_implementation_supervisor_creates_missing_todo_before_refill(tmp_path):
             state_dir=state_dir,
             repo_root=repo,
             task_prefix="## ACCEL-",
+            implementation_protected_paths=(
+                "docs/plan.md",
+                "docs/todo.md",
+            ),
             objective_refill_enabled=True,
             objective_path=objective_path,
             objective_discovery_dir=repo / "discovery",
@@ -12747,7 +19966,30 @@ def test_implementation_supervisor_creates_missing_todo_before_refill(tmp_path):
     assert result["todo_board_repair"]["created"] is True
     assert result["objective_refill_count"] == 1
     assert todo_path.exists()
-    assert "## ACCEL-001 Close objective gap" in todo_path.read_text(encoding="utf-8")
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "## ACCEL-001 Close objective gap" in todo_text
+    generated_task = todo_text.split("## ACCEL-001 ", 1)[1]
+    output_line = next(
+        line for line in generated_task.splitlines() if line.startswith("- Outputs:")
+    )
+    predicted_line = next(
+        line
+        for line in generated_task.splitlines()
+        if line.startswith("- Predicted files:")
+    )
+    context_line = next(
+        line
+        for line in generated_task.splitlines()
+        if line.startswith("- Context paths:")
+    )
+    assert "src/runtime_bridge.py" in output_line
+    assert "src/runtime_bridge.py" in predicted_line
+    assert "docs/plan.md" not in output_line
+    assert "docs/todo.md" not in output_line
+    assert "docs/plan.md" not in predicted_line
+    assert "docs/todo.md" not in predicted_line
+    assert "docs/plan.md" in context_line
+    assert "docs/todo.md" in context_line
     events = [json.loads(line) for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert any(event["type"] == "todo_board_created" for event in events)
 
@@ -13048,9 +20290,295 @@ def test_implementation_daemon_records_worktree_setup_exception(tmp_path):
     implementation = result["implementation_result"]
     assert implementation["returncode"] == 1
     assert implementation["exception_result"]["exception_type"] == "RuntimeError"
+    assert implementation["attempt_consumed"] is True
+    assert implementation["provider_dispatched"] is False
+    persisted = TodoTaskState.load(state_dir / "task_state.json")
+    assert persisted.implementation_attempts["ACCEL-001"] == 1
+    assert set(persisted.implementation_attempts_by_cid.values()) == {1}
     events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert any(event["type"] == "implementation_exception" for event in events)
+    assert any(
+        event["type"] == "implementation_finished"
+        and event["attempt_consumed"] is True
+        and event["provider_dispatched"] is False
+        for event in events
+    )
     assert events[-1]["type"] == "daemon_pass"
+
+
+def test_ephemeral_lifecycle_rebind_failure_preserves_attempt_budget(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+        ProcessBirthIdentity,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+
+    state_dir = repo / "state"
+    worktree_root = repo / "worktrees"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## FVT-",
+        implement=True,
+        implementation_command="sh -c 'touch provider-called'",
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="FVT-019",
+        title="Search for missing proof chains",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="proof-search",
+        outputs=["feature.py"],
+    )
+    daemon._register_task_identities([task])
+    identity = daemon._identity_for_task(task)
+    state = TodoTaskState(
+        task_identities={task.task_id: identity.to_dict()},
+        implementation_attempts={task.task_id: 2},
+        implementation_attempts_by_cid={
+            identity.canonical_task_cid: 2,
+        },
+    )
+    state.save(daemon.state_path)
+
+    pooled_workspace = worktree_root / "workspace-existing"
+    pooled_workspace.mkdir(parents=True)
+    stale_record = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=identity.canonical_task_cid,
+        attempt=2,
+        lane_id="dead-owner-lane",
+        workspace_path=pooled_workspace,
+        branch="implementation/fvt-019-attempt-2",
+        merge_target="main",
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 19,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    daemon.worktree_lifecycle.mark_active(
+        pooled_workspace,
+        lease_id=stale_record.lease_id,
+        expected_fence=stale_record.fence,
+    )
+    baseline_ref = _git(repo, "rev-parse", "HEAD")
+
+    def resolve_to_fenced_pooled_workspace(
+        requested_path,
+        branch_name,
+        *,
+        task=None,
+    ):
+        daemon._worktree_pool_effective_paths[
+            requested_path.resolve()
+        ] = pooled_workspace.resolve()
+        return baseline_ref
+
+    monkeypatch.setattr(
+        daemon,
+        "_create_seeded_worktree",
+        resolve_to_fenced_pooled_workspace,
+    )
+    queue_outcomes = []
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *args, **kwargs: queue_outcomes.append((args, kwargs)),
+    )
+
+    result = daemon._run_implementation(task, state)
+    persisted = TodoTaskState.load(daemon.state_path)
+
+    assert result["returncode"] == 1
+    assert result["attempt"] == 3
+    assert result["attempt_consumed"] is False
+    assert result["provider_dispatched"] is False
+    assert result["exception_result"]["exception_type"] == (
+        "DuplicateAttemptError"
+    )
+    assert result["exception_result"]["message"] == (
+        "target workspace claim lease has not expired"
+    )
+    assert result["cleanup_result"]["attempt_consumed"] is False
+    assert result["cleanup_result"]["provider_call_allowed"] is False
+    assert result["cleanup_result"]["lifecycle"]["reason"] == (
+        "owner_dead_lease_unexpired"
+    )
+    assert result["cleanup_result"]["current_attempt_lifecycle_finalize"][
+        "finalized"
+    ] is True
+    assert persisted.implementation_attempts[task.task_id] == 2
+    assert (
+        persisted.implementation_attempts_by_cid[
+            identity.canonical_task_cid
+        ]
+        == 2
+    )
+    assert daemon._task_attempt(persisted, task) == 3
+    assert not (pooled_workspace / "provider-called").exists()
+    assert queue_outcomes == []
+    assert "diagnostic_receipt_id" not in result
+    assert (
+        daemon.worktree_lifecycle.load_task_attempt(
+            canonical_task_cid=identity.canonical_task_cid,
+            task_id=task.task_id,
+            attempt=3,
+        )
+        is None
+    )
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(
+        event["type"] == "implementation_finished"
+        and event["task_id"] == task.task_id
+        and event["attempt"] == 3
+        and event["attempt_consumed"] is False
+        and event["provider_dispatched"] is False
+        for event in events
+    )
+
+
+def test_ephemeral_lifecycle_cleanup_after_provider_dispatch_consumes_attempt(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+        DuplicateAttemptError,
+        LifecycleFailureKind,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## FVT-",
+        implement=True,
+        implementation_command="true",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="FVT-019",
+        title="Search for missing proof chains",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="proof-search",
+        outputs=["feature.py"],
+    )
+    daemon._register_task_identities([task])
+    identity = daemon._identity_for_task(task)
+    state = TodoTaskState(
+        task_identities={task.task_id: identity.to_dict()},
+        implementation_attempts={task.task_id: 2},
+        implementation_attempts_by_cid={
+            identity.canonical_task_cid: 2,
+        },
+    )
+    state.save(daemon.state_path)
+
+    provider_calls = []
+
+    def fail_after_dispatch(*args, **kwargs):
+        provider_calls.append((args, kwargs))
+        raise DuplicateAttemptError(
+            "target workspace claim lease has not expired"
+        )
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        fail_after_dispatch,
+    )
+    lifecycle_cleanup = {
+        "cleaned": False,
+        "reason": "lifecycle_owner_dead_lease_unexpired",
+        "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+        "attempt_consumed": False,
+        "provider_call_allowed": False,
+        "lifecycle": {"reason": "owner_dead_lease_unexpired"},
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_cleanup_failed_setup_worktree",
+        lambda *args, **kwargs: dict(lifecycle_cleanup),
+    )
+    queue_outcomes = []
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *args, **kwargs: queue_outcomes.append((args, kwargs)),
+    )
+
+    result = daemon._run_implementation(task, state)
+    persisted = TodoTaskState.load(daemon.state_path)
+
+    assert len(provider_calls) == 1
+    assert result["returncode"] == 1
+    assert result["attempt"] == 3
+    assert result["provider_dispatched"] is True
+    assert result["attempt_consumed"] is True
+    assert result["cleanup_result"] == lifecycle_cleanup
+    assert persisted.implementation_attempts[task.task_id] == 3
+    assert (
+        persisted.implementation_attempts_by_cid[
+            identity.canonical_task_cid
+        ]
+        == 3
+    )
+    assert daemon._task_attempt(persisted, task) == 4
+    assert len(queue_outcomes) == 1
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(
+        event["type"] == "implementation_finished"
+        and event["task_id"] == task.task_id
+        and event["attempt"] == 3
+        and event["attempt_consumed"] is True
+        and event["provider_dispatched"] is True
+        for event in events
+    )
 
 
 def test_implementation_daemon_records_merge_reconcile_exception(tmp_path):
@@ -13070,8 +20598,18 @@ def test_implementation_daemon_records_merge_reconcile_exception(tmp_path):
         "implementation_commit": "abc123",
         "title": "Recover failed merge",
     }
+    task = PortalTask(
+        task_id="ACCEL-002",
+        title="Recover failed merge",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+    )
+    event["task_cid"] = daemon._identity_for_task(task).canonical_task_cid
 
     daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._load_tasks = lambda: [task]  # type: ignore[method-assign]
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
     daemon._git_ref_exists = lambda ref: True  # type: ignore[method-assign]
@@ -13150,265 +20688,6 @@ def test_implementation_daemon_defers_merge_reconciliation_when_main_checkout_di
     assert events[-1]["reason"] == "main_checkout_dirty"
 
 
-def test_implementation_daemon_preserves_nonconflicting_git_sync_recovery_note(tmp_path):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "init", "-b", "main"], cwd=repo, text=True, capture_output=True, check=True)
-    subprocess.run(["git", "config", "user.email", "agent@example.invalid"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.name", "Agent"], cwd=repo, check=True)
-    (repo / "README.md").write_text("clean\n", encoding="utf-8")
-    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
-    subprocess.run(["git", "commit", "-m", "Initial"], cwd=repo, text=True, capture_output=True, check=True)
-    subprocess.run(["git", "checkout", "-b", "implementation/accel-002"], cwd=repo, check=True)
-    (repo / "README.md").write_text("implemented\n", encoding="utf-8")
-    subprocess.run(["git", "commit", "-am", "Implement candidate"], cwd=repo, check=True)
-    implementation_commit = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=repo,
-        text=True,
-        capture_output=True,
-        check=True,
-    ).stdout.strip()
-    subprocess.run(["git", "checkout", "main"], cwd=repo, check=True)
-    recovery_note = repo / ".git-sync-recovery-20260727-202941.md"
-    recovery_note.write_text("operator recovery information\n", encoding="utf-8")
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    candidates = [
-        {
-            "task_id": "ACCEL-002",
-            "branch": "implementation/accel-002",
-            "implementation_commit": implementation_commit,
-        }
-    ]
-
-    blocking, nonblocking = daemon._reconciliation_blocking_dirty_paths(
-        candidates,
-        target_branch="main",
-    )
-
-    assert blocking == []
-    assert nonblocking == [recovery_note.name]
-    assert recovery_note.read_text(encoding="utf-8") == "operator recovery information\n"
-
-
-def test_implementation_daemon_blocks_git_sync_recovery_note_tracked_by_candidate(tmp_path):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "init", "-b", "main"], cwd=repo, text=True, capture_output=True, check=True)
-    subprocess.run(["git", "config", "user.email", "agent@example.invalid"], cwd=repo, check=True)
-    subprocess.run(["git", "config", "user.name", "Agent"], cwd=repo, check=True)
-    (repo / "README.md").write_text("clean\n", encoding="utf-8")
-    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
-    subprocess.run(["git", "commit", "-m", "Initial"], cwd=repo, text=True, capture_output=True, check=True)
-    subprocess.run(["git", "checkout", "-b", "implementation/accel-002"], cwd=repo, check=True)
-    recovery_note = repo / ".git-sync-recovery-20260727-202941.md"
-    recovery_note.write_text("candidate content\n", encoding="utf-8")
-    subprocess.run(["git", "add", recovery_note.name], cwd=repo, check=True)
-    subprocess.run(["git", "commit", "-m", "Track candidate recovery note"], cwd=repo, check=True)
-    implementation_commit = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=repo,
-        text=True,
-        capture_output=True,
-        check=True,
-    ).stdout.strip()
-    subprocess.run(["git", "checkout", "main"], cwd=repo, check=True)
-    recovery_note.write_text("operator recovery information\n", encoding="utf-8")
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    candidates = [
-        {
-            "task_id": "ACCEL-002",
-            "branch": "implementation/accel-002",
-            "implementation_commit": implementation_commit,
-        }
-    ]
-
-    blocking, nonblocking = daemon._reconciliation_blocking_dirty_paths(
-        candidates,
-        target_branch="main",
-    )
-
-    assert blocking == [recovery_note.name]
-    assert nonblocking == []
-    assert recovery_note.read_text(encoding="utf-8") == "operator recovery information\n"
-
-
-def test_implementation_daemon_preserves_nonoverlapping_untracked_operator_file(
-    tmp_path,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(
-        ["git", "init", "-b", "main"],
-        cwd=repo,
-        text=True,
-        capture_output=True,
-        check=True,
-    )
-    subprocess.run(
-        ["git", "config", "user.email", "agent@example.invalid"],
-        cwd=repo,
-        check=True,
-    )
-    subprocess.run(
-        ["git", "config", "user.name", "Agent"],
-        cwd=repo,
-        check=True,
-    )
-    (repo / "README.md").write_text("clean\n", encoding="utf-8")
-    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
-    subprocess.run(
-        ["git", "commit", "-m", "Initial"],
-        cwd=repo,
-        text=True,
-        capture_output=True,
-        check=True,
-    )
-    subprocess.run(
-        ["git", "checkout", "-b", "implementation/accel-002"],
-        cwd=repo,
-        check=True,
-    )
-    (repo / "README.md").write_text("implemented\n", encoding="utf-8")
-    subprocess.run(
-        ["git", "commit", "-am", "Implement candidate"],
-        cwd=repo,
-        check=True,
-    )
-    implementation_commit = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=repo,
-        text=True,
-        capture_output=True,
-        check=True,
-    ).stdout.strip()
-    subprocess.run(["git", "checkout", "main"], cwd=repo, check=True)
-    operator_file = (
-        repo
-        / ".cvefixes-build"
-        / "source"
-        / "data"
-        / "train-00000-of-00003.parquet"
-    )
-    operator_file.parent.mkdir(parents=True)
-    operator_file.write_bytes(b"operator dataset")
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    candidates = [
-        {
-            "task_id": "ACCEL-002",
-            "branch": "implementation/accel-002",
-            "implementation_commit": implementation_commit,
-        }
-    ]
-
-    blocking, nonblocking = daemon._reconciliation_blocking_dirty_paths(
-        candidates,
-        target_branch="main",
-    )
-
-    relative = operator_file.relative_to(repo).as_posix()
-    assert blocking == []
-    assert nonblocking == [relative]
-    assert operator_file.read_bytes() == b"operator dataset"
-
-
-def test_implementation_daemon_blocks_untracked_path_owned_by_candidate(tmp_path):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(
-        ["git", "init", "-b", "main"],
-        cwd=repo,
-        text=True,
-        capture_output=True,
-        check=True,
-    )
-    subprocess.run(
-        ["git", "config", "user.email", "agent@example.invalid"],
-        cwd=repo,
-        check=True,
-    )
-    subprocess.run(
-        ["git", "config", "user.name", "Agent"],
-        cwd=repo,
-        check=True,
-    )
-    (repo / "README.md").write_text("clean\n", encoding="utf-8")
-    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
-    subprocess.run(
-        ["git", "commit", "-m", "Initial"],
-        cwd=repo,
-        text=True,
-        capture_output=True,
-        check=True,
-    )
-    relative = ".cvefixes-build/source/data/train.parquet"
-    subprocess.run(
-        ["git", "checkout", "-b", "implementation/accel-002"],
-        cwd=repo,
-        check=True,
-    )
-    candidate_file = repo / relative
-    candidate_file.parent.mkdir(parents=True)
-    candidate_file.write_bytes(b"candidate dataset")
-    subprocess.run(["git", "add", relative], cwd=repo, check=True)
-    subprocess.run(
-        ["git", "commit", "-m", "Track candidate dataset"],
-        cwd=repo,
-        check=True,
-    )
-    implementation_commit = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=repo,
-        text=True,
-        capture_output=True,
-        check=True,
-    ).stdout.strip()
-    subprocess.run(["git", "checkout", "main"], cwd=repo, check=True)
-    candidate_file.parent.mkdir(parents=True)
-    candidate_file.write_bytes(b"operator dataset")
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    candidates = [
-        {
-            "task_id": "ACCEL-002",
-            "branch": "implementation/accel-002",
-            "implementation_commit": implementation_commit,
-        }
-    ]
-
-    blocking, nonblocking = daemon._reconciliation_blocking_dirty_paths(
-        candidates,
-        target_branch="main",
-    )
-
-    assert blocking == [relative]
-    assert nonblocking == []
-    assert candidate_file.read_bytes() == b"operator dataset"
-
-
 def test_implementation_daemon_abandons_stale_failed_merge_candidates(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -13464,12 +20743,32 @@ def test_implementation_daemon_reconciles_missing_branch_from_commit_ref(tmp_pat
         "implementation_commit": "abc123",
         "title": "Recover missing branch merge",
     }
+    task = PortalTask(
+        task_id="ACCEL-005",
+        title="Recover missing branch merge",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+    )
+    event["task_cid"] = daemon._identity_for_task(task).canonical_task_cid
     merged_refs: list[str] = []
 
     daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._load_tasks = lambda: [task]  # type: ignore[method-assign]
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
     daemon._git_ref_exists = lambda ref: ref == "abc123"  # type: ignore[method-assign]
+    daemon._resolved_commit_ref = lambda repo_path, ref: "merge456"  # type: ignore[method-assign]
+    daemon._declared_output_tracking_invariant = lambda tasks, **kwargs: {  # type: ignore[method-assign]
+        "passed": True,
+        "repository_ref": "merge456",
+    }
+    daemon._immutable_integration_commit = lambda *args, **kwargs: {  # type: ignore[method-assign]
+        "passed": True,
+        "integration_commit": "merge456",
+        "reasons": [],
+    }
 
     def fake_merge(ref, task, attempt, baseline_ref=""):
         merged_refs.append(ref)
@@ -13481,6 +20780,22 @@ def test_implementation_daemon_reconciles_missing_branch_from_commit_ref(tmp_pat
         "branch": branch,
         "worktree_path": str(worktree_path or ""),
     }
+    task_cid = daemon._identity_for_task(task).canonical_task_cid
+    daemon._mark_reconciled_completion_in_todo = (  # type: ignore[method-assign]
+        lambda *_args, **_kwargs: {
+            "updated": False,
+            "reason": "already_completed",
+            "updated_task_ids": [],
+            "already_completed_task_ids": [task.task_id],
+            "completion_receipts": [
+                {
+                    "task_id": task.task_id,
+                    "canonical_task_cid": task_cid,
+                    "status": "succeeded",
+                }
+            ],
+        }
+    )
 
     result = daemon._reconcile_failed_merges()
 
@@ -13511,11 +20826,31 @@ def test_implementation_daemon_reconciled_merge_requires_cleanup_success(tmp_pat
         "worktree_path": str(repo / "worktrees" / "accel-006"),
         "title": "Retry merge cleanup",
     }
+    task = PortalTask(
+        task_id="ACCEL-006",
+        title="Retry merge cleanup",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+    )
+    event["task_cid"] = daemon._identity_for_task(task).canonical_task_cid
 
     daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._load_tasks = lambda: [task]  # type: ignore[method-assign]
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
     daemon._git_ref_exists = lambda ref: ref == "implementation/accel-006"  # type: ignore[method-assign]
+    daemon._resolved_commit_ref = lambda repo_path, ref: "merge456"  # type: ignore[method-assign]
+    daemon._declared_output_tracking_invariant = lambda tasks, **kwargs: {  # type: ignore[method-assign]
+        "passed": True,
+        "repository_ref": "merge456",
+    }
+    daemon._immutable_integration_commit = lambda *args, **kwargs: {  # type: ignore[method-assign]
+        "passed": True,
+        "integration_commit": "merge456",
+        "reasons": [],
+    }
     daemon._merge_branch_to_main = lambda branch, task, attempt, baseline_ref="": {  # type: ignore[method-assign]
         "merged": True,
         "merge_commit": "merge456",
@@ -13699,7 +21034,7 @@ def test_implementation_supervisor_recovers_missing_inflight_before_worktree_rec
     )
     supervisor._list_process_commands = lambda: []  # type: ignore[method-assign]
 
-    def assert_state_recovered_before_reconcile():
+    def assert_state_recovered_before_reconcile(**_kwargs):
         recovered = TodoTaskState.load(state_path)
         assert recovered.implementation_in_progress is False
         assert recovered.active_worktree_path == ""
@@ -13791,8 +21126,24 @@ def test_implementation_daemon_limits_merge_reconciliation_per_pass(tmp_path):
         for index in range(1, 5)
     ]
     merged_branches: list[str] = []
+    tasks = [
+        PortalTask(
+            task_id=f"ACCEL-{index:03d}",
+            title="Recover failed merge",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        )
+        for index in range(1, 5)
+    ]
+    for event, task in zip(events, tasks, strict=True):
+        event["task_cid"] = daemon._identity_for_task(
+            task
+        ).canonical_task_cid
 
     daemon._failed_merge_candidates = lambda skip_task_ids=None: events  # type: ignore[method-assign]
+    daemon._load_tasks = lambda: tasks  # type: ignore[method-assign]
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
     daemon._git_ref_exists = lambda ref: True  # type: ignore[method-assign]
@@ -13880,7 +21231,9 @@ def test_implementation_daemon_reconciles_merge_lock_deferrals(tmp_path):
         },
     }
 
-    daemon._iter_events = lambda: [event]  # type: ignore[method-assign]
+    daemon._iter_merge_lifecycle_events = (  # type: ignore[method-assign]
+        lambda: [event]
+    )
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
 
@@ -13981,10 +21334,31 @@ def test_implementation_daemon_retries_cleanup_failures_for_already_merged_branc
             "branch": "implementation/accel-004",
         },
     }
+    task = PortalTask(
+        task_id="ACCEL-004",
+        title="Retry merge cleanup",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+    )
+    event["task_cid"] = daemon._identity_for_task(task).canonical_task_cid
+    event["target_commit"] = "merge456"
 
     daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._load_tasks = lambda: [task]  # type: ignore[method-assign]
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: True  # type: ignore[method-assign]
+    daemon._resolved_commit_ref = lambda repo_path, ref: "merge456"  # type: ignore[method-assign]
+    daemon._declared_output_tracking_invariant = lambda tasks, **kwargs: {  # type: ignore[method-assign]
+        "passed": True,
+        "repository_ref": "merge456",
+    }
+    daemon._immutable_integration_commit = lambda *args, **kwargs: {  # type: ignore[method-assign]
+        "passed": True,
+        "integration_commit": "merge456",
+        "reasons": [],
+    }
     daemon._cleanup_merged_worktree = lambda worktree_path, branch: {  # type: ignore[method-assign]
         "cleaned": False,
         "reason": "worktree_remove_failed",
@@ -14032,7 +21406,9 @@ def test_implementation_daemon_discovers_cleanup_failed_successful_merge(tmp_pat
         },
     }
 
-    daemon._iter_events = lambda: [event]  # type: ignore[method-assign]
+    daemon._iter_merge_lifecycle_events = (  # type: ignore[method-assign]
+        lambda: [event]
+    )
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: True  # type: ignore[method-assign]
 
@@ -14601,6 +21977,84 @@ def test_implementation_supervisor_forwards_completion_paths_and_generation_cap(
         "generation_path": state_dir.parent / "objective_generation.json",
         "generation_max_new_work": 6,
     }
+
+
+def test_disabled_objective_janitor_ignores_stale_force_goal_ids(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor import objective_daemon
+    from ipfs_accelerate_py.agent_supervisor.objectives import backlog_refinery
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    objective_path = repo / "objective.md"
+    objective_path.write_text(
+        "## G1 Goal\n\n- Status: active\n- Acceptance: criterion\n",
+        encoding="utf-8",
+    )
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Drained board
+
+## AUTO-001 Completed work
+
+- Status: completed
+- Goal id: G1
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    strategy_path = state_dir / "strategy.json"
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "objective_task_janitor_force_goal_ids": ["G1"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    captured = {}
+
+    def capture_refill_decision(**kwargs):
+        captured["force"] = kwargs["force"]
+        return False, "cooldown", 0, 1
+
+    monkeypatch.setattr(
+        backlog_refinery,
+        "should_refill_backlog",
+        capture_refill_decision,
+    )
+    monkeypatch.setattr(
+        objective_daemon,
+        "run_objective_daemon",
+        lambda _args: pytest.fail(
+            "a disabled janitor must not replay its stale force goals"
+        ),
+    )
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=strategy_path,
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            task_prefix="## AUTO-",
+            objective_refill_enabled=True,
+            objective_task_janitor_enabled=False,
+            objective_path=objective_path,
+            objective_reconcile_goal_completion=False,
+            objective_persist_ast_dataset=False,
+        )
+    )
+
+    result = supervisor.refill_objective_backlog()
+
+    assert captured["force"] is False
+    assert result.scan_mode == "cooldown"
+    assert result.generated_count == 0
 
 
 def test_completion_reconciliation_runs_when_refill_is_skipped_by_threshold(
@@ -15566,8 +23020,16 @@ def test_objective_daemon_adds_goal_packet_aggregate_when_capacity_allows(tmp_pa
     assert aggregate["work_item_count"] == 6
     assert aggregate["merge_family"] == aggregate["goal_packet_key"]
     assert aggregate["related_task_ids"]
-    assert index_payload["execution_packets"][0]["goal_packet_work_item_count_max"] == 6
-    assert "goal_packet_aggregate" in index_payload["execution_packets"][0]["candidate_kinds"]
+    packet = index_payload["execution_packets"][0]
+    assert packet["goal_packet_work_item_count_max"] == 6
+    assert "goal_packet_aggregate" in packet["candidate_kinds"]
+    assert "completion_binding_rejection" not in packet
+    assert packet["completion_binding"]["primary_task_id"] == aggregate["task_id"]
+    assert set(packet["completion_binding"]["bound_sibling_task_ids"]) == {
+        record["task_id"]
+        for record in index_payload["records"]
+        if record["candidate_kind"] != "goal_packet_aggregate"
+    }
 
 
 def test_write_todo_vector_index_clusters_related_goal_tasks(tmp_path):
@@ -16149,7 +23611,10 @@ def test_completion_gap_prompt_authorizes_only_exact_predicted_files(
     assert edit_policy["validation_may_read_other_paths"] is True
     assert edit_policy["operator_directive"] == ""
     assert capsule["scope"]["allowed_edit_paths"] == edit_policy["allowed_paths"]
-    assert capsule["scope"]["expected_outputs"] == task.outputs
+    assert capsule["scope"]["expected_outputs"] == [
+        "docs/runtime.md",
+        "src/completion_check.py",
+    ]
 
 
 def test_completion_gap_without_precise_targets_is_not_executed(tmp_path):
@@ -16229,6 +23694,163 @@ def test_general_task_prompt_is_not_narrowed_by_completion_gap_guard(tmp_path):
 
     assert "Strict completion-gap edit authorization" not in prompt
     assert "touching as many files as needed" in prompt
+
+
+def test_general_task_authorizes_identity_bound_evidence_outputs(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    manifests = (
+        "data/datasets_contract_analysis/manifests/repository-root.json",
+        "data/datasets_contract_analysis/manifests/coverage.json",
+    )
+    task = PortalTask(
+        task_id="DSCON-003",
+        title="Build deterministic repository inventory",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="datasets-contract-analysis",
+        outputs=["ipfs_datasets_py/processors/datasets/repository.py"],
+        validation=["git diff --check"],
+        metadata={
+            "evidence outputs": ", ".join(manifests),
+            "missing evidence": ", ".join(manifests),
+            "evidence subset": ", ".join(manifests),
+            "evidence inputs": (
+                "data/datasets_contract_analysis/agent_supervisor/discovery"
+            ),
+        },
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## DSCON-",
+    )
+
+    assert task_evidence_output_paths(task) == manifests
+    assert task_declared_output_paths(task) == (
+        "ipfs_datasets_py/processors/datasets/repository.py",
+        *manifests,
+    )
+    assert daemon._proposal_scope_paths(task) == tuple(
+        sorted(task_declared_output_paths(task))
+    )
+    capsule = json.loads(daemon._build_implementation_prompt(task, attempt=1))
+    assert capsule["authority"]["edit_policy"]["mode"] == (
+        "task_output_and_evidence_exact"
+    )
+    assert capsule["authority"]["edit_policy"]["allowed_paths"] == list(
+        task_declared_output_paths(task)
+    )
+    assert capsule["scope"]["expected_outputs"] == list(
+        task_declared_output_paths(task)
+    )
+    assert capsule["scope"]["evidence_output_paths"] == list(manifests)
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {
+            "missing evidence": "data/manifests/coverage.json",
+            "evidence subset": "data/manifests/coverage.json",
+        },
+        {
+            "evidence outputs": "data/manifests/coverage.json",
+            "missing evidence": "data/manifests/coverage.json",
+            "evidence subset": "operator approval",
+        },
+        {
+            "evidence outputs": (
+                "data/manifests/coverage.json, ../outside.json"
+            ),
+            "missing evidence": (
+                "data/manifests/coverage.json, ../outside.json"
+            ),
+            "evidence subset": (
+                "data/manifests/coverage.json, ../outside.json"
+            ),
+        },
+        {
+            "evidence outputs": "data/discovery/forged.json",
+            "missing evidence": "data/discovery/forged.json",
+            "evidence subset": "data/discovery/forged.json",
+            "evidence inputs": "data/discovery",
+        },
+        {
+            "evidence outputs": (
+                "data/manifests/coverage.json, "
+                "data/manifests/coverage.json"
+            ),
+            "missing evidence": "data/manifests/coverage.json",
+            "evidence subset": "data/manifests/coverage.json",
+        },
+    ],
+)
+def test_evidence_output_authority_fails_closed(metadata):
+    task = PortalTask(
+        task_id="DSCON-003",
+        title="Reject forged evidence scope",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="datasets-contract-analysis",
+        outputs=["src/repository.py"],
+        metadata=metadata,
+    )
+
+    assert task_evidence_output_paths(task) == ()
+    assert task_declared_output_paths(task) == ("src/repository.py",)
+
+
+def test_completion_gap_does_not_authorize_typed_evidence_outputs(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    evidence_path = "data/manifests/coverage.json"
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Keep completion repair scope exact",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="docs",
+        outputs=["docs/runtime.md"],
+        metadata={
+            "merge role": "completion_gate_gap",
+            "predicted files": "docs/runtime.md",
+            "evidence outputs": evidence_path,
+            "missing evidence": evidence_path,
+            "evidence subset": evidence_path,
+        },
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+
+    capsule = json.loads(daemon._build_implementation_prompt(task, attempt=1))
+
+    assert capsule["authority"]["edit_policy"]["allowed_paths"] == [
+        "docs/runtime.md"
+    ]
+    assert capsule["authority"]["edit_policy"]["read_only_outputs"] == [
+        evidence_path
+    ]
+    assert capsule["scope"]["expected_outputs"] == ["docs/runtime.md"]
+    assert capsule["scope"]["evidence_output_paths"] == []
 
 
 def test_implementation_protected_paths_are_normalized_and_unsafe_values_rejected(
@@ -16334,6 +23956,51 @@ def test_task_declaring_operator_protected_file_is_skipped_before_launch(tmp_pat
         "task_id": "ACCEL-001",
         "attempt": 1,
         "protected_paths": ["implementation_plan/policies/approval.json"],
+    }
+
+
+def test_typed_evidence_output_cannot_override_operator_protected_path(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    protected_path = "data/manifests/coverage.json"
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    task = PortalTask(
+        task_id="DSCON-003",
+        title="Attempt protected evidence output",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="datasets-contract-analysis",
+        outputs=["src/coverage.py"],
+        metadata={
+            "evidence outputs": protected_path,
+            "missing evidence": protected_path,
+            "evidence subset": protected_path,
+        },
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## DSCON-",
+        implementation_command="must-not-run",
+        implementation_protected_paths=[protected_path],
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result == {
+        "skipped": True,
+        "reason": "implementation_protected_path_declared",
+        "task_id": "DSCON-003",
+        "attempt": 1,
+        "protected_paths": [protected_path],
     }
 
 
@@ -16659,10 +24326,6 @@ def test_task_llm_context_budget_caps_codex_window_without_widening_operator_lim
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
         "codex",
     )
-    monkeypatch.setenv(
-        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
-        "1",
-    )
     monkeypatch.setattr(
         implementation_daemon_module.shutil,
         "which",
@@ -16676,11 +24339,9 @@ def test_task_llm_context_budget_caps_codex_window_without_widening_operator_lim
     assert resolution.provider_context_window == 6_000
     assert resolution.effective_input_limit == 4_500
     assert result.capsule.budget.max_input_tokens == 4_500
-    context_index = command.index("model_context_window=6000")
-    assert command[context_index - 1 : context_index + 1] == [
-        "-c",
-        "model_context_window=6000",
-    ]
+    assert "--ignore-user-config" in command
+    context_config_index = command.index("model_context_window=6000")
+    assert command[context_config_index - 1] == "-c"
     assert "model_context_window=200000" not in command
 
 
@@ -16720,98 +24381,7 @@ def test_too_small_task_llm_context_budget_defers_before_attempt_charge(
     assert TodoTaskState.load(daemon.state_path).implementation_attempts == {}
 
 
-def test_implementation_daemon_uses_grok_window_and_bounded_reserve_env(
-    tmp_path,
-    monkeypatch,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    todo_path = repo / "todo.md"
-    todo_path.write_text("# Todos\n", encoding="utf-8")
-    state_dir = repo / "state"
-    state_dir.mkdir()
-    monkeypatch.setenv(
-        implementation_daemon_module._GROK_CONTEXT_WINDOW_ENV,
-        "8192",
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module._CODEX_CONTEXT_WINDOW_ENV,
-        "1",
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE_ENV,
-        "2048",
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.IMPLEMENTATION_CONTEXT_TOOL_RESERVE_ENV,
-        "1024",
-    )
-    daemon = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-        task_header_prefix="## ACCEL-",
-        implementation_context_tokenizer=lambda text: max(
-            1, len(text.encode("utf-8")) // 16
-        ),
-    )
-    task = PortalTask(
-        task_id="ACCEL-001",
-        title="Compile bounded Grok implementation context",
-        status="ready",
-        completion="manual",
-        priority="P0",
-        track="runtime",
-        outputs=["src/context.py"],
-        validation=["pytest tests/test_context.py"],
-        acceptance="Preserve the provider-specific context contract.",
-        canonical_task_cid="task:accel-001",
-        metadata={
-            "Context budget tokens": "4096",
-            "Provider role": "grok-implement, codex-review",
-        },
-    )
-
-    result = daemon._compile_implementation_context(task, attempt=1)
-
-    resolution = result.receipt.budget_resolution
-    assert resolution.provider_context_window == 8_192
-    assert resolution.reserved_output_tokens == 2_048
-    assert resolution.reserved_tool_tokens == 1_024
-    assert resolution.effective_input_limit == 4_096
-    authority = result.capsule.authority["implementation_context_budget"]
-    assert authority["source"] == "task_metadata"
-    assert authority["task_max_input_tokens"] == 4_096
-
-
-def test_implementation_context_budget_rehydrates_budget_protocol(
-    tmp_path,
-):
-    configured = ContextBudget(max_input_tokens=1_234)
-
-    class BudgetProxy:
-        def to_dict(self):
-            return configured.to_dict()
-
-    daemon = TodoImplementationDaemon(
-        todo_path=tmp_path / "todo.md",
-        state_path=tmp_path / "state" / "task_state.json",
-        strategy_path=tmp_path / "state" / "strategy.json",
-        events_path=tmp_path / "state" / "events.jsonl",
-        repo_root=tmp_path,
-        task_header_prefix="## ACCEL-",
-        implementation_context_budget=BudgetProxy(),
-    )
-
-    result = daemon._base_implementation_context_budget()
-
-    assert isinstance(result, implementation_daemon_module.ContextBudget)
-    assert result.max_input_tokens == 1_234
-
-
-def test_retry_repair_context_authorizes_declared_validation_targets(tmp_path):
+def test_retry_repair_context_keeps_validation_targets_diagnostic(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -16857,10 +24427,12 @@ def test_retry_repair_context_authorizes_declared_validation_targets(tmp_path):
         "Resolve the bounded validation retry-budget blocker for ACCEL-001"
     )
     edit_policy = result.capsule.authority["edit_policy"]
-    assert edit_policy["mode"] == "retry_repair_validation_targets"
+    assert edit_policy["mode"] == "retry_repair_output_exact"
     assert edit_policy["allowed_paths"] == (
         "src/runtime.py",
         "data/discovery",
+    )
+    assert edit_policy["diagnostic_read_only_paths"] == (
         "tests/test_runtime.py",
         "tests/test_policy.py",
     )
@@ -16874,6 +24446,7 @@ def test_retry_repair_context_authorizes_declared_validation_targets(tmp_path):
     )
     prompt_rules = result.capsule.authority["generic_prompt_policy"]
     assert any("inherited validation debt" in rule for rule in prompt_rules)
+    assert any("diagnostic and read-only" in rule for rule in prompt_rules)
     assert any("never weaken assertions" in rule for rule in prompt_rules)
 
 
@@ -17020,396 +24593,6 @@ def test_implementation_daemon_prefers_ready_task_from_last_vector_cluster(tmp_p
     assert selected.task_id == "ACCEL-011"
 
 
-@pytest.mark.parametrize(
-    "eligibility_line",
-    [
-        "- Is schedulable: false",
-        "- Review only: true",
-        "- Is schedulable: not-a-boolean",
-        "- Review only: not-a-boolean",
-    ],
-    ids=[
-        "not-schedulable",
-        "review-only",
-        "malformed-schedulable",
-        "malformed-review-only",
-    ],
-)
-def test_direct_implementation_daemon_rejects_ineligible_task_metadata(
-    tmp_path,
-    eligibility_line,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    todo_path = repo / "todo.md"
-    todo_path.write_text(
-        f"""# Todos
-
-## ACCEL-001 Policy-ineligible task
-
-- Status: todo
-- Priority: P0
-- Track: runtime
-- Outputs: src/ineligible.py
-- Validation: test -f src/ineligible.py
-{eligibility_line}
-- Acceptance: This task requires another execution path.
-
-## ACCEL-002 Legacy directly implementable task
-
-- Status: todo
-- Priority: P2
-- Track: runtime
-- Outputs: src/legacy.py
-- Validation: test -f src/legacy.py
-- Acceptance: Implement the legacy-compatible task.
-""",
-        encoding="utf-8",
-    )
-    state_dir = repo / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-    )
-    tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
-    statuses = {task.task_id: "ready" for task in tasks}
-
-    selected = daemon._select_next_task(tasks, statuses, {}, {}, {})
-    scope = daemon._selection_scope(tasks, statuses, {})
-
-    assert selected is not None
-    assert selected.task_id == "ACCEL-002"
-    assert scope["selectable_ready_task_ids"] == ["ACCEL-001", "ACCEL-002"]
-    assert scope["eligible_ready_task_ids"] == ["ACCEL-002"]
-
-
-@pytest.mark.parametrize(
-    "eligibility_lines",
-    [
-        "",
-        "- Is schedulable: true\n- Review only: false",
-    ],
-    ids=["legacy-fields-absent", "explicitly-eligible"],
-)
-def test_direct_implementation_daemon_allows_compatible_task_metadata(
-    tmp_path,
-    eligibility_lines,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    todo_path = repo / "todo.md"
-    todo_path.write_text(
-        f"""# Todos
-
-## ACCEL-001 Directly implementable task
-
-- Status: todo
-- Priority: P1
-- Track: runtime
-- Outputs: src/runtime.py
-- Validation: test -f src/runtime.py
-{eligibility_lines}
-- Acceptance: Implement the runtime task.
-""",
-        encoding="utf-8",
-    )
-    state_dir = repo / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-    )
-    tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
-    statuses = {"ACCEL-001": "ready"}
-
-    selected = daemon._select_next_task(tasks, statuses, {}, {}, {})
-
-    assert selected is not None
-    assert selected.task_id == "ACCEL-001"
-
-
-@pytest.mark.parametrize(
-    ("eligibility_lines", "expected_blocker"),
-    [
-        ("- Is schedulable: false", "task_marked_unschedulable"),
-        ("- Review only: true", "task_marked_review_only"),
-        ("- Is schedulable: invalid", "invalid_is_schedulable"),
-        (
-            "- Is schedulable: false\n- IS SCHEDULABLE: true",
-            "ambiguous_is_schedulable",
-        ),
-    ],
-)
-def test_direct_implementation_daemon_projects_policy_ineligible_task_as_blocked(
-    tmp_path,
-    eligibility_lines,
-    expected_blocker,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    todo_path = repo / "todo.md"
-    todo_path.write_text(
-        f"""# Todos
-
-## ACCEL-001 Policy-ineligible task
-
-- Status: todo
-- Completion: manual
-- Priority: P0
-- Track: runtime
-{eligibility_lines}
-- Acceptance: Do not dispatch this task directly.
-""",
-        encoding="utf-8",
-    )
-    state_dir = repo / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-        task_header_prefix="## ACCEL-",
-    )
-
-    result = daemon.run_once()
-    state = TodoTaskState.load(daemon.state_path)
-    events = [
-        json.loads(line)
-        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
-    ]
-
-    assert result["ready_count"] == 0
-    assert result["selectable_ready_count"] == 0
-    assert result["eligible_ready_count"] == 0
-    assert result["blocked_count"] == 1
-    assert result["active_task_id"] == ""
-    assert result["selection_idle_reason"] == (
-        "all_selectable_ready_tasks_ineligible_by_task_metadata"
-    )
-    assert result["task_policy_blockers"] == {
-        "ACCEL-001": [expected_blocker]
-    }
-    assert state.task_statuses == {"ACCEL-001": "blocked"}
-    assert state.task_policy_blockers == result["task_policy_blockers"]
-    assert daemon._selectable_task_retry_schedule() == {}
-    daemon_pass = next(event for event in events if event["type"] == "daemon_pass")
-    assert daemon_pass["task_policy_blockers"] == result["task_policy_blockers"]
-
-
-def test_direct_implementation_daemon_preserves_task_source_policy_alias_ambiguity(
-    tmp_path,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    state_dir = repo / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-    )
-    source_task = SimpleNamespace(
-        task_id="ACCEL-001",
-        title="Ambiguous source task",
-        status="todo",
-        task_cid="cid-task",
-        goal_id="goal-1",
-        goal_cid="cid-goal",
-        dependency_task_ids=(),
-        board_namespace="test",
-        source_line=1,
-        body={"is_schedulable": False, "is-schedulable": True},
-    )
-
-    task = daemon._portal_task_from_source_task(source_task)
-
-    assert task.metadata["is schedulable"] == (
-        implementation_daemon_module.AMBIGUOUS_TASK_BOOLEAN_METADATA
-    )
-    assert daemon._task_direct_implementation_blockers(task) == (
-        "ambiguous_is_schedulable",
-    )
-
-    source_task.body = {
-        "is_schedulable": False,
-        "provenance": {"is schedulable": True},
-    }
-    fallback_task = daemon._portal_task_from_source_task(source_task)
-
-    assert fallback_task.metadata["is schedulable"] == "false"
-    assert daemon._task_direct_implementation_blockers(fallback_task) == (
-        "task_marked_unschedulable",
-    )
-
-
-def test_direct_implementation_boundary_rejects_policy_ineligible_task(tmp_path):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    state_dir = repo / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-    )
-    daemon._build_implementation_prompt = lambda *_args, **_kwargs: pytest.fail(  # type: ignore[method-assign]
-        "policy-ineligible task reached provider prompt construction"
-    )
-    task = PortalTask(
-        task_id="ACCEL-001",
-        title="Review-only task",
-        status="todo",
-        completion="manual",
-        priority="P0",
-        track="runtime",
-        metadata={"review only": "true"},
-    )
-
-    result = daemon._run_implementation(task, TodoTaskState())
-
-    assert result == {
-        "skipped": True,
-        "reason": "task_direct_implementation_ineligible",
-        "task_id": "ACCEL-001",
-        "attempt": 1,
-        "policy_blockers": ["task_marked_review_only"],
-    }
-
-
-def test_direct_implementation_daemon_does_not_reopen_policy_blocked_task(
-    tmp_path,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    todo_path = repo / "todo.md"
-    todo_path.write_text(
-        """# Todos
-
-## ACCEL-001 Completed prerequisite
-
-- Status: completed
-- Completion: manual
-- Priority: P1
-- Track: runtime
-
-## ACCEL-002 Review-only dependent task
-
-- Status: blocked
-- Completion: manual
-- Priority: P1
-- Track: runtime
-- Depends on: ACCEL-001
-- Review only: true
-""",
-        encoding="utf-8",
-    )
-    state_dir = repo / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-        task_header_prefix="## ACCEL-",
-    )
-    before = todo_path.read_text(encoding="utf-8")
-
-    result = daemon.run_once()
-
-    assert todo_path.read_text(encoding="utf-8") == before
-    assert result["task_policy_blockers"] == {
-        "ACCEL-002": ["task_marked_review_only"]
-    }
-    assert TodoTaskState.load(daemon.state_path).task_statuses == {
-        "ACCEL-001": "completed",
-        "ACCEL-002": "blocked",
-    }
-
-
-def test_direct_implementation_daemon_borrows_when_local_shard_is_policy_blocked(
-    tmp_path,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    todo_path = repo / "todo.md"
-    todo_path.write_text(
-        """# Todos
-
-## ACCEL-000 Policy-blocked even task
-
-- Status: todo
-- Completion: manual
-- Priority: P0
-- Track: runtime
-- Is schedulable: false
-
-## ACCEL-001 Eligible odd task
-
-- Status: todo
-- Completion: manual
-- Priority: P1
-- Track: runtime
-""",
-        encoding="utf-8",
-    )
-    state_dir = repo / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-        task_header_prefix="## ACCEL-",
-        task_shard_count=2,
-        task_shard_index=0,
-    )
-
-    result = daemon.run_once()
-    state = TodoTaskState.load(daemon.state_path)
-
-    assert result["active_task_id"] == "ACCEL-001"
-    assert state.ready_task_ids == ["ACCEL-001"]
-    assert state.blocked_task_ids == ["ACCEL-000"]
-    assert state.task_policy_blockers == {
-        "ACCEL-000": ["task_marked_unschedulable"]
-    }
-    assert "task_shard_ready_fallback" in daemon.events_path.read_text(
-        encoding="utf-8"
-    )
-
-
-def test_direct_implementation_daemon_does_not_retry_policy_ineligible_ready_work(
-    tmp_path,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    state_dir = repo / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-    )
-    state = TodoTaskState(
-        ready_task_ids=["ACCEL-001"],
-        selectable_ready_task_ids=["ACCEL-001"],
-        eligible_ready_task_ids=[],
-        selection_idle_reason="all_selectable_ready_tasks_ineligible_by_task_metadata",
-    )
-    state.save(daemon.state_path)
-
-    assert daemon._selectable_task_retry_schedule() == {}
-
-
 def test_implementation_daemon_prefers_larger_goal_work_without_vector_index(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -17525,6 +24708,92 @@ def test_implementation_daemon_prefers_retry_repair_for_blocked_source(tmp_path)
 
     assert selected is not None
     assert selected.task_id == "ACCEL-002"
+
+
+def test_provider_backoff_selection_runs_local_probe_candidate_first(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        f"""# Todos
+
+## ACCEL-000 Completed source task
+
+- Status: completed
+- Priority: P1
+- Track: runtime
+- Outputs: source.txt
+- Validation: test -f source.txt
+- Acceptance: Source task is complete.
+
+## ACCEL-001 Higher-ranked ordinary task
+
+- Status: todo
+- Priority: P0
+- Track: runtime
+- Outputs: ordinary.txt
+- Validation: test -f ordinary.txt
+- Acceptance: Run the ordinary model-assisted task.
+
+## ACCEL-002 Resolve implementation retry-budget failure for ACCEL-000
+
+- Status: todo
+- Priority: P1
+- Track: ops
+- Generated by: {implementation_daemon_module.RETRY_BUDGET_REPAIR_SCHEMA}
+- Retry repair source: ACCEL-000
+- Retry failure kind: implementation
+- Outputs: repair.txt
+- Validation: test -f repair.txt
+- Acceptance: Remove ACCEL-000 from strategy blocked_tasks.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_submodule_paths=[],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_active_provider_capacity_backoff",
+        lambda *_args, **_kwargs: {
+            "active": True,
+            "retry_at": "2026-08-03T10:00:00+00:00",
+            "retry_after_seconds": 120.0,
+            "providers": ["grok"],
+        },
+    )
+    selected_ids = []
+
+    def run_selected(task, _state):
+        selected_ids.append(task.task_id)
+        return {
+            "skipped": True,
+            "reason": "test_selection_only",
+            "task_id": task.task_id,
+        }
+
+    monkeypatch.setattr(daemon, "_run_implementation", run_selected)
+
+    result = daemon.run_once()
+
+    assert selected_ids == ["ACCEL-002"]
+    assert result["active_task_id"] == "ACCEL-002"
+    assert TodoTaskState.load(daemon.state_path).selectable_ready_task_ids == [
+        "ACCEL-002"
+    ]
 
 
 def test_pending_retry_repair_fences_source_across_lane_local_strategies(
@@ -17801,19 +25070,20 @@ def test_implementation_daemon_limits_bundle_work_order_to_current_bundle_shard(
 
     result = daemon._mark_task_or_bundle_completed_in_todo(aggregate_task)
 
-    assert result["updated"] is False
-    assert result["reason"] == "authoritative_completion_packet_missing"
-    assert result["updated_task_ids"] == []
+    assert result["updated"] is True
+    assert result["completion_reason"] == "bundle_work_order"
+    assert result["updated_task_ids"] == ["ACCEL-003", "ACCEL-001", "ACCEL-002"]
+    assert result["bundle_work_order"]["covered_task_ids"] == ["ACCEL-001", "ACCEL-002"]
     updated_tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
     assert {task.task_id: task.status for task in updated_tasks} == {
-        "ACCEL-001": "todo",
-        "ACCEL-002": "todo",
-        "ACCEL-003": "todo",
+        "ACCEL-001": "completed",
+        "ACCEL-002": "completed",
+        "ACCEL-003": "completed",
         "ACCEL-004": "todo",
     }
     events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
-    assert events[-1]["type"] == "authoritative_task_completion_denied"
-    assert events[-1]["completion_authoritative"] is False
+    assert events[-1]["type"] == "todo_status_updated"
+    assert events[-1]["completion_reason"] == "bundle_work_order"
 
 
 def test_implementation_daemon_commits_dirty_already_completed_todo_status(tmp_path):
@@ -17854,12 +25124,7 @@ def test_implementation_daemon_commits_dirty_already_completed_todo_status(tmp_p
         task_header_prefix="## ACCEL-",
     )
 
-    receipt, gate = real_git_authority(repo, "ACCEL-001")
-    result = daemon._mark_task_completed_in_todo(
-        "ACCEL-001",
-        authoritative_receipt=receipt,
-        authoritative_gate=gate,
-    )
+    result = daemon._mark_task_completed_in_todo("ACCEL-001")
 
     assert result["updated"] is False
     assert result["reason"] == "already_completed"
@@ -17868,6 +25133,653 @@ def test_implementation_daemon_commits_dirty_already_completed_todo_status(tmp_p
     events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert events[-1]["type"] == "todo_status_reconciled"
     assert events[-1]["commit_result"]["committed"] is True
+
+
+def test_reconciled_completion_accepts_only_fsynced_exact_runtime_snapshot(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / ".gitignore").write_text("nested/\n", encoding="utf-8")
+    (repo / "README.md").write_text("outer\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore", "README.md")
+    _git(repo, "commit", "-m", "seed outer repo")
+
+    runtime_repo = repo / "nested"
+    runtime_repo.mkdir()
+    _git(runtime_repo, "init")
+    _git(runtime_repo, "checkout", "-b", "main")
+    _git(runtime_repo, "config", "user.name", "Test User")
+    _git(runtime_repo, "config", "user.email", "test@example.invalid")
+    (runtime_repo / ".gitignore").write_text("live/\n", encoding="utf-8")
+    (runtime_repo / "README.md").write_text("nested\n", encoding="utf-8")
+    _git(runtime_repo, "add", ".gitignore", "README.md")
+    _git(runtime_repo, "commit", "-m", "seed runtime projection repo")
+
+    state_dir = runtime_repo / "live" / "state"
+    state_dir.mkdir(parents=True)
+    todo_path = state_dir / "runtime.todo.md"
+    todo_path.write_text(
+        """## FVT-024 Reconcile ignored runtime completion
+
+- Status: todo
+- Outputs: feature.py
+- Acceptance: Persist exact completion evidence.
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## FVT-",
+    )
+    [task] = daemon._load_tasks()
+    expected_task_cids = {
+        task.task_id: daemon._identity_for_task(task).canonical_task_cid
+    }
+
+    update_result = daemon._mark_reconciled_completion_in_todo(
+        task,
+        [task],
+        expected_task_cids,
+    )
+    persistence = daemon._reconciled_completion_persisted(
+        update_result,
+        expected_task_cids,
+    )
+
+    assert update_result["updated"] is True
+    assert update_result["commit_result"]["committed"] is False
+    assert update_result["commit_result"]["reason"] == "no_changes"
+    assert update_result["commit_result"]["repo"] == str(
+        runtime_repo.resolve()
+    )
+    assert persistence["passed"] is True
+    assert persistence["durable_update"] is True
+    snapshot = persistence["fsynced_taskboard_snapshot"]
+    assert snapshot["passed"] is True
+    assert snapshot["taskboard_revision"].startswith("taskboard:sha256:")
+    assert snapshot["observed_task_cids"] == expected_task_cids
+
+    second_update = daemon._mark_reconciled_completion_in_todo(
+        task,
+        [task],
+        expected_task_cids,
+    )
+    second_persistence = daemon._reconciled_completion_persisted(
+        second_update,
+        expected_task_cids,
+    )
+
+    assert second_update["updated"] is False
+    assert second_update["reason"] == "already_completed"
+    assert second_persistence["passed"] is True
+    assert (
+        second_persistence["fsynced_taskboard_snapshot"]["passed"]
+        is True
+    )
+
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "- Status: completed",
+            "- Status: todo",
+        ),
+        encoding="utf-8",
+    )
+    reverted = daemon._reconciled_completion_persisted(
+        update_result,
+        expected_task_cids,
+    )
+
+    assert reverted["passed"] is False
+    assert reverted["durable_update"] is False
+    assert reverted["fsynced_taskboard_snapshot"]["status_mismatches"] == {
+        "FVT-024": "todo"
+    }
+
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "- Status: todo",
+            "- Status: completed",
+        ),
+        encoding="utf-8",
+    )
+    original_locked_taskboard = (
+        implementation_daemon_module.locked_taskboard
+    )
+
+    @contextmanager
+    def replace_taskboard_after_inode_open(path):
+        with original_locked_taskboard(path) as taskboard:
+            replacement = path.with_name(f".{path.name}.replacement")
+            replacement.write_text(
+                todo_path.read_text(encoding="utf-8").replace(
+                    "- Status: completed",
+                    "- Status: todo",
+                ),
+                encoding="utf-8",
+            )
+            os.replace(replacement, path)
+            yield taskboard
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "locked_taskboard",
+        replace_taskboard_after_inode_open,
+    )
+    replaced_path = daemon._reconciled_completion_persisted(
+        update_result,
+        expected_task_cids,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "locked_taskboard",
+        original_locked_taskboard,
+    )
+
+    assert replaced_path["passed"] is False
+    assert (
+        replaced_path["fsynced_taskboard_snapshot"]["reason"]
+        == "taskboard_snapshot_read_failed"
+    )
+
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "- Status: todo",
+            "- Status: completed",
+        ),
+        encoding="utf-8",
+    )
+    same_inode_before = todo_path.stat().st_ino
+
+    @contextmanager
+    def rewrite_same_inode_during_snapshot(path):
+        with original_locked_taskboard(path) as taskboard:
+            class SnapshotRaceFile:
+                def __init__(self):
+                    self.read_count = 0
+
+                def __getattr__(self, name):
+                    return getattr(taskboard, name)
+
+                def read(self, *args, **kwargs):
+                    text = taskboard.read(*args, **kwargs)
+                    self.read_count += 1
+                    if self.read_count == 1:
+                        rewritten = text.replace(
+                            "- Status: completed",
+                            "- Status: todo     ",
+                        )
+                        assert len(rewritten) == len(text)
+                        with path.open(
+                            "r+",
+                            encoding="utf-8",
+                        ) as noncooperating_writer:
+                            noncooperating_writer.seek(0)
+                            noncooperating_writer.write(rewritten)
+                            noncooperating_writer.flush()
+                            os.fsync(noncooperating_writer.fileno())
+                    return text
+
+            yield SnapshotRaceFile()
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "locked_taskboard",
+        rewrite_same_inode_during_snapshot,
+    )
+    same_inode_rewrite = daemon._reconciled_completion_persisted(
+        update_result,
+        expected_task_cids,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "locked_taskboard",
+        original_locked_taskboard,
+    )
+
+    assert todo_path.stat().st_ino == same_inode_before
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+    assert same_inode_rewrite["passed"] is False
+    assert (
+        same_inode_rewrite["fsynced_taskboard_snapshot"]["reason"]
+        == "taskboard_snapshot_read_failed"
+    )
+
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "- Status: todo     ",
+            "- Status: completed",
+        ),
+        encoding="utf-8",
+    )
+    _git(
+        runtime_repo,
+        "add",
+        "-f",
+        str(todo_path.relative_to(runtime_repo)),
+    )
+    _git(runtime_repo, "commit", "-m", "track runtime-shaped board")
+    tracked_runtime = daemon._reconciled_completion_persisted(
+        update_result,
+        expected_task_cids,
+    )
+
+    assert tracked_runtime["passed"] is False
+    assert tracked_runtime["durable_update"] is False
+    assert (
+        tracked_runtime["runtime_taskboard_binding"]["reason"]
+        == "runtime_taskboard_not_ignored"
+    )
+    assert "fsynced_taskboard_snapshot" not in tracked_runtime
+
+
+def test_completion_persistence_failure_remains_reconcilable_after_board_update(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "live" / "state"
+    state_dir.mkdir(parents=True)
+    todo_path = state_dir / "runtime.todo.md"
+    todo_path.write_text(
+        """## FVT-024 Recover completion persistence
+
+- Status: completed
+- Outputs: feature.py
+- Acceptance: Retry a landed merge receipt after the board update.
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## FVT-",
+    )
+    implementation_commit = "a" * 40
+    unrelated_same_task_commit = "b" * 40
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": "FVT-024",
+            "attempt": 3,
+            "timestamp": "2000-01-01T00:00:00+00:00",
+            "implementation_commit": implementation_commit,
+            "merge_result": {
+                "attempted": True,
+                "merged": False,
+                "reason": "post_merge_integration_commit_unproven",
+            },
+        },
+    )
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": "FVT-024",
+            "attempt": 2,
+            "timestamp": "2000-01-01T00:00:00+00:00",
+            "implementation_commit": unrelated_same_task_commit,
+            "completion_persistence_recovery": {
+                "reason": "forged_implementation_payload",
+            },
+            "merge_result": {
+                "attempted": True,
+                "merged": False,
+                "reason": "merge_retry_failed",
+            },
+        },
+    )
+    daemon._record_event(
+        "merge_reconciled",
+        {
+            "task_id": "FVT-024",
+            "attempt": 3,
+            "implementation_commit": implementation_commit,
+            "resolved": False,
+            "reason": "completion_persistence_failed",
+        },
+    )
+    daemon._record_event(
+        "merge_reconciled",
+        {
+            "task_id": "FVT-024",
+            "attempt": 3,
+            "implementation_commit": implementation_commit,
+            "resolved": False,
+            "reason": "cleanup_retry_failed",
+        },
+    )
+    rotation = rotate_event_log_if_needed(
+        daemon.events_path,
+        max_bytes=1,
+        retain_recent=1,
+        max_archives=2,
+    )
+    assert rotation["rotated"] is True
+    daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
+    daemon._git_ref_is_ancestor = (  # type: ignore[method-assign]
+        lambda ancestor, _descendant: ancestor == implementation_commit
+    )
+
+    recovery_candidates = daemon._failed_merge_candidates(
+        skip_task_ids={"FVT-024"}
+    )
+    assert len(recovery_candidates) == 1
+    assert (
+        recovery_candidates[0]["implementation_commit"]
+        == implementation_commit
+    )
+    daemon._current_todo_task_ids_for_reconciliation = (  # type: ignore[method-assign]
+        lambda: {"FVT-024"}
+    )
+    candidates = daemon._failed_merge_candidates()
+
+    candidates_by_commit = {
+        candidate["implementation_commit"]: candidate
+        for candidate in candidates
+    }
+    recovered_candidate = candidates_by_commit[implementation_commit]
+    unrelated_candidate = candidates_by_commit[
+        unrelated_same_task_commit
+    ]
+    assert recovered_candidate["completion_persistence_recovery"]["reason"] == (
+        "completion_persistence_failed"
+    )
+    assert "completion_persistence_recovery" not in unrelated_candidate
+    fresh, stale = daemon._partition_stale_failed_merge_candidates(
+        candidates
+    )
+    assert fresh == [recovered_candidate]
+    assert stale == [unrelated_candidate]
+
+    daemon._record_event(
+        "merge_reconciled",
+        {
+            "task_id": "FVT-025",
+            "attempt": 1,
+            "implementation_commit": "c" * 40,
+            "resolved": True,
+            "reason": "merged",
+        },
+    )
+    eviction_rotation = rotate_event_log_if_needed(
+        daemon.events_path,
+        max_bytes=1,
+        retain_recent=1,
+        max_archives=1,
+    )
+    assert eviction_rotation["rotated"] is True
+    retained_events = daemon._iter_merge_lifecycle_events()
+    assert [event["sequence"] for event in retained_events] == [4, 5]
+
+    with daemon.events_path.open("ab") as event_log:
+        event_log.write(b"{malformed lifecycle event\\n")
+        event_log.flush()
+        os.fsync(event_log.fileno())
+    with pytest.raises(CursorReplayError):
+        daemon._failed_merge_candidates(skip_task_ids={"FVT-024"})
+
+
+def test_completion_recovery_is_not_suppressed_by_other_task_on_same_commit(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "runtime.todo.md"
+    todo_path.write_text(
+        """## FVT-024 Recover completion persistence
+
+- Status: completed
+- Outputs: feature.py
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "task_state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## FVT-",
+    )
+    shared_commit = "a" * 40
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": "FVT-024",
+            "attempt": 3,
+            "implementation_commit": shared_commit,
+            "merge_result": {
+                "attempted": True,
+                "merged": False,
+                "reason": "post_merge_integration_commit_unproven",
+            },
+        },
+    )
+    daemon._record_event(
+        "merge_reconciled",
+        {
+            "task_id": "FVT-024",
+            "attempt": 3,
+            "implementation_commit": shared_commit,
+            "resolved": False,
+            "reason": "completion_persistence_failed",
+        },
+    )
+    daemon._record_event(
+        "merge_reconciled",
+        {
+            "task_id": "FVT-025",
+            "attempt": 1,
+            "implementation_commit": shared_commit,
+            "resolved": True,
+            "reason": "merged",
+        },
+    )
+    daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
+    daemon._git_ref_is_ancestor = lambda *_args: True  # type: ignore[method-assign]
+
+    candidates = daemon._failed_merge_candidates(
+        skip_task_ids={"FVT-024"},
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0]["task_id"] == "FVT-024"
+    assert candidates[0]["implementation_commit"] == shared_commit
+    assert candidates[0]["completion_persistence_recovery"]["reason"] == (
+        "completion_persistence_failed"
+    )
+
+
+def test_completion_recovery_requires_exact_false_resolved_flag(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "runtime.todo.md",
+        state_path=repo / "task_state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## FVT-",
+    )
+    base_event = {
+        "type": "merge_reconciled",
+        "task_id": "FVT-024",
+        "implementation_commit": "a" * 40,
+        "reason": "completion_persistence_failed",
+    }
+    poisoned_events = [
+        dict(base_event),
+        {**base_event, "resolved": None},
+        {**base_event, "resolved": 0},
+        {**base_event, "resolved": "false"},
+    ]
+
+    for poisoned in poisoned_events:
+        assert daemon._completion_persistence_recovery_candidates(
+            [poisoned]
+        ) == {}
+
+    legitimate = {**base_event, "resolved": False}
+    assert list(
+        daemon._completion_persistence_recovery_candidates(
+            [legitimate]
+        )
+    ) == [("FVT-024", "a" * 40)]
+
+
+def test_completion_recovery_uses_landed_rewrite_without_remerging_deleted_branch(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / ".gitignore").write_text("live/\n", encoding="utf-8")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore", "base.txt")
+    _git(repo, "commit", "-m", "baseline")
+
+    implementation_branch = "implementation/fvt-024-deleted"
+    _git(repo, "checkout", "-b", implementation_branch)
+    (repo / "feature.py").write_text("VALUE = 'original'\n", encoding="utf-8")
+    (repo / "test_feature.py").write_text(
+        "def test_feature():\n    assert True\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "feature.py", "test_feature.py")
+    _git(repo, "commit", "-m", "FVT-024 original implementation")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "main")
+    rewritten_branch = "rewritten/fvt-024"
+    _git(repo, "checkout", "-b", rewritten_branch)
+    (repo / "feature.py").write_text("VALUE = 'rewritten'\n", encoding="utf-8")
+    (repo / "test_feature.py").write_text(
+        "def test_feature():\n    assert True\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "feature.py", "test_feature.py")
+    _git(repo, "commit", "-m", "FVT-024 rewritten implementation")
+    landed_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(
+        repo,
+        "merge",
+        "--no-ff",
+        rewritten_branch,
+        "-m",
+        "Integrate rewritten FVT-024",
+    )
+    integration_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "branch", "-D", implementation_branch, rewritten_branch)
+    assert implementation_commit != landed_commit
+    assert subprocess.run(
+        ["git", "merge-base", "--is-ancestor", implementation_commit, "main"],
+        cwd=repo,
+        check=False,
+    ).returncode == 1
+
+    state_dir = repo / "live" / "state"
+    state_dir.mkdir(parents=True)
+    todo_path = state_dir / "runtime.todo.md"
+    todo_path.write_text(
+        """## FVT-024 Recover rewritten completion
+
+- Status: completed
+- Outputs: feature.py, test_feature.py
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## FVT-",
+        merge_target_branch="main",
+        merge_reconciliation_max_merges=1,
+    )
+    [task] = daemon._load_tasks()
+    task_cid = daemon._identity_for_task(task).canonical_task_cid
+    completion_task_cids = {"FVT-024": task_cid}
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": "FVT-024",
+            "attempt": 3,
+            "branch": implementation_branch,
+            "implementation_commit": implementation_commit,
+            "canonical_task_cid": task_cid,
+            "merge_result": {
+                "attempted": True,
+                "merged": False,
+                "reason": "post_merge_integration_commit_unproven",
+                "completion_task_cids": completion_task_cids,
+            },
+        },
+    )
+    daemon._record_event(
+        "merge_reconciled",
+        {
+            "task_id": "FVT-024",
+            "attempt": 3,
+            "branch": implementation_branch,
+            "implementation_commit": implementation_commit,
+            "landed_commit": landed_commit,
+            "landed_ref_source": "branch",
+            "merge_commit": integration_commit,
+            "completion_task_cids": completion_task_cids,
+            "resolved": False,
+            "reason": "completion_persistence_failed",
+            "cleanup_result": {"cleaned": True},
+            "integration_commit_proof": {
+                "passed": True,
+                "implementation_commit": landed_commit,
+                "integration_ref": integration_commit,
+                "integration_commit": integration_commit,
+                "target_branch": "main",
+                "reasons": [],
+            },
+        },
+    )
+    daemon._merge_branch_to_main = (  # type: ignore[method-assign]
+        lambda *_args, **_kwargs: pytest.fail(
+            "persistence recovery must not remerge the original commit"
+        )
+    )
+
+    [result] = daemon._reconcile_failed_merges(
+        skip_task_ids={"FVT-024"},
+    )
+
+    assert result["resolved"] is True
+    assert result["reason"] == (
+        "completion_persistence_recovered_from_landed_rewrite"
+    )
+    assert result["landed_commit"] == landed_commit
+    assert result["merge_commit"] == integration_commit
+    assert result["merge_result"]["attempted"] is False
+    assert result["integration_commit_proof"]["passed"] is True
+    assert result["post_merge_declared_output_invariant"]["passed"] is True
+    assert result["completion_persistence"]["passed"] is True
+    assert result["completion_persistence"]["fsynced_taskboard_snapshot"][
+        "passed"
+    ] is True
 
 
 def test_implementation_daemon_updates_checkbox_with_completed_status(tmp_path):
@@ -17887,11 +25799,6 @@ def test_implementation_daemon_updates_checkbox_with_completed_status(tmp_path):
 """,
         encoding="utf-8",
     )
-    _git(repo, "init")
-    _git(repo, "config", "user.name", "Test User")
-    _git(repo, "config", "user.email", "test@example.invalid")
-    _git(repo, "add", "todo.md")
-    _git(repo, "commit", "-m", "seed todo")
     state_dir = repo / "state"
     daemon = TodoImplementationDaemon(
         todo_path=todo_path,
@@ -17902,12 +25809,7 @@ def test_implementation_daemon_updates_checkbox_with_completed_status(tmp_path):
         task_header_prefix="## ACCEL-",
     )
 
-    receipt, gate = real_git_authority(repo, "ACCEL-001")
-    result = daemon._mark_task_completed_in_todo(
-        "ACCEL-001",
-        authoritative_receipt=receipt,
-        authoritative_gate=gate,
-    )
+    result = daemon._mark_task_completed_in_todo("ACCEL-001")
     rendered = todo_path.read_text(encoding="utf-8")
 
     assert result["updated"] is True
@@ -18801,7 +26703,7 @@ def test_objective_daemon_refines_missing_evidence_into_child_goals(tmp_path):
     assert "Prove missing_gesture_policy for Meta display control bridge" in todo_text
 
 
-def test_bundle_member_completion_receipts_require_authoritative_terminal_evidence(tmp_path):
+def test_bundle_member_completion_receipts_use_terminal_canonical_evidence(tmp_path):
     state_dir = tmp_path / "objective-runtime" / "state"
     state_dir.mkdir(parents=True)
     event_path = state_dir / "agent_objective_runtime_events.jsonl"
@@ -18829,7 +26731,7 @@ def test_bundle_member_completion_receipts_require_authoritative_terminal_eviden
                         "type": "implementation_finished",
                         "timestamp": "2026-07-22T12:01:00+00:00",
                         "task_id": "ACCEL-002",
-                        "canonical_task_cid": "cid-merged-without-authority",
+                        "canonical_task_cid": "cid-completed-from-merge",
                         "returncode": 0,
                         "merge_result": {"merged": True},
                     }
@@ -18854,35 +26756,6 @@ def test_bundle_member_completion_receipts_require_authoritative_terminal_eviden
                 ),
                 json.dumps(
                     {
-                        "type": "implementation_finished",
-                        "timestamp": "2026-07-22T12:03:30+00:00",
-                        "task_id": "ACCEL-006",
-                        "returncode": 0,
-                        "merge_result": {"merged": True},
-                        "acceptance_result": {
-                            "authoritatively_completed": True,
-                            "completion_authoritative": True,
-                            "pending_gates": [],
-                            "todo_update_result": {
-                                "updated": True,
-                                "updated_task_ids": ["ACCEL-006"],
-                                "already_completed_task_ids": [],
-                                "completion_receipts": [
-                                    {
-                                        "task_id": "ACCEL-006",
-                                        "canonical_task_cid": (
-                                            "cid-completed-from-merge"
-                                        ),
-                                        "canonical_task_key": "task/v1/merge",
-                                        "board_namespace": "test-board",
-                                    }
-                                ],
-                            },
-                        },
-                    }
-                ),
-                json.dumps(
-                    {
                         "type": "todo_status_updated",
                         "timestamp": "2026-07-22T12:04:00+00:00",
                         "task_id": "ACCEL-005",
@@ -18903,8 +26776,7 @@ def test_bundle_member_completion_receipts_require_authoritative_terminal_eviden
 
     assert set(receipts) == {"cid-completed-from-status", "cid-completed-from-merge"}
     assert receipts["cid-completed-from-status"]["event_path"] == str(rotated_path)
-    assert receipts["cid-completed-from-merge"]["task_id"] == "ACCEL-006"
-    assert "cid-merged-without-authority" not in receipts
+    assert receipts["cid-completed-from-merge"]["task_id"] == "ACCEL-002"
 
 
 def test_goal_packet_aggregate_releases_every_covered_member_dependency(
@@ -19080,11 +26952,6 @@ def test_goal_packet_aggregate_releases_every_covered_member_dependency(
         ),
         encoding="utf-8",
     )
-    _git(repo, "init")
-    _git(repo, "config", "user.name", "Bundle Authority Test")
-    _git(repo, "config", "user.email", "bundle-authority@example.invalid")
-    _git(repo, "add", "aggregate.todo.md", "objective_bundles")
-    _git(repo, "commit", "-m", "seed aggregate packet")
     state_root = repo / "state"
     lane_state = state_root / "objective-aggregate" / "state"
     lane_state.mkdir(parents=True)
@@ -19109,31 +26976,22 @@ def test_goal_packet_aggregate_releases_every_covered_member_dependency(
     )
     tasks = parse_task_file(todo_path, task_header_prefix="## T-")
     daemon._register_task_identities(tasks)
+    aggregate = next(task for task in tasks if task.task_id == "T-AGGREGATE")
     expected_identities = {
         task_id: daemon._task_identity_by_display_id[task_id]
         for task_id in ("T-AGGREGATE", "T-COVERED-A", "T-COVERED-B")
     }
 
-    completions = []
-    for task_id in ("T-AGGREGATE", "T-COVERED-A", "T-COVERED-B"):
-        receipt, gate = real_git_authority(repo, task_id)
-        completions.append(
-            daemon._mark_task_completed_in_todo(
-                task_id,
-                authoritative_receipt=receipt,
-                authoritative_gate=gate,
-            )
-        )
+    completion = daemon._mark_task_or_bundle_completed_in_todo(aggregate)
     receipts = bundle_member_completion_receipts(state_root)
 
-    assert [item["updated_task_ids"] for item in completions] == [
-        ["T-AGGREGATE"],
-        ["T-COVERED-A"],
-        ["T-COVERED-B"],
+    assert completion["updated_task_ids"] == [
+        "T-AGGREGATE",
+        "T-COVERED-A",
+        "T-COVERED-B",
     ]
     completion_receipts = {
         receipt["task_id"]: receipt
-        for completion in completions
         for receipt in completion["completion_receipts"]
     }
     assert set(completion_receipts) == set(expected_identities)
@@ -19154,9 +27012,7 @@ def test_goal_packet_aggregate_releases_every_covered_member_dependency(
         .read_text(encoding="utf-8")
         .splitlines()[-1]
     )
-    assert persisted_event["completion_receipts"] == completions[-1][
-        "completion_receipts"
-    ]
+    assert persisted_event["completion_receipts"] == completion["completion_receipts"]
     assert set(receipts) == {
         identity.canonical_task_cid for identity in expected_identities.values()
     }
@@ -19583,7 +27439,19 @@ def test_bundle_supervisor_writes_manifest_without_starting_lanes(tmp_path):
     assert "--no-implement" in manifest["lanes"][0]["command"]
 
 
-def test_implementation_daemon_invokes_configured_llm_merge_resolver(tmp_path):
+def test_implementation_daemon_invokes_configured_llm_merge_resolver(
+    tmp_path,
+    monkeypatch,
+):
+    for name in (
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+        implementation_daemon_module._GROK_MODEL_ENV,
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
+    ):
+        monkeypatch.delenv(name, raising=False)
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -19639,6 +27507,63 @@ def test_implementation_daemon_invokes_configured_llm_merge_resolver(tmp_path):
     events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert events[-1]["type"] == "llm_merge_resolver_invoked"
     assert events[-1]["prompt_chars"] == len(prompt)
+
+
+def test_sealed_route_ignores_custom_merge_resolver_command(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _seal_ordered_grok_codex_route(monkeypatch)
+    captured: dict[str, object] = {}
+
+    def fake_invoke(payload, *, command_template, timeout_seconds):
+        captured.update(
+            {
+                "payload": payload,
+                "command_template": command_template,
+                "timeout_seconds": timeout_seconds,
+            }
+        )
+        return {"applied": False, "llm_returncode": 1}
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.merge.merge_resolver.invoke_llm_resolver",
+        fake_invoke,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        llm_merge_resolver_command="codex exec -",
+    )
+
+    daemon._invoke_llm_merge_resolver_for_failed_merge(
+        workspace=repo,
+        task=PortalTask(
+            task_id="ACCEL-SEALED-MERGE",
+            title="Resolve through reviewed route",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        ),
+        attempt=1,
+        branch_name="implementation/accel-sealed-merge",
+        target_branch="main",
+        merge_command=["git", "merge", "implementation/accel-sealed-merge"],
+        merge_stdout="",
+        merge_stderr="CONFLICT (content): Merge conflict",
+    )
+
+    assert captured["command_template"] == llm_merge_resolver_fallback_command(
+        python_executable=sys.executable,
+    )
+    assert captured["command_template"] != "codex exec -"
 
 
 def test_llm_merge_resolver_times_out_hung_command(tmp_path):
@@ -19700,6 +27625,126 @@ def test_implementation_supervisor_aborts_interrupted_main_checkout_merge(tmp_pa
     assert target.read_text(encoding="utf-8") == "main\n"
 
 
+def test_implementation_supervisor_refreshes_merge_state_after_checkout_lease(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+    merge_heads = iter(
+        [
+            {"ok": False, "merge_head": "", "error": "transient query"},
+            {"ok": True, "merge_head": ""},
+        ]
+    )
+    unmerged_paths = iter(
+        [
+            {"ok": True, "unmerged_paths": []},
+            {"ok": True, "unmerged_paths": []},
+        ]
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_git_merge_head_query",
+        lambda _repo: next(merge_heads),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_git_unmerged_paths_query",
+        lambda _repo: next(unmerged_paths),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_repair_main_checkout_merge_state_locked",
+        lambda *_args, **_kwargs: pytest.fail(
+            "clean state refreshed under the lease must not be repaired"
+        ),
+    )
+
+    result = supervisor.repair_main_checkout_merge_state()
+
+    assert result == {
+        "attempted": False,
+        "repaired": False,
+        "reason": "clean",
+        "path": str(repo),
+    }
+    assert not supervisor._repo_merge_lock_path().exists()
+
+
+def test_implementation_supervisor_defers_when_locked_merge_query_fails(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+    merge_heads = iter(
+        [
+            {"ok": True, "merge_head": "observed-before-lock"},
+            {
+                "ok": False,
+                "merge_head": "",
+                "error": "locked query failed",
+            },
+        ]
+    )
+    unmerged_paths = iter(
+        [
+            {"ok": True, "unmerged_paths": ["conflict.txt"]},
+            {"ok": True, "unmerged_paths": []},
+        ]
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_git_merge_head_query",
+        lambda _repo: next(merge_heads),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_git_unmerged_paths_query",
+        lambda _repo: next(unmerged_paths),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_repair_main_checkout_merge_state_locked",
+        lambda *_args, **_kwargs: pytest.fail(
+            "unknown locked state must not be repaired or treated as clean"
+        ),
+    )
+
+    result = supervisor.repair_main_checkout_merge_state()
+
+    assert result["attempted"] is True
+    assert result["repaired"] is False
+    assert result["reason"] == "main_checkout_merge_state_refresh_failed"
+    assert result["merge_head_query"]["ok"] is False
+    assert not supervisor._repo_merge_lock_path().exists()
+
+
 def test_implementation_supervisor_aborts_interrupted_main_checkout_merge_with_reset_fallback(
     tmp_path,
     monkeypatch,
@@ -19757,7 +27802,11 @@ def test_implementation_supervisor_aborts_interrupted_main_checkout_merge_with_r
     assert target.read_text(encoding="utf-8") == "main\n"
 
 
-def test_implementation_supervisor_invokes_llm_for_interrupted_main_checkout_merge(tmp_path):
+def test_implementation_supervisor_invokes_llm_for_interrupted_main_checkout_merge(
+    tmp_path,
+    monkeypatch,
+):
+    _clear_ordered_grok_codex_route(monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -20078,6 +28127,498 @@ def test_implementation_daemon_defers_generated_commit_when_checkout_lock_is_liv
     assert _git(repo, "status", "--porcelain", "--", "generated.md").startswith("M ")
 
 
+def test_implementation_daemon_acquires_checkout_lease_before_merge_preamble(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    observed: list[str] = []
+
+    def assert_checkout_owned(operation: str) -> None:
+        lease = daemon._current_checkout_mutation_lease()
+        assert lease is not None
+        assert lease.lock_path == checkout_mutation_lock_path(repo)
+        published = json.loads(lease.lock_path.read_text(encoding="utf-8"))
+        assert published["lease_id"] == lease.lease_id
+        assert published["operation"] == "merge_branch_to_main"
+        observed.append(operation)
+
+    monkeypatch.setattr(
+        daemon,
+        "_preserve_generated_nested_worktree_directories",
+        lambda: assert_checkout_owned("preserve_generated_nested_worktrees"),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_repair_stale_submodule_worktree_configs",
+        lambda _repo: (
+            assert_checkout_owned("repair_stale_submodule_worktree_configs")
+            or {}
+        ),
+    )
+    monkeypatch.setattr(daemon, "_main_branch_name", lambda: "main")
+    monkeypatch.setattr(
+        daemon,
+        "_rebase_stale_submodule_pointers",
+        lambda _branch, _target: (
+            assert_checkout_owned("rebase_stale_submodule_pointers")
+            or {"rebased": False}
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_git_ref_is_ancestor",
+        lambda _baseline, _target: False,
+    )
+
+    result = daemon._merge_branch_to_main(
+        "implementation/auto-lease",
+        PortalTask(
+            task_id="AUTO-LEASE",
+            title="Fence merge preamble",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        1,
+        baseline_ref="baseline-before-merge",
+    )
+
+    assert result["reason"] == "baseline_not_ancestor_of_target"
+    assert observed == [
+        "preserve_generated_nested_worktrees",
+        "repair_stale_submodule_worktree_configs",
+        "rebase_stale_submodule_pointers",
+    ]
+    assert not checkout_mutation_lock_path(repo).exists()
+
+
+def test_implementation_daemon_live_checkout_lease_preserves_todo_bytes(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Complete generated status
+
+- Status: todo
+- Priority: P1
+- Track: ops
+
+## ACCEL-002 Reopen dependency-ready task
+
+- Status: blocked
+- Priority: P1
+- Track: ops
+""",
+        encoding="utf-8",
+    )
+    before = todo_path.read_bytes()
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    lock_path = checkout_mutation_lock_path(repo)
+    lock_path.write_text(
+        json.dumps(
+            checkout_lock_metadata(
+                kind="merge",
+                repo_root=repo,
+                task_id="OTHER-1",
+                branch="implementation/other",
+                owner_script="",
+                extra={"operation": "foreign_checkout_mutation"},
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    completion = daemon._mark_task_completed_in_todo("ACCEL-001")
+    reopen = daemon._mark_tasks_ready_in_todo(
+        ["ACCEL-002"],
+        reason="dependencies_satisfied",
+    )
+
+    assert completion["updated"] is False
+    assert completion["reason"] == "checkout_mutation_lock_exists"
+    assert reopen["updated"] is False
+    assert reopen["reason"] == "checkout_mutation_lock_exists"
+    assert todo_path.read_bytes() == before
+    assert lock_path.exists()
+
+
+def test_implementation_daemon_board_write_and_commit_share_one_checkout_lease(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Complete generated status
+
+- Status: todo
+- Priority: P1
+- Track: ops
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed todo")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    acquired: list[tuple[str, str]] = []
+    released: list[str] = []
+    original_acquire = daemon._acquire_checkout_mutation_lease
+    original_release = daemon._release_checkout_mutation_lease
+
+    def tracking_acquire(**kwargs):
+        lease, reason, existing, waited = original_acquire(**kwargs)
+        if lease is not None:
+            acquired.append((str(kwargs["operation"]), lease.lease_id))
+        return lease, reason, existing, waited
+
+    def tracking_release(lease):
+        released.append(lease.lease_id)
+        return original_release(lease)
+
+    monkeypatch.setattr(
+        daemon,
+        "_acquire_checkout_mutation_lease",
+        tracking_acquire,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_release_checkout_mutation_lease",
+        tracking_release,
+    )
+
+    result = daemon._mark_task_completed_in_todo("ACCEL-001")
+
+    assert result["updated"] is True
+    assert result["commit_result"]["committed"] is True
+    assert len(acquired) == 1
+    assert len(released) == 1
+    assert acquired == [("mark_tasks_completed", released[0])]
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert _git(repo, "status", "--porcelain") == ""
+
+
+def test_implementation_daemon_retains_dirty_protected_completion_lease_until_recovery(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Complete generated status
+
+- Status: todo
+- Priority: P1
+- Track: ops
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(
+        repo,
+        "-c",
+        "user.name=Test User",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-m",
+        "seed todo",
+    )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implementation_protected_paths=("todo.md",),
+    )
+    original_commit = daemon._commit_generated_file_update_locked
+
+    def fail_generated_commit(path, *, task_id, subject):
+        assert daemon._current_checkout_mutation_lease() is not None
+        return {
+            "committed": False,
+            "reason": "git_commit_failed",
+            "path": str(path),
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_commit_generated_file_update_locked",
+        fail_generated_commit,
+    )
+
+    failed = daemon._mark_task_completed_in_todo("ACCEL-001")
+
+    retained_lease = daemon._current_checkout_mutation_lease()
+    assert failed["updated"] is True
+    assert failed["reason"] == "protected_board_commit_incomplete"
+    assert failed["durable"] is False
+    assert failed["checkout_mutation_lease_retained"] is True
+    assert retained_lease is not None
+    assert retained_lease.metadata["protected_recovery_owner"] == (
+        "implementation_daemon"
+    )
+    assert checkout_mutation_lock_path(repo).exists()
+    assert "todo.md" in _git(repo, "status", "--porcelain", "--", "todo.md")
+    unexpected_mutations: list[str] = []
+    blocked = daemon._run_checkout_mutation_transaction(
+        task_id="OTHER-1",
+        operation="merge_branch_to_main",
+        callback=lambda: (
+            unexpected_mutations.append("called") or {"merged": True}
+        ),
+        failure_fields={"merged": False},
+    )
+    assert blocked["merged"] is False
+    assert blocked["reason"] == (
+        "checkout_mutation_protected_recovery_required"
+    )
+    assert unexpected_mutations == []
+
+    monkeypatch.setattr(
+        daemon,
+        "_commit_generated_file_update_locked",
+        original_commit,
+    )
+    recovered = daemon._mark_task_completed_in_todo("ACCEL-001")
+
+    assert recovered["updated"] is False
+    assert recovered["reason"] == "already_completed"
+    assert recovered["durable"] is True
+    assert recovered["commit_result"]["committed"] is True
+    assert recovered["checkout_mutation_lease_recovered"] is True
+    assert recovered["checkout_mutation_lease_retained"] is False
+    assert daemon._current_checkout_mutation_lease() is None
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert _git(repo, "status", "--porcelain") == ""
+
+
+def test_implementation_daemon_retains_dirty_protected_reopen_lease_until_recovery(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-002 Reopen dependency-ready task
+
+- Status: blocked
+- Priority: P1
+- Track: ops
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(
+        repo,
+        "-c",
+        "user.name=Test User",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-m",
+        "seed todo",
+    )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implementation_protected_paths=("todo.md",),
+    )
+    original_commit = daemon._commit_generated_file_update_locked
+
+    def fail_generated_commit(path, *, task_id, subject):
+        assert daemon._current_checkout_mutation_lease() is not None
+        return {
+            "committed": False,
+            "reason": "git_commit_failed",
+            "path": str(path),
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_commit_generated_file_update_locked",
+        fail_generated_commit,
+    )
+
+    failed = daemon._mark_tasks_ready_in_todo(
+        ["ACCEL-002"],
+        reason="dependencies_satisfied",
+    )
+
+    assert failed["updated"] is True
+    assert failed["reason"] == "protected_board_commit_incomplete"
+    assert failed["durable"] is False
+    assert failed["checkout_mutation_lease_retained"] is True
+    assert daemon._current_checkout_mutation_lease() is not None
+    assert checkout_mutation_lock_path(repo).exists()
+    assert "todo.md" in _git(repo, "status", "--porcelain", "--", "todo.md")
+
+    monkeypatch.setattr(
+        daemon,
+        "_commit_generated_file_update_locked",
+        original_commit,
+    )
+    recovered = daemon._mark_tasks_ready_in_todo(
+        ["ACCEL-002"],
+        reason="dependencies_satisfied",
+    )
+
+    assert recovered["updated"] is False
+    assert recovered["already_ready_task_ids"] == ["ACCEL-002"]
+    assert recovered["durable"] is True
+    assert recovered["commit_result"]["committed"] is True
+    assert recovered["checkout_mutation_lease_recovered"] is True
+    assert recovered["checkout_mutation_lease_retained"] is False
+    assert daemon._current_checkout_mutation_lease() is None
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert _git(repo, "status", "--porcelain") == ""
+    author, subject = _git(
+        repo,
+        "log",
+        "-1",
+        "--pretty=%ae%x00%s",
+    ).split("\x00", 1)
+    assert daemon._trusted_protected_path_commit(author, subject) is True
+
+
+def test_implementation_daemon_retains_lease_until_protected_board_gitlink_recovers(
+    tmp_path,
+    monkeypatch,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    todo_path = submodule / "docs" / "generated.todo.md"
+    todo_path.parent.mkdir()
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-003 Complete nested generated status
+
+- Status: todo
+- Priority: P1
+- Track: ops
+""",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "docs/generated.todo.md")
+    _git(submodule, "commit", "-m", "seed nested todo")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "record nested todo")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implementation_protected_paths=(
+            "libs/child/docs/generated.todo.md",
+        ),
+    )
+    original_parent_updates = daemon._commit_parent_gitlink_updates
+    monkeypatch.setattr(
+        daemon,
+        "_commit_parent_gitlink_updates",
+        lambda _repo, *, task_id: [
+            {
+                "committed": False,
+                "reason": "git_commit_failed",
+                "path": "libs/child",
+            }
+        ],
+    )
+
+    failed = daemon._mark_task_completed_in_todo("ACCEL-003")
+
+    assert failed["commit_result"]["committed"] is True
+    assert failed["reason"] == "protected_board_commit_incomplete"
+    assert failed["checkout_mutation_lease_retained"] is True
+    assert "libs/child" in failed["dirty_protected_paths"]
+    assert checkout_mutation_lock_path(repo).exists()
+    assert "libs/child" in _git(
+        repo,
+        "status",
+        "--porcelain",
+        "--",
+        "libs/child",
+    )
+
+    monkeypatch.setattr(
+        daemon,
+        "_commit_parent_gitlink_updates",
+        original_parent_updates,
+    )
+    recovered = daemon._mark_task_completed_in_todo("ACCEL-003")
+
+    assert recovered["updated"] is False
+    assert recovered["commit_result"]["reason"] == "no_changes"
+    assert recovered["commit_result"]["parent_gitlink_commits"][0][
+        "committed"
+    ] is True
+    assert recovered["durable"] is True
+    assert recovered["checkout_mutation_lease_recovered"] is True
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert _git(repo, "status", "--porcelain") == ""
+    assert _git(submodule, "status", "--porcelain") == ""
+
+
 def test_implementation_daemon_clears_stale_same_state_merge_lock_for_generated_commit(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -20189,6 +28730,128 @@ def test_implementation_supervisor_cleans_merged_backlogged_worktrees(tmp_path):
         check=False,
     )
     assert branch_exists.returncode != 0
+
+
+def test_implementation_supervisor_prunes_stale_declared_submodule_worktrees_after_parent_cleanup(
+    tmp_path,
+):
+    child_source = tmp_path / "datasets-source"
+    child_source.mkdir()
+    _git(child_source, "init")
+    _git(child_source, "checkout", "-b", "main")
+    _git(child_source, "config", "user.name", "Test User")
+    _git(child_source, "config", "user.email", "test@example.invalid")
+    (child_source / "dataset.py").write_text("VALUE = 'base'\n", encoding="utf-8")
+    _git(child_source, "add", "dataset.py")
+    _git(child_source, "commit", "-m", "base")
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child_source),
+        "ipfs_datasets_py",
+    )
+    _git(repo, "commit", "-am", "add managed datasets submodule")
+
+    branch = "implementation/submodule-prune"
+    _git(repo, "branch", branch)
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "submodule-prune"
+    _git(repo, "worktree", "add", str(worktree_path), branch)
+    managed_source = repo / "ipfs_datasets_py"
+    stale_target = worktree_path / "ipfs_datasets_py"
+    _git(managed_source, "worktree", "add", "--detach", str(stale_target), "HEAD")
+    valid_target = tmp_path / "valid-datasets-worktree"
+    _git(managed_source, "worktree", "add", "--detach", str(valid_target), "HEAD")
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+            worktree_submodule_paths=("ipfs_datasets_py",),
+        )
+    )
+
+    result = supervisor.cleanup_backlogged_worktrees()
+
+    assert result["removed_count"] == 1
+    prune = result["managed_submodule_worktree_prune"]
+    assert prune["successful_repository_count"] == 1
+    assert prune["failed_count"] == 0
+    assert not stale_target.exists()
+    listing = _git(managed_source, "worktree", "list", "--porcelain")
+    assert str(stale_target) not in listing
+    assert str(valid_target) in listing
+    assert valid_target.exists()
+
+
+def test_implementation_supervisor_bounds_submodule_prune_and_ignores_nested_repo(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    nested_repo = repo / "tools" / "arbitrary"
+    nested_repo.mkdir(parents=True)
+    _git(nested_repo, "init")
+    _git(nested_repo, "checkout", "-b", "main")
+    _git(nested_repo, "config", "user.name", "Test User")
+    _git(nested_repo, "config", "user.email", "test@example.invalid")
+    (nested_repo / "tool.py").write_text("VALUE = 'tool'\n", encoding="utf-8")
+    _git(nested_repo, "add", "tool.py")
+    _git(nested_repo, "commit", "-m", "base")
+    stale_target = tmp_path / "stale-arbitrary-worktree"
+    _git(nested_repo, "worktree", "add", "--detach", str(stale_target), "HEAD")
+    shutil.rmtree(stale_target)
+
+    limit = implementation_supervisor_module.MAX_MANAGED_SUBMODULE_WORKTREE_PRUNES_PER_PASS
+    configured = ("tools/arbitrary",) + tuple(
+        f"missing-submodule-{index}" for index in range(limit)
+    )
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=repo / "state" / "task_state.json",
+            strategy_path=repo / "state" / "strategy.json",
+            events_path=repo / "state" / "events.jsonl",
+            state_dir=repo / "state",
+            repo_root=repo,
+            worktree_root=repo / "worktrees",
+            worktree_submodule_paths=configured,
+        )
+    )
+
+    result = supervisor._prune_managed_submodule_worktrees()
+
+    assert result["considered_count"] == limit
+    assert result["truncated_count"] == 1
+    assert result["successful_repository_count"] == 0
+    assert result["skipped"][0] == {
+        "path": "tools/arbitrary",
+        "reason": "unmanaged_repository",
+    }
+    listing = _git(nested_repo, "worktree", "list", "--porcelain")
+    assert str(stale_target) in listing
+    assert "prunable" in listing
 
 
 def test_implementation_supervisor_defers_worktree_cleanup_behind_checkout_lock(
@@ -20680,7 +29343,7 @@ def test_implementation_supervisor_rescues_dirty_merged_worktree(tmp_path):
     assert _git(repo, "show", f"{current_branch}:src/app.py") == "VALUE = 'rescued dirty content'"
 
 
-def test_implementation_supervisor_merges_rescued_worktree_and_deletes_it(tmp_path):
+def test_implementation_supervisor_preserves_unbound_rescued_worktree(tmp_path):
     repo, worktree_path, supervisor = _merged_cleanup_worktree_fixture(
         tmp_path,
         "implementation/rescue-dirty-merge",
@@ -20693,12 +29356,20 @@ def test_implementation_supervisor_merges_rescued_worktree_and_deletes_it(tmp_pa
 
     reconcile_result = supervisor.reconcile_backlogged_worktrees()
 
-    assert reconcile_result["reconciled_count"] == 1
-    assert reconcile_result["cleanup_count"] == 1
+    assert reconcile_result["reconciled_count"] == 0
+    assert reconcile_result["cleanup_count"] == 0
     assert reconcile_result["processed"][0]["branch"] == rescue_branch
-    assert reconcile_result["processed"][0]["cleanup_result"]["cleaned"] is True
-    assert not worktree_path.exists()
-    assert (repo / "src" / "app.py").read_text(encoding="utf-8") == "VALUE = 'rescued and merged'\n"
+    assert (
+        reconcile_result["processed"][0]["merge_result"]["reason"]
+        == "reconciliation_candidate_task_board_unavailable"
+    )
+    assert worktree_path.exists()
+    assert (
+        repo / "src" / "app.py"
+    ).read_text(encoding="utf-8") == "VALUE = 'base'\n"
+    assert (
+        worktree_path / "src" / "app.py"
+    ).read_text(encoding="utf-8") == "VALUE = 'rescued and merged'\n"
     rescue_branch_exists = subprocess.run(
         ["git", "rev-parse", "--verify", "--quiet", rescue_branch],
         cwd=repo,
@@ -20706,7 +29377,7 @@ def test_implementation_supervisor_merges_rescued_worktree_and_deletes_it(tmp_pa
         capture_output=True,
         check=False,
     )
-    assert rescue_branch_exists.returncode != 0
+    assert rescue_branch_exists.returncode == 0
 
 
 def test_implementation_supervisor_caps_dirty_worktree_evidence_samples(tmp_path, monkeypatch):
@@ -20884,10 +29555,14 @@ def test_implementation_supervisor_reconciles_clean_backlogged_worktree(tmp_path
 
     assert result["candidate_count"] == 1
     assert result["processed_count"] == 1
-    assert result["reconciled_count"] == 1
-    assert result["cleanup_count"] == 1
-    assert (repo / "feature.txt").read_text(encoding="utf-8") == "feature\n"
-    assert not worktree_path.exists()
+    assert result["reconciled_count"] == 0
+    assert result["cleanup_count"] == 0
+    assert (
+        result["processed"][0]["merge_result"]["reason"]
+        == "reconciliation_candidate_task_board_unavailable"
+    )
+    assert not (repo / "feature.txt").exists()
+    assert worktree_path.exists()
     branch_exists = subprocess.run(
         ["git", "rev-parse", "--verify", "--quiet", branch_name],
         cwd=repo,
@@ -20895,7 +29570,1762 @@ def test_implementation_supervisor_reconciles_clean_backlogged_worktree(tmp_path
         capture_output=True,
         check=False,
     )
-    assert branch_exists.returncode != 0
+    assert branch_exists.returncode == 0
+
+
+def _reconciled_candidate_task_board(
+    *,
+    task_id: str,
+    validation: str,
+    outputs: str = "feature.py",
+) -> str:
+    return (
+        "# Tasks\n\n"
+        f"## {task_id} Recover an orphaned implementation candidate\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n"
+        "- Priority: P0\n"
+        "- Track: ops\n"
+        f"- Outputs: {outputs}\n"
+        f"- Validation: {validation}\n"
+        "- Acceptance: The current task contract validates the recovered "
+        "candidate before completion.\n"
+    )
+
+
+def _seed_reconciled_generated_artifact_candidate(
+    tmp_path: Path,
+    *,
+    task_id: str,
+    validation: str = "python -m pytest -q test_feature.py",
+) -> dict[str, object]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        _reconciled_candidate_task_board(
+            task_id=task_id,
+            validation=validation,
+        ),
+        encoding="utf-8",
+    )
+    screenshot_relative = (
+        "artifacts/world-id-idkit-ui-review/"
+        "desktop-chrome/proof-center.png"
+    )
+    screenshot = repo / screenshot_relative
+    screenshot.parent.mkdir(parents=True)
+    screenshot.write_bytes(b"baseline screenshot")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / "test_feature.py").write_text(
+        "from pathlib import Path\n\n"
+        "def test_feature():\n"
+        "    import feature\n"
+        "    assert feature.VALUE == 1\n"
+        f"    Path({screenshot_relative!r})."
+        "write_bytes(b'validation screenshot')\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "README.md", "artifacts", "test_feature.py", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = f"implementation/{task_id.lower()}-generated-artifact"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "feature")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    worktree_path = tmp_path / "candidate"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    return {
+        "repo": repo,
+        "todo_path": todo_path,
+        "screenshot_relative": screenshot_relative,
+        "baseline": baseline,
+        "branch_name": branch_name,
+        "candidate": candidate,
+        "worktree_path": worktree_path,
+    }
+
+
+def test_reconciled_candidate_restores_tracked_validation_screenshot(
+    tmp_path: Path,
+):
+    fixture = _seed_reconciled_generated_artifact_candidate(
+        tmp_path,
+        task_id="ACCEL-010R",
+    )
+    repo = fixture["repo"]
+    todo_path = fixture["todo_path"]
+    worktree_path = fixture["worktree_path"]
+    screenshot_relative = fixture["screenshot_relative"]
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+
+    result = daemon.reconcile_validated_worktree_candidate(
+        worktree_path=worktree_path,
+        branch_name=fixture["branch_name"],
+        task=task,
+        baseline_ref=fixture["baseline"],
+        candidate_commit=fixture["candidate"],
+        recovery_key="tracked-screenshot-recovery",
+    )
+
+    validation = result["validation_result"]
+    assert result["returncode"] == 0
+    assert validation["passed"] is True
+    assert validation["candidate_binding"]["verified"] is True
+    receipt = validation["generated_dirty_restore"]
+    assert receipt["attempted_count"] >= 1
+    assert receipt["restored_count"] == receipt["attempted_count"]
+    assert receipt["failed_count"] == 0
+    assert screenshot_relative in {
+        item["path"] for item in receipt["results"]
+    }
+    assert (repo / fixture["screenshot_relative"]).read_bytes() == (
+        b"baseline screenshot"
+    )
+    assert _git(repo, "status", "--short") == ""
+
+
+def test_reconciled_candidate_records_protected_generated_artifact_mutation(
+    tmp_path: Path,
+):
+    fixture = _seed_reconciled_generated_artifact_candidate(
+        tmp_path,
+        task_id="ACCEL-010P",
+    )
+    repo = fixture["repo"]
+    todo_path = fixture["todo_path"]
+    worktree_path = fixture["worktree_path"]
+    screenshot_relative = fixture["screenshot_relative"]
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+        implementation_protected_paths=[screenshot_relative],
+    )
+    task = daemon._load_tasks()[0]
+
+    result = daemon.reconcile_validated_worktree_candidate(
+        worktree_path=worktree_path,
+        branch_name=fixture["branch_name"],
+        task=task,
+        baseline_ref=fixture["baseline"],
+        candidate_commit=fixture["candidate"],
+        recovery_key="protected-screenshot-recovery",
+    )
+
+    validation = result["validation_result"]
+    assert result["returncode"] != 0
+    assert validation["reason"] == "implementation_protected_path_mutated"
+    assert validation["protected_path_violation"]["protected_paths"] == [
+        screenshot_relative
+    ]
+    assert "generated_dirty_restore" not in validation
+    assert (worktree_path / screenshot_relative).read_bytes() == (
+        b"validation screenshot"
+    )
+    assert daemon._implementation_protected_incident_path().exists()
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+
+
+def test_reconciled_failure_cleanup_preserves_unchanged_protected_ephemeral_child(
+    tmp_path: Path,
+    monkeypatch,
+):
+    fixture = _seed_reconciled_generated_artifact_candidate(
+        tmp_path,
+        task_id="ACCEL-010U",
+        validation=(
+            "python -m pytest -q test_feature.py "
+            "-k no_such_test_selected"
+        ),
+    )
+    repo = fixture["repo"]
+    todo_path = fixture["todo_path"]
+    worktree_path = fixture["worktree_path"]
+    (repo / ".git" / "info" / "exclude").write_text(
+        ".pytest_cache/\n",
+        encoding="utf-8",
+    )
+    protected_relative = ".pytest_cache/operator-sentinel"
+    shared_sentinel = repo / protected_relative
+    worktree_sentinel = worktree_path / protected_relative
+    shared_sentinel.parent.mkdir(parents=True)
+    worktree_sentinel.parent.mkdir(parents=True)
+    shared_sentinel.write_text("operator evidence\n", encoding="utf-8")
+    worktree_sentinel.write_text("operator evidence\n", encoding="utf-8")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+        implementation_protected_paths=[protected_relative],
+    )
+    task = daemon._load_tasks()[0]
+    failure_cleanup_calls: list[Path] = []
+    unprotected_failure_output = (
+        worktree_path / "test-results" / "unprotected-output.txt"
+    )
+    restore_failure_outputs = (
+        daemon._restore_ephemeral_worktree_paths_for_commit
+    )
+
+    def record_failure_cleanup(path):
+        failure_cleanup_calls.append(path)
+        unprotected_failure_output.parent.mkdir(parents=True)
+        unprotected_failure_output.write_text(
+            "generated validation output\n",
+            encoding="utf-8",
+        )
+        restore_failure_outputs(path)
+
+    monkeypatch.setattr(
+        daemon,
+        "_restore_ephemeral_worktree_paths_for_commit",
+        record_failure_cleanup,
+    )
+
+    result = daemon.reconcile_validated_worktree_candidate(
+        worktree_path=worktree_path,
+        branch_name=fixture["branch_name"],
+        task=task,
+        baseline_ref=fixture["baseline"],
+        candidate_commit=fixture["candidate"],
+        recovery_key="protected-ephemeral-child-recovery",
+    )
+
+    assert result["returncode"] != 0
+    assert result["validation_result"]["passed"] is False
+    assert result["validation_result"]["reason"] == (
+        "declared_validation_failed"
+    )
+    assert result["validation_result"]["attempted"] is True
+    assert any(
+        item.get("returncode") == 5
+        for item in result["validation_result"]["results"]
+    )
+    assert not result["protected_path_violation"]
+    assert failure_cleanup_calls == [worktree_path]
+    assert worktree_sentinel.read_text(encoding="utf-8") == (
+        "operator evidence\n"
+    )
+    assert shared_sentinel.read_text(encoding="utf-8") == (
+        "operator evidence\n"
+    )
+    assert not daemon._implementation_protected_active_snapshot_path().exists()
+    assert not unprotected_failure_output.exists()
+
+
+def test_implementation_supervisor_validates_current_task_before_recovered_merge(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        _reconciled_candidate_task_board(
+            task_id="ACCEL-010",
+            validation="python -m py_compile feature.py",
+        ),
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(
+        "__pycache__/\n*.pyc\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".gitignore", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+
+    branch_name = (
+        "implementation/accel-010-a1b2c3d4e5f6-attempt-1-123"
+    )
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text(
+        'VALUE = "feature"\n',
+        encoding="utf-8",
+    )
+    _git(repo, "add", "feature.py")
+    candidate_commit = _git(repo, "commit", "-m", "feature")
+    candidate_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    state_dir = tmp_path / "state"
+    worktree_root = tmp_path / "worktrees"
+    worktree_path = worktree_root / "candidate"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            state_prefix="accel",
+            task_prefix="## ACCEL-",
+            repo_root=repo,
+            worktree_root=worktree_root,
+            merge_target_branch="main",
+        )
+    )
+
+    result = supervisor.reconcile_backlogged_worktrees()
+
+    assert result["reconciled_count"] == 1
+    recovered = result["processed"][0]["recovery_result"]
+    assert recovered["implementation_commit"] == candidate_commit
+    assert recovered["provider_dispatched"] is False
+    assert recovered["attempt_consumed"] is False
+    assert recovered["validation_result"]["passed"] is True
+    assert recovered["validation_result"]["proposal_gate"]["accepted"] is True
+    assert result["processed"][0]["validated_before_merge"] is True
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+    assert (repo / "feature.py").read_text(
+        encoding="utf-8"
+    ) == 'VALUE = "feature"\n'
+    managed_events = [
+        json.loads(line)
+        for line in (state_dir / "accel_events.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    assert any(
+        event["type"] == "implementation_finished"
+        and event["task_id"] == "ACCEL-010"
+        and event["attempt_consumed"] is False
+        and event["provider_dispatched"] is False
+        for event in managed_events
+    )
+    assert _git(repo, "status", "--short") == ""
+
+
+def test_implementation_supervisor_run_once_reconciles_candidate_under_maintenance_lease(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        _reconciled_candidate_task_board(
+            task_id="ACCEL-010L",
+            validation="python -m py_compile feature.py",
+        ),
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(
+        "__pycache__/\n*.pyc\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".gitignore", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+
+    branch_name = (
+        "implementation/accel-010l-a1b2c3d4e5f6-attempt-1-123"
+    )
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text(
+        'VALUE = "feature"\n',
+        encoding="utf-8",
+    )
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "feature")
+    candidate_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "state"
+    worktree_root = tmp_path / "worktrees"
+    worktree_path = worktree_root / "candidate"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            state_prefix="accel",
+            task_prefix="## ACCEL-",
+            repo_root=repo,
+            worktree_root=worktree_root,
+            merge_target_branch="main",
+            implementation_protected_paths=("README.md",),
+        )
+    )
+    maintenance_lock_path = state_dir / "implementation.lock"
+    observed_leases: dict[str, dict] = {}
+    reconcile = supervisor.reconcile_backlogged_worktrees
+
+    def reconcile_under_outer_lease(
+        *,
+        preacquired_implementation_lock=None,
+    ):
+        assert preacquired_implementation_lock is not None
+        observed_leases["argument"] = dict(
+            preacquired_implementation_lock
+        )
+        observed_leases["before"] = json.loads(
+            maintenance_lock_path.read_text(encoding="utf-8")
+        )
+        result = reconcile(
+            preacquired_implementation_lock=(
+                preacquired_implementation_lock
+            ),
+        )
+        observed_leases["after"] = json.loads(
+            maintenance_lock_path.read_text(encoding="utf-8")
+        )
+        return result
+
+    monkeypatch.setattr(
+        supervisor,
+        "reconcile_backlogged_worktrees",
+        reconcile_under_outer_lease,
+    )
+
+    run_result = supervisor.run_once(include_refill=False)
+    result = run_result["worktree_reconciliation"]
+
+    assert result["reconciled_count"] == 1, json.dumps(
+        result,
+        indent=2,
+        sort_keys=True,
+    )
+    assert observed_leases["argument"]["lease_role"] == (
+        "supervisor_maintenance"
+    )
+    assert (
+        observed_leases["argument"]
+        == observed_leases["before"]
+        == observed_leases["after"]
+    )
+    assert not maintenance_lock_path.exists()
+    recovered = result["processed"][0]["recovery_result"]
+    assert recovered["implementation_commit"] == candidate_commit
+    assert recovered["returncode"] == 0
+    assert recovered["validation_result"]["passed"] is True
+    assert recovered["validation_result"]["proposal_gate"]["accepted"] is True
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+    assert (repo / "feature.py").read_text(
+        encoding="utf-8"
+    ) == 'VALUE = "feature"\n'
+    assert _git(repo, "status", "--short") == ""
+
+
+def test_reconciled_candidate_validation_never_commits_test_artifacts(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        _reconciled_candidate_task_board(
+            task_id="ACCEL-010A",
+            validation="python -m pytest -q test_feature.py",
+        ),
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / "test_feature.py").write_text(
+        "from pathlib import Path\n\n"
+        "def test_feature():\n"
+        "    import feature\n"
+        "    assert feature.VALUE == 1\n"
+        "    Path('unexpected-validation-artifact.txt')."
+        "write_text('artifact')\n",
+        encoding="utf-8",
+    )
+    (repo / ".gitignore").write_text(
+        "__pycache__/\n*.pyc\n",
+        encoding="utf-8",
+    )
+    _git(
+        repo,
+        "add",
+        ".gitignore",
+        "README.md",
+        "test_feature.py",
+        "todo.md",
+    )
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/accel-010a-immutable"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "feature")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    worktree_path = tmp_path / "candidate"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+
+    result = daemon.reconcile_validated_worktree_candidate(
+        worktree_path=worktree_path,
+        branch_name=branch_name,
+        task=task,
+        baseline_ref=baseline,
+        candidate_commit=candidate,
+        recovery_key="immutable-artifact-test",
+    )
+
+    assert result["returncode"] != 0
+    assert result["validation_result"]["reason"] in {
+        "candidate_changed_during_validation",
+        "reconciled_candidate_mutated_during_validation",
+    }
+    assert result["commit_result"]["committed"] is False
+    assert _git(worktree_path, "rev-parse", "HEAD") == candidate
+    assert (
+        _git(repo, "rev-list", "--count", f"{baseline}..{branch_name}")
+        == "1"
+    )
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+
+
+def test_implementation_supervisor_keeps_failed_recovered_candidate_unmerged(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        _reconciled_candidate_task_board(
+            task_id="ACCEL-011",
+            validation="python -m py_compile feature.py",
+        ),
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(
+        "__pycache__/\n*.pyc\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".gitignore", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+
+    branch_name = (
+        "implementation/accel-011-0f1e2d3c4b5a-attempt-1-456"
+    )
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text(
+        "this is invalid python\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "feature")
+    _git(repo, "checkout", "main")
+    state_dir = tmp_path / "state"
+    worktree_root = tmp_path / "worktrees"
+    worktree_path = worktree_root / "candidate"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            state_prefix="accel",
+            task_prefix="## ACCEL-",
+            repo_root=repo,
+            worktree_root=worktree_root,
+            merge_target_branch="main",
+        )
+    )
+
+    first = supervisor.reconcile_backlogged_worktrees()
+    second = supervisor.reconcile_backlogged_worktrees()
+
+    recovered = first["processed"][0]["recovery_result"]
+    assert first["reconciled_count"] == 0
+    assert recovered["returncode"] != 0
+    assert recovered["validation_result"]["passed"] is False
+    assert recovered["provider_dispatched"] is False
+    assert not (repo / "feature.py").exists()
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+    assert worktree_path.exists()
+    assert second["reconciled_count"] == 0
+    assert second["processed_count"] == 1
+    assert (
+        second["processed"][0]["merge_result"]["reason"]
+        == "reconciliation_candidate_validation_already_settled"
+    )
+
+
+def test_validation_command_runner_classifies_playwright_host_preflight_failure(
+    tmp_path,
+    monkeypatch,
+):
+    output = (
+        "Playwright host dependency preflight failed on Linux.\n"
+        "browser bundle is not installed under /var/cache/ms-playwright\n"
+    )
+    calls = []
+
+    def fake_run(*args, **_kwargs):
+        calls.append(args[0])
+        if len(calls) == 1:
+            return subprocess.CompletedProcess(
+                args=args[0],
+                returncode=0,
+                stdout="",
+            )
+        return subprocess.CompletedProcess(
+            args=args[0],
+            returncode=1,
+            stdout=output,
+        )
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        fake_run,
+    )
+    environment = validation_environment_for_runner(
+        build_validation_environment(),
+        TodoImplementationDaemon._validation_command_runner,
+    )
+
+    result = TodoImplementationDaemon._validation_command_runner(
+        spec=SimpleNamespace(
+            command="npx playwright test",
+            raw_command="npx playwright test",
+        ),
+        workspace_path=tmp_path,
+        timeout_seconds=10,
+        environment=environment,
+    )
+
+    assert len(calls) == 2
+    assert result["returncode"] == 1
+    assert result["infrastructure_failure"] is True
+    assert (
+        result["error"]
+        == "validation_environment_playwright_browsers_missing"
+    )
+    assert result["validation_python_launcher"] == {
+        "content_sha256": environment[
+            VALIDATION_PYTHON_LAUNCHER_SHA256_ENV
+        ],
+        "interpreter_sha256": environment[
+            VALIDATION_PYTHON_INTERPRETER_SHA256_ENV
+        ],
+        "interpreter_stat": environment[
+            VALIDATION_PYTHON_INTERPRETER_STAT_ENV
+        ],
+        "mode": environment[VALIDATION_PYTHON_LAUNCHER_MODE_ENV],
+        "policy_sha256": environment[
+            VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV
+        ],
+        "sealed": True,
+    }
+
+
+def test_reconciliation_validation_log_paths_are_invocation_bound(
+    tmp_path,
+):
+    log_dir = tmp_path / "state" / "implementation_logs"
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+        implementation_log_dir=log_dir,
+    )
+    common = {
+        "task_id": "ACCEL-011",
+        "candidate_commit": "a" * 40,
+        "recovery_key": "same-recovery",
+        "branch_name": "implementation/accel-011-candidate",
+    }
+
+    first_path = daemon._reconciliation_validation_log_path(
+        **common,
+        started_at="2026-07-29T11:00:00.000001+00:00",
+    )
+    first_path.parent.mkdir(parents=True)
+    first_path.write_text("first replay evidence\n", encoding="utf-8")
+    second_path = daemon._reconciliation_validation_log_path(
+        **common,
+        started_at="2026-07-29T11:00:00.000002+00:00",
+    )
+    second_path.write_text("second replay evidence\n", encoding="utf-8")
+
+    assert first_path != second_path
+    assert first_path.read_text(encoding="utf-8") == "first replay evidence\n"
+    assert second_path.read_text(encoding="utf-8") == "second replay evidence\n"
+
+
+def test_reconciliation_playwright_log_retry_requires_approved_browser_directory(
+    tmp_path,
+    monkeypatch,
+):
+    state_dir = tmp_path / "state"
+    log_dir = state_dir / "implementation_logs"
+    log_dir.mkdir(parents=True)
+    log_path = log_dir / "accel-011-reconciliation-validation.log"
+    log_path.write_text(
+        "Playwright host dependency preflight failed on Linux.\n"
+        "browser bundle is not installed under /var/cache/ms-playwright\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=tmp_path,
+        implementation_log_dir=log_dir,
+    )
+    event = {
+        "type": "worktree_reconciliation_validation_finished",
+        "task_id": "ACCEL-011",
+        "recovery_key": "playwright-browser-cache",
+        "provider_dispatched": False,
+        "attempt_consumed": False,
+        "log_path": str(log_path),
+        "validation_result": {
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "declared_validation_failed",
+            "error": "validation_command_failed",
+            "proposal_gate": {
+                "attempted": True,
+                "accepted": True,
+                "proposal_id": "proposal-playwright-browser-cache",
+                "reason_codes": [],
+            },
+            "results": [
+                {
+                    "command": "npx playwright test",
+                    "returncode": 1,
+                }
+            ],
+        },
+    }
+    variable = (
+        "IPFS_ACCELERATE_AGENT_VALIDATION_PLAYWRIGHT_BROWSERS_PATH"
+    )
+    monkeypatch.delenv(variable, raising=False)
+
+    assert daemon._retryable_reconciliation_event_failure(event) is False
+
+    monkeypatch.setenv(variable, str(tmp_path / "missing-browsers"))
+    assert daemon._retryable_reconciliation_event_failure(event) is False
+
+    browser_dir = tmp_path / "browsers"
+    browser_dir.mkdir()
+    monkeypatch.setenv(variable, str(browser_dir))
+    assert daemon._retryable_reconciliation_event_failure(event) is True
+
+    outside_log = tmp_path / "outside-validation.log"
+    outside_log.write_text(log_path.read_text(encoding="utf-8"), encoding="utf-8")
+    event["log_path"] = str(outside_log)
+    assert daemon._retryable_reconciliation_event_failure(event) is False
+
+
+def test_reconciliation_security_failure_overrides_playwright_log_retry(
+    tmp_path,
+    monkeypatch,
+):
+    state_dir = tmp_path / "state"
+    log_dir = state_dir / "implementation_logs"
+    log_dir.mkdir(parents=True)
+    log_path = log_dir / "accel-011-security-validation.log"
+    log_path.write_text(
+        "Playwright host dependency preflight failed on Linux.\n"
+        "browser bundle is not installed under /var/cache/ms-playwright\n",
+        encoding="utf-8",
+    )
+    browser_dir = tmp_path / "browsers"
+    browser_dir.mkdir()
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_VALIDATION_PLAYWRIGHT_BROWSERS_PATH",
+        str(browser_dir),
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=tmp_path,
+        implementation_log_dir=log_dir,
+    )
+    event = {
+        "type": "worktree_reconciliation_validation_finished",
+        "task_id": "ACCEL-011",
+        "recovery_key": "playwright-security-precedence",
+        "provider_dispatched": False,
+        "attempt_consumed": False,
+        "log_path": str(log_path),
+        "validation_result": {
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "declared_validation_failed",
+            "error": "validation_command_failed",
+            "candidate_binding": {
+                "verified": False,
+                "reason": "candidate_fingerprint_changed",
+            },
+            "proposal_gate": {
+                "attempted": True,
+                "accepted": True,
+                "proposal_id": "proposal-playwright-security-precedence",
+                "reason_codes": [],
+            },
+            "results": [
+                {
+                    "command": "npx playwright test",
+                    "returncode": 1,
+                }
+            ],
+        },
+    }
+
+    assert daemon._retryable_reconciliation_event_failure(event) is False
+
+
+def test_explicit_legacy_environment_retry_binding_is_exact_and_security_terminal(
+    tmp_path,
+    monkeypatch,
+):
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+    )
+    task_id = "ACCEL-011"
+    recovery_key = "legacy-playwright-recovery"
+    proposal_id = "proposal-legacy-playwright"
+    diagnostic_signature = (
+        "01c6f70fbe05a361b6734183125ca4aeae49e5c0d1e84659803cb35e7a41eb05"
+    )
+    event = {
+        "type": "worktree_reconciliation_validation_finished",
+        "task_id": task_id,
+        "recovery_key": recovery_key,
+        "provider_dispatched": False,
+        "attempt_consumed": False,
+        "validation_result": {
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "declared_validation_failed",
+            "error": "validation_command_failed",
+            "proposal_gate": {
+                "attempted": True,
+                "accepted": True,
+                "proposal_id": proposal_id,
+                "reason_codes": [],
+            },
+            "results": [
+                {
+                    "command": "npx playwright test",
+                    "returncode": 1,
+                    "diagnostic_signature": diagnostic_signature,
+                }
+            ],
+        },
+    }
+    variable = (
+        "IPFS_ACCELERATE_AGENT_RECONCILIATION_ENVIRONMENT_RETRY_BINDINGS"
+    )
+    binding_fields = (
+        task_id,
+        recovery_key,
+        proposal_id,
+        diagnostic_signature,
+    )
+    monkeypatch.setenv(variable, "|".join(binding_fields))
+
+    assert daemon._retryable_reconciliation_event_failure(event) is True
+
+    for index, replacement in enumerate(
+        (
+            "ACCEL-OTHER",
+            "other-recovery",
+            "proposal-other",
+            "f" * 64,
+        )
+    ):
+        mismatched = list(binding_fields)
+        mismatched[index] = replacement
+        monkeypatch.setenv(variable, "|".join(mismatched))
+        assert daemon._retryable_reconciliation_event_failure(event) is False
+
+    monkeypatch.setenv(variable, "|".join(binding_fields))
+    validation_result = event["validation_result"]
+    for terminal_evidence in (
+        {
+            "candidate_binding": {
+                "verified": False,
+                "reason": "candidate_fingerprint_changed",
+            }
+        },
+        {
+            "protected_path_violation": {
+                "reason": "implementation_protected_path_mutated",
+                "changed_paths": ["docs/planning/TODO.md"],
+            }
+        },
+    ):
+        validation_result.update(terminal_evidence)
+        assert daemon._retryable_reconciliation_event_failure(event) is False
+        for key in terminal_evidence:
+            validation_result.pop(key)
+
+
+def test_implementation_supervisor_retries_reconciliation_when_validation_executable_is_missing(
+    tmp_path,
+):
+    state_dir = tmp_path / "runtime" / "codex"
+    state_dir.mkdir(parents=True)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=tmp_path / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            state_prefix="accel",
+            task_prefix="## ACCEL-",
+            repo_root=tmp_path,
+            worktree_root=tmp_path / "worktrees",
+            merge_target_branch="main",
+        )
+    )
+    task = SimpleNamespace(task_id="ACCEL-011")
+    missing_executable_key = "missing-validation-executable"
+    semantic_failure_key = "semantic-validation-failure"
+    events = [
+        {
+            "type": "worktree_reconciliation_validation_finished",
+            "task_id": task.task_id,
+            "branch": "implementation/accel-011-missing-executable",
+            "recovery_key": missing_executable_key,
+            "returncode": 127,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 127,
+                "reason": "declared_validation_failed",
+                "error": "validation_command_failed",
+                "failed_command": "npm run build",
+                "proposal_gate": {
+                    "attempted": True,
+                    "accepted": True,
+                    "proposal_id": "proposal-missing-executable",
+                    "reason_codes": [],
+                },
+                "results": [
+                    {
+                        "command": "npm run build",
+                        "returncode": 127,
+                    }
+                ],
+            },
+        },
+        {
+            "type": "worktree_reconciliation_validation_finished",
+            "task_id": task.task_id,
+            "branch": "implementation/accel-011-missing-executable",
+            "recovery_key": missing_executable_key,
+            "returncode": 1,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 1,
+                "reason": "proposal_gate_failed",
+                "proposal_gate": {
+                    "attempted": True,
+                    "accepted": False,
+                    "proposal_id": "proposal-missing-executable",
+                    "reason_codes": ["stale_proposal_replay"],
+                },
+                "results": [],
+            },
+        },
+        {
+            "type": "worktree_reconciliation_validation_finished",
+            "task_id": task.task_id,
+            "branch": "implementation/accel-011-semantic-failure",
+            "recovery_key": semantic_failure_key,
+            "returncode": 1,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 1,
+                "reason": "declared_validation_failed",
+                "error": "validation_command_failed",
+                "failed_command": "python -m pytest -q",
+                "proposal_gate": {
+                    "attempted": True,
+                    "accepted": True,
+                    "proposal_id": "proposal-semantic-failure",
+                    "reason_codes": [],
+                },
+                "results": [
+                    {
+                        "command": "python -m pytest -q",
+                        "returncode": 1,
+                    }
+                ],
+            },
+        },
+    ]
+
+    class ReconciliationContextDaemon:
+        @staticmethod
+        def _load_tasks():
+            return [task]
+
+        @staticmethod
+        def _register_task_identities(tasks):
+            assert tasks == [task]
+
+        @staticmethod
+        def _iter_events():
+            return iter(events)
+
+    (
+        _tasks_by_id,
+        _task_ids_by_branch,
+        outcome_keys,
+        _provenance_by_branch,
+    ) = supervisor._reconciliation_task_context(
+        ReconciliationContextDaemon()
+    )
+
+    assert semantic_failure_key in outcome_keys
+    assert missing_executable_key not in outcome_keys
+
+
+def test_reconciliation_proposal_allowlist_is_exact_task_and_recovery_bound(
+    tmp_path,
+    monkeypatch,
+):
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=tmp_path,
+    )
+    exact_task_id = "ACCEL-011A"
+    exact_recovery_key = "recovery-exact"
+    exact_proposal_id = "proposal-exact"
+    events = [
+        {
+            "type": "worktree_reconciliation_validation_finished",
+            "task_id": exact_task_id,
+            "recovery_key": exact_recovery_key,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 127,
+                "reason": "declared_validation_failed",
+                "proposal_gate": {
+                    "attempted": True,
+                    "accepted": True,
+                    "proposal_id": exact_proposal_id,
+                    "reason_codes": [],
+                },
+                "results": [
+                    {
+                        "command": "npm run build",
+                        "returncode": 127,
+                    }
+                ],
+            },
+        },
+        {
+            "type": "worktree_reconciliation_validation_finished",
+            "task_id": exact_task_id,
+            "recovery_key": exact_recovery_key,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 1,
+                "reason": "proposal_gate_failed",
+                "proposal_gate": {
+                    "attempted": True,
+                    "accepted": False,
+                    "proposal_id": exact_proposal_id,
+                    "reason_codes": ["stale_proposal_replay"],
+                },
+                "results": [],
+            },
+        },
+        {
+            "type": "worktree_reconciliation_validation_finished",
+            "task_id": exact_task_id,
+            "recovery_key": "recovery-unrelated",
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 1,
+                "reason": "declared_validation_failed",
+                "proposal_gate": {
+                    "attempted": True,
+                    "accepted": True,
+                    "proposal_id": exact_proposal_id,
+                    "reason_codes": [],
+                },
+                "results": [
+                    {
+                        "command": "python -m pytest -q",
+                        "returncode": 1,
+                    }
+                ],
+            },
+        },
+    ]
+    monkeypatch.setattr(daemon, "_iter_events", lambda: iter(events))
+
+    assert daemon._retryable_reconciliation_proposal_ids(
+        task_id=exact_task_id,
+        recovery_key=exact_recovery_key,
+    ) == (exact_proposal_id,)
+    assert daemon._retryable_reconciliation_proposal_ids(
+        task_id=exact_task_id,
+        recovery_key="recovery-unrelated",
+    ) == ()
+    assert daemon._retryable_reconciliation_proposal_ids(
+        task_id="ACCEL-OTHER",
+        recovery_key=exact_recovery_key,
+    ) == ()
+
+    events.append(
+        {
+            "type": "worktree_reconciliation_validation_finished",
+            "task_id": exact_task_id,
+            "recovery_key": exact_recovery_key,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 1,
+                "reason": "declared_validation_failed",
+                "proposal_gate": {
+                    "attempted": True,
+                    "accepted": True,
+                    "proposal_id": exact_proposal_id,
+                    "reason_codes": [],
+                },
+                "results": [
+                    {
+                        "command": "python -m pytest -q",
+                        "returncode": 1,
+                    }
+                ],
+            },
+        }
+    )
+
+    assert daemon._retryable_reconciliation_proposal_ids(
+        task_id=exact_task_id,
+        recovery_key=exact_recovery_key,
+    ) == ()
+
+
+@pytest.mark.parametrize(
+    ("terminal_reason", "terminal_evidence", "nested_result"),
+    [
+        (
+            "implementation_protected_path_mutated",
+            {
+                "protected_path_violation": {
+                    "reason": "implementation_protected_path_mutated",
+                    "changed_paths": ["docs/planning/TODO.md"],
+                }
+            },
+            {
+                "command": "npm run build",
+                "returncode": 127,
+            },
+        ),
+        (
+            "candidate_changed_during_validation",
+            {
+                "candidate_binding": {
+                    "verified": False,
+                    "reason": "candidate_fingerprint_changed",
+                }
+            },
+            {
+                "command": "python -m pytest -q",
+                "returncode": 1,
+                "timed_out": True,
+            },
+        ),
+    ],
+    ids=("protected-path", "candidate-identity"),
+)
+def test_reconciliation_security_failure_precedes_nested_environmental_signal(
+    tmp_path,
+    monkeypatch,
+    terminal_reason,
+    terminal_evidence,
+    nested_result,
+):
+    state_dir = tmp_path / "runtime" / "codex"
+    state_dir.mkdir(parents=True)
+    task = SimpleNamespace(task_id="ACCEL-011C")
+    recovery_key = f"security-precedence-{terminal_reason}"
+    proposal_id = f"proposal-{terminal_reason}"
+    environmental_failure = {
+        "attempted": True,
+        "passed": False,
+        "returncode": 127,
+        "reason": "declared_validation_failed",
+        "proposal_gate": {
+            "attempted": True,
+            "accepted": True,
+            "proposal_id": proposal_id,
+            "reason_codes": [],
+        },
+        "results": [
+            {
+                "command": "npm run build",
+                "returncode": 127,
+            }
+        ],
+    }
+    terminal_failure = {
+        "attempted": True,
+        "passed": False,
+        "returncode": 1,
+        "reason": terminal_reason,
+        "proposal_gate": {
+            "attempted": True,
+            "accepted": True,
+            "proposal_id": proposal_id,
+            "reason_codes": [],
+        },
+        "results": [nested_result],
+        **terminal_evidence,
+    }
+    events = [
+        {
+            "type": "worktree_reconciliation_validation_finished",
+            "task_id": task.task_id,
+            "branch": "implementation/accel-011c-security-precedence",
+            "recovery_key": recovery_key,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "returncode": 127,
+            "validation_result": environmental_failure,
+        }
+    ]
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=tmp_path,
+    )
+    monkeypatch.setattr(daemon, "_load_tasks", lambda: [task])
+    monkeypatch.setattr(
+        daemon,
+        "_register_task_identities",
+        lambda tasks: None,
+    )
+    monkeypatch.setattr(daemon, "_iter_events", lambda: iter(events))
+
+    assert daemon._retryable_reconciliation_proposal_ids(
+        task_id=task.task_id,
+        recovery_key=recovery_key,
+    ) == (proposal_id,)
+
+    events.append(
+        {
+            "type": "worktree_reconciliation_validation_finished",
+            "task_id": task.task_id,
+            "branch": "implementation/accel-011c-security-precedence",
+            "recovery_key": recovery_key,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "returncode": 1,
+            "validation_result": terminal_failure,
+        }
+    )
+
+    assert (
+        daemon._retryable_reconciliation_validation_failure(
+            terminal_failure
+        )
+        is False
+    )
+    assert daemon._retryable_reconciliation_proposal_ids(
+        task_id=task.task_id,
+        recovery_key=recovery_key,
+    ) == ()
+
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=tmp_path / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            state_prefix="accel",
+            task_prefix="## ACCEL-",
+            repo_root=tmp_path,
+            worktree_root=tmp_path / "worktrees",
+            merge_target_branch="main",
+        )
+    )
+    (
+        _tasks_by_id,
+        _task_ids_by_branch,
+        outcome_keys,
+        _provenance_by_branch,
+    ) = supervisor._reconciliation_task_context(daemon)
+
+    assert recovery_key in outcome_keys
+
+
+def test_reconciled_candidate_reuses_only_environmentally_retryable_proposal(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        _reconciled_candidate_task_board(
+            task_id="ACCEL-011B",
+            validation="python -m py_compile feature.py",
+        ),
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(
+        "__pycache__/\n*.pyc\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".gitignore", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/accel-011b-replayable-proposal"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "feature")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    worktree_path = tmp_path / "candidate"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    recovery_key = "environmentally-retryable-proposal"
+
+    first_proposal = daemon._validate_implementation_patch(
+        worktree_path,
+        task,
+        baseline_ref=baseline,
+    )
+    assert first_proposal.accepted is True
+    proposal_id = first_proposal.proposal.proposal_id
+    daemon._record_event(
+        "worktree_reconciliation_validation_finished",
+        {
+            "task_id": task.task_id,
+            "recovery_key": recovery_key,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "returncode": 127,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 127,
+                "reason": "declared_validation_failed",
+                "proposal_gate": daemon._compact_proposal_validation(
+                    first_proposal
+                ),
+                "results": [
+                    {
+                        "command": "npm run build",
+                        "returncode": 127,
+                    }
+                ],
+            },
+        },
+    )
+    stale_proposal = daemon._validate_implementation_patch(
+        worktree_path,
+        task,
+        baseline_ref=baseline,
+        replayable_consumed_proposal_ids=("proposal-from-unrelated-recovery",),
+    )
+    assert stale_proposal.accepted is False
+    assert {
+        finding.code.value
+        for finding in stale_proposal.findings
+    } == {"stale_proposal_replay"}
+    daemon._record_event(
+        "worktree_reconciliation_validation_finished",
+        {
+            "task_id": task.task_id,
+            "recovery_key": recovery_key,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "returncode": 1,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 1,
+                "reason": "proposal_gate_failed",
+                "proposal_gate": daemon._compact_proposal_validation(
+                    stale_proposal
+                ),
+                "results": [],
+            },
+        },
+    )
+
+    result = daemon.reconcile_validated_worktree_candidate(
+        worktree_path=worktree_path,
+        branch_name=branch_name,
+        task=task,
+        baseline_ref=baseline,
+        candidate_commit=candidate,
+        recovery_key=recovery_key,
+    )
+
+    assert result["returncode"] == 0
+    assert result["provider_dispatched"] is False
+    assert result["attempt_consumed"] is False
+    assert result["validation_result"]["passed"] is True
+    assert result["validation_result"]["proposal_gate"]["accepted"] is True
+    assert (
+        result["validation_result"]["proposal_gate"]["proposal_id"]
+        == proposal_id
+    )
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+
+
+def test_implementation_supervisor_run_once_replays_historical_merge_under_maintenance_lease(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        _reconciled_candidate_task_board(
+            task_id="ACCEL-012",
+            validation="python -m py_compile feature.py",
+        ),
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(
+        "__pycache__/\n*.pyc\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".gitignore", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    proposal_baseline_ref = _git(repo, "rev-parse", "HEAD")
+
+    historical_branch = (
+        "implementation/accel-012-123456abcdef-attempt-1-789"
+    )
+    historical_worktree = tmp_path / "historical-worktree"
+    _git(repo, "checkout", "-b", historical_branch)
+    (repo / "feature.py").write_text(
+        'VALUE = "feature"\n',
+        encoding="utf-8",
+    )
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "feature")
+    candidate_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    # Reproduce the production repair shape: the target independently
+    # contains the candidate patch before the historical no-op merge.
+    (repo / "feature.py").write_text(
+        'VALUE = "feature"\n',
+        encoding="utf-8",
+    )
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "independent repair")
+    baseline_ref = _git(repo, "rev-parse", "HEAD")
+    preflight_tree = _git(
+        repo,
+        "merge-tree",
+        "--write-tree",
+        baseline_ref,
+        candidate_commit,
+    )
+    _git(repo, "merge", "--no-ff", "--no-edit", historical_branch)
+    merge_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "branch", "-D", historical_branch)
+
+    state_dir = tmp_path / "runtime" / "codex"
+    state_dir.mkdir(parents=True)
+    supervisor_events_path = (
+        state_dir / "accel_supervisor_events.jsonl"
+    )
+    supervisor_events_path.write_text(
+        json.dumps(
+                {
+                    "type": "worktree_reconciliation",
+                    "target_ref": "main",
+                    "target_signature": baseline_ref,
+                    "processed": [
+                        {
+                            "branch": historical_branch,
+                            "head": candidate_commit,
+                            "path": str(historical_worktree),
+                            "target_ref": "main",
+                            "merged": True,
+                            "preflight_result": {
+                                "attempted": True,
+                                "mergeable": True,
+                                "returncode": 0,
+                                "branch": historical_branch,
+                                "target_ref": "main",
+                                "tree": preflight_tree,
+                            },
+                            "merge_result": {
+                                "attempted": True,
+                                "merged": True,
+                                "returncode": 0,
+                                "branch": historical_branch,
+                                "target_branch": "main",
+                                "merge_commit": merge_commit,
+                            },
+                            "cleanup_result": {
+                                "branch": historical_branch,
+                                "worktree_path": str(
+                                    historical_worktree
+                                ),
+                                "cleaned": True,
+                                "removed_worktree": True,
+                                "deleted_branch": True,
+                            },
+                    }
+                ],
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    managed_events_path = state_dir / "accel_events.jsonl"
+    managed_events_path.write_text(
+        json.dumps(
+            {
+                "type": "implementation_started",
+                    "task_id": "ACCEL-012",
+                    "canonical_task_cid": "historical-task-cid",
+                    "canonical_task_key": (
+                        "task/v1/"
+                        "123456abcdef0000000000000000000000000000000000000000000000"
+                    ),
+                    "board_namespace": "todo.md",
+                    "branch": historical_branch,
+                    "baseline_ref": proposal_baseline_ref,
+                    "worktree_path": str(historical_worktree),
+                    "workspace_setup": {
+                        "base_commit": proposal_baseline_ref,
+                        "branch": historical_branch,
+                        "worktree_path": str(historical_worktree),
+                    },
+                "timestamp": "2026-07-29T00:00:00+00:00",
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    worktree_root = tmp_path / "worktrees"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=supervisor_events_path,
+            state_dir=state_dir,
+            state_prefix="accel",
+            task_prefix="## ACCEL-",
+            repo_root=repo,
+            worktree_root=worktree_root,
+            merge_target_branch="main",
+            implementation_protected_paths=("README.md",),
+        )
+    )
+
+    maintenance_lock_path = state_dir / "implementation.lock"
+    observed_leases: dict[str, dict] = {}
+    recover = (
+        supervisor.recover_already_merged_reconciliation_candidates
+    )
+
+    def recover_under_outer_lease(
+        *,
+        preacquired_implementation_lock=None,
+    ):
+        assert preacquired_implementation_lock is not None
+        observed_leases["argument"] = dict(
+            preacquired_implementation_lock
+        )
+        observed_leases["before"] = json.loads(
+            maintenance_lock_path.read_text(encoding="utf-8")
+        )
+        result = recover(
+            preacquired_implementation_lock=(
+                preacquired_implementation_lock
+            ),
+        )
+        observed_leases["after"] = json.loads(
+            maintenance_lock_path.read_text(encoding="utf-8")
+        )
+        return result
+
+    monkeypatch.setattr(
+        supervisor,
+        "recover_already_merged_reconciliation_candidates",
+        recover_under_outer_lease,
+    )
+    run_result = supervisor.run_once(include_refill=False)
+    result = run_result["worktree_reconciliation_replay"]
+
+    assert result["completed_count"] == 1, json.dumps(
+        result,
+        indent=2,
+        sort_keys=True,
+    )
+    assert observed_leases["argument"]["lease_role"] == (
+        "supervisor_maintenance"
+    )
+    assert (
+        observed_leases["argument"]
+        == observed_leases["before"]
+        == observed_leases["after"]
+    )
+    assert not maintenance_lock_path.exists()
+    replay = result["results"][0]
+    assert replay["baseline_ref"] == proposal_baseline_ref
+    assert replay["integration_baseline_ref"] == baseline_ref
+    assert replay["historical_candidate_commit"] == candidate_commit
+    assert replay["merge_commit"] == merge_commit
+    assert replay["merge_tree"] == preflight_tree
+    assert replay["provider_dispatched"] is False
+    assert replay["attempt_consumed"] is False
+    assert (
+        replay["recovery_result"]["validation_result"]["proposal_gate"][
+            "accepted"
+        ]
+        is True
+    )
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+    managed_events = [
+        json.loads(line)
+        for line in (state_dir / "accel_events.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    assert any(
+        event["type"] == "implementation_finished"
+        and event["implementation_commit"] == candidate_commit
+        and event["attempt_consumed"] is False
+        for event in managed_events
+    )
+    replay_again = recover()
+    assert replay_again["processed_count"] == 0
+    assert _git(repo, "status", "--short") == ""
 
 
 def test_implementation_supervisor_preflights_conflicting_backlogged_worktree(tmp_path):
@@ -20949,7 +31379,7 @@ def test_implementation_supervisor_preflights_conflicting_backlogged_worktree(tm
     assert worktree_path.exists()
 
 
-def test_implementation_supervisor_escalates_preflight_conflict_to_configured_resolver(
+def test_implementation_supervisor_resolver_cannot_bypass_missing_task_binding(
     tmp_path,
 ):
     repo = tmp_path / "repo"
@@ -21002,13 +31432,19 @@ def test_implementation_supervisor_escalates_preflight_conflict_to_configured_re
 
     result = supervisor.reconcile_backlogged_worktrees()
 
-    assert merge_calls == [branch_name]
+    assert merge_calls == []
     assert result["candidate_count"] == 1
-    assert result["reconciled_count"] == 1
-    assert result["preflight_blocked_count"] == 0
+    assert result["reconciled_count"] == 0
+    assert result["preflight_blocked_count"] == 1
     assert result["preflight_resolver_escalation_count"] == 1
     assert result["processed"][0]["preflight_result"]["mergeable"] is False
     assert result["processed"][0]["preflight_resolver_escalated"] is True
+    assert (
+        result["processed"][0]["merge_result"]["reason"]
+        == "reconciliation_candidate_task_board_unavailable"
+    )
+    assert marker.read_text(encoding="utf-8") == "main change\n"
+    assert worktree_path.exists()
 
 
 def test_implementation_supervisor_defers_worktree_reconciliation_when_main_dirty(tmp_path):
@@ -21059,60 +31495,231 @@ def test_implementation_supervisor_defers_worktree_reconciliation_when_main_dirt
     assert not (repo / "feature.txt").exists()
 
 
-def test_implementation_supervisor_reconciles_configured_target_while_main_dirty(tmp_path):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _git(repo, "init")
-    _git(repo, "checkout", "-b", "main")
-    _git(repo, "config", "user.name", "Test User")
-    _git(repo, "config", "user.email", "test@example.invalid")
-    marker = repo / "README.md"
-    marker.write_text("base\n", encoding="utf-8")
-    _git(repo, "add", "README.md")
-    _git(repo, "commit", "-m", "base")
-    _git(repo, "branch", "integration")
-    branch_name = "implementation/accel-011-attempt-1-456"
-    _git(repo, "checkout", "-b", branch_name, "integration")
-    feature = repo / "feature.txt"
-    feature.write_text("feature\n", encoding="utf-8")
+def test_implementation_supervisor_allows_candidate_unchanged_lowercase_submodule_dirt(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    base_gitlink = _git(repo, "rev-parse", "HEAD:libs/child")
+    branch_name = "implementation/dscon-007-attempt-1-123"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.txt").write_text(
+        "candidate changes another module\n",
+        encoding="utf-8",
+    )
     _git(repo, "add", "feature.txt")
-    _git(repo, "commit", "-m", "feature branch")
+    _git(repo, "commit", "-m", "candidate changes parent only")
+    candidate_commit = _git(repo, "rev-parse", "HEAD")
     _git(repo, "checkout", "main")
-    dirty = repo / "dirty.txt"
-    dirty.write_text("user work\n", encoding="utf-8")
-    worktree_root = repo / "worktrees"
-    worktree_path = worktree_root / "accel-011-attempt-1-456"
-    _git(repo, "worktree", "add", str(worktree_path), branch_name)
 
+    (submodule / "target.txt").write_text(
+        "target advances gitlink\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "target.txt")
+    _git(submodule, "commit", "-m", "advance target child")
+    target_gitlink = _git(submodule, "rev-parse", "HEAD")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance target gitlink")
+    (submodule / "child.txt").write_text(
+        "preserve unrelated nested dirt\n",
+        encoding="utf-8",
+    )
+    assert _git(repo, "status", "--short") == "m libs/child"
+
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "dscon-007-attempt-1-123"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
     state_dir = repo / "state"
     supervisor = TodoImplementationSupervisor(
         TodoSupervisorConfig(
-            todo_path=repo / "todo.md",
+            todo_path=repo / "missing.todo.md",
             state_path=state_dir / "task_state.json",
             strategy_path=state_dir / "strategy.json",
             events_path=state_dir / "events.jsonl",
             state_dir=state_dir,
             repo_root=repo,
             worktree_root=worktree_root,
-            merge_target_branch="integration",
         )
     )
 
     result = supervisor.reconcile_backlogged_worktrees()
 
-    assert result["target_ref"] == "integration"
+    assert result["raw_main_status_short"] == [" m libs/child"]
+    assert result["raw_main_checkout_dirty"] is True
+    assert result["main_checkout_status_available"] is True
+    assert result["main_checkout_dirty"] is False
+    assert result["main_status_short"] == []
     assert result["candidate_count"] == 1
     assert result["processed_count"] == 1
-    assert result["reconciled_count"] == 1
-    assert result["main_checkout_is_merge_target"] is False
-    assert result["main_checkout_dirty"] is False
-    assert result["current_checkout_dirty"] is True
-    assert "dirty.txt" in result["main_dirty_evidence"]["status_paths"]
-    assert result["main_dirty_evidence"]["ignored_for_reconciliation"] is True
-    assert dirty.read_text(encoding="utf-8") == "user work\n"
-    assert not feature.exists()
-    assert _git(repo, "show", "integration:feature.txt") == "feature"
-    assert not worktree_path.exists()
+    assert (
+        result["processed"][0]["merge_result"]["reason"]
+        == "reconciliation_candidate_task_board_unavailable"
+    )
+    proof = result["candidates"][0]["nonblocking_main_gitlinks"][0]
+    assert proof["reason"] == "candidate_preserves_content_dirty_gitlink"
+    assert proof["candidate_commit"] == candidate_commit
+    assert proof["candidate_gitlink"] == base_gitlink
+    assert proof["baseline_gitlink"] == base_gitlink
+    assert proof["target_gitlink"] == target_gitlink
+    assert proof["target_gitlink"] != proof["candidate_gitlink"]
+    assert (submodule / "child.txt").read_text(encoding="utf-8") == (
+        "preserve unrelated nested dirt\n"
+    )
+
+
+def test_implementation_supervisor_blocks_lowercase_dirt_when_candidate_changes_gitlink(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    base_gitlink = _git(repo, "rev-parse", "HEAD:libs/child")
+    branch_name = "implementation/dscon-unsafe-attempt-1-123"
+    _git(repo, "checkout", "-b", branch_name)
+    (submodule / "candidate.txt").write_text(
+        "candidate advances gitlink\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "candidate.txt")
+    _git(submodule, "commit", "-m", "candidate child")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "candidate changes gitlink")
+    candidate_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(submodule, "checkout", "--detach", base_gitlink)
+    (submodule / "child.txt").write_text(
+        "preserve nested dirt\n",
+        encoding="utf-8",
+    )
+    assert _git(repo, "status", "--short") == "m libs/child"
+
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "dscon-unsafe-attempt-1-123"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "missing.todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+
+    proof = supervisor._candidate_submodule_content_status_proof(
+        repo,
+        " m libs/child",
+        target_ref="main",
+        branch=branch_name,
+        candidate_head=candidate_commit,
+    )
+    result = supervisor.reconcile_backlogged_worktrees()
+
+    assert proof["nonblocking"] is False
+    assert proof["reason"] == "candidate_changes_gitlink"
+    assert result["main_checkout_dirty"] is True
+    assert result["main_status_short"] == [" m libs/child"]
+    assert result["candidate_count"] == 1
+    assert result["processed_count"] == 0
+    assert result["skipped"][0]["reason"] == "main_checkout_dirty"
+    assert (submodule / "child.txt").read_text(encoding="utf-8") == (
+        "preserve nested dirt\n"
+    )
+
+
+def test_implementation_supervisor_lowercase_gitlink_proof_rejects_staged_index(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    branch_name = "implementation/dscon-index-attempt-1-123"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.txt").write_text("candidate\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "candidate parent change")
+    candidate_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    (submodule / "staged.txt").write_text("staged gitlink\n", encoding="utf-8")
+    _git(submodule, "add", "staged.txt")
+    _git(submodule, "commit", "-m", "staged child")
+    _git(repo, "add", "libs/child")
+    (submodule / "child.txt").write_text("nested dirt\n", encoding="utf-8")
+    assert _git(repo, "status", "--short").startswith("Mm libs/child")
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "missing.todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=repo / "worktrees",
+        )
+    )
+
+    proof = supervisor._candidate_submodule_content_status_proof(
+        repo,
+        " m libs/child",
+        target_ref="main",
+        branch=branch_name,
+        candidate_head=candidate_commit,
+    )
+
+    assert proof["nonblocking"] is False
+    assert proof["reason"] == "index_gitlink_staged_or_mismatched"
+
+
+def test_implementation_supervisor_worktree_reconciliation_fails_closed_when_main_status_unavailable(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    branch_name = "implementation/dscon-status-attempt-1-123"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.txt").write_text("candidate\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "candidate")
+    _git(repo, "checkout", "main")
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "dscon-status-attempt-1-123"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "missing.todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+
+    def unavailable_status(_repo: Path, _root: Path) -> list[str]:
+        raise RuntimeError("injected status failure")
+
+    supervisor._main_status_for_worktree_reconciliation = unavailable_status  # type: ignore[method-assign]
+
+    result = supervisor.reconcile_backlogged_worktrees()
+
+    assert result["main_checkout_status_available"] is False
+    assert result["main_checkout_dirty"] is True
+    assert result["processed_count"] == 0
+    assert result["skipped"][0]["reason"] == (
+        "main_checkout_status_unavailable"
+    )
+    assert "injected status failure" in result["main_checkout_status_error"]
 
 
 def test_implementation_supervisor_ignores_generated_objective_heap_dirty_main(tmp_path):
@@ -21162,7 +31769,13 @@ def test_implementation_supervisor_ignores_generated_objective_heap_dirty_main(t
     assert result["raw_main_checkout_dirty"] is True
     assert "implementation_plan/docs/objective-heap.md" in result["raw_main_dirty_evidence"]["status_paths"]
     assert "implementation_plan/docs/objective-heap.md" in result["main_dirty_evidence"]["filtered_generated_status_paths"]
-    assert (repo / "feature.txt").exists()
+    assert result["reconciled_count"] == 0
+    assert (
+        result["processed"][0]["merge_result"]["reason"]
+        == "reconciliation_candidate_task_board_unavailable"
+    )
+    assert not (repo / "feature.txt").exists()
+    assert worktree_path.exists()
     assert objective_path.read_text(encoding="utf-8") == "# Objective\n\n## Generated goal\n"
 
 
@@ -21212,7 +31825,13 @@ def test_implementation_supervisor_ignores_generated_state_directory_dirty_main(
     assert result["raw_main_checkout_dirty"] is True
     assert "tmp/supervisor/state/submodule-merge-diagnostics.json" in result["raw_main_dirty_evidence"]["status_paths"]
     assert "tmp/supervisor/state/submodule-merge-diagnostics.json" in result["main_dirty_evidence"]["filtered_generated_status_paths"]
-    assert (repo / "feature.txt").exists()
+    assert result["reconciled_count"] == 0
+    assert (
+        result["processed"][0]["merge_result"]["reason"]
+        == "reconciliation_candidate_task_board_unavailable"
+    )
+    assert not (repo / "feature.txt").exists()
+    assert worktree_path.exists()
     assert diagnostics_path.read_text(encoding="utf-8") == '{"attempts": [{"task_id": "ACCEL-011"}]}\n'
 
 
@@ -21378,6 +31997,16 @@ def test_implementation_supervisor_records_reconciliation_guardrail_for_dirty_ma
     assert "- Is schedulable: false" in todo_text
     assert "- Review only: true" in todo_text
     assert "- Blocked reason: operator_reconciliation_required" in todo_text
+    assert (
+        "- Generated by: "
+        "ipfs_accelerate_py.agent_supervisor.reconciliation-guardrail@1"
+        in todo_text
+    )
+    assert "- Reconciliation kind: main_checkout_dirty" in todo_text
+    assert "- Reconciliation reason: main_checkout_dirty" in todo_text
+    assert "- Reconciliation fingerprint: " in todo_text
+    assert "- Reconciliation discovery: " in todo_text
+    assert "- Canonical board task: false" in todo_text
     assert "unknown dirty checkout content must not be committed" in todo_text
     discovery_path = Path(findings[0]["discovery_path"])
     assert discovery_path.exists()
@@ -21392,6 +32021,31 @@ def test_implementation_supervisor_records_reconciliation_guardrail_for_dirty_ma
     assert strategy["reconciliation_guardrail_findings"][0]["follow_up_task_id"] == "PORTAL-001"
     events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert events[-1]["type"] == "reconciliation_guardrail"
+
+
+@pytest.mark.parametrize(
+    ("branch", "expected_task_id"),
+    (
+        (
+            "implementation/vfs-055-9ddf2a-attempt-2-123",
+            "VFS-055",
+        ),
+        (
+            "rescue/worktree/implementation-vfs-063-7f1431-attempt-1-456",
+            "VFS-063",
+        ),
+    ),
+)
+def test_worktree_reconciliation_task_uses_known_board_id(
+    branch,
+    expected_task_id,
+):
+    task = TodoImplementationSupervisor._worktree_reconciliation_task(
+        branch,
+        known_task_ids=("VFS-05", "VFS-055", "VFS-063"),
+    )
+
+    assert task.task_id == expected_task_id
 
 
 def test_reconciliation_guardrail_ignores_generated_dirty_main_evidence(tmp_path):
@@ -21646,8 +32300,23 @@ def test_reconciliation_guardrail_dedupes_dirty_group_when_count_changes(tmp_pat
     assert "ACCEL-002" not in updated_todo
     assert "Resolve 77 dirty backlogged worktrees blocked by content_not_in_target" in updated_todo
     assert "Dedupe key: reconciliation_guardrail:dirty_backlogged_worktree:content_not_in_target" in updated_todo
+    assert (
+        "Generated by: "
+        "ipfs_accelerate_py.agent_supervisor.reconciliation-guardrail@1"
+        in updated_todo
+    )
+    assert "Reconciliation kind: dirty_backlogged_worktree" in updated_todo
+    assert "Reconciliation reason: content_not_in_target" in updated_todo
+    refreshed_discovery = Path(
+        parse_task_file(todo_path, task_header_prefix="ACCEL-")[0].metadata[
+            "reconciliation discovery"
+        ]
+    )
+    assert refreshed_discovery != stale_discovery
+    assert f"Reconciliation discovery: {refreshed_discovery}" in updated_todo
+    assert "Canonical board task: false" in updated_todo
     assert "machine-readable reconciliation plan" in updated_todo
-    discovery_text = stale_discovery.read_text(encoding="utf-8")
+    discovery_text = refreshed_discovery.read_text(encoding="utf-8")
     assert "Candidate count: 77" in discovery_text
     assert "## Machine Readable Manifest" in discovery_text
     manifest = json.loads(discovery_text.split("```json\n", 1)[1].split("\n```", 1)[0])
@@ -21655,7 +32324,10 @@ def test_reconciliation_guardrail_dedupes_dirty_group_when_count_changes(tmp_pat
     assert manifest["dedupe_key"] == "reconciliation_guardrail:dirty_backlogged_worktree:content_not_in_target"
     assert any(item["action"] == "compare_dirty_content_to_target" for item in manifest["actions"])
 
-    stale_discovery.write_text("# stale discovery without manifest\nCandidate count: 77\n", encoding="utf-8")
+    refreshed_discovery.write_text(
+        "# stale discovery without manifest\nCandidate count: 77\n",
+        encoding="utf-8",
+    )
     discovery_only_refresh = record_reconciliation_guardrail_findings(
         todo_path=todo_path,
         strategy_path=strategy_path,
@@ -21674,7 +32346,9 @@ def test_reconciliation_guardrail_dedupes_dirty_group_when_count_changes(tmp_pat
     assert len(discovery_only_refresh) == 1
     assert discovery_only_refresh[0]["refreshed"] is True
     assert todo_path.read_text(encoding="utf-8") == updated_todo
-    assert "## Machine Readable Manifest" in stale_discovery.read_text(encoding="utf-8")
+    assert "## Machine Readable Manifest" in refreshed_discovery.read_text(
+        encoding="utf-8"
+    )
 
     assert record_reconciliation_guardrail_findings(
         todo_path=todo_path,
@@ -21691,6 +32365,49 @@ def test_reconciliation_guardrail_dedupes_dirty_group_when_count_changes(tmp_pat
         },
         task_prefix="ACCEL-",
     ) == []
+
+    count_drift_refresh = record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        cleanup_result={
+            "attempted": True,
+            "dirty_worktree_groups": {
+                "content_not_in_target": {
+                    "count": 78,
+                    "samples": [
+                        {
+                            "branch": "implementation/example",
+                            "path": "/tmp/example",
+                        }
+                    ],
+                }
+            },
+        },
+        task_prefix="ACCEL-",
+    )
+    assert len(count_drift_refresh) == 1
+    assert count_drift_refresh[0]["refreshed"] is True
+    count_drift_todo = todo_path.read_text(encoding="utf-8")
+    assert (
+        "Resolve 78 dirty backlogged worktrees blocked by "
+        "content_not_in_target"
+    ) in count_drift_todo
+    assert (
+        "because 78 branch or worktree cleanup candidates are blocked by "
+        "content_not_in_target"
+    ) in count_drift_todo
+    count_drift_discovery = Path(
+        parse_task_file(todo_path, task_header_prefix="ACCEL-")[0].metadata[
+            "reconciliation discovery"
+        ]
+    )
+    count_drift_manifest = json.loads(
+        count_drift_discovery.read_text(encoding="utf-8")
+        .split("```json\n", 1)[1]
+        .split("\n```", 1)[0]
+    )
+    assert count_drift_manifest["candidate_count"] == 78
 
 
 def test_reconciliation_guardrail_dedupes_preflight_conflict_when_count_changes(tmp_path):
@@ -21755,7 +32472,13 @@ def test_reconciliation_guardrail_dedupes_preflight_conflict_when_count_changes(
     updated_todo = todo_path.read_text(encoding="utf-8")
     assert "ACCEL-002" not in updated_todo
     assert "Resolve 2 preflight-conflicting backlogged worktree merges" in updated_todo
-    discovery_text = stale_discovery.read_text(encoding="utf-8")
+    refreshed_discovery = Path(
+        parse_task_file(todo_path, task_header_prefix="ACCEL-")[0].metadata[
+            "reconciliation discovery"
+        ]
+    )
+    assert refreshed_discovery != stale_discovery
+    discovery_text = refreshed_discovery.read_text(encoding="utf-8")
     assert "Candidate count: 2" in discovery_text
     assert "`hallucinate_app`" in discovery_text
     manifest = json.loads(discovery_text.split("```json\n", 1)[1].split("\n```", 1)[0])
@@ -22012,7 +32735,11 @@ def test_readiness_doc_and_heap_name_the_same_launch_validation_gate():
     assert _git(repo, "merge-base", "--is-ancestor", "implementation/mgw-launch", "HEAD") == ""
 
 
-def test_implementation_daemon_invokes_llm_resolver_for_dirty_checkout_blocker(tmp_path):
+def test_implementation_daemon_invokes_llm_resolver_for_dirty_checkout_blocker(
+    tmp_path,
+    monkeypatch,
+):
+    _clear_ordered_grok_codex_route(monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -22202,7 +32929,11 @@ def test_implementation_daemon_reconciles_generated_dirty_submodule_overlap_with
     assert _git(submodule, "status", "--porcelain") == ""
 
 
-def test_implementation_daemon_repairs_dirty_managed_main_merge_worktree(tmp_path):
+def test_implementation_daemon_repairs_dirty_managed_main_merge_worktree(
+    tmp_path,
+    monkeypatch,
+):
+    _clear_ordered_grok_codex_route(monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -22265,7 +32996,11 @@ def test_implementation_daemon_repairs_dirty_managed_main_merge_worktree(tmp_pat
     assert any(event["type"] == "main_merge_workspace_blocker_resolved" for event in events)
 
 
-def test_implementation_daemon_invokes_llm_resolver_for_dirty_submodule_checkout(tmp_path):
+def test_implementation_daemon_invokes_llm_resolver_for_dirty_submodule_checkout(
+    tmp_path,
+    monkeypatch,
+):
+    _clear_ordered_grok_codex_route(monkeypatch)
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     _git(submodule, "checkout", "-b", "implementation/auto-001-submodule-libs-child")
     (submodule / "child.txt").write_text("branch\n", encoding="utf-8")
@@ -22324,6 +33059,7 @@ def test_implementation_daemon_invokes_llm_resolver_for_dirty_submodule_checkout
 def test_implementation_daemon_skips_dirty_submodule_resolver_when_branch_already_merged(tmp_path):
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     _git(submodule, "branch", "implementation/auto-001-submodule-libs-child")
+    main_commit = _git(submodule, "rev-parse", "main")
     (submodule / "child.txt").write_text("dirty but unrelated\n", encoding="utf-8")
 
     capture_path = tmp_path / "unexpected-submodule-dirty-prompt.txt"
@@ -22366,6 +33102,7 @@ def test_implementation_daemon_skips_dirty_submodule_resolver_when_branch_alread
             "default_branch": "main",
             "merged": True,
             "reason": "already_merged",
+            "commit": main_commit,
         }
     ]
     assert not capture_path.exists()
@@ -22392,6 +33129,59 @@ def test_implementation_daemon_repairs_stale_submodule_worktree_config(tmp_path)
     assert result["repaired_count"] == 1
     assert result["repairs"][0]["module_path"] == "libs/child"
     assert result["repairs"][0]["old_worktree"] == stale_worktree
+    assert _git(submodule, "status", "--short") == ""
+
+
+def test_implementation_daemon_repairs_common_submodule_config_from_linked_worktree(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    linked_worktree = tmp_path / "linked-parent"
+    _git(
+        repo,
+        "worktree",
+        "add",
+        "-b",
+        "linked-parent",
+        str(linked_worktree),
+        "main",
+    )
+    linked_git_dir = Path(
+        _git(linked_worktree, "rev-parse", "--absolute-git-dir")
+    )
+    # A linked checkout may have some submodules stored in its private Git
+    # directory and others in the shared common directory.  Merely finding
+    # the private store must not suppress inspection of the common store.
+    (linked_git_dir / "modules").mkdir()
+    submodule_git_dir = Path(_git(submodule, "rev-parse", "--absolute-git-dir"))
+    stale_worktree = "../../../../../missing/worktree/libs/child"
+    _git(
+        repo,
+        "config",
+        "--file",
+        str(submodule_git_dir / "config"),
+        "core.worktree",
+        stale_worktree,
+    )
+
+    daemon = TodoImplementationDaemon(
+        todo_path=linked_worktree / "todo.md",
+        state_path=linked_worktree / "state" / "task_state.json",
+        strategy_path=linked_worktree / "state" / "strategy.json",
+        events_path=linked_worktree / "state" / "events.jsonl",
+        repo_root=linked_worktree,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    result = daemon._repair_stale_submodule_worktree_configs(linked_worktree)
+
+    assert result["repaired_count"] == 1
+    assert result["repairs"][0]["module_path"] == "libs/child"
+    assert result["repairs"][0]["old_worktree"] == stale_worktree
+    repaired_worktree = (
+        submodule_git_dir / result["repairs"][0]["new_worktree"]
+    ).resolve()
+    assert repaired_worktree == submodule.resolve()
     assert _git(submodule, "status", "--short") == ""
 
 
@@ -22444,6 +33234,7 @@ def test_implementation_daemon_repairs_stale_submodule_source_before_setup(
 
 def test_implementation_daemon_fallback_initializes_only_configured_submodule(
     tmp_path,
+    monkeypatch,
 ):
     repo = tmp_path / "repo"
     worktree = tmp_path / "worktree"
@@ -22466,12 +33257,44 @@ def test_implementation_daemon_fallback_initializes_only_configured_submodule(
         worktree_submodule_paths=["external/dependency"],
     )
     calls: list[list[str]] = []
+    initialized = False
+    target = worktree / "external" / "dependency"
+    real_run = subprocess.run
 
-    def fake_run_git(args: list[str], *, cwd: Path):
-        calls.append(list(args))
-        return subprocess.CompletedProcess(["git", *args], 0, "", "")
+    def fake_run(command, *args, **kwargs):
+        nonlocal initialized
+        normalized = [str(part) for part in command]
+        if normalized[:4] == ["git", "submodule", "update", "--init"]:
+            calls.append(normalized[1:])
+            initialized = True
+            return subprocess.CompletedProcess(normalized, 0, "", "")
+        return real_run(command, *args, **kwargs)
 
-    daemon._run_git = fake_run_git  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        fake_run,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_is_git_worktree",
+        lambda path: initialized and path == target,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_initialize_nested_worktree_submodules",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_validate_submodule_init",
+        lambda _target, relative: {
+            "valid": True,
+            "path": relative,
+            "head": "a" * 12,
+            "branch": "(detached)",
+        },
+    )
     daemon._initialize_worktree_submodules(worktree)
 
     assert calls == [
@@ -22483,6 +33306,709 @@ def test_implementation_daemon_fallback_initializes_only_configured_submodule(
             "external/dependency",
         ]
     ]
+
+
+@pytest.mark.parametrize(
+    ("returncode", "expected_reason"),
+    (
+        (1, "submodule_update_failed"),
+        (0, "submodule_update_target_invalid"),
+    ),
+)
+def test_implementation_daemon_fails_closed_when_configured_submodule_update_is_invalid(
+    tmp_path,
+    monkeypatch,
+    returncode,
+    expected_reason,
+):
+    repo = tmp_path / "repo"
+    worktree = tmp_path / "worktree"
+    repo.mkdir()
+    worktree.mkdir()
+    (worktree / ".gitmodules").write_text(
+        (
+            '[submodule "external/dependency"]\n'
+            "    path = external/dependency\n"
+            "    url = ../dependency\n"
+        ),
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["external/dependency"],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_create_local_submodule_worktree",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(daemon, "_is_git_worktree", lambda _path: False)
+    monkeypatch.setattr(
+        daemon,
+        "_repair_stale_submodule_worktree_configs",
+        lambda _path: {"repairs": []},
+    )
+    real_run = subprocess.run
+
+    def fake_run(command, *args, **kwargs):
+        normalized = [str(part) for part in command]
+        if normalized[:4] == ["git", "submodule", "update", "--init"]:
+            return subprocess.CompletedProcess(
+                normalized,
+                returncode,
+                "",
+                "simulated update failure" if returncode else "",
+            )
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        fake_run,
+    )
+
+    with pytest.raises(
+        WorktreeSubmoduleInitializationDeferred,
+        match="worktree submodule initialization failed",
+    ) as raised:
+        daemon._initialize_worktree_submodules(
+            worktree,
+            branch_name="implementation/accel-001",
+        )
+
+    assert raised.value.failures == (
+        {
+            "valid": False,
+            "path": "external/dependency",
+            "reason": expected_reason,
+            "returncode": returncode,
+            "stderr_sha256": hashlib.sha256(
+                (
+                    "simulated update failure" if returncode else ""
+                ).encode("utf-8")
+            ).hexdigest(),
+        },
+    )
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    failure_event = next(
+        event
+        for event in events
+        if event["type"] == "worktree_submodule_init_failures"
+    )
+    assert failure_event["failure_count"] == 1
+    assert failure_event["failures"][0]["reason"] == expected_reason
+
+
+def test_implementation_daemon_defers_failed_submodule_setup_before_provider_without_attempt_charge(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="provider-must-not-run",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=["libs/missing"],
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Require configured dependency",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["libs/missing/result.py"],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args: "",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_seed_untracked_worktree_context",
+        lambda *_args, **_kwargs: pytest.fail(
+            "context must not be seeded after submodule setup fails"
+        ),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail("provider must not run"),
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+    persisted = TodoTaskState.load(daemon.state_path)
+
+    assert result["reason"] == "worktree_submodule_initialization_failed"
+    assert result["deferred"] is True
+    assert result["infrastructure_failure"] is True
+    assert result["failure_kind"] == "lifecycle_setup"
+    assert result["provider_call_allowed"] is False
+    assert result["provider_dispatched"] is False
+    assert result["attempt_consumed"] is False
+    assert result["submodule_init_failures"] == [
+        {
+            "valid": False,
+            "path": "libs/missing",
+            "reason": "configured_submodule_not_declared",
+        }
+    ]
+    assert persisted.implementation_attempts == {}
+    assert persisted.implementation_attempts_by_cid == {}
+    assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task))
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert any(
+        event["type"] == "worktree_submodule_init_failures"
+        for event in events
+    )
+    retry_event = next(
+        event
+        for event in events
+        if event["type"] == "implementation_retry_deferred"
+    )
+    assert retry_event["failure_kind"] == "lifecycle_setup"
+    assert retry_event["attempt_consumed"] is False
+
+
+@pytest.mark.parametrize(
+    "preflight_raises",
+    [False, True],
+    ids=("drift-receipt", "preflight-exception"),
+)
+def test_implementation_daemon_defers_dependency_drift_before_provider_without_attempt_charge(
+    tmp_path,
+    monkeypatch,
+    preflight_raises,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="provider-must-not-run",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Require approved validation dependency",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["result.py"],
+        validation=[
+            "cd ipfs_kit_py && python -m pytest -q "
+            "tests/runtime_readiness/test_transport.py"
+        ],
+    )
+    dependency_receipt = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "validation-project-dependency-preflight@1"
+        ),
+        "receipt_id": "dependency-receipt",
+        "passed": False,
+        "reason": "approved_validation_environment_dependency_drift",
+        "missing_requirements": [
+            {
+                "name": "hypercorn",
+                "requirement": "hypercorn>=0.16.0",
+            }
+        ],
+        "automatic_install_attempted": False,
+        "probe_scope": "installed_distribution_metadata",
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args: "",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    if preflight_raises:
+
+        def dependency_preflight(*_args, **_kwargs):
+            raise RuntimeError("private-preflight-error-must-not-persist")
+
+    else:
+
+        def dependency_preflight(*_args, **_kwargs):
+            return dependency_receipt
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "preflight_validation_project_dependencies",
+        dependency_preflight,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_command",
+        lambda *_args, **_kwargs: pytest.fail(
+            "provider command must not be built after dependency drift"
+        ),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail("provider must not run"),
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+    persisted = TodoTaskState.load(daemon.state_path)
+
+    assert result["exception_result"]["exception_type"] == (
+        ValidationProjectDependencyPreflightDeferred.__name__
+    )
+    assert result["reason"] == (
+        "validation_project_dependency_preflight_failed"
+    )
+    assert result["deferred"] is True
+    assert result["infrastructure_failure"] is True
+    assert result["failure_kind"] == "lifecycle_setup"
+    assert result["provider_call_allowed"] is False
+    assert result["provider_dispatched"] is False
+    assert result["attempt_consumed"] is False
+    actual_dependency_receipt = result["dependency_preflight"]
+    if preflight_raises:
+        assert actual_dependency_receipt["reason"] == (
+            "project_dependency_preflight_infrastructure_error"
+        )
+        assert actual_dependency_receipt["error_type"] == "RuntimeError"
+        assert "private-preflight-error" not in json.dumps(
+            actual_dependency_receipt
+        )
+    else:
+        assert actual_dependency_receipt == dependency_receipt
+    assert result["cleanup_result"]["cleaned"] is True
+    assert not Path(result["worktree_path"]).exists()
+    assert persisted.implementation_attempts == {}
+    assert persisted.implementation_attempts_by_cid == {}
+    assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task))
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    failure_event = next(
+        event
+        for event in events
+        if event["type"]
+        == "validation_project_dependency_preflight_failed"
+    )
+    assert failure_event["dependency_preflight"] == (
+        actual_dependency_receipt
+    )
+    retry_event = next(
+        event
+        for event in events
+        if event["type"] == "implementation_retry_deferred"
+    )
+    assert retry_event["failure_kind"] == "lifecycle_setup"
+    assert retry_event["attempt_consumed"] is False
+
+
+def test_implementation_daemon_dispatches_provider_after_dependency_preflight_passes(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="provider-must-run",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Use approved validation environment",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["result.py"],
+        validation=["python -m pytest -q"],
+    )
+    dependency_receipt = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "validation-project-dependency-preflight@1"
+        ),
+        "receipt_id": "dependency-receipt",
+        "passed": True,
+        "reason": (
+            "approved_validation_environment_satisfies_project_dependencies"
+        ),
+        "automatic_install_attempted": False,
+        "probe_scope": "installed_distribution_metadata",
+        "validation_command_count": 1,
+        "projects": [{"project_root": "."}],
+        "project_roots": ["."],
+        "missing_requirements": [],
+        "incompatible_requirements": [],
+        "invalid_requirements": [],
+        "invalid_commands": [],
+        "probe": {
+            "projects": [
+                {
+                    "metadata_requirements": [
+                        "large-safe-terminal-projection==1; "
+                        + "x" * 300_000
+                    ]
+                }
+            ]
+        },
+    }
+    provider_calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args: "",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "preflight_validation_project_dependencies",
+        lambda *_args, **_kwargs: dependency_receipt,
+    )
+
+    def provider(command, *_args, **_kwargs):
+        provider_calls.append(tuple(command))
+        return subprocess.CompletedProcess(command, 1)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        provider,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert provider_calls
+    assert result["provider_dispatched"] is True
+    assert result["attempt_consumed"] is True
+    assert result["workspace_setup"][
+        "validation_project_dependency_preflight"
+    ] == dependency_receipt
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    started_event = next(
+        event for event in events if event["type"] == "implementation_started"
+    )
+    assert started_event["workspace_setup"][
+        "validation_project_dependency_preflight"
+    ] == dependency_receipt
+    finished_event = next(
+        event for event in events if event["type"] == "implementation_finished"
+    )
+    projected_preflight = finished_event["workspace_setup"][
+        "validation_project_dependency_preflight"
+    ]
+    assert projected_preflight["receipt_id"] == "dependency-receipt"
+    assert projected_preflight["passed"] is True
+    assert projected_preflight["project_count"] == 1
+    assert projected_preflight["event_projection_compacted"] is True
+    assert "probe" not in projected_preflight
+    assert len(json.dumps(finished_event).encode("utf-8")) < 262_144
+    assert not any(
+        event["type"] == "implementation_exception"
+        and event.get("exception_type") == "EventPayloadTooLarge"
+        for event in events
+    )
+    assert not any(
+        event["type"]
+        == "validation_project_dependency_preflight_failed"
+        for event in events
+    )
+
+
+def test_implementation_daemon_dispatches_provider_for_dependency_neutral_validation(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / "pyproject.toml").write_text(
+        """
+[project]
+name = "dependency-neutral-fixture"
+version = "1.0.0"
+dependencies = ["definitely-missing-validation-runtime==9.9.9"]
+""".strip(),
+        encoding="utf-8",
+    )
+    _git(repo, "add", "README.md", "pyproject.toml")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="provider-must-run",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Use a dependency-neutral file validation",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["result.py"],
+        validation=["test -f README.md"],
+    )
+    provider_calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args: "",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+
+    def provider(command, *_args, **_kwargs):
+        provider_calls.append(tuple(command))
+        return subprocess.CompletedProcess(command, 1)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        provider,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert provider_calls
+    assert result["provider_dispatched"] is True
+    assert result["attempt_consumed"] is True
+    preflight = result["workspace_setup"][
+        "validation_project_dependency_preflight"
+    ]
+    assert preflight["passed"] is True
+    assert preflight["applicable"] is False
+    assert preflight["reason"] == "validation_commands_dependency_neutral"
+    assert preflight["project_roots"] == []
+    assert preflight["dependency_neutral_command_count"] == 1
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert not any(
+        event["type"] == "validation_project_dependency_preflight_failed"
+        for event in events
+    )
+
+
+def test_non_ephemeral_implementation_defers_dependency_drift_without_provider_or_attempt(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="provider-must-not-run",
+        use_ephemeral_worktree=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Gate shared-checkout provider dispatch",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["result.py"],
+        validation=["python -m pytest -q"],
+    )
+    dependency_receipt = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "validation-project-dependency-preflight@1"
+        ),
+        "receipt_id": "dependency-receipt",
+        "retry_fingerprint": "dependency-fingerprint",
+        "passed": False,
+        "reason": "approved_validation_environment_dependency_drift",
+        "missing_requirements": [
+            {
+                "name": "hypercorn",
+                "requirement": "hypercorn>=0.16.0",
+            }
+        ],
+        "automatic_install_attempted": False,
+        "probe_scope": "installed_distribution_metadata",
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args: "",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "preflight_validation_project_dependencies",
+        lambda *_args, **_kwargs: dependency_receipt,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_command",
+        lambda *_args, **_kwargs: pytest.fail(
+            "provider command must not be built after dependency drift"
+        ),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail("provider must not run"),
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+    persisted = TodoTaskState.load(daemon.state_path)
+
+    assert result["reason"] == (
+        "validation_project_dependency_preflight_failed"
+    )
+    assert result["deferred"] is True
+    assert result["infrastructure_failure"] is True
+    assert result["failure_kind"] == "lifecycle_setup"
+    assert result["provider_call_allowed"] is False
+    assert result["provider_dispatched"] is False
+    assert result["attempt_consumed"] is False
+    assert result["dependency_preflight"] == dependency_receipt
+    assert persisted.implementation_attempts == {}
+    assert persisted.implementation_attempts_by_cid == {}
+    assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task))
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert not any(
+        event["type"] == "implementation_started"
+        for event in events
+    )
+    failure_event = next(
+        event
+        for event in events
+        if event["type"]
+        == "validation_project_dependency_preflight_failed"
+    )
+    assert failure_event["dependency_preflight"] == dependency_receipt
 
 
 def test_implementation_daemon_commits_llm_resolved_merge(tmp_path):
@@ -22534,7 +34060,11 @@ def test_implementation_daemon_commits_llm_resolved_merge(tmp_path):
     assert no_merge_head.returncode != 0
 
 
-def test_implementation_daemon_accepts_resolver_committed_merge(tmp_path):
+def test_implementation_daemon_accepts_resolver_committed_merge(
+    tmp_path,
+    monkeypatch,
+):
+    _clear_ordered_grok_codex_route(monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -22589,7 +34119,11 @@ def test_implementation_daemon_accepts_resolver_committed_merge(tmp_path):
     assert _git(repo, "merge-base", "--is-ancestor", "implementation/auto-merge", "HEAD") == ""
 
 
-def test_implementation_daemon_invokes_llm_resolver_for_submodule_merge_conflict(tmp_path):
+def test_implementation_daemon_invokes_llm_resolver_for_submodule_merge_conflict(
+    tmp_path,
+    monkeypatch,
+):
+    _clear_ordered_grok_codex_route(monkeypatch)
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     _git(submodule, "checkout", "-b", "implementation/auto-003-submodule-libs-child")
     (submodule / "child.txt").write_text("branch\n", encoding="utf-8")
@@ -22648,3 +34182,2835 @@ def test_implementation_daemon_invokes_llm_resolver_for_submodule_merge_conflict
     prompt = capture_path.read_text(encoding="utf-8")
     assert "submodule_merge_conflict" in prompt
     assert "Unmerged paths: child.txt" in prompt
+
+
+# Regressions retained from the proof-gated contract-repair branch.
+
+def test_task_provider_role_overrides_static_lane_provider(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    task = PortalTask(
+        task_id="SCA-168",
+        title="Bind repository authority",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="snapshot-authority",
+        outputs=["src/repository_authority.py"],
+        metadata={"Provider role": "grok-implement, codex-review"},
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "codex",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+
+    command = daemon._build_implementation_command(repo, task=task)
+
+    assert command[0] == sys.executable
+    assert command[1].endswith("grok_cli_runner.py")
+    assert command[command.index("--grok-bin") + 1] == "/usr/local/bin/grok"
+
+def test_deterministic_only_task_cannot_dispatch_a_model(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    task = PortalTask(
+        task_id="SCA-120",
+        title="Run symbolic baseline",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="baseline",
+        outputs=["data/baseline.json"],
+        metadata={"Provider role": "deterministic-only"},
+    )
+
+    with pytest.raises(RuntimeError, match="model dispatch is forbidden"):
+        daemon._build_implementation_command(repo, task=task)
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="typed local operation",
+    ):
+        daemon._build_implementation_prompt(task, attempt=1)
+
+def test_deterministic_only_deferral_persists_selection_cooldown(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## SCA-120 Run symbolic baseline
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: baseline
+- Outputs: data/baseline.json
+- Provider role: deterministic-only
+- Acceptance: Run the approved typed local operation without a model.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## SCA-",
+    )
+    task = parse_task_file(todo_path, task_header_prefix="## SCA-")[0]
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["skipped"] is True
+    assert result["reason"] == "deterministic-only_task_requires_typed_local_operation"
+    assert result["backoff_seconds"] == 300
+    assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task)) is True
+
+    restarted = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## SCA-",
+    )
+    assert restarted.task_queue.is_cooled_down(restarted._canonical_ref(task)) is True
+    assert (
+        restarted._select_next_task(
+            [task],
+            {task.task_id: "ready"},
+            {},
+            {},
+            {},
+        )
+        is None
+    )
+
+def test_strict_execution_metadata_policy_defers_unbounded_task(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    task = PortalTask(
+        task_id="SCA-190",
+        title="Repair generated task",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["src/runtime.py"],
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.REQUIRE_TASK_EXECUTION_METADATA_ENV,
+        "1",
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="provider role is required",
+    ):
+        daemon._build_implementation_prompt(task, attempt=1)
+
+    bounded = replace(
+        task,
+        metadata={"Provider role": "grok-implement"},
+    )
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="context budget tokens are required",
+    ):
+        daemon._task_context_token_limit(bounded)
+
+def test_multi_supervisor_runner_preserves_replaced_supervisor_pid_projection(tmp_path):
+    worker = tmp_path / "worker.py"
+    worker.write_text(
+        "\n".join(
+            [
+                "import os",
+                "import signal",
+                "import sys",
+                "import time",
+                "from pathlib import Path",
+                "Path('state').mkdir(exist_ok=True)",
+                "def stop(*_args):",
+                "    Path('state/supervisor.pid').write_text(str(os.getppid()), encoding='utf-8')",
+                "    sys.exit(0)",
+                "signal.signal(signal.SIGTERM, stop)",
+                "print('worker ready', flush=True)",
+                "while True:",
+                "    time.sleep(0.05)",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    track = parse_track_spec(
+        "T|worker.py|logs/{stamp}.log|state/supervisor.pid|state/daemon.pid",
+        stamp="RUN",
+    )
+
+    result = run_supervisor_tracks(
+        [track],
+        repo_root=tmp_path,
+        common_args=[],
+        duration_seconds=0.15,
+        heartbeat_interval_seconds=0.05,
+        stop_grace_seconds=0.2,
+        python_executable=sys.executable,
+        label="replacement marker test",
+        output=lambda _message: None,
+    )
+
+    supervisor_pid_path = tmp_path / "state" / "supervisor.pid"
+    assert result["all_trees_fenced"] is True
+    assert supervisor_pid_path.read_text(encoding="utf-8").strip() == str(os.getpid())
+    assert str(supervisor_pid_path) not in result["removed_runtime_markers"]
+
+def test_multi_supervisor_main_logs_once_when_stdout_is_master_log(tmp_path, monkeypatch):
+    master_log = tmp_path / "master.log"
+
+    def fake_run_supervisor_tracks(*_args, output, **_kwargs):
+        output("single master line")
+        return {"completed": True}
+
+    monkeypatch.setattr(
+        multi_supervisor_runner,
+        "run_supervisor_tracks",
+        fake_run_supervisor_tracks,
+    )
+    with master_log.open("a", encoding="utf-8") as redirected_stdout:
+        monkeypatch.setattr(sys, "stdout", redirected_stdout)
+        exit_code = multi_supervisor_runner.main(
+            [
+                "--repo-root",
+                str(tmp_path),
+                "--master-log",
+                str(master_log),
+                "--track",
+                "T|worker.py|child.log|supervisor.pid|daemon.pid",
+                "--duration-seconds",
+                "0",
+            ]
+        )
+
+    assert exit_code == 0
+    assert master_log.read_text(encoding="utf-8").splitlines() == ["single master line"]
+
+def test_multi_supervisor_detached_launch_cleans_pid_for_already_exited_child(
+    tmp_path,
+    monkeypatch,
+):
+    dead_pid = 999_999_999
+
+    class ExitedProcess:
+        pid = dead_pid
+
+        @staticmethod
+        def poll():
+            return 0
+
+    monkeypatch.setattr(
+        multi_supervisor_runner.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: ExitedProcess(),
+    )
+    argv = [
+        "--repo-root",
+        str(tmp_path),
+        "--master-dir",
+        "state",
+        "--track",
+        "T|worker.py|child.log|supervisor.pid|daemon.pid",
+        "--duration-seconds",
+        "0",
+        "--detach",
+    ]
+    args = build_multi_supervisor_arg_parser().parse_args(argv)
+
+    result = multi_supervisor_runner.launch_detached(args, argv)
+
+    assert result["master_pid"] == dead_pid
+    assert not Path(result["master_pid_file"]).exists()
+
+def test_multi_supervisor_runner_exits_after_fresh_terminal_board_drain(tmp_path):
+    worker = tmp_path / "worker.py"
+    worker.write_text(
+        "\n".join(
+            [
+                "import json",
+                "import signal",
+                "import sys",
+                "import time",
+                "from pathlib import Path",
+                "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))",
+                "Path('state').mkdir(exist_ok=True)",
+                "Path('state/example_supervisor_status.json').write_text(",
+                "    json.dumps({'updated_at': '2999-01-01T00:00:00+00:00', 'current_status_path': 'state/example_task_state.json'}),",
+                "    encoding='utf-8',",
+                ")",
+                "time.sleep(0.1)",
+                "Path('state/example_task_state.json').write_text(",
+                "    json.dumps({",
+                "        'task_count': 4,",
+                "        'completed_count': 4,",
+                "        'active_task_id': '',",
+                "        'implementation_in_progress': False,",
+                "        'eligible_ready_count': 0,",
+                "        'blocked_count': 0,",
+                "        'external_reserved_count': 0,",
+                "    }),",
+                "    encoding='utf-8',",
+                ")",
+                "while True:",
+                "    time.sleep(0.05)",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    track = parse_track_spec(
+        "T|worker.py|logs/{stamp}.log|state/example_supervisor.pid|state/example_managed_daemon.pid",
+        stamp="RUN",
+    )
+
+    output: list[str] = []
+    started = time.monotonic()
+    result = run_supervisor_tracks(
+        [track],
+        repo_root=tmp_path,
+        common_args=[],
+        duration_seconds=5,
+        heartbeat_interval_seconds=0.05,
+        stop_grace_seconds=0.2,
+        python_executable=sys.executable,
+        master_pid_path=tmp_path / "state" / "master.pid",
+        label="terminal runner",
+        exit_when_all_tracks_terminal=True,
+        output=output.append,
+    )
+
+    assert time.monotonic() - started < 2
+    assert result["completed"] is True
+    assert result["terminal_quiescent"] is True
+    assert result["all_trees_fenced"] is True
+    assert result["master_pid_removed"] is True
+    assert any("fresh terminal quiescence" in line for line in output)
+
+def test_terminal_board_drain_ignores_a_stale_completed_projection(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir()
+    task_path = state / "example_task_state.json"
+    task_path.write_text(
+        json.dumps(
+            {
+                "task_count": 4,
+                "completed_count": 4,
+                "active_task_id": "",
+                "implementation_in_progress": False,
+                "eligible_ready_count": 0,
+                "blocked_count": 0,
+                "external_reserved_count": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    os.utime(task_path, (1, 1))
+    (state / "example_supervisor_status.json").write_text(
+        json.dumps({"current_status_path": str(task_path)}),
+        encoding="utf-8",
+    )
+    track = parse_track_spec(
+        "T|worker.py|logs/run.log|state/example_supervisor.pid|state/example_managed_daemon.pid"
+    )
+
+    fields = multi_supervisor_runner.terminal_task_state_fields(
+        track,
+        repo_root=tmp_path,
+        fresh_after_epoch_seconds=time.time(),
+    )
+
+    assert fields["task_state_status"] == "nonterminal"
+    assert fields["task_state_fresh"] is False
+    assert fields["terminal_quiescent"] is False
+
+def test_clean_already_satisfied_candidate_runs_declared_validation(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("already complete\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="AUTO-123",
+        title="Validate an already satisfied task",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python -m pytest"],
+        acceptance="Declared validation proves the existing implementation.",
+    )
+    calls: list[dict[str, object]] = []
+
+    def run_validation(*_args, **kwargs):
+        calls.append(dict(kwargs))
+        return {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"changed_files": []},
+        }
+
+    monkeypatch.setattr(daemon, "_run_validation_commands", run_validation)
+    result = daemon._run_validation_with_candidate_binding(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        baseline_ref=baseline,
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["force_uncached"] is True
+    assert result["passed"] is True
+    assert result["candidate_binding"]["verified"] is True
+    assert result["proposal_gate"]["accepted"] is False
+    assert result["proposal_gate"]["reason"] == (
+        "empty_patch_reserved_for_no_change_gate"
+    )
+    assert result["no_change_policy_gate"]["accepted"] is True
+    assert result["no_change_policy_gate"]["proposal_receipt_id"]
+
+
+def test_clean_candidate_requires_every_declared_output_at_baseline(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="AUTO-123",
+        title="Do not accept a missing output",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["missing-report.json"],
+        validation=["python -m pytest"],
+        acceptance="The declared report exists and is tracked.",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_commands",
+        lambda *_args, **_kwargs: pytest.fail(
+            "missing outputs must not reach already-satisfied validation"
+        ),
+    )
+
+    result = daemon._run_clean_candidate_validation(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        state=None,
+        baseline_ref=baseline,
+    )
+
+    assert result is None
+
+
+def test_clean_candidate_accepts_tracked_output_inside_managed_submodule(
+    tmp_path: Path,
+    monkeypatch,
+):
+    child = tmp_path / "child-source"
+    child.mkdir()
+    _git(child, "init")
+    _git(child, "checkout", "-b", "main")
+    _git(child, "config", "user.name", "Test User")
+    _git(child, "config", "user.email", "test@example.invalid")
+    (child / "report.json").write_text('{"passed":true}\n', encoding="utf-8")
+    _git(child, "add", "report.json")
+    _git(child, "commit", "-m", "child baseline")
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child),
+        "child",
+    )
+    _git(repo, "commit", "-m", "parent baseline")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["child"],
+    )
+    task = PortalTask(
+        task_id="AUTO-123",
+        title="Recognize an existing submodule output",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["child/report.json"],
+        validation=["python -m pytest"],
+        acceptance="The managed child output is present at the parent baseline.",
+    )
+    validation_calls: list[dict[str, object]] = []
+
+    def run_validation(*_args, **kwargs):
+        validation_calls.append(dict(kwargs))
+        return {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"changed_files": []},
+        }
+
+    monkeypatch.setattr(daemon, "_run_validation_commands", run_validation)
+
+    result = daemon._run_clean_candidate_validation(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        state=None,
+        baseline_ref=baseline,
+    )
+
+    assert result is not None
+    assert result["passed"] is True
+    assert result["candidate_binding"]["verified"] is True
+    assert validation_calls[0]["force_uncached"] is True
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    output_check = next(
+        event
+        for event in events
+        if event["type"] == "implementation_expected_outputs_checked"
+    )
+    assert output_check["passed"] is True
+    assert output_check["expected_paths"] == ["child/report.json"]
+    assert output_check["issues"] == []
+
+
+def test_clean_candidate_policy_rejects_unsafe_command_before_dispatch(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("complete\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="AUTO-UNSAFE",
+        title="Never execute an eval-form validation",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="security",
+        outputs=["README.md"],
+        validation=["python -c 'print(unsafe)'"],
+        acceptance="The no-change policy rejects eval-form commands.",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_validation_command_runner",
+        lambda *_args, **_kwargs: pytest.fail(
+            "a rejected no-change policy must not dispatch validation"
+        ),
+    )
+
+    result = daemon._run_clean_candidate_validation(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        state=None,
+        baseline_ref=baseline,
+    )
+
+    assert result is not None
+    assert result["passed"] is False
+    assert result["reason"] == "proposal_gate_failed"
+    assert result["no_change_policy_gate"]["accepted"] is False
+    assert any(
+        finding[0] == "command_forbidden"
+        for finding in result["no_change_policy_gate"]["actual_findings"]
+    )
+
+
+def test_clean_candidate_policy_fails_closed_on_second_collection_error(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("complete\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="AUTO-COLLECT",
+        title="Fail closed on a transient candidate collection error",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="security",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Every policy-bound candidate collection succeeds.",
+    )
+    collect = daemon._collect_proposal_candidate_diff
+    collection_calls = 0
+
+    def fail_policy_collection(*args, **kwargs):
+        nonlocal collection_calls
+        collection_calls += 1
+        if collection_calls == 2:
+            raise RuntimeError("transient collection failure")
+        return collect(*args, **kwargs)
+
+    monkeypatch.setattr(
+        daemon,
+        "_collect_proposal_candidate_diff",
+        fail_policy_collection,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_validation_command_runner",
+        lambda *_args, **_kwargs: pytest.fail(
+            "a collection failure must stop before validation dispatch"
+        ),
+    )
+
+    result = daemon._run_clean_candidate_validation(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        state=None,
+        baseline_ref=baseline,
+    )
+
+    assert result is not None
+    assert collection_calls >= 3
+    assert result["passed"] is False
+    assert result["no_change_policy_gate"]["accepted"] is False
+    assert result["no_change_policy_gate"]["proposal_collection_error"] == (
+        "RuntimeError"
+    )
+
+
+def test_no_change_completion_guard_rejects_self_consistent_unissued_gate(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("complete\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="AUTO-FORGE",
+        title="Reject a fabricated no-change gate",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="security",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Only this daemon attempt can issue completion authority.",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_commands",
+        lambda *_args, **_kwargs: {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"changed_files": []},
+        },
+    )
+    result = daemon._run_clean_candidate_validation(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        state=None,
+        baseline_ref=baseline,
+    )
+    assert result is not None and result["passed"] is True
+
+    forged_gate = dict(result["no_change_policy_gate"])
+    forged_gate["proposal_receipt_id"] = "forged-receipt"
+    forged_gate.pop("gate_id")
+    forged_gate["gate_id"] = implementation_daemon_module.content_identity(
+        forged_gate
+    )
+    forged_result = {
+        **result,
+        "no_change_policy_gate": forged_gate,
+        "proposal_gate": {
+            **result["proposal_gate"],
+            "receipt_id": "forged-receipt",
+        },
+    }
+
+    guard = daemon._validated_no_change_completion_guard(
+        baseline_ref=baseline,
+        current_head=baseline,
+        expected_branch="main",
+        current_branch="main",
+        validation_result=forged_result,
+        expected_task_id=task.task_id,
+        expected_task_cid=daemon._canonical_ref(task),
+        authoritative_no_change_policy_gate=(
+            daemon._take_issued_no_change_policy_gate(forged_result)
+        ),
+    )
+
+    assert guard["allowed"] is False
+    assert "no_change_policy_gate_not_issued_for_attempt" in guard["reasons"]
+
+
+def test_rejected_empty_proposal_short_circuits_before_declared_graph(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("already complete\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="AUTO-123",
+        title="Reject an empty mutation proposal",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python -c 'raise SystemExit(99)'"],
+        acceptance="A rejected proposal dispatches no command.",
+    )
+    proposal = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_validation_command_runner",
+        lambda *_args, **_kwargs: pytest.fail(
+            "a rejected proposal must never dispatch validation"
+        ),
+    )
+
+    result = daemon._run_validation_commands(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        proposal_validation=proposal,
+    )
+
+    assert result["attempted"] is False
+    assert result["passed"] is False
+    assert result["returncode"] == 78
+    assert result["reason"] == "proposal_gate_failed"
+    assert result["error"] == "proposal_validation_failed"
+    assert "configuration_error" not in result
+
+
+def test_clean_candidate_rebinds_validation_materialized_output(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / ".gitignore").write_text("coverage.json\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="AUTO-123",
+        title="Materialize deterministic evidence",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="analysis",
+        outputs=["coverage.json"],
+        validation=["python -m generate_coverage"],
+        acceptance="Generated evidence is proposal-bound at a fixed point.",
+    )
+    calls = 0
+
+    def run_validation(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            (repo / "coverage.json").write_text(
+                '{"coverage":1}\n',
+                encoding="utf-8",
+            )
+        return {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+        }
+
+    monkeypatch.setattr(daemon, "_run_validation_commands", run_validation)
+
+    result = daemon._run_validation_with_candidate_binding(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        baseline_ref=baseline,
+    )
+
+    assert calls == 2
+    assert result["passed"] is True
+    assert result["candidate_binding"]["verified"] is True
+    assert result["candidate_rebind"]["accepted"] is True
+    assert result["candidate_rebind"]["stabilized"] is True
+    assert result["candidate_rebind"]["changed_paths"] == ["coverage.json"]
+
+def test_validation_rebinds_declared_generated_output_at_fixed_point(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "summary.md").write_text("base\n", encoding="utf-8")
+    (repo / ".gitignore").write_text("coverage.json\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore", "summary.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (repo / "summary.md").write_text("candidate\n", encoding="utf-8")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="AUTO-123",
+        title="Generate deterministic evidence",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="analysis",
+        outputs=["summary.md", "coverage.json"],
+        validation=["python -m generate_coverage"],
+        acceptance="The generated evidence is stable and source-bound.",
+    )
+    calls = 0
+
+    def run_validation(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            (repo / "coverage.json").write_text(
+                '{"coverage":1}\n',
+                encoding="utf-8",
+            )
+        return {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_commands",
+        run_validation,
+    )
+
+    result = daemon._run_validation_with_candidate_binding(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        baseline_ref=baseline,
+    )
+
+    assert calls == 2
+    assert result["passed"] is True
+    assert result["candidate_binding"]["verified"] is True
+    assert result["candidate_rebind"]["accepted"] is True
+    assert result["candidate_rebind"]["stabilized"] is True
+    assert result["candidate_rebind"]["changed_paths"] == [
+        "coverage.json",
+        "summary.md",
+    ]
+    assert "coverage.json" in _git(
+        repo,
+        "diff",
+        "--cached",
+        "--name-only",
+    ).splitlines()
+    _git(repo, "reset", "--quiet", "HEAD", "--", "coverage.json")
+    assert "coverage.json" not in _git(
+        repo,
+        "diff",
+        "--cached",
+        "--name-only",
+    ).splitlines()
+
+    commit_result = daemon._commit_worktree_changes_unchecked(
+        repo,
+        task,
+        1,
+        baseline_ref=baseline,
+    )
+    assert commit_result["committed"] is True
+    assert _git(
+        repo,
+        "show",
+        f"{commit_result['commit']}:coverage.json",
+    ) == '{"coverage":1}'
+
+def test_declared_output_directory_preserves_nested_ignored_fixture(
+    tmp_path: Path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / ".gitignore").write_text(
+        "*.json\n__pycache__/\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    fixture_dir = repo / "test" / "fixtures" / "corpus"
+    fixture_dir.mkdir(parents=True)
+    (fixture_dir / "manifest.json").write_text(
+        '{"cases":[]}\n',
+        encoding="utf-8",
+    )
+    cache_dir = fixture_dir / "__pycache__"
+    cache_dir.mkdir()
+    (cache_dir / "builder.pyc").write_bytes(b"generated")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="AUTO-123",
+        title="Generate a deterministic fixture corpus",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="analysis",
+        outputs=["test/fixtures/corpus"],
+        validation=["python -m pytest"],
+        acceptance="The ignored fixture is preserved with the candidate.",
+    )
+
+    proposal_validation = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline,
+    )
+
+    assert proposal_validation.accepted is True
+    assert proposal_validation.proposal.changed_paths == (
+        "test/fixtures/corpus/manifest.json",
+    )
+    assert _git(repo, "diff", "--cached", "--name-only") == (
+        "test/fixtures/corpus/manifest.json"
+    )
+
+    commit_result = daemon._commit_worktree_changes_unchecked(
+        repo,
+        task,
+        1,
+        baseline_ref=baseline,
+    )
+
+    assert commit_result["committed"] is True
+    assert _git(
+        repo,
+        "show",
+        f"{commit_result['commit']}:test/fixtures/corpus/manifest.json",
+    ) == '{"cases":[]}'
+    committed_paths = _git(
+        repo,
+        "show",
+        "--name-only",
+        "--format=",
+        str(commit_result["commit"]),
+    ).splitlines()
+    assert not any(path.endswith("builder.pyc") for path in committed_paths)
+
+def test_validation_rebind_rejects_generated_change_outside_task_scope(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / "summary.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "summary.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (repo / "summary.md").write_text("candidate\n", encoding="utf-8")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="AUTO-123",
+        title="Reject out-of-scope validation changes",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="analysis",
+        outputs=["summary.md"],
+        validation=["python -m generate_coverage"],
+        acceptance="Validation cannot mutate undeclared source.",
+    )
+    calls = 0
+
+    def run_validation(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        (repo / "README.md").write_text(
+            "changed by validation\n",
+            encoding="utf-8",
+        )
+        return {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_commands",
+        run_validation,
+    )
+
+    result = daemon._run_validation_with_candidate_binding(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        baseline_ref=baseline,
+    )
+
+    assert calls == 1
+    assert result["passed"] is False
+    assert result["reason"] == "candidate_changed_during_validation"
+    assert result["candidate_rebind"]["accepted"] is False
+    assert result["candidate_rebind"]["stabilized"] is False
+    assert "path_outside_scope" in result["candidate_rebind"]["reason_codes"]
+
+def test_stale_submodule_rebase_preserves_dirty_canonical_checkout(tmp_path: Path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    branch_name = "implementation/rebase-with-dirty-checkout"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "implementation feature")
+    branch_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    (submodule / "later.txt").write_text("later\n", encoding="utf-8")
+    _git(submodule, "add", "later.txt")
+    _git(submodule, "commit", "-m", "advance child")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance child on main")
+    operator_note = repo / "operator-note.txt"
+    operator_note.write_text("preserve me\n", encoding="utf-8")
+
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    result = daemon._rebase_stale_submodule_pointers(branch_name, "main")
+
+    assert result["attempted"] is False
+    assert result["reason"] == "shared_checkout_dirty_preserved"
+    assert result["dirty_paths"] == ["operator-note.txt"]
+    assert _git(repo, "branch", "--show-current") == "main"
+    assert _git(repo, "rev-parse", branch_name) == branch_commit
+    assert operator_note.read_text(encoding="utf-8") == "preserve me\n"
+
+def test_implementation_daemon_reclaims_dead_same_lane_owner_on_opt_in_restart(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+        ProcessBirthIdentity,
+        WorkspaceLifecycleState,
+        WorktreeLifecycleStore,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    state_dir = repo / "state"
+    workspace = repo / "worktrees" / "stale"
+    store = WorktreeLifecycleStore(repo_root=repo)
+    store.begin_preparing(
+        task_id="ACCEL-RESTART",
+        canonical_task_cid="cid:accel-restart",
+        attempt=1,
+        lane_id="lane-1",
+        workspace_path=workspace,
+        branch="implementation/accel-restart",
+        merge_target="main",
+        state_dir=str(state_dir.resolve()),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 11,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_RECLAIM_DEAD_WORKTREE_LEASES_ON_STARTUP",
+        "1",
+    )
+
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+
+    assert len(daemon.worktree_lifecycle_restart_recovery) == 1
+    recovered = daemon.worktree_lifecycle.load_workspace(workspace)
+    assert recovered is not None
+    assert recovered.state is WorkspaceLifecycleState.TERMINAL
+    assert recovered.terminal_reason == "controlled_restart_dead_owner"
+
+def test_ephemeral_lifecycle_race_defers_without_consuming_attempt(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+        DuplicateAttemptError,
+        LifecycleFailureKind,
+        WorkspaceLifecycleState,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="provider-must-not-run",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Retry lifecycle setup",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        validation=["true"],
+    )
+    canonical_task_cid = daemon._canonical_ref(task)
+    state = TodoTaskState(
+        implementation_attempts={task.task_id: 1},
+        implementation_attempts_by_cid={canonical_task_cid: 1},
+    )
+
+    def fake_seed(worktree_path, _branch_name, *, task=None):
+        worktree_path.mkdir(parents=True)
+        return "baseline"
+
+    monkeypatch.setattr(daemon, "_build_implementation_prompt", lambda *_args: "")
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(daemon, "_create_seeded_worktree", fake_seed)
+    monkeypatch.setattr(
+        daemon,
+        "_sync_worktree_lifecycle_workspace",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            DuplicateAttemptError("target lease has not expired")
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_cleanup_failed_setup_worktree",
+        lambda *_args, **_kwargs: {
+            "cleaned": False,
+            "reason": "lifecycle_fenced",
+        },
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail("provider must not run"),
+    )
+
+    result = daemon._run_implementation(task, state)
+    persisted = TodoTaskState.load(daemon.state_path)
+
+    assert result["lifecycle_race"] is True
+    assert result["failure_kind"] == LifecycleFailureKind.LIFECYCLE_RACE.value
+    assert result["provider_call_allowed"] is False
+    assert result["attempt_consumed"] is False
+    assert result["deferred"] is True
+    assert result["backoff_seconds"] == 30
+    assert persisted.implementation_attempts[task.task_id] == 1
+    assert persisted.implementation_attempts_by_cid[canonical_task_cid] == 1
+    assert daemon.task_queue.is_cooled_down(canonical_task_cid)
+    records = list(daemon.worktree_lifecycle.iter_records())
+    assert not any(
+        record.state is not WorkspaceLifecycleState.TERMINAL
+        for record in records
+    )
+
+def test_implementation_supervisor_propagates_source_checkout_pythonpath(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    monkeypatch.setenv("PYTHONPATH", "/existing-pythonpath")
+    config = TodoSupervisorConfig(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        state_dir=state_dir,
+        repo_root=repo,
+    )
+
+    loop_config = TodoImplementationSupervisor(
+        config
+    ).build_supervisor_loop_config()
+    pythonpath = loop_config.child_env["PYTHONPATH"].split(os.pathsep)
+    source_root = str(
+        Path(todo_supervisor_module.__file__).resolve().parents[3]
+    )
+
+    assert pythonpath[0] == source_root
+    assert "/existing-pythonpath" in pythonpath
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from ipfs_accelerate_py.agent_supervisor.todo_daemon "
+                "import implementation_daemon"
+            ),
+        ],
+        cwd=repo,
+        env={
+            "PYTHONNOUSERSITE": "1",
+            "PYTHONPATH": loop_config.child_env["PYTHONPATH"],
+        },
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+
+def test_implementation_daemon_preserves_nonconflicting_git_sync_recovery_note(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, text=True, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.email", "agent@example.invalid"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Agent"], cwd=repo, check=True)
+    (repo / "README.md").write_text("clean\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "Initial"], cwd=repo, text=True, capture_output=True, check=True)
+    subprocess.run(["git", "checkout", "-b", "implementation/accel-002"], cwd=repo, check=True)
+    (repo / "README.md").write_text("implemented\n", encoding="utf-8")
+    subprocess.run(["git", "commit", "-am", "Implement candidate"], cwd=repo, check=True)
+    implementation_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    subprocess.run(["git", "checkout", "main"], cwd=repo, check=True)
+    recovery_note = repo / ".git-sync-recovery-20260727-202941.md"
+    recovery_note.write_text("operator recovery information\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    candidates = [
+        {
+            "task_id": "ACCEL-002",
+            "branch": "implementation/accel-002",
+            "implementation_commit": implementation_commit,
+        }
+    ]
+
+    blocking, nonblocking = daemon._reconciliation_blocking_dirty_paths(
+        candidates,
+        target_branch="main",
+    )
+
+    assert blocking == []
+    assert nonblocking == [recovery_note.name]
+    assert recovery_note.read_text(encoding="utf-8") == "operator recovery information\n"
+
+def test_implementation_daemon_blocks_git_sync_recovery_note_tracked_by_candidate(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, text=True, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.email", "agent@example.invalid"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Agent"], cwd=repo, check=True)
+    (repo / "README.md").write_text("clean\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "Initial"], cwd=repo, text=True, capture_output=True, check=True)
+    subprocess.run(["git", "checkout", "-b", "implementation/accel-002"], cwd=repo, check=True)
+    recovery_note = repo / ".git-sync-recovery-20260727-202941.md"
+    recovery_note.write_text("candidate content\n", encoding="utf-8")
+    subprocess.run(["git", "add", recovery_note.name], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "Track candidate recovery note"], cwd=repo, check=True)
+    implementation_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    subprocess.run(["git", "checkout", "main"], cwd=repo, check=True)
+    recovery_note.write_text("operator recovery information\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    candidates = [
+        {
+            "task_id": "ACCEL-002",
+            "branch": "implementation/accel-002",
+            "implementation_commit": implementation_commit,
+        }
+    ]
+
+    blocking, nonblocking = daemon._reconciliation_blocking_dirty_paths(
+        candidates,
+        target_branch="main",
+    )
+
+    assert blocking == [recovery_note.name]
+    assert nonblocking == []
+    assert recovery_note.read_text(encoding="utf-8") == "operator recovery information\n"
+
+def test_implementation_daemon_preserves_nonoverlapping_untracked_operator_file(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(
+        ["git", "init", "-b", "main"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "agent@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Agent"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("clean\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Initial"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "checkout", "-b", "implementation/accel-002"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("implemented\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "commit", "-am", "Implement candidate"],
+        cwd=repo,
+        check=True,
+    )
+    implementation_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    subprocess.run(["git", "checkout", "main"], cwd=repo, check=True)
+    operator_file = (
+        repo
+        / ".cvefixes-build"
+        / "source"
+        / "data"
+        / "train-00000-of-00003.parquet"
+    )
+    operator_file.parent.mkdir(parents=True)
+    operator_file.write_bytes(b"operator dataset")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    candidates = [
+        {
+            "task_id": "ACCEL-002",
+            "branch": "implementation/accel-002",
+            "implementation_commit": implementation_commit,
+        }
+    ]
+
+    blocking, nonblocking = daemon._reconciliation_blocking_dirty_paths(
+        candidates,
+        target_branch="main",
+    )
+
+    relative = operator_file.relative_to(repo).as_posix()
+    assert blocking == []
+    assert nonblocking == [relative]
+    assert operator_file.read_bytes() == b"operator dataset"
+
+def test_implementation_daemon_blocks_untracked_path_owned_by_candidate(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(
+        ["git", "init", "-b", "main"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "agent@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Agent"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("clean\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Initial"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    relative = ".cvefixes-build/source/data/train.parquet"
+    subprocess.run(
+        ["git", "checkout", "-b", "implementation/accel-002"],
+        cwd=repo,
+        check=True,
+    )
+    candidate_file = repo / relative
+    candidate_file.parent.mkdir(parents=True)
+    candidate_file.write_bytes(b"candidate dataset")
+    subprocess.run(["git", "add", relative], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Track candidate dataset"],
+        cwd=repo,
+        check=True,
+    )
+    implementation_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    subprocess.run(["git", "checkout", "main"], cwd=repo, check=True)
+    candidate_file.parent.mkdir(parents=True)
+    candidate_file.write_bytes(b"operator dataset")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    candidates = [
+        {
+            "task_id": "ACCEL-002",
+            "branch": "implementation/accel-002",
+            "implementation_commit": implementation_commit,
+        }
+    ]
+
+    blocking, nonblocking = daemon._reconciliation_blocking_dirty_paths(
+        candidates,
+        target_branch="main",
+    )
+
+    assert blocking == [relative]
+    assert nonblocking == []
+    assert candidate_file.read_bytes() == b"operator dataset"
+
+def test_merge_branch_rechecks_ancestry_under_lock_before_resolver(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "base")
+    branch = "implementation/accel-003"
+    _git(repo, "checkout", "-b", branch)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "feature")
+    _git(repo, "checkout", "main")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "missing.todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+        llm_merge_resolver_command="resolver",
+    )
+    task = PortalTask(
+        task_id="ACCEL-003",
+        title="Do not resolve an integrated candidate",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+    )
+
+    def integrate_during_preflight(selected_branch, target_branch):
+        _git(repo, "merge", "--no-ff", "--no-edit", selected_branch)
+        # Move the branch after integrating the exact candidate.  The lock-held
+        # recheck must use the captured candidate commit as well as the live
+        # branch ref, otherwise this race can still reach the resolver.
+        _git(repo, "checkout", selected_branch)
+        (repo / "later.txt").write_text("later\n", encoding="utf-8")
+        _git(repo, "add", "later.txt")
+        _git(repo, "commit", "-m", "later divergent branch tip")
+        _git(repo, "checkout", target_branch)
+        return {
+            "attempted": False,
+            "reason": "branch_already_merged",
+            "branch": selected_branch,
+            "target_branch": target_branch,
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_rebase_stale_submodule_pointers",
+        integrate_during_preflight,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_prepare_main_merge_workspace",
+        lambda *_args, **_kwargs: pytest.fail(
+            "an already-integrated candidate must not prepare a resolver workspace"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_invoke_llm_merge_resolver_for_failed_merge",
+        lambda *_args, **_kwargs: pytest.fail(
+            "an already-integrated candidate must not invoke the resolver"
+        ),
+    )
+
+    result = daemon._merge_branch_to_main(branch, task, 1)
+
+    assert result["merged"] is True
+    assert result["attempted"] is False
+    assert result["reason"] == "branch_already_merged"
+    assert result["completion_recheck"]["candidate_ancestor"] is True
+    assert result["completion_recheck"]["branch_ancestor"] is False
+    assert not [
+        event
+        for event in daemon._iter_events()
+        if event["type"] in {"merge_started", "llm_merge_resolver_invoked"}
+    ]
+
+def test_completed_task_status_without_ancestry_is_not_merge_proof(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "base")
+    branch = "implementation/accel-004"
+    _git(repo, "checkout", "-b", branch)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "feature")
+    _git(repo, "checkout", "main")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "missing.todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+        llm_merge_resolver_command="",
+    )
+    task = PortalTask(
+        task_id="ACCEL-004",
+        title="Do not trust a board projection as merge proof",
+        status="completed",
+        completion="manual",
+        priority="P0",
+        track="ops",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_prepare_main_merge_workspace",
+        lambda *_args, **_kwargs: {
+            "available": False,
+            "reason": "test_workspace_unavailable",
+        },
+    )
+
+    result = daemon._merge_branch_to_main(branch, task, 1)
+
+    assert result["attempted"] is True
+    assert result["merged"] is False
+    assert result["reason"] == "test_workspace_unavailable"
+    assert daemon._git_ref_is_ancestor(branch, "main") is False
+
+def test_merge_reconciliation_backs_off_live_lock_contention(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        _reconciled_candidate_task_board(
+            task_id="ACCEL-003",
+            validation="true",
+        ),
+        encoding="utf-8",
+    )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    event = {
+        "task_id": "ACCEL-003",
+        "attempt": 2,
+        "branch": "implementation/accel-003",
+        "implementation_commit": "def456",
+        "task_cid": daemon._identity_for_task(
+            daemon._load_tasks()[0]
+        ).canonical_task_cid,
+        "title": "Defer a busy merge",
+    }
+    merge_calls: list[str] = []
+    monotonic_now = [100.0]
+    monkeypatch.setattr(
+        implementation_daemon_module.time,
+        "monotonic",
+        lambda: monotonic_now[0],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_failed_merge_candidates",
+        lambda skip_task_ids=None: [event],
+    )
+    monkeypatch.setattr(daemon, "_main_branch_name", lambda: "main")
+    monkeypatch.setattr(
+        daemon,
+        "_git_ref_is_ancestor",
+        lambda ancestor, descendant: False,
+    )
+    monkeypatch.setattr(daemon, "_git_ref_exists", lambda ref: True)
+    monkeypatch.setattr(
+        daemon,
+        "_reconciliation_blocking_dirty_paths",
+        lambda *_args, **_kwargs: ([], []),
+    )
+
+    def lock_busy(branch, task, attempt, baseline_ref=""):
+        merge_calls.append(branch)
+        return {
+            "attempted": False,
+            "merged": False,
+            "reason": "lock_exists",
+            "lock_owner_pid": 12345,
+        }
+
+    monkeypatch.setattr(daemon, "_merge_branch_to_main", lock_busy)
+
+    first = daemon._reconcile_failed_merges()
+    monotonic_now[0] = 129.0
+    second = daemon._reconcile_failed_merges()
+    monotonic_now[0] = 131.0
+    third = daemon._reconcile_failed_merges()
+
+    assert first[0]["reason"] == "merge_lock_busy"
+    assert first[0]["retry_after_seconds"] == (
+        implementation_daemon_module
+        .TRANSIENT_MERGE_RECONCILIATION_BACKOFF_SECONDS
+    )
+    assert second == []
+    assert third[0]["reason"] == "merge_lock_busy"
+    assert merge_calls == [
+        "implementation/accel-003",
+        "implementation/accel-003",
+    ]
+    events = daemon._iter_events()
+    assert not [event for event in events if event["type"] == "merge_reconciled"]
+    assert [
+        event
+        for event in events
+        if event["type"] == "merge_reconciliation_deferred"
+        and event["reason"] in {
+            "merge_lock_busy",
+            "transient_merge_lock_backoff",
+        }
+    ]
+
+def test_implementation_daemon_uses_grok_window_and_bounded_reserve_env(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    monkeypatch.setenv(
+        implementation_daemon_module._GROK_CONTEXT_WINDOW_ENV,
+        "8192",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_CONTEXT_WINDOW_ENV,
+        "1",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE_ENV,
+        "2048",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_CONTEXT_TOOL_RESERVE_ENV,
+        "1024",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implementation_context_tokenizer=lambda text: max(
+            1, len(text.encode("utf-8")) // 16
+        ),
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Compile bounded Grok implementation context",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="runtime",
+        outputs=["src/context.py"],
+        validation=["pytest tests/test_context.py"],
+        acceptance="Preserve the provider-specific context contract.",
+        canonical_task_cid="task:accel-001",
+        metadata={
+            "Context budget tokens": "4096",
+            "Provider role": "grok-implement, codex-review",
+        },
+    )
+
+    result = daemon._compile_implementation_context(task, attempt=1)
+
+    resolution = result.receipt.budget_resolution
+    assert resolution.provider_context_window == 8_192
+    assert resolution.reserved_output_tokens == 2_048
+    assert resolution.reserved_tool_tokens == 1_024
+    assert resolution.effective_input_limit == 4_096
+    authority = result.capsule.authority["implementation_context_budget"]
+    assert authority["source"] == "task_metadata"
+    assert authority["task_max_input_tokens"] == 4_096
+
+def test_implementation_context_budget_rehydrates_budget_protocol(
+    tmp_path,
+):
+    configured = ContextBudget(max_input_tokens=1_234)
+
+    class BudgetProxy:
+        def to_dict(self):
+            return configured.to_dict()
+
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## ACCEL-",
+        implementation_context_budget=BudgetProxy(),
+    )
+
+    result = daemon._base_implementation_context_budget()
+
+    assert isinstance(result, implementation_daemon_module.ContextBudget)
+    assert result.max_input_tokens == 1_234
+
+def test_retry_budget_repair_provenance_is_explicit_and_tamper_evident(
+    tmp_path,
+):
+    discovery_path = (
+        tmp_path
+        / "state"
+        / "discovery"
+        / "2026-07-31-accel-002-accel-001-retry-budget.md"
+    )
+    source = PortalTask(
+        task_id="ACCEL-001",
+        title="Original task",
+        status="todo",
+        completion="auto",
+        priority="P0",
+        track="runtime",
+        depends_on=["ACCEL-000"],
+        outputs=["src/runtime.py"],
+        validation=["validation_pre_dispatch:proposal_validation_failed"],
+        acceptance="Implement the runtime.",
+        metadata={"predicted files": "src/runtime.py"},
+    )
+    block = backlog_refinery_module.validation_retry_task_block(
+        task_id="ACCEL-002",
+        source_task=source,
+        failed_command="validation_pre_dispatch:proposal_validation_failed",
+        discovery_path=discovery_path,
+        depends_on=source.depends_on,
+        discovery_output_path=str(discovery_path.parent),
+    )
+    todo_path = tmp_path / "todo.md"
+    todo_path.write_text(block, encoding="utf-8")
+    repair = parse_task_file(
+        todo_path,
+        task_header_prefix="## ACCEL-",
+    )[0]
+
+    assert repair.metadata["generated by"] == RETRY_BUDGET_REPAIR_SCHEMA
+    assert repair.metadata["retry repair source"] == "ACCEL-001"
+    assert repair.metadata["retry failure kind"] == "validation"
+    assert repair.metadata["canonical board task"] == "false"
+    assert retry_budget_repair_source(repair) == ("ACCEL-001", "validation")
+    assert repair.outputs == ["src/runtime.py"]
+    assert str(discovery_path.parent) not in repair.outputs
+
+    forged = replace(
+        repair,
+        metadata={
+            **repair.metadata,
+            "retry repair source": "ACCEL-999",
+        },
+    )
+    assert retry_budget_repair_source(forged) == ("", "")
+
+
+def test_retry_no_change_scope_requires_completed_board_bound_repair(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Original source task
+
+- Status: todo
+- Priority: P0
+- Track: runtime
+- Outputs: README.md
+- Validation: python --version
+- Acceptance: Implement the runtime.
+
+## ACCEL-002 Resolve implementation retry-budget failure for ACCEL-001
+
+- Status: completed
+- Priority: P1
+- Track: ops
+- Generated by: ipfs_accelerate_py.agent_supervisor.retry-budget-repair@1
+- Retry repair source: ACCEL-001
+- Retry failure kind: implementation
+- Outputs: README.md
+- Validation: python --version
+- Acceptance: Use the durable repair evidence, then remove ACCEL-001 from strategy blocked_tasks.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
+    source = next(task for task in tasks if task.task_id == "ACCEL-001")
+    state = TodoTaskState(
+        retry_budget_repair_receipts={"ACCEL-001": "ACCEL-002"}
+    )
+
+    scope = daemon._retry_no_change_pre_dispatch_scope(source, state)
+
+    assert scope is not None
+    assert scope["kind"] == "retry_budget_released_source"
+    assert scope["source_task_id"] == "ACCEL-001"
+    assert scope["repair_task_id"] == "ACCEL-002"
+    assert scope["failure_kind"] == "implementation"
+
+    state.retry_budget_repair_receipts["ACCEL-001"] = "ACCEL-999"
+    assert daemon._retry_no_change_pre_dispatch_scope(source, state) is None
+
+    unfinished = todo_path.read_text(encoding="utf-8").replace(
+        "- Status: completed",
+        "- Status: todo",
+    )
+    todo_path.write_text(unfinished, encoding="utf-8")
+    state.retry_budget_repair_receipts["ACCEL-001"] = "ACCEL-002"
+    assert daemon._retry_no_change_pre_dispatch_scope(source, state) is None
+
+
+def test_merge_retry_repair_cannot_use_no_change_provider_bypass(tmp_path):
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## ACCEL-",
+    )
+    repair = PortalTask(
+        task_id="ACCEL-002",
+        title="Resolve merge retry-budget failure for ACCEL-001",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["src/runtime.py"],
+        validation=["python --version"],
+        acceptance="Reconcile the stranded implementation lineage.",
+        metadata={
+            "Generated by": RETRY_BUDGET_REPAIR_SCHEMA,
+            "Retry repair source": "ACCEL-001",
+            "Retry failure kind": "merge",
+        },
+    )
+
+    assert (
+        daemon._retry_no_change_pre_dispatch_scope(repair, TodoTaskState())
+        is None
+    )
+
+
+def test_retry_pre_dispatch_probe_blocks_validation_candidate_mutation(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-002",
+        title="Resolve implementation retry-budget failure for ACCEL-001",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Remove ACCEL-001 from strategy blocked_tasks.",
+        metadata={
+            "Generated by": implementation_daemon_module.RETRY_BUDGET_REPAIR_SCHEMA,
+            "Retry repair source": "ACCEL-001",
+            "Retry failure kind": "implementation",
+        },
+    )
+
+    def mutating_failed_validation(*_args, **_kwargs):
+        (repo / "README.md").write_text(
+            "validation side effect\n",
+            encoding="utf-8",
+        )
+        return {
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "results": [],
+            "no_change_policy_gate": {"accepted": True},
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_clean_candidate_validation",
+        mutating_failed_validation,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+
+    result = daemon._run_retry_no_change_pre_dispatch_validation(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        state=TodoTaskState(),
+        attempt=1,
+        baseline_ref=baseline,
+        protected_path_snapshot={},
+        branch_name="main",
+        prepare_workspace=False,
+    )
+
+    assert result is not None
+    assert result["passed"] is False
+    assert result["reason"] == "pre_dispatch_probe_changed_candidate"
+    assert result["pre_dispatch_no_change"]["changed_path_count"] == 1
+    assert result["pre_dispatch_no_change"]["provider_dispatched"] is False
+
+def _merged_cleanup_configured_submodule_fixture(
+    tmp_path: Path,
+    *,
+    branch_name: str = "implementation/lowercase-submodule-cleanup",
+) -> tuple[Path, Path, Path, TodoImplementationSupervisor]:
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    (submodule / "keep.txt").write_text("keep\n", encoding="utf-8")
+    _git(submodule, "add", "keep.txt")
+    _git(submodule, "commit", "-m", "add second tracked child file")
+    _git(
+        submodule,
+        "push",
+        "origin",
+        "HEAD:refs/heads/configured-submodule-fixture",
+    )
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance child baseline")
+
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "branch.txt").write_text("merged branch\n", encoding="utf-8")
+    _git(repo, "add", "branch.txt")
+    _git(repo, "commit", "-m", "merged branch change")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", branch_name)
+
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "configured-submodule"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    _git(
+        worktree_path,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "update",
+        "--init",
+        "libs/child",
+    )
+    nested = worktree_path / "libs" / "child"
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+            worktree_submodule_paths=("libs/child",),
+        )
+    )
+    return repo, worktree_path, nested, supervisor
+
+def test_implementation_supervisor_classifies_deletion_only_configured_submodule_for_reconciliation(
+    tmp_path: Path,
+):
+    _repo, worktree_path, nested, supervisor = (
+        _merged_cleanup_configured_submodule_fixture(tmp_path)
+    )
+    nested_head = _git(nested, "rev-parse", "HEAD")
+    (nested / "child.txt").unlink()
+    assert supervisor._git_status_short(worktree_path) == [" m libs/child"]
+
+    verdict = supervisor._redundant_dirty_worktree_status(
+        worktree_path,
+        [" m libs/child"],
+        "main",
+    )
+
+    assert verdict["redundant"] is False
+    assert verdict["reason"] == "unsupported_status"
+    checked = verdict["checked"][0]
+    assert checked["proof_reason"] == (
+        "configured_submodule_unstaged_deletions_require_reconciliation"
+    )
+    proof = checked["proof"]
+    assert proof["head_gitlink"] == {
+        "mode": "160000",
+        "commit": nested_head,
+    }
+    assert proof["target_gitlink"] == proof["head_gitlink"]
+    assert proof["nested_head"] == nested_head
+    assert proof["nested_repo_root_matches"] is True
+    assert proof["nested_status_entry_count"] == 1
+    assert proof["nested_status_codes"] == {" D": 1}
+    assert proof["all_unstaged_tracked_deletions"] is True
+    assert proof["mechanically_restorable_from_gitlink"] is True
+    assert worktree_path.exists()
+    assert not (nested / "child.txt").exists()
+
+@pytest.mark.parametrize(
+    ("dirty_kind", "expected_status_codes"),
+    (
+        ("staged_deletion", {"D ": 1}),
+        ("modified", {" M": 1}),
+        ("deletion_and_untracked", {" D": 1, "??": 1}),
+    ),
+)
+def test_implementation_supervisor_keeps_lowercase_dirty_configured_submodule_with_unsafe_nested_status(
+    tmp_path: Path,
+    dirty_kind: str,
+    expected_status_codes: dict[str, int],
+):
+    _repo, worktree_path, nested, supervisor = (
+        _merged_cleanup_configured_submodule_fixture(tmp_path)
+    )
+    if dirty_kind == "staged_deletion":
+        (nested / "child.txt").unlink()
+        _git(nested, "add", "-u", "child.txt")
+    elif dirty_kind == "modified":
+        (nested / "keep.txt").write_text("modified\n", encoding="utf-8")
+    else:
+        (nested / "child.txt").unlink()
+        (nested / "untracked.txt").write_text("untracked\n", encoding="utf-8")
+    assert supervisor._git_status_short(worktree_path) == [" m libs/child"]
+
+    verdict = supervisor._redundant_dirty_worktree_status(
+        worktree_path,
+        [" m libs/child"],
+        "main",
+    )
+
+    assert verdict["redundant"] is False
+    assert verdict["reason"] == "unsupported_status"
+    checked = verdict["checked"][0]
+    assert checked["proof_reason"] == (
+        "configured_submodule_nested_status_not_unstaged_deletions"
+    )
+    assert checked["proof"]["nested_status_codes"] == expected_status_codes
+    assert checked["proof"]["all_unstaged_tracked_deletions"] is False
+    assert worktree_path.exists()
+
+def test_implementation_supervisor_keeps_lowercase_dirty_configured_submodule_when_gitlinks_differ(
+    tmp_path: Path,
+):
+    repo, worktree_path, nested, supervisor = (
+        _merged_cleanup_configured_submodule_fixture(tmp_path)
+    )
+    (repo / "libs" / "child" / "target.txt").write_text(
+        "new target commit\n",
+        encoding="utf-8",
+    )
+    _git(repo / "libs" / "child", "add", "target.txt")
+    _git(repo / "libs" / "child", "commit", "-m", "advance target child")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance target gitlink")
+    (nested / "child.txt").unlink()
+
+    verdict = supervisor._redundant_dirty_worktree_status(
+        worktree_path,
+        [" m libs/child"],
+        "main",
+    )
+
+    assert verdict["redundant"] is False
+    assert verdict["reason"] == "unsupported_status"
+    checked = verdict["checked"][0]
+    assert checked["proof_reason"] == "configured_submodule_gitlink_mismatch"
+    assert checked["proof"]["head_gitlink"]["mode"] == "160000"
+    assert checked["proof"]["target_gitlink"]["mode"] == "160000"
+    assert (
+        checked["proof"]["head_gitlink"]["commit"]
+        != checked["proof"]["target_gitlink"]["commit"]
+    )
+
+def test_implementation_supervisor_keeps_configured_submodule_when_nested_head_differs_from_gitlink(
+    tmp_path: Path,
+):
+    _repo, worktree_path, nested, supervisor = (
+        _merged_cleanup_configured_submodule_fixture(tmp_path)
+    )
+    (nested / "nested-head.txt").write_text("new nested head\n", encoding="utf-8")
+    _git(nested, "add", "nested-head.txt")
+    _git(nested, "commit", "-m", "advance only nested head")
+
+    verdict = supervisor._configured_submodule_unstaged_deletion_proof(
+        worktree_path,
+        relative="libs/child",
+        target_ref="main",
+    )
+
+    assert verdict["redundant"] is False
+    assert verdict["reason"] == "configured_submodule_nested_head_mismatch"
+    assert verdict["proof"]["nested_head"] != (
+        verdict["proof"]["head_gitlink"]["commit"]
+    )
+
+def test_implementation_supervisor_does_not_recursively_rename_existing_rescue_branch_without_stageable_delta(
+    tmp_path: Path,
+):
+    branch = "rescue/worktree/already-preserved"
+    repo, worktree_path, nested, supervisor = (
+        _merged_cleanup_configured_submodule_fixture(
+            tmp_path,
+            branch_name=branch,
+        )
+    )
+    (nested / "child.txt").unlink()
+    head = _git(worktree_path, "rev-parse", "HEAD")
+    refs_before = set(
+        _git(repo, "for-each-ref", "--format=%(refname:short)", "refs/heads/rescue/worktree").splitlines()
+    )
+
+    result = supervisor._rescue_dirty_worktree(
+        worktree_path,
+        branch=branch,
+        head=head,
+        target_ref="main",
+        status_lines=[" m libs/child"],
+        reason="test_nested_only_dirt",
+    )
+
+    refs_after = set(
+        _git(repo, "for-each-ref", "--format=%(refname:short)", "refs/heads/rescue/worktree").splitlines()
+    )
+    assert result["preserved"] is False
+    assert result["reason"] == (
+        "existing_rescue_branch_nested_state_requires_reconciliation"
+    )
+    assert result["rescue_branch"] == branch
+    assert result["rescue_commit"] == head
+    assert result["stageability_proof"]["no_stageable_delta"] is True
+    assert _git(worktree_path, "branch", "--show-current") == branch
+    assert _git(worktree_path, "rev-parse", "HEAD") == head
+    assert refs_after == refs_before
+    assert not (nested / "child.txt").exists()
+
+def test_implementation_supervisor_existing_rescue_branch_with_stageable_delta_reuses_same_ref(
+    tmp_path: Path,
+):
+    branch = "rescue/worktree/stageable-existing"
+    repo, worktree_path, supervisor = _merged_cleanup_worktree_fixture(
+        tmp_path,
+        branch,
+    )
+    original_head = _git(worktree_path, "rev-parse", "HEAD")
+    (worktree_path / "src" / "app.py").write_text(
+        "VALUE = 'stageable rescue delta'\n",
+        encoding="utf-8",
+    )
+
+    result = supervisor._rescue_dirty_worktree(
+        worktree_path,
+        branch=branch,
+        head=original_head,
+        target_ref="main",
+        status_lines=[" M src/app.py"],
+        reason="test_stageable_delta",
+    )
+
+    assert result["preserved"] is True
+    assert result["reason"] == "dirty_worktree_committed_to_rescue_branch"
+    assert result["rescue_branch"] == branch
+    assert result["rescue_commit"] != original_head
+    assert _git(worktree_path, "branch", "--show-current") == branch
+    assert _git(repo, "show", f"{branch}:src/app.py") == (
+        "VALUE = 'stageable rescue delta'"
+    )
+    rescue_refs = _git(
+        repo,
+        "for-each-ref",
+        "--format=%(refname:short)",
+        "refs/heads/rescue/worktree",
+    ).splitlines()
+    assert rescue_refs == [branch]
+
+def test_implementation_supervisor_reconciles_configured_target_while_main_dirty(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    marker = repo / "README.md"
+    marker.write_text("base\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        _reconciled_candidate_task_board(
+            task_id="ACCEL-011",
+            validation="true",
+            outputs="feature.txt",
+        ),
+        encoding="utf-8",
+    )
+    _git(repo, "add", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "branch", "integration")
+    branch_name = "implementation/accel-011-attempt-1-456"
+    _git(repo, "checkout", "-b", branch_name, "integration")
+    feature = repo / "feature.txt"
+    feature.write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "feature branch")
+    _git(repo, "checkout", "main")
+    dirty = repo / "dirty.txt"
+    dirty.write_text("user work\n", encoding="utf-8")
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "accel-011-attempt-1-456"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            state_prefix="accel",
+            repo_root=repo,
+            worktree_root=worktree_root,
+            merge_target_branch="integration",
+            task_prefix="## ACCEL-",
+        )
+    )
+
+    result = supervisor.reconcile_backlogged_worktrees()
+
+    assert result["target_ref"] == "integration"
+    assert result["candidate_count"] == 1
+    assert result["processed_count"] == 1
+    assert result["reconciled_count"] == 1
+    assert result["main_checkout_is_merge_target"] is False
+    assert result["main_checkout_dirty"] is False
+    assert result["current_checkout_dirty"] is True
+    assert "dirty.txt" in result["main_dirty_evidence"]["status_paths"]
+    assert result["main_dirty_evidence"]["ignored_for_reconciliation"] is True
+    assert dirty.read_text(encoding="utf-8") == "user work\n"
+    assert not feature.exists()
+    assert _git(repo, "show", "integration:feature.txt") == "feature"
+    assert not worktree_path.exists()
+
+def test_reconciliation_guardrail_refresh_migrates_untrusted_discovery_path(
+    tmp_path,
+    monkeypatch,
+):
+    todo_path = tmp_path / "todo.md"
+    strategy_path = tmp_path / "state" / "strategy.json"
+    discovery_dir = tmp_path / "state" / "discovery"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    cleanup_result = {
+        "attempted": True,
+        "dirty_worktree_groups": {
+            "unsupported_status": {
+                "count": 1,
+                "samples": [
+                    {
+                        "branch": "implementation/example",
+                        "path": "/tmp/example",
+                        "status_short": [" D ipfs_datasets_py"],
+                    }
+                ],
+            }
+        },
+    }
+    initial = record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        cleanup_result=cleanup_result,
+        task_prefix="ACCEL-",
+        discovery_output_path=str(discovery_dir),
+    )
+    assert len(initial) == 1
+    original_path = Path(initial[0]["discovery_path"])
+
+    outside_discovery = tmp_path / "untrusted" / "discovery"
+    outside_discovery.mkdir(parents=True)
+    outside_path = outside_discovery / original_path.name
+    outside_path.write_text(
+        original_path.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            str(original_path),
+            str(outside_path),
+        ).replace(
+            f"- Outputs: {discovery_dir},",
+            f"- Outputs: {outside_discovery},",
+        ).replace(
+            "- Canonical board task: false",
+            "- Resolution receipt digest: sha256:" + ("0" * 64)
+            + "\n- Canonical board task: false",
+        ),
+        encoding="utf-8",
+    )
+    original_read_text = Path.read_text
+
+    def guarded_read_text(path, *args, **kwargs):
+        if path == outside_path:
+            raise AssertionError("untrusted discovery path was read")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", guarded_read_text)
+
+    findings = record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        cleanup_result=cleanup_result,
+        task_prefix="ACCEL-",
+        discovery_output_path=str(discovery_dir),
+    )
+
+    assert len(findings) == 1
+    assert findings[0]["refreshed"] is True
+    task = parse_task_file(todo_path, task_header_prefix="ACCEL-")[0]
+    refreshed_path = Path(task.metadata["reconciliation discovery"])
+    assert refreshed_path.parent.resolve() == discovery_dir.resolve()
+    assert refreshed_path.exists()
+    assert task.outputs[0] == "state/discovery"
+    assert task.validation == [f"test -f {refreshed_path}"]
+    assert "resolution receipt digest" not in task.metadata
+
+def test_reconciliation_guardrail_writer_refuses_symlink_destination(tmp_path):
+    discovery_dir = tmp_path / "state" / "discovery"
+    discovery_dir.mkdir(parents=True)
+    outside_path = tmp_path / "operator-owned.md"
+    outside_path.write_text("preserve me\n", encoding="utf-8")
+    destination = discovery_dir / "reconciliation.md"
+    destination.symlink_to(outside_path)
+
+    with pytest.raises(ValueError, match="must not be a symlink"):
+        backlog_refinery_module.write_reconciliation_guardrail_discovery_path(
+            path=destination,
+            task_id="ACCEL-001",
+            record={
+                "fingerprint": "a" * 40,
+                "kind": "dirty_backlogged_worktree",
+                "reason": "unsupported_status",
+                "candidate_count": 1,
+                "priority": "P1",
+                "track": "ops",
+            },
+            discovery_dir=discovery_dir,
+        )
+
+    assert outside_path.read_text(encoding="utf-8") == "preserve me\n"
+
+def test_reconciliation_guardrail_refresh_never_reads_symlink_evidence(
+    tmp_path,
+    monkeypatch,
+):
+    todo_path = tmp_path / "todo.md"
+    strategy_path = tmp_path / "state" / "strategy.json"
+    discovery_dir = tmp_path / "state" / "discovery"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    cleanup_result = {
+        "attempted": True,
+        "dirty_worktree_groups": {
+            "unsupported_status": {
+                "count": 1,
+                "samples": [
+                    {
+                        "branch": "implementation/example",
+                        "path": "/tmp/example",
+                        "status_short": [" D ipfs_datasets_py"],
+                    }
+                ],
+            }
+        },
+    }
+    initial = record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        cleanup_result=cleanup_result,
+        task_prefix="ACCEL-",
+        discovery_output_path=str(discovery_dir),
+    )
+    discovery_path = Path(initial[0]["discovery_path"])
+    discovery_path.unlink()
+    outside_path = tmp_path / "operator-owned.md"
+    outside_path.write_text("preserve me\n", encoding="utf-8")
+    discovery_path.symlink_to(outside_path)
+    original_read_text = Path.read_text
+
+    def guarded_read_text(path, *args, **kwargs):
+        if path in {discovery_path, outside_path}:
+            raise AssertionError("symlinked discovery evidence was read")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", guarded_read_text)
+    with pytest.raises(ValueError, match="must not be a symlink"):
+        record_reconciliation_guardrail_findings(
+            todo_path=todo_path,
+            strategy_path=strategy_path,
+            discovery_dir=discovery_dir,
+            cleanup_result=cleanup_result,
+            task_prefix="ACCEL-",
+            discovery_output_path=str(discovery_dir),
+        )
+
+    assert original_read_text(outside_path, encoding="utf-8") == "preserve me\n"
+
+def test_reconciliation_guardrail_recurrence_preserves_completed_history(tmp_path):
+    todo_path = tmp_path / "todo.md"
+    strategy_path = tmp_path / "state" / "strategy.json"
+    discovery_dir = tmp_path / "discovery"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    cleanup_result = {
+        "attempted": True,
+        "dirty_worktree_groups": {
+            "unsupported_status": {
+                "count": 1,
+                "samples": [
+                    {
+                        "branch": "rescue/worktree/example",
+                        "path": "/tmp/worktrees/example",
+                        "status_short": [" m ipfs_datasets_py"],
+                    }
+                ],
+            }
+        },
+    }
+
+    initial = record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        cleanup_result=cleanup_result,
+        task_prefix="ACCEL-",
+    )
+    assert len(initial) == 1
+    assert initial[0]["follow_up_task_id"] == "ACCEL-001"
+    first_discovery = Path(initial[0]["discovery_path"])
+    first_discovery.write_text(
+        first_discovery.read_text(encoding="utf-8")
+        + "\n## Resolution Evidence\n\n- The first incident was resolved.\n",
+        encoding="utf-8",
+    )
+    completed_todo = todo_path.read_text(encoding="utf-8").replace(
+        "- Status: blocked",
+        "- Status: completed",
+        1,
+    )
+    todo_path.write_text(completed_todo, encoding="utf-8")
+    completed_discovery = first_discovery.read_text(encoding="utf-8")
+
+    recurrence = record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        cleanup_result=cleanup_result,
+        task_prefix="ACCEL-",
+    )
+
+    assert len(recurrence) == 1
+    assert recurrence[0]["follow_up_task_id"] == "ACCEL-002"
+    assert recurrence[0].get("refreshed") is not True
+    recurring_discovery = Path(recurrence[0]["discovery_path"])
+    assert recurring_discovery != first_discovery
+    assert recurring_discovery.exists()
+    assert first_discovery.read_text(encoding="utf-8") == completed_discovery
+    updated_todo = todo_path.read_text(encoding="utf-8")
+    assert updated_todo.startswith(completed_todo.rstrip() + "\n\n")
+    tasks = {
+        task.task_id: task
+        for task in parse_task_file(todo_path, task_header_prefix="ACCEL-")
+    }
+    assert tasks["ACCEL-001"].status == "completed"
+    assert tasks["ACCEL-002"].status == "blocked"
+
+    assert record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        cleanup_result=cleanup_result,
+        task_prefix="ACCEL-",
+    ) == []
+    assert "ACCEL-003" not in todo_path.read_text(encoding="utf-8")

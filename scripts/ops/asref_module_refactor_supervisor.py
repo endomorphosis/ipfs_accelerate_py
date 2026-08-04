@@ -6,6 +6,8 @@ Binds lanes to the ASREF todo/objective heap on branch
 worktree so concurrent main-checkout supervisors cannot thrash the board.
 
 This launcher is production evidence for **ASREF-G100** (autonomous supervisor
+execution with Grok 4.5 and quota-only Terra fallback). Related layout
+obligations **ASREF-G010** (frozen
 execution with pinned Grok 4.5 and quota-only Terra/medium fallback). Related
 layout obligations **ASREF-G010** (frozen
 move map / inventory) and **ASREF-G090** (public API + cutover surface) are
@@ -75,6 +77,7 @@ DEFAULT_NAMESPACE = "asref-v1"
 DEFAULT_LANES = 4
 DEFAULT_MERGE_BRANCH = "refactor/agent-supervisor-layout"
 DEFAULT_REFILL_OPEN_TASK_THRESHOLD = 3
+# Legacy CLI spelling canonicalized by the multi-supervisor to exact Grok 4.5.
 # ASREF-G100 default: auto pins Grok 4.5, then quota-only Terra/medium.
 DEFAULT_IMPLEMENTATION_PROVIDER = ASREF_DEFAULT_IMPLEMENTATION_PROVIDER
 ASREF_AUTONOMOUS_GOAL_ID = ASREF_G100
@@ -424,6 +427,9 @@ def _build_parser() -> argparse.ArgumentParser:
             or DEFAULT_IMPLEMENTATION_PROVIDER,
             help=(
                 "Set IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER for child "
+                "daemons. ASREF-G100 defaults to Grok and the runner seals "
+                "the exact Grok 4.5 -> Terra medium quota-only route; "
+                "incompatible provider selections fail closed."
                 "daemons. ASREF-G100 defaults to auto: pinned Grok 4.5 with "
                 "gpt-5.6-terra/medium only after verified quota exhaustion; "
                 "also accepts explicit grok, goose, or codex."

@@ -10,7 +10,8 @@ pip install -U pip setuptools wheel
 pip install -e .
 ```
 Notes:
-- We pin urllib3<2 to maintain compatibility with ipfshttpclient 0.8.x.
+- We constrain urllib3 to >=2,<3; current ipfshttpclient 0.8.x does not impose
+  the obsolete pre-urllib3-2 restriction.
 
 ## 2) Minimal runtime
 ```bash
@@ -51,5 +52,5 @@ pip install -r requirements_enhanced_scraper.txt
 
 ## Troubleshooting
 - Externally managed environment error (PEP 668): create a venv first as shown above.
-- If you already have urllib3>=2, pip will downgrade to <2 for ipfshttpclient compatibility.
+- Existing urllib3 2.x installations remain within the supported range.
 - If you run into a solver conflict, try a clean venv: `rm -rf .venv && python3 -m venv .venv`.

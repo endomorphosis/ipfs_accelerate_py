@@ -2008,8 +2008,12 @@ def generated_dirty_commit_blocker(repo: Path) -> dict[str, Any] | None:
             )
         except (TypeError, ValueError):
             lock_pid = 0
-        lock_repo_root = (
-            str(lock_metadata.get("repo_root") or "").strip()
+        lock_worktree_root = (
+            str(
+                lock_metadata.get("worktree_root")
+                or lock_metadata.get("repo_root")
+                or ""
+            ).strip()
             if isinstance(lock_metadata, Mapping)
             else ""
         )
@@ -2019,8 +2023,8 @@ def generated_dirty_commit_blocker(repo: Path) -> dict[str, Any] | None:
             and str(lock_metadata.get("operation") or "")
             == "generated_dirty_repair"
             and lock_pid == os.getpid()
-            and bool(lock_repo_root)
-            and Path(lock_repo_root).resolve() == repo.resolve()
+            and bool(lock_worktree_root)
+            and Path(lock_worktree_root).resolve() == repo.resolve()
         )
         if owned_generated_repair:
             return None
@@ -6264,7 +6268,7 @@ def _bounded_validation_failure_paths(
     *,
     limit: int = 16,
 ) -> list[str]:
-    """Return safe exact failed-test paths suitable for task authority."""
+    """Return safe exact failed-test paths for diagnostics and validation."""
 
     raw_values: Sequence[Any]
     if isinstance(failed_test_paths, (str, bytes, bytearray)):
@@ -6442,14 +6446,18 @@ def validation_retry_task_block(
     launch_playwright_validation_gate: bool = False,
 ) -> str:
     outputs = list(getattr(source_task, "outputs", []) or [])
-    if discovery_output_path not in outputs:
-        outputs.append(discovery_output_path)
+    # Retry discovery is supervisor-written evidence that already exists
+    # before this task is dispatched.  It is an input to the repair, not a
+    # candidate artifact.  Declaring an ignored runtime discovery directory as
+    # an output makes the proposal gate require an impossible staged change
+    # and exhausts every retry before validation can run.
+    _ = discovery_output_path
     exact_failure_paths = _bounded_validation_failure_paths(
         failed_test_paths
     )
-    for path in exact_failure_paths:
-        if path not in outputs:
-            outputs.append(path)
+    # A test runner can report files outside the source task's ownership.
+    # Preserve those paths as bounded evidence and focused-validation inputs,
+    # but never turn external diagnostics into write authority.
     validation_command = safe_retry_validation_command(
         failed_command,
         discovery_path=discovery_path,
@@ -6463,11 +6471,18 @@ def validation_retry_task_block(
         validation_target_paths.extend(
             infer_validation_impact_paths(validation_command)
         )
+    validation_scope_label = (
+        "validation failure paths"
+        if exact_failure_paths
+        else "validation target paths"
+    )
     validation_scope_acceptance = (
-        " The declared validation target paths "
-        f"({', '.join(validation_target_paths)}) are bounded diagnostic and "
-        "repair scope: change them only when evidence proves inherited "
-        "validation debt, and do not weaken correct assertions or policy."
+        f" The declared {validation_scope_label} "
+        f"({', '.join(validation_target_paths)}) are bounded "
+        "diagnostic/read-only metadata: they may be inspected and used to "
+        "focus validation, but do not grant write authority. Repair edits "
+        "remain limited to the source task Outputs; do not weaken correct "
+        "assertions or policy."
         if validation_target_paths
         else ""
     )
@@ -6485,7 +6500,7 @@ def validation_retry_task_block(
     validation_failure_metadata = (
         "- Validation failure paths: "
         + ", ".join(exact_failure_paths)
-        + "\n"
+        + "\n- Validation failure path authority: diagnostic-read-only\n"
         if exact_failure_paths
         else ""
     )
@@ -6530,6 +6545,7 @@ def retry_task_execution_metadata(
         ("predicted files", "Predicted files"),
         ("allow concurrent with", "Allow concurrent with"),
         ("conflict policy", "Conflict policy"),
+        ("scope expansion policy", "Scope expansion policy"),
     )
     for field, label in inherited_fields:
         value = metadata.get(field, "")
@@ -6629,8 +6645,10 @@ def implementation_retry_task_block(
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
 ) -> str:
     outputs = list(getattr(source_task, "outputs", []) or [])
-    if discovery_output_path not in outputs:
-        outputs.append(discovery_output_path)
+    # As with validation repairs, discovery is pre-dispatch evidence rather
+    # than an implementation output.  Keep the argument for configured-runner
+    # API compatibility, but never grant or require write authority to it.
+    _ = discovery_output_path
     validation_command = f"test -f {shlex.quote(str(discovery_path))}"
     execution_metadata = retry_task_execution_metadata(source_task)
     provenance_metadata = retry_budget_repair_provenance_metadata(
@@ -6672,17 +6690,29 @@ def merge_retry_task_block(
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
 ) -> str:
     outputs = list(getattr(source_task, "outputs", []) or [])
-    if discovery_output_path not in outputs:
-        outputs.append(discovery_output_path)
-    validation_command = f"test -f {shlex.quote(str(discovery_path))}"
-    # Merge repair work coordinates an already committed implementation. Its
-    # durable write scope is the discovery output; inheriting the source
-    # implementation paths makes strict parallel-board validation treat the
-    # strategy-blocked source and its repair as concurrent writers.
-    execution_metadata = retry_task_execution_metadata(
-        source_task,
-        predicted_files=discovery_output_path,
+    # Retry discovery is already-written supervisor evidence.  A merge
+    # repair reconciles the source implementation and therefore keeps the
+    # source task's exact write authority; treating discovery as a candidate
+    # output both broadens that authority and makes the proposal gate demand
+    # a staged change to runtime state.
+    _ = discovery_output_path
+    source_validation_commands = [
+        normalize_validation_command_text(str(command))
+        for command in getattr(source_task, "validation", ()) or ()
+        if normalize_validation_command_text(str(command))
+    ]
+    # A pre-existing discovery finding proves only that the merge failed; it
+    # cannot prove that the source contract has since landed.  Re-run the
+    # source task's declared gate so an unchanged merge target cannot retire
+    # the repair merely because its diagnostic receipt exists.  Boards are
+    # expected to give executable tasks a validation contract; fail closed if
+    # a legacy task omitted one.
+    validation_command = (
+        " && ".join(source_validation_commands)
+        if source_validation_commands
+        else "false # merge repair source has no validation contract"
     )
+    execution_metadata = retry_task_execution_metadata(source_task)
     provenance_metadata = retry_budget_repair_provenance_metadata(
         source_task_id=source_task.task_id,
         failure_kind="merge",

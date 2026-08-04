@@ -1,0 +1,320 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.ipfs_kit_runtime_readiness.scheduler_config@1",
+  "taskboard_path": "docs/architecture/ipfs_kit_runtime_readiness.todo.md",
+  "objectives_path": "docs/architecture/ipfs_kit_runtime_readiness.objectives.md",
+  "plan_path": "docs/architecture/IPFS_KIT_RUNTIME_READINESS_PLAN.md",
+  "validator_path": "scripts/validate_ipfs_kit_runtime_readiness_board.py",
+  "task_prefix": "KITA-",
+  "goal_prefix": "KITA-G",
+  "board_namespace": "ipfs-kit-runtime-readiness-v1",
+  "merge_target_branch": "agent/ipfs-kit-runtime-readiness",
+  "source_binding": {
+    "accelerator_required_ancestor": "f25e5719cb738a50fb96bac4bea3f66ebca9800b",
+    "accelerator_required_branch": "agent/ipfs-kit-runtime-readiness",
+    "ipfs_kit_submodule_path": "ipfs_kit_py",
+    "ipfs_kit_planning_revision": "f6a574375febbcf9a46fcd24bbc7bc5cfb551de5",
+    "ipfs_datasets_submodule_path": "ipfs_datasets_py",
+    "ipfs_datasets_planning_revision": "7415adc5100192ee35676778f1018f6b072378f9",
+    "require_initialized_gitlinks": true,
+    "require_superproject_gitlink_equals_nested_head": true,
+    "require_clean_nested_worktree_at_task_start": true,
+    "record_recursive_repository_forest_at_launch": true,
+    "changed_revision_requires_fresh_inventory_and_baseline": true,
+    "planning_revision_is_runtime_completion_evidence": false
+  },
+  "initial_projection": {
+    "task_count": 48,
+    "completed_task_ids": [
+      "KITA-000"
+    ],
+    "ready_task_ids": [
+      "KITA-001",
+      "KITA-002",
+      "KITA-003",
+      "KITA-004"
+    ],
+    "blocked_task_ids": [],
+    "terminal_task_id": "KITA-047",
+    "goal_count": 12,
+    "root_goal_id": "KITA-G000"
+  },
+  "max_lanes": 4,
+  "strict_task_sharding": true,
+  "exit_when_all_tracks_terminal": true,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 60,
+  "check_interval_seconds": 30,
+  "stale_seconds": 1800,
+  "watchdog_startup_grace_seconds": 300,
+  "max_restarts": 3,
+  "max_task_attempts": 3,
+  "implementation_retry_budget": 3,
+  "validation_retry_budget": 3,
+  "merge_retry_budget": 3,
+  "implementation_timeout_seconds": 7200,
+  "implementation_max_timeout_seconds": 21600,
+  "implementation_log_stall_seconds": 1200,
+  "worktree_submodule_paths": [
+    "ipfs_kit_py",
+    "ipfs_datasets_py"
+  ],
+  "protected_paths": [
+    ".gitignore",
+    "docs/architecture/IPFS_KIT_RUNTIME_READINESS_PLAN.md",
+    "docs/architecture/ipfs_kit_runtime_readiness.objectives.md",
+    "docs/architecture/ipfs_kit_runtime_readiness.todo.md",
+    "config/agent_supervisor_ipfs_kit_runtime_readiness_scheduler.json",
+    "scripts/validate_ipfs_kit_runtime_readiness_board.py",
+    "test/api/test_ipfs_kit_runtime_readiness_board.py"
+  ],
+  "runtime_paths": {
+    "root": "data/agent_supervisor/ipfs_kit_runtime_readiness",
+    "state": "data/agent_supervisor/ipfs_kit_runtime_readiness/state",
+    "worktrees": "data/agent_supervisor/ipfs_kit_runtime_readiness/worktrees",
+    "merge_queue": "data/agent_supervisor/ipfs_kit_runtime_readiness/merge-queue",
+    "logs": "data/agent_supervisor/ipfs_kit_runtime_readiness/logs",
+    "evidence": "data/agent_supervisor/ipfs_kit_runtime_readiness/evidence",
+    "generated_runtime_artifacts_are_completion_authority": false
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "kita-lane-0",
+      "strict_shard_remainder": 0,
+      "initial_task_ids": [
+        "KITA-004"
+      ],
+      "initial_focus": "install-import-performance-baseline"
+    },
+    {
+      "index": 1,
+      "name": "kita-lane-1",
+      "strict_shard_remainder": 1,
+      "initial_task_ids": [
+        "KITA-001"
+      ],
+      "initial_focus": "inventory-vfs-buckets-backends"
+    },
+    {
+      "index": 2,
+      "name": "kita-lane-2",
+      "strict_shard_remainder": 2,
+      "initial_task_ids": [
+        "KITA-002"
+      ],
+      "initial_focus": "contracts-wal-arc-replication"
+    },
+    {
+      "index": 3,
+      "name": "kita-lane-3",
+      "strict_shard_remainder": 3,
+      "initial_task_ids": [
+        "KITA-003"
+      ],
+      "initial_focus": "fixtures-graphrag-ucan-interface-parity"
+    }
+  ],
+  "task_groups": {
+    "KITA-G010": [
+      "KITA-001",
+      "KITA-002",
+      "KITA-003",
+      "KITA-004"
+    ],
+    "KITA-G020": [
+      "KITA-005",
+      "KITA-006",
+      "KITA-007",
+      "KITA-008",
+      "KITA-009"
+    ],
+    "KITA-G030": [
+      "KITA-010",
+      "KITA-011",
+      "KITA-012",
+      "KITA-013"
+    ],
+    "KITA-G040": [
+      "KITA-014",
+      "KITA-015",
+      "KITA-016",
+      "KITA-017"
+    ],
+    "KITA-G050": [
+      "KITA-018",
+      "KITA-019",
+      "KITA-020",
+      "KITA-021"
+    ],
+    "KITA-G060": [
+      "KITA-022",
+      "KITA-023",
+      "KITA-024",
+      "KITA-025"
+    ],
+    "KITA-G070": [
+      "KITA-026",
+      "KITA-027",
+      "KITA-028",
+      "KITA-029"
+    ],
+    "KITA-G080": [
+      "KITA-030",
+      "KITA-031",
+      "KITA-032",
+      "KITA-033"
+    ],
+    "KITA-G090": [
+      "KITA-034",
+      "KITA-035",
+      "KITA-036",
+      "KITA-037"
+    ],
+    "KITA-G100": [
+      "KITA-038",
+      "KITA-039",
+      "KITA-040",
+      "KITA-041",
+      "KITA-042"
+    ],
+    "KITA-G110": [
+      "KITA-043",
+      "KITA-044",
+      "KITA-045",
+      "KITA-046",
+      "KITA-047"
+    ]
+  },
+  "provider": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.5",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "medium",
+    "max_concurrency": 4,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false
+  },
+  "nested_repository_policy": {
+    "task_specific_nested_branch_required": true,
+    "nested_commit_before_parent_gitlink_update": true,
+    "parent_gitlink_updates_serialized_by_merge_queue": true,
+    "rebase_nested_change_on_latest_accepted_gitlink": true,
+    "rerun_nested_validation_after_rebase": true,
+    "dirty_or_detached_nested_completion_allowed": false,
+    "broad_snapshot_merge_allowed": false,
+    "cross_repository_tasks_require_independent_commits_and_receipts": true
+  },
+  "authority_policy": {
+    "reviewed_contract_and_capability_manifest_primary": true,
+    "static_analysis_precedes_retrieval": true,
+    "analytical_synthesis_precedes_llm_router": true,
+    "impact_closure_required_before_public_contract_mutation": true,
+    "all_resolved_consumers_dispositioned": true,
+    "atomic_multi_file_transaction_required": true,
+    "post_edit_reindex_cache_invalidation_and_fixed_point_required": true,
+    "vector_semantic_authority": false,
+    "embedding_semantic_authority": false,
+    "knowledge_graph_semantic_authority": false,
+    "graphrag_semantic_authority": false,
+    "tactician_semantic_authority": false,
+    "hammer_candidate_semantic_authority": false,
+    "solver_candidate_semantic_authority": false,
+    "raw_countermodel_semantic_authority": false,
+    "ordinary_test_semantic_authority": false,
+    "runtime_witness_semantic_authority": false,
+    "llm_router_semantic_authority": false,
+    "llm_router_write_authority": false,
+    "native_kernel_reconstruction_required_for_proof": true,
+    "independent_countermodel_validation_required_for_refutation": true,
+    "unknown_ambiguous_stale_or_unsupported_disposition": "abstain_or_require_approval",
+    "type_or_resource_evidence_implies_memory_safety": false
+  },
+  "capability_policy": {
+    "support_tiers": [
+      "production",
+      "conditional",
+      "configuration_only",
+      "experimental",
+      "unsupported"
+    ],
+    "registry_presence_is_support_evidence": false,
+    "documentation_is_support_evidence": false,
+    "mock_or_fixture_is_live_certification": false,
+    "silent_fallback_allowed": false,
+    "success_noop_for_unavailable_capability_allowed": false,
+    "typed_unsupported_before_side_effect_required": true,
+    "current_live_receipt_required_for_production_network_backend": true,
+    "stale_external_receipt_disposition": "demote_or_block"
+  },
+  "durability_policy": {
+    "accepted_queued_committed_verified_and_converged_are_distinct": true,
+    "committed_acknowledgement_bound_to_declared_crash_model": true,
+    "durable_intent_before_noncompensatable_mutation_required": true,
+    "file_and_parent_directory_durability_tested": true,
+    "committed_only_replay_required": true,
+    "idempotent_repeated_recovery_required": true,
+    "duplicate_non_idempotent_effect_floor": 0,
+    "acknowledged_data_loss_floor": 0,
+    "corrupt_tail_preserves_valid_prefix": true,
+    "checkpoint_may_not_hide_later_append": true,
+    "archive_confirmed_before_source_deletion": true
+  },
+  "security_policy": {
+    "protected_tool_to_exact_resource_ability_mapping_required": true,
+    "signed_ucan_required": true,
+    "delegation_attenuation_required": true,
+    "audience_issuer_nbf_expiry_and_clock_policy_required": true,
+    "durable_revocation_and_replay_ledger_required": true,
+    "datasets_profile_d_decision_required": true,
+    "authorization_before_dispatch_required": true,
+    "requested_validator_or_provider_unavailable_disposition": "deny",
+    "negative_authorization_dispatch_count_floor": 0,
+    "authorization_bypass_floor": 0,
+    "path_escape_floor": 0,
+    "unsafe_deserialization_floor": 0,
+    "secret_leak_floor": 0,
+    "signed_to_unsigned_downgrade_allowed": false,
+    "transport_invariant_decision_required": true
+  },
+  "interface_policy": {
+    "one_operation_registry": true,
+    "one_canonical_service": true,
+    "package_cli_mcp_mcplusplus_semantic_parity_required": true,
+    "sync_async_semantic_parity_required": true,
+    "result_error_cid_and_effect_parity_floor": 1.0,
+    "transport_only_request_id_and_timing_normalization_allowed": true,
+    "pyproject_is_dependency_and_version_source": true,
+    "setup_and_requirements_projection_drift_floor": 0,
+    "minimal_and_each_extra_wheel_required": true,
+    "cold_import_network_process_model_or_user_state_actions_floor": 0,
+    "optional_provider_imports_lazy": true
+  },
+  "performance_policy": {
+    "correctness_security_durability_or_consistency_relaxation_allowed": false,
+    "committed_not_accepted_tps_primary": true,
+    "default_max_throughput_regression_fraction": 0.05,
+    "default_max_p99_regression_fraction": 0.10,
+    "reference_profile_target_relative_to_bound_revision": 2.0,
+    "absolute_floors_locked_after_reviewed_baseline": true,
+    "floor_may_be_lowered_in_same_failing_change": false,
+    "bounded_queues_memory_descriptors_threads_and_tasks_required": true,
+    "explicit_backpressure_required": true,
+    "cold_warm_and_cache_paths_reported_separately": true,
+    "environment_workload_seed_durability_and_confidence_binding_required": true
+  },
+  "completion_policy": {
+    "terminal_task_id": "KITA-047",
+    "all_task_and_goal_dependencies_terminal_required": true,
+    "current_tree_evidence_required": true,
+    "stale_partial_simulated_skipped_or_print_only_evidence_satisfies_release": false,
+    "zero_safety_floors_required": true,
+    "all_advertised_capabilities_have_declared_tier_and_current_evidence": true,
+    "all_interface_semantic_parity_required": true,
+    "all_required_crash_security_backend_and_performance_gates_required": true,
+    "independent_joined_release_receipt_required": true
+  }
+}

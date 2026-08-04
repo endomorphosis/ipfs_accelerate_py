@@ -115,10 +115,12 @@ def main() -> int:
                 print("IPFS version: Not available")
             
             # Check if FastMCP is available
-            try:
-                import fastmcp
-                print(f"FastMCP version: {getattr(fastmcp, '__version__', 'unknown')}")
-            except ImportError:
+            from ipfs_accelerate_py.mcp.server import _import_fastmcp_v2
+
+            fastmcp_module, _ = _import_fastmcp_v2()
+            if fastmcp_module is not None:
+                print(f"FastMCP version: {fastmcp_module.__version__}")
+            else:
                 print("FastMCP: Not available (using mock implementation)")
             
             return 0

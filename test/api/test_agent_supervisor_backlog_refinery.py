@@ -4046,10 +4046,17 @@ def test_backlog_refinery_retry_budget_blocks_validation_loop(tmp_path):
     )
     assert "AssertionError" in discovery_text
     assert (
-        "The declared validation target paths "
-        "(tests/test_runtime.py) are bounded diagnostic and repair scope"
+        "The declared validation failure paths "
+        "(tests/test_runtime.py) are bounded diagnostic/read-only metadata"
         in todo_text
     )
+    assert "- Outputs: src/runtime.py" in todo_text
+    assert "- Outputs: src/runtime.py, tests/test_runtime.py" not in todo_text
+    assert (
+        "- Validation failure path authority: diagnostic-read-only"
+        in todo_text
+    )
+    assert "do not grant write authority" in todo_text
     assert "do not weaken correct assertions or policy" in todo_text
 
 
@@ -4165,7 +4172,7 @@ def test_playwright_retry_focus_falls_back_for_unqualified_or_unsafe_paths():
     ) == compound_command
 
 
-def test_retry_budget_prefers_failed_playwright_paths_for_repair_scope(
+def test_retry_budget_keeps_failed_playwright_paths_diagnostic_and_focused(
     tmp_path,
 ):
     repo = _seed_repo(tmp_path)
@@ -4241,21 +4248,21 @@ def test_retry_budget_prefers_failed_playwright_paths_for_repair_scope(
     assert len(findings) == 1
     todo_text = todo_path.read_text(encoding="utf-8")
     assert (
-        "The declared validation target paths "
+        "The declared validation failure paths "
         "(wallet_interface/ui/tests/world-id-ux.spec.ts) are bounded "
-        "diagnostic and repair scope"
+        "diagnostic/read-only metadata"
         in todo_text
     )
     assert (
-        "The declared validation target paths (wallet_interface/ui) "
-        "are bounded diagnostic and repair scope"
+        "The declared validation failure paths (wallet_interface/ui) "
+        "are bounded diagnostic/read-only metadata"
         not in todo_text
     )
+    assert "- Outputs: wallet_interface/ui/src/WorldIdPanel.tsx" in todo_text
     assert (
         "- Outputs: wallet_interface/ui/src/WorldIdPanel.tsx, "
-        "data/agent_supervisor/discovery, "
         "wallet_interface/ui/tests/world-id-ux.spec.ts"
-        in todo_text
+        not in todo_text
     )
     assert (
         "- Validation: npm --prefix wallet_interface/ui test -- "
@@ -4269,12 +4276,16 @@ def test_retry_budget_prefers_failed_playwright_paths_for_repair_scope(
     assert repair_task.metadata["validation failure paths"] == (
         "wallet_interface/ui/tests/world-id-ux.spec.ts"
     )
+    assert repair_task.metadata["validation failure path authority"] == (
+        "diagnostic-read-only"
+    )
     assert retry_budget_repair_validation_paths(repair_task) == (
         "wallet_interface/ui/tests/world-id-ux.spec.ts",
     )
-    assert repair_task.outputs[-1] == (
-        "wallet_interface/ui/tests/world-id-ux.spec.ts"
-    )
+    assert repair_task.outputs == [
+        "wallet_interface/ui/src/WorldIdPanel.tsx"
+    ]
+    assert "data/agent_supervisor/discovery" not in repair_task.outputs
     discovery_text = Path(findings[0]["discovery_path"]).read_text(
         encoding="utf-8"
     )
@@ -4683,8 +4694,17 @@ def test_backlog_refinery_retry_budget_blocks_merge_loop(tmp_path):
         1,
     )[1]
     assert "- Parallel lane: runtime-merge" in repair_text
-    assert "- Predicted files: data/agent_supervisor/discovery" in repair_text
-    assert "- Predicted files: src/runtime.py" not in repair_text
+    assert "- Outputs: src/runtime.py" in repair_text
+    assert "- Predicted files: src/runtime.py" in repair_text
+    assert "- Validation: test -f src/runtime.py" in repair_text
+    assert "- Validation: test -f" in repair_text
+    assert str(discovery_dir) not in repair_text.split(
+        "- Validation:", 1
+    )[1].splitlines()[0]
+    assert (
+        "- Outputs: src/runtime.py, data/agent_supervisor/discovery"
+        not in repair_text
+    )
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == ["AUTO-001"]
 

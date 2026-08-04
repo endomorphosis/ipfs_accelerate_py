@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """ASREF-G100 multi-lane launch recipe for agent_supervisor module refactor.
 
+Autonomous supervisor execution with exact **Grok 4.5** and quota-only Codex
+``gpt-5.6-terra`` medium fallback against the ASREF objective heap and board.
 Autonomous supervisor execution defaults to pinned **Grok 4.5**, with
 ``gpt-5.6-terra`` at medium only after verified Grok quota exhaustion.
 
@@ -106,6 +108,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "ASREF-G100: multi-lane implementation supervisor launch for the "
+            "agent_supervisor module refactor (sealed Grok 4.5 / quota-only "
+            "Terra fallback)"
             "agent_supervisor module refactor (Grok 4.5, quota-only "
             "Terra/medium fallback)"
         )
@@ -124,10 +128,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             or ASREF_DEFAULT_IMPLEMENTATION_PROVIDER,
             help=(
-                "Implementation provider for child daemons "
+                "Compatible Grok primary alias for child daemons "
                 f"(default: {ASREF_DEFAULT_IMPLEMENTATION_PROVIDER}; "
                 "also set via "
-                f"{ASREF_IMPLEMENTATION_PROVIDER_ENV})"
+                f"{ASREF_IMPLEMENTATION_PROVIDER_ENV}); incompatible routes "
+                "fail closed"
             ),
         )
         p.add_argument(
