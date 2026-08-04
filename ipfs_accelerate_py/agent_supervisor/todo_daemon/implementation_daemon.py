@@ -22777,36 +22777,21 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         correction_landed_route_preflight.disposition
                         is _PostMergeCorrectionLandedRouteDisposition.REJECTED
                     ):
-                        self.task_queue.defer(
-                            self._canonical_ref(task),
-                            300,
-                            reason=(
-                                "post_merge_correction_landed_route_unverified"
-                            ),
-                        )
-                        self.task_queue.save()
-                        raise WorktreeLifecycleError(
-                            "post_merge_correction_landed_route_unverified:"
-                            + correction_landed_route_preflight.reason
-                        )
-                    correction_landed_route_candidate = dict(
-                        correction_landed_route_preflight.candidate
-                    )
-                    if (
-                        correction_landed_route_preflight.disposition
-                        is _PostMergeCorrectionLandedRouteDisposition.TASK_LEAF_DIVERGED
-                    ):
-                        # A true ``git diff --quiet`` return code of one means
-                        # another landed repair changed the task-owned leaf.
-                        # Preserve the guard until the strict start consumes
-                        # authority and the normal activation path seals one
-                        # exact correction capability.
+                        # Rejected means the exact denied land is no longer an
+                        # applicable landed-route target (for example after a
+                        # completed schema repair rewrote the tip). That is not
+                        # a durable-authority integrity failure: fall through
+                        # to the ordinary sealed correction path instead of
+                        # burning the authorized attempt.
                         self._record_event(
                             "post_merge_correction_landed_route_inapplicable",
                             {
                                 "task_id": task.task_id,
                                 "attempt": attempt,
-                                "reason": "task_leaf_diverged",
+                                "reason": (
+                                    correction_landed_route_preflight.reason
+                                    or "landed_route_rejected"
+                                ),
                                 "provider_call_allowed": True,
                                 "durable_denial_id": str(
                                     post_merge_correction_authority.get(
@@ -22815,18 +22800,58 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                     or ""
                                 ),
                                 "baseline_ref": str(baseline_ref or ""),
-                                "route_candidate_id": str(
-                                    correction_landed_route_candidate[
-                                        "route_candidate_id"
-                                    ]
-                                ),
                             },
                         )
                         production_landed_guard = {
                             **dict(production_landed_guard),
-                            "reason": "task_leaf_diverged",
+                            "guarded": False,
+                            "reason": (
+                                correction_landed_route_preflight.reason
+                                or "landed_route_rejected"
+                            ),
                             "landed_route_inapplicable": True,
                         }
+                        correction_landed_route_candidate = {}
+                    else:
+                        correction_landed_route_candidate = dict(
+                            correction_landed_route_preflight.candidate
+                        )
+                        if (
+                            correction_landed_route_preflight.disposition
+                            is _PostMergeCorrectionLandedRouteDisposition.TASK_LEAF_DIVERGED
+                        ):
+                            # A true ``git diff --quiet`` return code of one
+                            # means another landed repair changed the
+                            # task-owned leaf. Preserve the guard until the
+                            # strict start consumes authority and the normal
+                            # activation path seals one exact correction
+                            # capability.
+                            self._record_event(
+                                "post_merge_correction_landed_route_inapplicable",
+                                {
+                                    "task_id": task.task_id,
+                                    "attempt": attempt,
+                                    "reason": "task_leaf_diverged",
+                                    "provider_call_allowed": True,
+                                    "durable_denial_id": str(
+                                        post_merge_correction_authority.get(
+                                            "durable_denial_id"
+                                        )
+                                        or ""
+                                    ),
+                                    "baseline_ref": str(baseline_ref or ""),
+                                    "route_candidate_id": str(
+                                        correction_landed_route_candidate[
+                                            "route_candidate_id"
+                                        ]
+                                    ),
+                                },
+                            )
+                            production_landed_guard = {
+                                **dict(production_landed_guard),
+                                "reason": "task_leaf_diverged",
+                                "landed_route_inapplicable": True,
+                            }
             task_identity = self._identity_for_task(task)
             started_payload = {
                 "task_id": task.task_id,
