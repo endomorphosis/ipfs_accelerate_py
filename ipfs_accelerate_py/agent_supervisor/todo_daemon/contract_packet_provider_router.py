@@ -1783,11 +1783,22 @@ class ImplementationProviderRouter:
         role: ProviderRole,
         reason_code: str,
         request: ProviderRequest | None = None,
+        *,
+        detail: str = "",
     ) -> ProviderAttempt:
+        # Prefer a bounded typed reason; when the transport supplies a secret-free
+        # detail (timeout, max-turns, schema), keep it for operator diagnostics.
+        code = str(reason_code or ProviderReason.PROVIDER_FAILURE.value)
+        note = str(detail or "").strip()
+        if note and note.casefold() not in code.casefold():
+            # Keep reason_code itself stable for classifiers; attach detail only
+            # when it is short and non-sensitive (already allowlisted upstream).
+            if len(note) <= 160 and all(ord(ch) < 128 for ch in note):
+                code = f"{code}:{note}"[:200]
         return ProviderAttempt(
             role=role,
             status="failed",
-            reason_code=reason_code,
+            reason_code=code,
             prompt_bytes=len(request.prompt) if request else 0,
             prompt_tokens=request.prompt_tokens if request else 0,
             prompt_digest=_sha256(request.prompt) if request else "",
@@ -2050,21 +2061,37 @@ class ImplementationProviderRouter:
         except ProviderRoutingError as exc:
             attempts.append(
                 self._error_attempt(
-                    ProviderRole.GROK_IMPLEMENT, exc.reason_code, grok_request
+                    ProviderRole.GROK_IMPLEMENT,
+                    exc.reason_code,
+                    grok_request,
+                    detail=str(exc),
                 )
             )
             # Provider timeouts and capacity stalls are retryable infrastructure
             # conditions, not permanent task rejections.  Defer so the daemon can
             # reschedule without treating the failure as a terminal attempt.
+            detail = str(exc or "").casefold()
             if exc.reason_code in {
                 ProviderReason.PROVIDER_TIMEOUT.value,
                 ProviderReason.PROVIDER_QUOTA_EXHAUSTED.value,
                 ProviderReason.GROK_QUOTA_EXHAUSTED.value,
                 ProviderReason.GROK_UNAVAILABLE.value,
-            }:
+            } or any(
+                token in detail
+                for token in (
+                    "timed out",
+                    "timeout",
+                    "max turns reached",
+                    "structured output missing",
+                )
+            ):
                 return self._result(
                     status=RouteStatus.DEFERRED,
-                    reason_code=exc.reason_code,
+                    reason_code=(
+                        ProviderReason.PROVIDER_TIMEOUT.value
+                        if "time" in detail or "turns" in detail
+                        else exc.reason_code
+                    ),
                     packet_id=packet_id,
                     packet=packet_identity,
                     attempts=attempts,

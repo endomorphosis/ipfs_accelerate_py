@@ -2084,6 +2084,8 @@ def classify_provider_capacity_failure(text: str) -> dict[str, Any]:
         "provider_timeout" in lowered
         or "legacy native provider timed out" in lowered
         or "exceeded its timeout" in lowered
+        or "max turns reached" in lowered
+        or "structured output missing" in lowered
         or re.search(r"\btimed?\s*out\b", lowered)
     ):
         return {
