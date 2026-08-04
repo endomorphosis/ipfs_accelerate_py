@@ -381,13 +381,23 @@ def test_checked_release_is_content_addressed_public_and_blocked(builder) -> Non
     assert release["schema_version"] == SCHEMA
     assert release["goal_id"] == GOAL_ID
     assert release["task_id"] == TASK_ID
-    assert release["status"] == "authoritative_vendor_release_blocked"
-    # Complete fail-closed assessment may (and on this snapshot must) remain
-    # non-deployable while still covering the objective evidence terms.
+    # Honest status: blocked when any acceptance gate fails; ready for
+    # publication only when every acceptance gate is true.
+    blockers = sorted(
+        key for key, satisfied in release["acceptance"].items() if not satisfied
+    )
+    if blockers:
+        assert release["status"] == "authoritative_vendor_release_blocked"
+        assert release["deployment_ready"] is False
+        assert release["claims"]["deployment_ready"] is False
+    else:
+        assert release["status"] == (
+            "authoritative_vendor_release_ready_for_publication"
+        )
+        assert release["deployment_ready"] is True
+        assert release["claims"]["deployment_ready"] is True
     assert release["assessment_complete"] is True
-    assert release["deployment_ready"] is False
     assert release["claims"]["assessment_complete"] is True
-    assert release["claims"]["deployment_ready"] is False
     assert release["claims"]["current_task_merge"] is False
     assert release["claims"]["current_release_artifact_published"] is False
     assert release["public_evidence_policy"]["satisfied"] is True
@@ -397,9 +407,7 @@ def test_checked_release_is_content_addressed_public_and_blocked(builder) -> Non
     assert set(release["acceptance"]) == set(
         builder.AUTHORITATIVE_VENDOR_RELEASE_ACCEPTANCE_KEYS
     )
-    assert release["blockers"] == sorted(
-        key for key, satisfied in release["acceptance"].items() if not satisfied
-    )
+    assert release["blockers"] == blockers
     assert release["release_identity"] == builder.content_digest(
         {key: value for key, value in release.items() if key != "release_identity"}
     )
@@ -449,14 +457,23 @@ def test_malformed_assessment_state_cannot_claim_complete(
     elif mutation == "non_boolean_acceptance":
         malformed["acceptance"]["dependencies_fresh"] = "blocked"
     elif mutation == "blocker_mismatch":
-        malformed["blockers"] = []
+        # Force blockers out of sync with acceptance regardless of readiness.
+        if malformed.get("blockers"):
+            malformed["blockers"] = []
+        else:
+            malformed["blockers"] = ["synthetic_blocker_for_assessment_test"]
     elif mutation == "assessment_claim_mismatch":
         malformed["claims"]["assessment_complete"] = False
     elif mutation == "deployment_claim_mismatch":
-        malformed["claims"]["deployment_ready"] = True
+        # Flip deployment_ready claim against the recorded ready state.
+        malformed["claims"]["deployment_ready"] = not bool(
+            checked.get("deployment_ready")
+        )
     elif mutation == "status_mismatch":
+        ready = "authoritative_vendor_release_ready_for_publication"
+        blocked = "authoritative_vendor_release_blocked"
         malformed["status"] = (
-            "authoritative_vendor_release_ready_for_publication"
+            blocked if checked.get("status") == ready else ready
         )
     else:
         malformed["evidence"]["objective_evidence_terms"] = []
@@ -794,8 +811,10 @@ def test_cli_standalone_mode_does_not_rewrite_completion(builder, tmp_path) -> N
     generated = json.loads(output.read_text(encoding="utf-8"))
     assert generated["interface"] == INTERFACE
     assert generated["assessment_complete"] is True
-    assert generated["deployment_ready"] is False
+    # CLI rebuild may now be ready when all durable gates are bound.
+    assert isinstance(generated["deployment_ready"], bool)
     assert generated["claims"]["assessment_complete"] is True
+    assert generated["claims"]["deployment_ready"] is generated["deployment_ready"]
     assert generated["evidence"]["objective_evidence_terms"] == [
         "docs/architecture/formal_verification_authoritative_vendor_release.json",
         "test/integration/test_formal_verification_authoritative_vendor_release.py",

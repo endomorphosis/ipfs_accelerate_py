@@ -208,4 +208,5 @@ state/**/*.out
 !docs/architecture/formal_verification_authoritative_vendor_release.json
 !docs/architecture/formal_verification_post_remediation_delta.json
 !docs/architecture/formal_verification_production_authorization_replacement_receipt.json
+!docs/architecture/formal_verification_g213_terminal_evidence.json
 
