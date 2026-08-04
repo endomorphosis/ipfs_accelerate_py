@@ -41,6 +41,7 @@ FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID = (
 
 DEFAULT_LEASE_SECONDS = 21_600.0
 DEFAULT_STARTUP_GRACE_SECONDS = 120.0
+DEFAULT_DEAD_OWNER_RECLAIM_GRACE_SECONDS = 300.0
 DEFAULT_CLOCK: Callable[[], float] = time.time
 
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9_.-]+")
@@ -503,6 +504,7 @@ class WorktreeLifecycleStore:
     repo_root: Path
     lease_seconds: float = DEFAULT_LEASE_SECONDS
     startup_grace_seconds: float = DEFAULT_STARTUP_GRACE_SECONDS
+    dead_owner_reclaim_grace_seconds: float = DEFAULT_DEAD_OWNER_RECLAIM_GRACE_SECONDS
     clock: Callable[[], float] = field(default=DEFAULT_CLOCK)
     proc_root: Path = field(default_factory=lambda: Path("/proc"))
     store_dir: Path | None = None
@@ -515,6 +517,9 @@ class WorktreeLifecycleStore:
             self.store_dir = Path(self.store_dir)
         self.lease_seconds = max(1.0, float(self.lease_seconds))
         self.startup_grace_seconds = max(0.0, float(self.startup_grace_seconds))
+        self.dead_owner_reclaim_grace_seconds = max(
+            0.0, float(self.dead_owner_reclaim_grace_seconds)
+        )
 
     # ------------------------------------------------------------------ paths
 
@@ -1087,8 +1092,9 @@ class WorktreeLifecycleStore:
                 attempt_consumed=False,
             )
 
-        # Owner is dead.  Still require lease expiry (plus optional grace for
-        # brand-new preparing records that may be mid-publication).
+        # Owner is dead. Prefer full lease expiry, but automatically reclaim
+        # after a bounded dead-owner grace so crashed attempts cannot hold a
+        # multi-hour claim that blocks the next implement cycle.
         age = clock_now - float(record.created_at)
         expired = clock_now >= float(record.expires_at)
         if not expired:
@@ -1104,9 +1110,18 @@ class WorktreeLifecycleStore:
                     provider_call_allowed=False,
                     attempt_consumed=False,
                 )
+            if age < float(self.dead_owner_reclaim_grace_seconds):
+                return CleanupDecision(
+                    disposition=CleanupDisposition.DENY,
+                    reason="owner_dead_lease_unexpired",
+                    record=record,
+                    failure_kind=LifecycleFailureKind.LIFECYCLE_RACE,
+                    provider_call_allowed=False,
+                    attempt_consumed=False,
+                )
             return CleanupDecision(
-                disposition=CleanupDisposition.DENY,
-                reason="owner_dead_lease_unexpired",
+                disposition=CleanupDisposition.RECLAIM_THEN_ALLOW,
+                reason="stale_owner_dead_grace_elapsed",
                 record=record,
                 failure_kind=LifecycleFailureKind.LIFECYCLE_RACE,
                 provider_call_allowed=False,
@@ -1121,6 +1136,73 @@ class WorktreeLifecycleStore:
             provider_call_allowed=False,
             attempt_consumed=False,
         )
+
+
+    def reclaim_dead_owner_claims_for_task(
+        self,
+        *,
+        task_id: str,
+        canonical_task_cid: str = "",
+        now: float | None = None,
+    ) -> list[dict[str, Any]]:
+        """Terminalize dead-owner claims for one task so a new attempt can start."""
+
+        clock_now = float(self.clock() if now is None else now)
+        reclaimed: list[dict[str, Any]] = []
+        assert self.store_dir is not None
+        try:
+            paths = list(self.store_dir.glob("*.json"))
+        except OSError:
+            return []
+        for path in paths:
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, TypeError, ValueError):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            if str(payload.get("task_id") or "") != str(task_id):
+                continue
+            if canonical_task_cid and str(
+                payload.get("canonical_task_cid") or ""
+            ) not in {"", str(canonical_task_cid)}:
+                # Keep exact-task reclaim when a cid is supplied.
+                if str(payload.get("canonical_task_cid") or "") != str(
+                    canonical_task_cid
+                ):
+                    continue
+            workspace = str(payload.get("workspace_path") or "")
+            if not workspace:
+                continue
+            try:
+                record = self.load_workspace(workspace)
+            except Exception:
+                continue
+            if record is None or record.is_terminal:
+                continue
+            if str(record.task_id or "") != str(task_id):
+                continue
+            result = self.reclaim_stale(
+                workspace,
+                reclaimer_lease_id="auto-progress-recovery",
+                reason="auto_reclaim_dead_owner_for_task_progress",
+                now=clock_now,
+            )
+            if result is not None:
+                reclaimed.append(
+                    {
+                        "workspace_path": workspace,
+                        "task_id": task_id,
+                        "attempt": int(getattr(result, "attempt", 0) or 0),
+                        "state": getattr(
+                            getattr(result, "state", None), "value", str(result.state)
+                        ),
+                        "terminal_reason": str(
+                            getattr(result, "terminal_reason", "") or ""
+                        ),
+                    }
+                )
+        return reclaimed
 
     def reclaim_stale(
         self,
@@ -1147,7 +1229,12 @@ class WorktreeLifecycleStore:
             liveness = owner_liveness(current.owner, proc_root=self.proc_root)
             if liveness is not OwnerLiveness.DEAD:
                 return None
-            if clock_now < float(current.expires_at):
+            age = clock_now - float(current.created_at)
+            expired = clock_now >= float(current.expires_at)
+            if (
+                not expired
+                and age < float(self.dead_owner_reclaim_grace_seconds)
+            ):
                 return None
             updated = replace(
                 current,
@@ -1393,6 +1480,7 @@ __all__ = [
     "CleanupDisposition",
     "DEFAULT_LEASE_SECONDS",
     "DEFAULT_STARTUP_GRACE_SECONDS",
+    "DEFAULT_DEAD_OWNER_RECLAIM_GRACE_SECONDS",
     "DuplicateAttemptError",
     "FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID",
     "FenceMismatchError",

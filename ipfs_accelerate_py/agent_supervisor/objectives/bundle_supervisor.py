@@ -45,6 +45,10 @@ from ..runtime.provider_capacity_snapshot import (
     load_provider_capacity_snapshot,
     synthesize_dual_review_provider_capacity,
 )
+from ..runtime.provider_capacity_monitor import (
+    ProviderCapacityMonitor,
+    ProviderCapacityMonitorConfig,
+)
 from ..runtime.resource_scheduler import (
     ADAPTIVE_STAGES,
     AdmissionDecision,
@@ -4062,6 +4066,70 @@ class DynamicBundleScheduler:
         except TypeError:
             return source()
 
+
+    def _load_or_refresh_private_capacity(self, configured_path: Path) -> Any:
+        """Load dual-review capacity, auto-publishing a fresh snapshot if stale.
+
+        Production dual-review admission fails closed on missing/stale capacity.
+        Operators previously had to run a separate refresher; without it every
+        lane stuck on provider_unhealthy.  Publish one monitor sample in-process
+        when the private snapshot cannot be loaded, then retry the read.
+        """
+
+        path = Path(configured_path)
+        max_age = int(self.provider_capacity_max_age_ms)
+        try:
+            return load_provider_capacity_snapshot(
+                path,
+                max_age_ms=max_age,
+            )
+        except Exception as first_exc:
+            logger.warning(
+                "Private provider capacity unusable (%s); publishing a fresh "
+                "local admission snapshot",
+                first_exc,
+            )
+            try:
+                # Bound interval to remain strictly below the hard TTL window.
+                interval = max(0.5, min(10.0, (max_age / 1000.0) * 0.4))
+                monitor = ProviderCapacityMonitor(
+                    ProviderCapacityMonitorConfig(
+                        snapshot_path=path,
+                        max_age_ms=max_age,
+                        interval_seconds=interval,
+                        grok_max_concurrency=10,
+                        codex_max_concurrency=4,
+                        grok_request_budget=10,
+                        codex_request_budget=4,
+                        grok_token_budget=163_840,
+                        codex_token_budget=16_384,
+                        context_budget_tokens=int(
+                            getattr(
+                                self,
+                                "production_provider_context_budget_tokens",
+                                DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS,
+                            )
+                            or DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS
+                        ),
+                    )
+                )
+                published = monitor.publish_once()
+                logger.info(
+                    "Auto-published provider capacity snapshot id=%s expires_at_ms=%s",
+                    published.get("snapshot_id"),
+                    published.get("expires_at_ms"),
+                )
+            except Exception as publish_exc:
+                logger.warning(
+                    "Could not auto-publish provider capacity: %s",
+                    publish_exc,
+                )
+                raise first_exc from publish_exc
+            return load_provider_capacity_snapshot(
+                path,
+                max_age_ms=max_age,
+            )
+
     def _provider_capacities(self, coordinator: LeaseCoordinator) -> Any:
         """Read injected/file/fenced-heartbeat provider telemetry in that order."""
 
@@ -4085,9 +4153,8 @@ class DynamicBundleScheduler:
                         configured_path = Path(env_path)
                 if configured_path is not None:
                     if self._private_dual_review_capacity_required:
-                        raw_capacities = load_provider_capacity_snapshot(
-                            configured_path,
-                            max_age_ms=self.provider_capacity_max_age_ms,
+                        raw_capacities = self._load_or_refresh_private_capacity(
+                            configured_path
                         )
                     else:
                         # Retain the pre-production generic llm_router file

@@ -191,6 +191,11 @@ from .production_provider_cli import (
     build_production_cli_provider_pair,
     production_landed_task_guard,
 )
+from .implementation_progress_recovery import (
+    declared_output_presence,
+    operator_landed_binding_payload,
+    should_recover_stalled_task,
+)
 from .production_context_slice import (
     MAX_PROVIDER_PROMPT_TOKENS,
     ProductionContextSliceError,
@@ -6497,6 +6502,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
     def _record_empty_backlog_state(self, *, reason: str, error: str = "") -> dict[str, Any]:
         previous = PortalTaskState.load(self.state_path)
+        progress_recovery = self._auto_recover_stalled_implementation_progress(
+            previous,
+            tasks,
+        )
+        if progress_recovery.get("changed"):
+            previous = PortalTaskState.load(self.state_path)
         strategy = self.load_strategy()
         live_inflight_implementation = self._find_live_inflight_implementation()
         now = utc_now()
@@ -9904,6 +9915,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 current_repository_tree_id=repository_tree_id,
             )
         if not sources:
+            presence = self._merge_target_declared_outputs_presence(task)
+            if presence.complete and merge_commit and repository_tree_id:
+                return operator_landed_binding_payload(
+                    task_id=task.task_id,
+                    canonical_task_cid=self._identity_for_task(
+                        task
+                    ).canonical_task_cid,
+                    merge_commit=merge_commit,
+                    repository_tree_id=repository_tree_id,
+                    present_outputs=presence.present,
+                )
             return {
                 "recovered": False,
                 "reason": "prior_merged_implementation_binding_missing",
@@ -11611,16 +11633,55 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
                 self._active_worktree_lifecycle = lifecycle_record
             except DuplicateAttemptError as exc:
-                return lifecycle_race_result(
-                    reason="worktree_lifecycle_claim_exists",
-                    task_id=task.task_id,
-                    attempt=attempt,
-                    extra={
-                        "error": str(exc)[-1000:],
-                        "worktree_path": str(worktree_path),
-                        "branch": branch_name,
-                    },
-                )
+                # Auto-reclaim dead-owner claims so a crashed attempt cannot
+                # permanently block the next cycle (owner-dead multi-hour leases).
+                reclaimed = self._reclaim_dead_lifecycle_claims_for_task(task)
+                if reclaimed:
+                    try:
+                        lifecycle_record = self.worktree_lifecycle.begin_preparing(
+                            task_id=task.task_id,
+                            canonical_task_cid=self._canonical_ref(task),
+                            attempt=attempt,
+                            lane_id=self._worktree_lifecycle_lane_id(),
+                            workspace_path=worktree_path,
+                            branch=branch_name,
+                            merge_target=self._main_branch_name(),
+                            state_dir=str(self.state_path.parent.resolve()),
+                        )
+                        self._active_worktree_lifecycle = lifecycle_record
+                        self._record_event(
+                            "worktree_lifecycle_claim_recovered_after_dead_owner",
+                            {
+                                "task_id": task.task_id,
+                                "attempt": attempt,
+                                "reclaimed": reclaimed,
+                                "worktree_path": str(worktree_path),
+                                "branch": branch_name,
+                            },
+                        )
+                    except DuplicateAttemptError as retry_exc:
+                        return lifecycle_race_result(
+                            reason="worktree_lifecycle_claim_exists",
+                            task_id=task.task_id,
+                            attempt=attempt,
+                            extra={
+                                "error": str(retry_exc)[-1000:],
+                                "worktree_path": str(worktree_path),
+                                "branch": branch_name,
+                                "reclaimed": reclaimed,
+                            },
+                        )
+                else:
+                    return lifecycle_race_result(
+                        reason="worktree_lifecycle_claim_exists",
+                        task_id=task.task_id,
+                        attempt=attempt,
+                        extra={
+                            "error": str(exc)[-1000:],
+                            "worktree_path": str(worktree_path),
+                            "branch": branch_name,
+                        },
+                    )
             seed_plan = self._prior_attempt_seed_plan(state=state, attempt=attempt)
             if approved_root_target_commit:
                 baseline_ref = self._create_seeded_worktree(
@@ -19233,6 +19294,181 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         return True
 
+
+    def _merge_target_declared_outputs_presence(
+        self,
+        task: PortalTask,
+    ):
+        """Return declared-output presence for the merge-target checkout."""
+
+        return declared_output_presence(
+            task_id=task.task_id,
+            outputs=tuple(task.outputs or ()),
+            repo_root=self.repo_root,
+        )
+
+    def _clear_implementation_diagnostic_files(self, task: PortalTask) -> list[str]:
+        """Archive durable diagnostic/retry state for one task identity."""
+
+        logs_dir = Path(self.state_path).parent / "implementation_logs"
+        if not logs_dir.is_dir():
+            return []
+        stem = str(task.task_id or "").strip().lower()
+        if not stem:
+            return []
+        archived: list[str] = []
+        archive_dir = logs_dir / "archived-auto-progress-recovery"
+        patterns = (
+            f"{stem}-diagnostic-state.json",
+            f"{stem}-diagnostic-receipt.json",
+            f"{stem}-attempt-*-retry-capsule.json",
+        )
+        import glob as _glob
+
+        for pattern in patterns:
+            for match in logs_dir.glob(pattern):
+                try:
+                    archive_dir.mkdir(parents=True, exist_ok=True)
+                    target = archive_dir / match.name
+                    if target.exists():
+                        target = archive_dir / f"{match.stem}-{int(time.time())}{match.suffix}"
+                    match.replace(target)
+                    archived.append(str(target))
+                except OSError:
+                    continue
+        return archived
+
+    def _reclaim_dead_lifecycle_claims_for_task(
+        self,
+        task: PortalTask,
+    ) -> list[dict[str, Any]]:
+        """Reclaim dead-owner lifecycle claims that block a task's next attempt."""
+
+        store = getattr(self, "worktree_lifecycle", None)
+        if store is None:
+            return []
+        reclaim = getattr(store, "reclaim_dead_owner_claims_for_task", None)
+        if not callable(reclaim):
+            return []
+        try:
+            return list(
+                reclaim(
+                    task_id=task.task_id,
+                    canonical_task_cid=self._canonical_ref(task),
+                )
+                or ()
+            )
+        except Exception as exc:  # noqa: BLE001 — recovery must not crash the pass
+            self._record_event(
+                "worktree_lifecycle_auto_reclaim_failed",
+                {
+                    "task_id": task.task_id,
+                    "error": str(exc)[-1000:],
+                    "exception_type": type(exc).__name__,
+                },
+            )
+            return []
+
+    def _auto_recover_stalled_implementation_progress(
+        self,
+        state: PortalTaskState,
+        tasks: Sequence[PortalTask],
+    ) -> dict[str, Any]:
+        """Reset thrash state when declared outputs already land on merge target.
+
+        Keeps completion non-authoritative.  The goal is to stop burning repair
+        rounds / capacity when product files are already present and only review
+        or bookkeeping remains.
+        """
+
+        decisions: list[dict[str, Any]] = []
+        changed = False
+        idle_reason = str(getattr(state, "selection_idle_reason", "") or "")
+        for task in tasks:
+            if str(getattr(task, "status", "") or "").strip().lower() == "completed":
+                continue
+            attempt_count = self._task_attempt_count(state, task)
+            last_rc = None
+            if state.last_implementation_task_id == task.task_id:
+                last_rc = state.last_implementation_returncode
+            decision = should_recover_stalled_task(
+                task_id=task.task_id,
+                outputs=tuple(task.outputs or ()),
+                repo_root=self.repo_root,
+                attempt_count=attempt_count,
+                max_repair_rounds=int(
+                    getattr(self, "implementation_max_repair_rounds", 3) or 3
+                ),
+                last_returncode=last_rc if isinstance(last_rc, int) else None,
+                last_failure_text=str(
+                    getattr(state, "last_merge_error", "")
+                    or getattr(state, "selection_idle_reason", "")
+                    or ""
+                ),
+                selection_idle_reason=idle_reason,
+                implementation_in_progress=bool(state.implementation_in_progress),
+                active_task_id=str(state.active_task_id or ""),
+            )
+            if decision is None:
+                continue
+            payload = decision.to_dict()
+            if decision.clear_diagnostics:
+                key = self._canonical_ref(task)
+                self._implementation_diagnostics.pop(key, None)
+                self._implementation_diagnostic_repeats.pop(key, None)
+                self._implementation_retry_not_before.pop(key, None)
+                self._implementation_loaded_parents.pop(key, None)
+                payload["archived_diagnostics"] = (
+                    self._clear_implementation_diagnostic_files(task)
+                )
+                changed = True
+            if decision.reset_attempt_budget:
+                previous_display = int(
+                    state.implementation_attempts.pop(task.task_id, 0) or 0
+                )
+                cid = self._canonical_ref(task)
+                previous_cid = int(
+                    state.implementation_attempts_by_cid.pop(cid, 0) or 0
+                )
+                if state.last_implementation_task_id == task.task_id:
+                    state.last_implementation_returncode = None
+                if idle_reason.startswith("implementation_retry_deferred"):
+                    state.selection_idle_reason = ""
+                # Task queue retry state if available.
+                try:
+                    self.task_queue.reset_retry_state(cid)
+                except Exception:
+                    pass
+                payload["previous_display_attempt_count"] = previous_display
+                payload["previous_canonical_attempt_count"] = previous_cid
+                changed = True
+            if decision.reclaim_dead_lifecycle:
+                reclaimed = self._reclaim_dead_lifecycle_claims_for_task(task)
+                payload["reclaimed_lifecycle_claims"] = reclaimed
+                if reclaimed:
+                    changed = True
+            decisions.append(payload)
+
+        if changed:
+            state.save(self.state_path)
+            try:
+                if getattr(self.task_queue, "dirty", False):
+                    self.task_queue.save()
+            except Exception:
+                pass
+            self._record_event(
+                "implementation_progress_auto_recovered",
+                {
+                    "decision_count": len(decisions),
+                    "decisions": decisions,
+                },
+            )
+        return {
+            "changed": changed,
+            "decision_count": len(decisions),
+            "decisions": decisions,
+        }
+
     def _production_landed_task_guard_for_workspace(
         self,
         task: PortalTask,
@@ -19257,6 +19493,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "reason": "baseline_identity_missing",
             }
         )
+        if not recovery.get("recovered"):
+            presence = self._merge_target_declared_outputs_presence(task)
+            if presence.complete and baseline and repository_tree_id:
+                recovery = operator_landed_binding_payload(
+                    task_id=task.task_id,
+                    canonical_task_cid=self._canonical_ref(task),
+                    merge_commit=baseline,
+                    repository_tree_id=repository_tree_id,
+                    present_outputs=presence.present,
+                )
         status = subprocess.run(
             ["git", "status", "--porcelain", "--untracked-files=all"],
             cwd=workspace_path,
