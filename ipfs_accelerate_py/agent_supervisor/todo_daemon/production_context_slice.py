@@ -57,11 +57,12 @@ _SECRET_TEXT_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
         r"client[_ -]?secret|password|passphrase)"
         r"\s*[:=]\s*[^\s,;]{4,}"
     ),
-    # Bare token/secret assignments only when the value looks credential-like.
+    # Bare token/secret assignments only when the RHS looks credential-like
+    # (quoted secrets or long base64/hex-ish material), not CamelCase identifiers.
     re.compile(
         r"(?i)\b(secret|token)\s*[:=]\s*"
         r"(['\"][^'\"\n]{8,}['\"]|"
-        r"[A-Za-z0-9_\-+/=]{16,})"
+        r"(?=.*\d)[A-Za-z0-9_\-+/=]{20,})"
     ),
     re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", re.IGNORECASE),
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
