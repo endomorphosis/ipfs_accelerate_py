@@ -1757,12 +1757,19 @@ def verify_production_context_slice(
         selection = record.get("selection")
         if not isinstance(selection, Mapping):
             _fail("manifest_malformed", "source selection policy is malformed")
-        _exact_keys(
-            selection,
-            frozenset({"mode", "qualified_symbols"}),
-            location="source selection",
-        )
         mode_name = selection.get("mode")
+        if mode_name == "text-prefix@1":
+            _exact_keys(
+                selection,
+                frozenset({"mode", "prefix_byte_length", "qualified_symbols"}),
+                location="source selection",
+            )
+        else:
+            _exact_keys(
+                selection,
+                frozenset({"mode", "qualified_symbols"}),
+                location="source selection",
+            )
         symbols = selection.get("qualified_symbols")
         if not isinstance(symbols, list) or not all(
             isinstance(symbol, str) for symbol in symbols
@@ -1783,6 +1790,31 @@ def verify_production_context_slice(
                     "AST symbols differ from operator/task-derived hints",
                 )
             rebuild_threshold = 0
+        elif mode_name == "text-prefix@1":
+            if symbols:
+                _fail(
+                    "manifest_malformed",
+                    "text-prefix selection cannot name symbols",
+                )
+            if path.endswith((".py", ".pyi")):
+                _fail(
+                    "manifest_malformed",
+                    "text-prefix selection is not valid for Python sources",
+                )
+            prefix_byte_length = selection.get("prefix_byte_length")
+            if (
+                isinstance(prefix_byte_length, bool)
+                or not isinstance(prefix_byte_length, int)
+                or prefix_byte_length < 1
+            ):
+                _fail(
+                    "manifest_malformed",
+                    "text-prefix selection lacks a positive byte length",
+                )
+            # Rebuild with the protocol whole-file threshold so non-Python
+            # sources larger than that bound re-select the same text-prefix
+            # policy (including the hard 1KB multi-file cap).
+            rebuild_threshold = DEFAULT_WHOLE_FILE_BYTES
         else:
             _fail("manifest_malformed", "source selection mode is unsupported")
         expected_record = _source_record(
