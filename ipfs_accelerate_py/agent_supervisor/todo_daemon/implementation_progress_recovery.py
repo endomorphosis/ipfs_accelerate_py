@@ -158,15 +158,15 @@ def should_recover_stalled_task(
     failed_last = last_returncode not in (None, 0)
 
     if not (repair_budget_exhausted or failure_marker or failed_last or attempt_count > 0):
-        # Still report landed outputs so the caller can short-circuit re-implement
-        # even when the task is not currently marked failed.
+        # Quiet recognition only — the production landed-task guard short-circuits
+        # re-implementation from product presence without rewriting durable state.
         return ProgressRecoveryDecision(
             task_id=str(task_id),
             action="recognize_landed_outputs",
             reason="declared_outputs_present_on_merge_target",
             reset_attempt_budget=False,
-            clear_diagnostics=True,
-            reclaim_dead_lifecycle=True,
+            clear_diagnostics=False,
+            reclaim_dead_lifecycle=False,
             treat_as_landed_outputs=True,
             details={
                 "present": list(presence.present),

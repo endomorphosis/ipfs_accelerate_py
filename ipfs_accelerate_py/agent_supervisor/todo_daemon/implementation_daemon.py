@@ -19421,14 +19421,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             payload = decision.to_dict()
             if decision.clear_diagnostics:
                 key = self._canonical_ref(task)
+                had_diag = (
+                    key in self._implementation_diagnostics
+                    or key in self._implementation_diagnostic_repeats
+                    or key in self._implementation_retry_not_before
+                    or key in self._implementation_loaded_parents
+                )
                 self._implementation_diagnostics.pop(key, None)
                 self._implementation_diagnostic_repeats.pop(key, None)
                 self._implementation_retry_not_before.pop(key, None)
                 self._implementation_loaded_parents.pop(key, None)
-                payload["archived_diagnostics"] = (
-                    self._clear_implementation_diagnostic_files(task)
-                )
-                changed = True
+                archived = self._clear_implementation_diagnostic_files(task)
+                payload["archived_diagnostics"] = archived
+                if had_diag or archived:
+                    changed = True
             if decision.reset_attempt_budget:
                 previous_display = int(
                     state.implementation_attempts.pop(task.task_id, 0) or 0
