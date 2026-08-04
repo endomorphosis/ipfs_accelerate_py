@@ -1661,9 +1661,15 @@ class ImplementationProviderRouter:
         except ProviderRoutingError:
             raise
         except Exception as exc:
+            message = str(exc or "").strip()
+            reason = ProviderReason.PROVIDER_FAILURE
+            lowered = message.casefold()
+            if "timed out" in lowered or "timeout" in lowered:
+                reason = ProviderReason.PROVIDER_TIMEOUT
+            detail = message or type(exc).__name__
             raise ProviderRoutingError(
-                f"{request.role.value} failed: {type(exc).__name__}",
-                reason_code=ProviderReason.PROVIDER_FAILURE,
+                f"{request.role.value} failed: {detail}",
+                reason_code=reason,
             ) from exc
         quota_reason = _declared_quota_failure(raw)
         if quota_reason:
@@ -2047,6 +2053,22 @@ class ImplementationProviderRouter:
                     ProviderRole.GROK_IMPLEMENT, exc.reason_code, grok_request
                 )
             )
+            # Provider timeouts and capacity stalls are retryable infrastructure
+            # conditions, not permanent task rejections.  Defer so the daemon can
+            # reschedule without treating the failure as a terminal attempt.
+            if exc.reason_code in {
+                ProviderReason.PROVIDER_TIMEOUT.value,
+                ProviderReason.PROVIDER_QUOTA_EXHAUSTED.value,
+                ProviderReason.GROK_QUOTA_EXHAUSTED.value,
+                ProviderReason.GROK_UNAVAILABLE.value,
+            }:
+                return self._result(
+                    status=RouteStatus.DEFERRED,
+                    reason_code=exc.reason_code,
+                    packet_id=packet_id,
+                    packet=packet_identity,
+                    attempts=attempts,
+                )
             return self._result(
                 status=RouteStatus.REJECTED,
                 reason_code=exc.reason_code,

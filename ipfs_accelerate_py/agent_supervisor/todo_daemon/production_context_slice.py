@@ -50,12 +50,18 @@ _HUNK_RE = re.compile(
     r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: .*)?$"
 )
 _DRIVE_RE = re.compile(r"\A[A-Za-z]:")
+# Credential detectors must ignore ordinary code (type annotations, parameter
+# names such as ``token: str``, local variables) while still catching
+# assignment of secret-looking literals and transport credentials.
 _SECRET_TEXT_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
     re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{8,}"),
     re.compile(
         r"(?i)\b(api[_ -]?key|access[_ -]?token|auth[_ -]?token|"
-        r"client[_ -]?secret|password|passphrase|secret|token)"
-        r"\s*[:=]\s*[^\s,;]{4,}"
+        r"client[_ -]?secret|password|passphrase|secret)"
+        r"\s*[:=]\s*['\"][^'\"]{6,}['\"]"
+    ),
+    re.compile(
+        r"(?i)\btoken\s*[:=]\s*['\"][A-Za-z0-9._\-+/=]{12,}['\"]"
     ),
     re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", re.IGNORECASE),
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
@@ -536,6 +542,9 @@ def _python_candidates(
 
     candidates: list[_Candidate] = []
     # Imports and the module docstring are useful context but remain optional.
+    # Collapse them into at most one contiguous module preamble so large
+    # import blocks cannot explode provider prompt tokens slice-by-slice.
+    preamble_nodes: list[ast.AST] = []
     for node in tree.body:
         is_docstring = (
             isinstance(node, ast.Expr)
@@ -544,24 +553,36 @@ def _python_candidates(
             and node is tree.body[0]
         )
         if isinstance(node, (ast.Import, ast.ImportFrom)) or is_docstring:
-            start_line = int(getattr(node, "lineno", 1))
-            end_line = int(getattr(node, "end_lineno", start_line))
-            start, end = _line_interval(
-                offsets,
-                start_line=start_line,
-                end_line=end_line,
+            preamble_nodes.append(node)
+            continue
+        # Only leading preamble is treated as optional module context.
+        if preamble_nodes:
+            break
+    if preamble_nodes:
+        start_line = int(getattr(preamble_nodes[0], "lineno", 1))
+        end_line = int(
+            getattr(
+                preamble_nodes[-1],
+                "end_lineno",
+                getattr(preamble_nodes[-1], "lineno", start_line),
             )
-            candidates.append(
-                _Candidate(
-                    start,
-                    end,
-                    start_line,
-                    end_line,
-                    "module_context",
-                    "<module>",
-                    10,
-                )
+        )
+        start, end = _line_interval(
+            offsets,
+            start_line=start_line,
+            end_line=end_line,
+        )
+        candidates.append(
+            _Candidate(
+                start,
+                end,
+                start_line,
+                end_line,
+                "module_context",
+                "<module>",
+                10,
             )
+        )
     for node, qualified, kind in exact:
         start_line = _decorated_start(node)
         end_line = int(getattr(node, "end_lineno", start_line))
@@ -605,6 +626,65 @@ def _merge_candidates(candidates: Sequence[_Candidate]) -> tuple[_Candidate, ...
             continue
         accepted.append(candidate)
     return tuple(sorted(accepted, key=lambda item: (item.start, item.end)))
+
+
+def _signature_candidate(
+    source: bytes,
+    candidate: _Candidate,
+    *,
+    max_bytes: int,
+) -> _Candidate:
+    """Shrink an oversized AST candidate to signature/docstring-only bytes.
+
+    Large classes such as production run-registry implementations can exceed the
+    provider prompt budget even when correctly selected by symbol hint.  The
+    residual partition still covers the omitted body so coverage proofs remain
+    exact while the provider only sees the bounded header.
+    """
+
+    if candidate.end - candidate.start <= max_bytes:
+        return candidate
+    raw = source[candidate.start : candidate.end]
+    try:
+        text = raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError:
+        return candidate
+    lines = text.splitlines(keepends=True)
+    if not lines:
+        return candidate
+    cursor = len(lines[0].encode("utf-8"))
+    # Capture an immediate indented docstring if present.
+    if len(lines) > 1:
+        second = lines[1].lstrip()
+        if second.startswith(('"""', "'''")):
+            quote = '"""' if second.startswith('"""') else "'''"
+            acc = lines[1]
+            if acc.count(quote) < 2:
+                for line in lines[2:]:
+                    acc += line
+                    if quote in line:
+                        break
+            cursor = len(lines[0].encode("utf-8")) + len(acc.encode("utf-8"))
+    # Hard-cap and align to the last full line within max_bytes.
+    window = raw[: min(len(raw), max_bytes)]
+    nl = window.rfind(b"\n")
+    if nl >= 0:
+        line_cap = nl + 1
+    else:
+        line_cap = len(window)
+    cursor = max(1, min(cursor, line_cap, max_bytes, len(raw)))
+    end = candidate.start + cursor
+    prefix = source[:end]
+    end_line = prefix.count(b"\n") + (0 if prefix.endswith(b"\n") else 1)
+    return _Candidate(
+        candidate.start,
+        end,
+        candidate.start_line,
+        max(candidate.start_line, end_line),
+        f"{candidate.kind}_header",
+        candidate.qualified_name,
+        candidate.priority,
+    )
 
 
 def _segment(
@@ -711,7 +791,20 @@ def _source_record(
             "large non-Python sources cannot be safely sliced without a parser",
         )
     merged = _merge_candidates(candidates)
-    slices = [_segment(source, candidate) for candidate in merged]
+    # When the operator uses the default whole-file bound, shrink individual
+    # AST candidates that still exceed it (large classes) to signature headers.
+    # Explicitly reduced whole_file_bytes values (tests/small budgets) keep
+    # full selected symbols so residual/visibility proofs remain exact.
+    if whole_file_bytes >= DEFAULT_WHOLE_FILE_BYTES:
+        compact = tuple(
+            _signature_candidate(
+                source, candidate, max_bytes=whole_file_bytes
+            )
+            for candidate in merged
+        )
+    else:
+        compact = merged
+    slices = [_segment(source, candidate) for candidate in compact]
     if not slices:
         _fail("context_insufficient", "declared source produced no visible context")
     residuals = _residuals(source, slices)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import base64
 import hashlib
 import json
@@ -2073,6 +2074,22 @@ def classify_provider_capacity_failure(text: str) -> dict[str, Any]:
             "exhausted": True,
             "providers": ["infrastructure"],
             "reason": "workspace_missing_before_provider",
+        }
+
+    # Typed production-route timeouts and native CLI stalls are capacity-like:
+    # the model never produced an admitted proposal, so burning the task attempt
+    # budget only converts host contention into a permanent blocked task.
+    lowered = str(text or "").casefold()
+    if (
+        "provider_timeout" in lowered
+        or "legacy native provider timed out" in lowered
+        or "exceeded its timeout" in lowered
+        or re.search(r"\btimed?\s*out\b", lowered)
+    ):
+        return {
+            "exhausted": True,
+            "providers": ["provider_runtime"],
+            "reason": "provider_capacity_exhausted",
         }
 
     providers = [provider for provider, pattern in PROVIDER_CAPACITY_PATTERNS if pattern.search(text)]
@@ -11824,6 +11841,49 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     route_event = dict(
                         production_route_payload.get("event") or {}
                     )
+                    # Prefer typed production-route capacity signals over log
+                    # scraping so deferred timeouts never burn attempt budget.
+                    if production_route_payload.get(
+                        "provider_capacity_exhausted"
+                    ):
+                        provider_failure = {
+                            "exhausted": True,
+                            "providers": ["provider_runtime"],
+                            "reason": str(
+                                production_route_payload.get("reason")
+                                or "provider_capacity_exhausted"
+                            ),
+                            "reason_code": str(
+                                production_route_payload.get("reason_code")
+                                or ""
+                            ),
+                        }
+                    else:
+                        capacity_probe = classify_provider_capacity_failure(
+                            " ".join(
+                                part
+                                for part in (
+                                    str(
+                                        production_route_payload.get(
+                                            "reason_code"
+                                        )
+                                        or ""
+                                    ),
+                                    str(
+                                        production_route_payload.get(
+                                            "disposition_reason"
+                                        )
+                                        or ""
+                                    ),
+                                    str(
+                                        route_event.get("reason_code") or ""
+                                    ),
+                                )
+                                if part
+                            )
+                        )
+                        if capacity_probe.get("exhausted"):
+                            provider_failure = capacity_probe
                     log_summary = {
                         "disposition": str(
                             getattr(
@@ -11853,6 +11913,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             route_event.get("write_performed")
                         ),
                         "receipt_id": str(route_event.get("receipt_id") or ""),
+                        "reason_code": str(
+                            production_route_payload.get("reason_code") or ""
+                        ),
+                        "provider_capacity_exhausted": bool(
+                            production_route_payload.get(
+                                "provider_capacity_exhausted"
+                            )
+                        ),
                     }
                     log_fh.write(json.dumps(log_summary, sort_keys=True))
                     log_fh.write("\n")
@@ -19136,10 +19204,23 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     def _production_context_symbol_hints(
         self,
         task: PortalTask,
+        *,
+        write_paths: Sequence[str] | None = None,
+        workspace_path: Path | None = None,
+        baseline_ref: str = "",
     ) -> Mapping[str, Sequence[str]] | None:
-        """Read optional symbol hints only from the bound operator task."""
+        """Read or derive symbol hints from the bound operator task.
+
+        Explicit JSON path mappings remain authoritative.  When they are absent,
+        board fields such as ``Interfaces`` and ``AST symbols`` are matched
+        against top-level definitions in existing effect files so large Python
+        sources can be sliced instead of failing closed with
+        ``symbol_scope_required`` on otherwise well-specified tasks.
+        """
 
         raw: Any = None
+        interfaces_raw: Any = None
+        ast_symbols_raw: Any = None
         for key, value in dict(task.metadata or {}).items():
             normalized_key = str(key).strip().casefold().replace("_", " ").replace(
                 "-", " "
@@ -19149,7 +19230,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "production context symbol hints",
             }:
                 raw = value
-                break
+            elif normalized_key in {"interfaces", "interface"}:
+                interfaces_raw = value
+            elif normalized_key in {"ast symbols", "ast symbol", "predicted symbols"}:
+                ast_symbols_raw = value
         if isinstance(raw, str):
             try:
                 raw = json.loads(raw)
@@ -19163,7 +19247,111 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "production context symbol hints must be a path mapping",
                 reason_code=ProviderReason.PACKET_MALFORMED,
             )
-        return dict(raw) if isinstance(raw, Mapping) else None
+        if isinstance(raw, Mapping) and raw:
+            return dict(raw)
+
+        def _split_names(value: Any) -> list[str]:
+            if value is None:
+                return []
+            if isinstance(value, (list, tuple, set)):
+                items = [str(item).strip() for item in value]
+            else:
+                text = str(value or "")
+                items = [part.strip() for part in re.split(r"[,;\n]+", text)]
+            return [item for item in items if item]
+
+        wanted = {
+            *_split_names(interfaces_raw),
+            *_split_names(ast_symbols_raw),
+        }
+        if not wanted:
+            return None
+
+        paths = [
+            str(path).strip()
+            for path in (write_paths or task.outputs or ())
+            if str(path).strip()
+        ]
+        if not paths:
+            return None
+
+        workspace = Path(workspace_path or self.repo_root)
+        baseline = str(baseline_ref or "").strip() or "HEAD"
+        derived: dict[str, list[str]] = {}
+        for relative in paths:
+            try:
+                blob = self._run_git(
+                    ["show", f"{baseline}:{relative}"],
+                    cwd=workspace,
+                ).stdout
+            except (OSError, RuntimeError):
+                continue
+            if not blob or not relative.endswith((".py", ".pyi")):
+                continue
+            try:
+                tree = ast.parse(blob)
+            except (SyntaxError, ValueError):
+                continue
+            available: list[str] = []
+
+            def visit(body: Sequence[Any], prefix: str = "") -> None:
+                for node in body:
+                    if isinstance(
+                        node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+                    ):
+                        qualified = f"{prefix}.{node.name}" if prefix else node.name
+                        available.append(qualified)
+                        if isinstance(node, ast.ClassDef):
+                            visit(node.body, qualified)
+
+            visit(tree.body)
+            if not available:
+                continue
+            matched: list[str] = []
+            available_set = set(available)
+            for name in sorted(wanted):
+                if name in available_set:
+                    matched.append(name)
+                    continue
+                for suffix in (
+                    "Backend",
+                    "Impl",
+                    "Service",
+                    "Adapter",
+                    "Importer",
+                    "Provider",
+                    "Factory",
+                ):
+                    if name.endswith(suffix):
+                        stem = name[: -len(suffix)]
+                        if stem and stem in available_set:
+                            matched.append(stem)
+                            break
+                else:
+                    # Prefer the longest available definition that shares a
+                    # contiguous name relationship with the interface token.
+                    related = [
+                        item
+                        for item in available
+                        if item == name
+                        or item.endswith("." + name)
+                        or name.endswith(item)
+                        or item.endswith(name)
+                        or name in item
+                        or item in name
+                    ]
+                    if related:
+                        matched.append(max(related, key=len))
+            # Deduplicate while preserving deterministic order.
+            ordered: list[str] = []
+            seen: set[str] = set()
+            for item in matched:
+                if item not in seen:
+                    seen.add(item)
+                    ordered.append(item)
+            if ordered:
+                derived[relative] = ordered
+        return derived or None
 
     def _production_context_task_contract(
         self,
@@ -19213,7 +19401,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         context_baseline = str(baseline_ref or snapshot_commit).strip()
         workspace = Path(workspace_path or self.repo_root)
 
-        raw_symbol_hints = self._production_context_symbol_hints(task)
+        raw_symbol_hints = self._production_context_symbol_hints(
+            task,
+            write_paths=write_paths,
+            workspace_path=workspace,
+            baseline_ref=context_baseline,
+        )
         task_contract = self._production_context_task_contract(
             task,
             write_paths=write_paths,
@@ -19310,7 +19503,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             task,
             write_paths=effect_paths,
         )
-        symbol_hints = self._production_context_symbol_hints(task)
+        symbol_hints = self._production_context_symbol_hints(
+            task,
+            write_paths=effect_paths,
+            workspace_path=workspace_path,
+            baseline_ref=context_baseline,
+        )
         try:
             read_paths = derive_production_context_read_paths(
                 repo_root=workspace_path,
@@ -20240,6 +20438,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 },
             )
 
+        deferred_infra = route_result.status is RouteStatus.DEFERRED or (
+            pending
+            and str(route_result.reason_code or "")
+            in {
+                ProviderReason.PROVIDER_TIMEOUT.value,
+                ProviderReason.PROVIDER_QUOTA_EXHAUSTED.value,
+                ProviderReason.GROK_QUOTA_EXHAUSTED.value,
+                ProviderReason.GROK_UNAVAILABLE.value,
+            }
+        )
         return {
             "route_result": route_result,
             "event": production_event,
@@ -20265,6 +20473,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             ),
             "writer_lease_id": lease if route_result.write_performed else "",
             "snapshot_id": current_snapshot,
+            # Surface infrastructure deferrals so the implement path can avoid
+            # charging the task attempt budget for provider capacity stalls.
+            "provider_capacity_exhausted": bool(deferred_infra),
+            "reason": (
+                "provider_capacity_exhausted" if deferred_infra else ""
+            ),
+            "reason_code": str(route_result.reason_code or disposition_reason or ""),
         }
 
     def production_provider_receipt_allows_merge(
