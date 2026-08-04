@@ -1,0 +1,120 @@
+{
+  "arbitrary_policy_query_execution": false,
+  "artifact": {
+    "product_code": "{957BD905-629C-45B0-AA93-EC1AAD218115}",
+    "product_version": "1.0.0",
+    "sha256": "c1988b9f1f6a2fb602bac4fc777a1765e59e74126285a095684a4743ea683159",
+    "size_bytes": 2458624,
+    "target_clr": "v2.0.50727"
+  },
+  "authenticode": {
+    "notes": "Historical Microsoft Authenticode provenance for the research MSI only.",
+    "timestamp": "2007-06-09T00:00:00Z",
+    "verified": true
+  },
+  "authoritative_live_evidence": false,
+  "block_reasons": [
+    "known_eula_live_purpose_block",
+    "vendor_supported_platform_false",
+    "live_vendor_execution_false",
+    "authoritative_live_evidence_false"
+  ],
+  "cases": [
+    {
+      "kind": "allow",
+      "reason": "vendor_supported_live_host_absent",
+      "status": "blocked"
+    },
+    {
+      "kind": "deny",
+      "reason": "vendor_supported_live_host_absent",
+      "status": "blocked"
+    },
+    {
+      "kind": "unknown",
+      "reason": "vendor_supported_live_host_absent",
+      "status": "blocked"
+    },
+    {
+      "kind": "delegation",
+      "reason": "vendor_supported_live_host_absent",
+      "status": "blocked"
+    },
+    {
+      "kind": "conflict",
+      "reason": "vendor_supported_live_host_absent",
+      "status": "blocked"
+    },
+    {
+      "kind": "rule_mutation",
+      "reason": "vendor_supported_live_host_absent",
+      "status": "blocked"
+    },
+    {
+      "kind": "scope_mutation",
+      "reason": "vendor_supported_live_host_absent",
+      "status": "blocked"
+    },
+    {
+      "kind": "replay",
+      "reason": "vendor_supported_live_host_absent",
+      "status": "blocked"
+    },
+    {
+      "kind": "malformed",
+      "reason": "vendor_supported_live_host_absent",
+      "status": "blocked"
+    },
+    {
+      "kind": "timeout",
+      "reason": "vendor_supported_live_host_absent",
+      "status": "blocked"
+    },
+    {
+      "kind": "resource_bound",
+      "reason": "vendor_supported_live_host_absent",
+      "status": "blocked"
+    },
+    {
+      "kind": "cross_engine_disagreement",
+      "reason": "vendor_supported_live_host_absent",
+      "status": "blocked"
+    }
+  ],
+  "claims": {
+    "deployment_ready": false,
+    "does_not_complete_fvt_g219": true,
+    "production_use_permitted": false,
+    "provenance_bound": true
+  },
+  "external_authority_blockers": [
+    "vendor_supported_live_host_absent",
+    "research_release_not_for_live_environment",
+    "arbitrary_policy_cli_unavailable_on_host"
+  ],
+  "goal_id": "FVT-G219",
+  "interface": "SecPALAuthoritativeLiveEvidence@1",
+  "license": {
+    "disposition": "not_intended_for_live_environment",
+    "eula_sha256": "de075e7848fb737b9da3cfec5ce7c906742f4767fa04ed2bc38e69e2dd5e4fad",
+    "live_environment_use_allowed": false,
+    "production_use_allowed": false,
+    "redistribution_allowed": false,
+    "terms_reviewed": true
+  },
+  "live_vendor_execution": false,
+  "observed_at": "2026-08-04T17:03:16Z",
+  "operator_compatibility_only": true,
+  "platform": {
+    "host_platform": "linux-aarch64",
+    "live_execution_supported_platforms": [],
+    "operator_compatibility_only": true,
+    "vendor_supported": false
+  },
+  "program": "formal-verification-tactician/secpal-authoritative-live",
+  "receipt_digest_sha256": "dc1de0214b34baaa22f5e044adce7ad961f6d00eaa4654497948a38b2b8cc6d9",
+  "restricted_bytes_published": false,
+  "schema_version": "secpal-authoritative-live-evidence/v1",
+  "status": "authoritative_live_blocked",
+  "task_id": "FVT-086"
+}
