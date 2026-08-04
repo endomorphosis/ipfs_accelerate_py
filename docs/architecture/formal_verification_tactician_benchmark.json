@@ -250,8 +250,8 @@
     },
     "repository_binding": {
       "trusted_ref": "refs/remotes/origin/main",
-      "commit_sha": "2c6964f8874c56dd8b33a453cf25795be16b3c9a",
-      "tree_sha": "cd36d3370adf4ddbb8f5f9635ac04354dbea9154",
+      "commit_sha": "4f82a1b2f1ad8f7a4c7b9e3fea65dca7a16d0bf3",
+      "tree_sha": "8bebcebd7fce836e71020debdde9be3d206e86ca",
       "receipt_blob_sha": "69ea27bcc220d937ca109b3489654195f2976c0a",
       "verifier_blob_sha": "9fca8fe9aa73fdfc5dffb2e883d54ff9e011e86e"
     },
@@ -260,6 +260,6 @@
       "function": "verify_authoritative_benchmark_evidence",
       "sha256": "sha256:097608f90002bae389517aa64ca2dd9bb50f62edbeb588f14bf0232c6a7822a7"
     },
-    "content_id": "sha256:2961f32361b16fe9744ebd5455cb89b997a6323da48e85ef8a5b5d55d44cdfc0"
+    "content_id": "sha256:3f9c4269ee718b98453f621c9ff7614616ea0cd99d48baaab3060b9a98a998f0"
   }
 }

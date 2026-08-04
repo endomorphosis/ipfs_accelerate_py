@@ -6,15 +6,15 @@
   "completion_goal_id": "FVT-G090",
   "task_id": "FVT-036",
   "program": "formal-verification-tactician/readiness",
-  "observed_at": "2026-08-04T22:46:27Z",
+  "observed_at": "2026-08-04T22:54:29Z",
   "binding_mode": "current_tree_content_identity",
   "source": {
-    "parent_commit": "1ee7d434e936dc73f813f48338ab726cb8b95d6f",
-    "parent_tree": "5202495578eac7d2820d5c4778791dbd9269ca14",
+    "parent_commit": "64d194809bd450e1c2dba9b1a6e7e5c058e395e7",
+    "parent_tree": "582f5a7c42f61eeccd32a0f50205f42215b6c676",
     "datasets_gitlink": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
     "datasets_embedded_head": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
     "datasets_origin_main": "354631938920f89b9af62f02c904f41e70832ed0",
-    "parent_origin_main": "1ee7d434e936dc73f813f48338ab726cb8b95d6f",
+    "parent_origin_main": "64d194809bd450e1c2dba9b1a6e7e5c058e395e7",
     "binding_mode": "current_tree_content_identity"
   },
   "acceptance": {
@@ -49,12 +49,10 @@
       "missing_measurements": [],
       "certificate_identity_valid": true,
       "benchmark_evidence": {
-        "authoritative": false,
+        "authoritative": true,
         "hard_zero_clearable": true,
-        "branch_live_cohort_pending_main_merge": true,
-        "failures": [
-          "benchmark_authority_verifier_rejected"
-        ],
+        "branch_live_cohort_pending_main_merge": false,
+        "failures": [],
         "hard_gates": {
           "authority": {
             "actual_bps": 10000,
@@ -79,11 +77,11 @@
         "report_id_valid": true,
         "authority_anchor": {
           "present": true,
-          "bound": false,
+          "bound": true,
           "schema": "ipfs_accelerate_py.agent_supervisor.goal_tactician_authoritative_benchmark_evidence@1",
           "interface": "GoalTacticianAuthoritativeBenchmarkEvidence@1",
           "goal_id": "FVT-G063",
-          "content_id": "sha256:2961f32361b16fe9744ebd5455cb89b997a6323da48e85ef8a5b5d55d44cdfc0",
+          "content_id": "sha256:3f9c4269ee718b98453f621c9ff7614616ea0cd99d48baaab3060b9a98a998f0",
           "report_id": "goal-tactician-bench-b9506430763dc4be6319e83a28e56a4ad4fd10e7b6a83ab14d86c5aa33c0fd4a",
           "verifier": {
             "path": "ipfs_accelerate_py/agent_supervisor/proof/goal_tactician_metrics.py",
@@ -92,14 +90,12 @@
             "sha256": "sha256:097608f90002bae389517aa64ca2dd9bb50f62edbeb588f14bf0232c6a7822a7",
             "bound": true
           },
-          "failures": [
-            "benchmark_authority_verifier_rejected"
-          ]
+          "failures": []
         }
       },
       "benchmark_hard_gates_required_bps": 10000,
       "fixture_or_synthetic_benchmark_cannot_clear": false,
-      "branch_live_cohort_pending_main_merge": true,
+      "branch_live_cohort_pending_main_merge": false,
       "open_p0_findings_block_clearance": true,
       "open_baseline_findings_disclosed": 1,
       "open_baseline_findings": [
@@ -224,6 +220,10 @@
             "implementation_commits": [
               {
                 "repository": "root",
+                "commit": "9895859501076c2e4a3f9212599dc5e27b8e285a"
+              },
+              {
+                "repository": "root",
                 "commit": "a98029cfd178f814ce23c2a0027ba425ee8b0719"
               }
             ],
@@ -231,8 +231,8 @@
               {
                 "repository": "root",
                 "path": "ipfs_accelerate_py/agent_supervisor/planning/formal_replanner.py",
-                "content_identity": "sha256:e2dc95be602210b2afd6f2c80a45f42f097342d5222b613f4afb61cf3a16ba89",
-                "implementation_commit": "a98029cfd178f814ce23c2a0027ba425ee8b0719"
+                "content_identity": "sha256:809146ebba134157fd5d9d96e07071e2377797a9cd08f8906501c7caf7d653cf",
+                "implementation_commit": "9895859501076c2e4a3f9212599dc5e27b8e285a"
               }
             ],
             "validation_tests": [
@@ -304,9 +304,9 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "1ee7d434e936dc73f813f48338ab726cb8b95d6f",
-        "tree": "5202495578eac7d2820d5c4778791dbd9269ca14",
-        "origin_main": "1ee7d434e936dc73f813f48338ab726cb8b95d6f",
+        "commit": "64d194809bd450e1c2dba9b1a6e7e5c058e395e7",
+        "tree": "582f5a7c42f61eeccd32a0f50205f42215b6c676",
+        "origin_main": "64d194809bd450e1c2dba9b1a6e7e5c058e395e7",
         "clean": false,
         "matches_origin_main": true
       },
@@ -1222,7 +1222,7 @@
     "readiness_baseline": {
       "path": "docs/architecture/formal_verification_readiness_baseline.json",
       "present": true,
-      "content_identity": "sha256:d794ffdeb95b6f38042c629e609a26d20e02a503c1c6c8ff95a73e34b1c5e975"
+      "content_identity": "sha256:0ef9b3a7a17a1cc31ab10464208a579581ec826a96af702318d00376dc38b233"
     },
     "toolchain_certificate": {
       "path": "docs/architecture/formal_verification_toolchain_certificate.json",
@@ -1237,7 +1237,7 @@
     "benchmark_report": {
       "path": "docs/architecture/formal_verification_tactician_benchmark.json",
       "present": true,
-      "content_identity": "sha256:9f269644b5dae0bfee742a26bc72aa4e124027df67255204b9216df00ab359b4"
+      "content_identity": "sha256:74e1af81b5e0f83495d38f5e2e558738b70034127ca35f8dda64463655db50a0"
     },
     "live_example_report": {
       "path": "docs/architecture/formal_verification_live_example_report.json",
@@ -4599,5 +4599,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:c632891a8590e11ea04073438b57621032ffc690dffee1936105e158dd33b3ba"
+  "receipt_identity": "sha256:ee1487751125758ab679aad38e9d11ae800fb9188873afb36d9835cbb6a7134f"
 }
