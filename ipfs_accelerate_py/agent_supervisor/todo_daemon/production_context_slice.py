@@ -905,11 +905,13 @@ def _source_record(
     # utf8-bytes-ceil-div-4@1: refuse whole-file when the raw blob alone cannot
     # fit a conservative prompt headroom.  This keeps large contract modules
     # (e.g. entrypoints/contracts.py) from blocking new-file tasks that only
-    # need a few related symbols.
+    # need a few related symbols.  Use the same ceil-div estimator for the
+    # headroom bound so small blobs (len < 4) remain whole-file eligible and
+    # build/verify stay deterministic under rebuild_threshold=len(source).
     estimated_tokens = (len(source) + 3) // 4
-    whole_file_ok = len(source) <= whole_file_bytes and estimated_tokens <= max(
-        1, whole_file_bytes // 4
-    )
+    token_headroom = max(1, (whole_file_bytes + 3) // 4)
+    whole_file_ok = len(source) <= whole_file_bytes and estimated_tokens <= token_headroom
+
     if whole_file_ok:
         selection = {
             "mode": "whole-file@1",
