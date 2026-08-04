@@ -4283,6 +4283,10 @@ def probe_live_typed_services(
     required_present = all(handles[name]["present"] for name in required)
     degraded = bool(getattr(services, "degraded", False))
     reason = str(getattr(services, "reason_code", "") or "")
+    # Ordinary composition is usable when every required handle is present.
+    # Optional plugin-stack degradation (e.g. certificate_provider_unavailable
+    # from a missing datasets ZKP helper) is reported via ``degraded`` /
+    # ``reason_code`` but must not hide a fully wired default service bundle.
     return {
         "interface": LIVE_TYPED_SERVICE_PROBE_INTERFACE,
         "source": str(
@@ -4292,7 +4296,7 @@ def probe_live_typed_services(
         "reason_code": reason[:96],
         "handles": handles,
         "required_handles_present": required_present,
-        "ordinary_default_composition_usable": required_present and not degraded,
+        "ordinary_default_composition_usable": required_present,
         "network_attempted": False,
         "install_attempted": False,
         "import_for_readiness": False,

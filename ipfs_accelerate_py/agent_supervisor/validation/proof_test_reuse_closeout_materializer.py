@@ -308,18 +308,14 @@ def materialize_task_evidence(
     if not isinstance(validated_board, Mapping) or not validated_board:
         raise ProofTestReuseCloseoutMaterializerError("validated_board is required")
 
-    projected_merges = list(
-        project_managed_merge_queue_records(tuple(merge_queue_records))
-    )
+    projected_merges = list(project_managed_merge_queue_records(tuple(merge_queue_records)))
     merge_queue_projected_count = len(projected_merges)
     merge_recovered_from_git_count = 0
 
     task_cids: dict[str, str] = {}
     for task in task_records:
         task_id = _task_field(task, "task_id", "id")
-        task_cid = _task_field(
-            task, "canonical_task_cid", "task_cid", "canonical_task_id"
-        )
+        task_cid = _task_field(task, "canonical_task_cid", "task_cid", "canonical_task_id")
         if task_id and task_cid:
             task_cids[task_id] = task_cid
 
@@ -494,8 +490,7 @@ def persist_materialization_report(
         evidence_path = root / "task_evidence_collection.json"
         try:
             evidence_path.write_text(
-                json.dumps(report.collection.to_dict(), indent=2, sort_keys=True)
-                + "\n",
+                json.dumps(report.collection.to_dict(), indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
         except Exception:
@@ -592,13 +587,15 @@ def project_coverage_from_validation_receipts(
             continue
         if str(raw.get("git_tree_id") or "") != identity.git_tree_id:
             continue
-        if identity.repository_forest_cid and str(
-            raw.get("repository_forest_cid") or ""
-        ) not in {"", identity.repository_forest_cid}:
+        if identity.repository_forest_cid and str(raw.get("repository_forest_cid") or "") not in {
+            "",
+            identity.repository_forest_cid,
+        }:
             continue
-        if identity.gitlink_state_cid and str(
-            raw.get("gitlink_state_cid") or ""
-        ) not in {"", identity.gitlink_state_cid}:
+        if identity.gitlink_state_cid and str(raw.get("gitlink_state_cid") or "") not in {
+            "",
+            identity.gitlink_state_cid,
+        }:
             continue
         goal_id = str(raw.get("goal_id") or "").strip()
         if not goal_id or goal_id not in by_goal:
@@ -629,13 +626,10 @@ def project_coverage_from_validation_receipts(
                 "passed": True,
                 "status": "passed",
                 "validation_command": str(
-                    raw.get("validation_command")
-                    or "IPFS_TEST_PROOF_REUSE_MODE=off"
+                    raw.get("validation_command") or "IPFS_TEST_PROOF_REUSE_MODE=off"
                 ),
                 "source_task_id": str(raw.get("task_id") or ""),
-                "source_validation_receipt_cid": str(
-                    raw.get("validation_receipt_cid") or ""
-                ),
+                "source_validation_receipt_cid": str(raw.get("validation_receipt_cid") or ""),
                 "projection_schema": COVERAGE_PROJECTION_SCHEMA,
             }
     return projected
@@ -755,9 +749,7 @@ def materialize_goal_and_objective_evidence(
             "storage-security-concurrency, and cross-repository"
         )
     if gap_kinds.get("quorum_insufficient") or gap_kinds.get("QUORUM_INSUFFICIENT"):
-        next_actions.append(
-            "supply at least two independent exhaustion-quorum members"
-        )
+        next_actions.append("supply at least two independent exhaustion-quorum members")
     if not gap_kinds and bundle.authoritative:
         next_actions.append(
             "goal evidence assembled; run PTR-122 CurrentTreeGate.evaluate "
@@ -765,8 +757,7 @@ def materialize_goal_and_objective_evidence(
         )
     elif not next_actions:
         next_actions.append(
-            "resolve remaining GoalAssurance/assembler gaps before claiming "
-            "closeout authority"
+            "resolve remaining GoalAssurance/assembler gaps before claiming closeout authority"
         )
 
     report = GoalGateMaterializationReport(
@@ -842,17 +833,12 @@ def persist_recovered_merge_records(
         if not task_id:
             continue
         recovery = raw.get("recovery") if isinstance(raw.get("recovery"), Mapping) else {}
-        recovery_source = str(
-            raw.get("recovery_source") or recovery.get("source") or ""
-        )
+        recovery_source = str(raw.get("recovery_source") or recovery.get("source") or "")
         if not recovery_source and not recovery:
             # Only persist recovered / projected recovery rows here.
             continue
         commit = str(
-            raw.get("merged_commit_id")
-            or raw.get("commit_sha")
-            or raw.get("commit_id")
-            or ""
+            raw.get("merged_commit_id") or raw.get("commit_sha") or raw.get("commit_id") or ""
         ).strip()
         if not commit:
             continue
@@ -861,9 +847,7 @@ def persist_recovered_merge_records(
         body.setdefault("merged_commit_id", commit)
         body.setdefault("commit_sha", commit)
         path = root / f"recovered-{task_id}.json"
-        path.write_text(
-            json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-        )
+        path.write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         written.append(str(path))
     return tuple(written)
 
@@ -1021,17 +1005,11 @@ def materialize_current_tree_gate_bundle(
             provenance["current_tree_rerun_repository_id"] = gate.repository_id
             provenance["current_tree_rerun_tree_id"] = gate.tree_id
             provenance["current_tree_rerun_commit_id"] = gate.commit_id
-            provenance["current_tree_rerun_gitlink_state_cid"] = (
-                gate.gitlink_state_cid
-            )
-            provenance["current_tree_rerun_repository_forest_cid"] = (
-                gate.repository_forest_cid
-            )
+            provenance["current_tree_rerun_gitlink_state_cid"] = gate.gitlink_state_cid
+            provenance["current_tree_rerun_repository_forest_cid"] = gate.repository_forest_cid
             provenance["current_tree_rerun_policy_cid"] = gate.policy_cid
             provenance["current_tree_rerun_capability_cid"] = gate.capability_cid
-            provenance["current_tree_rerun_verifying_key_cid"] = (
-                gate.verifying_key_cid
-            )
+            provenance["current_tree_rerun_verifying_key_cid"] = gate.verifying_key_cid
             provenance["current_tree_rerun_circuit_cid"] = gate.circuit_cid
             provenance["current_tree_rerun_passed"] = True
             provenance["approved_policy_cid"] = gate.policy_cid
@@ -1078,9 +1056,7 @@ def materialize_current_tree_gate_bundle(
                     or row.get("validation_provenance_cid")
                     or f"validation:{task_id}"
                 ),
-                validation_disposition=str(
-                    row.get("validation_disposition") or "executed"
-                ),
+                validation_disposition=str(row.get("validation_disposition") or "executed"),
                 evidence_cid=str(row.get("content_id") or f"evidence:{task_id}"),
             )
         )
@@ -1112,9 +1088,7 @@ def materialize_current_tree_gate_bundle(
     for row in adversarial_inputs:
         if not isinstance(row, Mapping):
             continue
-        population = str(
-            row.get("population_id") or row.get("population") or ""
-        ).strip()
+        population = str(row.get("population_id") or row.get("population") or "").strip()
         if not population:
             continue
         adversarial.append(
@@ -1235,6 +1209,7 @@ def materialize_current_tree_gate_bundle(
     activation_probe_summary: dict[str, Any] = {}
     try:
         from .proof_test_reuse_closeout_activation_probe import (
+            build_activation_gap_operator_handoff,
             produce_closeout_activation_probe,
         )
 
@@ -1248,20 +1223,37 @@ def materialize_current_tree_gate_bundle(
             freshness_seconds=freshness_seconds,
         )
         activation_probe_summary = activation.to_dict()
+        operator_handoff = build_activation_gap_operator_handoff(
+            activation,
+            identity=identity,
+            now_ms=now_ms,
+        )
+        activation_probe_summary["operator_handoff"] = {
+            "schema": operator_handoff.get("schema"),
+            "activation_gap_present": operator_handoff.get("activation_gap_present"),
+            "open_claims": operator_handoff.get("open_claims"),
+            "ceremony_step_ids": [
+                str(step.get("id") or "")
+                for step in (operator_handoff.get("ceremony_steps") or [])
+                if isinstance(step, Mapping)
+            ],
+        }
         if report_dir is not None:
             out = Path(report_dir)
             out.mkdir(parents=True, exist_ok=True)
             (out / "closeout_activation_probe.json").write_text(
-                json.dumps(activation_probe_summary, indent=2, sort_keys=True)
-                + "\n",
+                json.dumps(activation_probe_summary, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            (out / "activation_gap_operator_handoff.json").write_text(
+                json.dumps(operator_handoff, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
         repair_body = dict(activation.repair_evidence)
         # Start from gate-bound shell, then overlay probed claims.
         repair_evidence = _bound(
             evidence_cid=str(
-                repair_body.get("evidence_cid")
-                or "repair:production-runtime-activation-probe"
+                repair_body.get("evidence_cid") or "repair:production-runtime-activation-probe"
             ),
         )
         repair_evidence.update(repair_body)
@@ -1272,18 +1264,14 @@ def materialize_current_tree_gate_bundle(
         repair_evidence["commit_id"] = gate.commit_id
         repair_evidence["gitlink_state_cid"] = gate.gitlink_state_cid
         repair_evidence["repository_forest_cid"] = gate.repository_forest_cid
-        repair_evidence["objective_completion_tree_id"] = (
-            gate.objective_completion_tree_id
-        )
+        repair_evidence["objective_completion_tree_id"] = gate.objective_completion_tree_id
         repair_evidence["capability_cid"] = gate.capability_cid
         repair_evidence["verifying_key_cid"] = gate.verifying_key_cid
         repair_evidence["circuit_cid"] = gate.circuit_cid
         repair_evidence["gitlink_closure_complete"] = True
         repair_evidence["observed_at_ms"] = now_ms - 1_000
         repair_evidence["fresh_until_ms"] = fresh_until
-        repair_evidence["authority"] = str(
-            repair_body.get("authority") or "none"
-        )
+        repair_evidence["authority"] = str(repair_body.get("authority") or "none")
     except Exception as activation_exc:
         activation_probe_summary = {
             "ok": False,
@@ -1320,10 +1308,7 @@ def materialize_current_tree_gate_bundle(
     objective_graph = _bound(
         objective_revision=gate.objective_revision,
         task_ids=sorted(REQUIRED_PTR_TASK_IDS),
-        goal_ids=sorted(
-            set(REQUIRED_CHILD_GOAL_IDS)
-            | {"PTR-G000", "PTR-G110"}
-        ),
+        goal_ids=sorted(set(REQUIRED_CHILD_GOAL_IDS) | {"PTR-G000", "PTR-G110"}),
     )
 
     def _integerize(value: Any) -> Any:
@@ -1347,9 +1332,7 @@ def materialize_current_tree_gate_bundle(
     # Evaluate with live typed objects (gate understands them).
     benchmark_evidence_live = _bound(
         receipt=benchmark_receipt,
-        evidence_cid=(
-            f"benchmark:{getattr(benchmark_receipt, 'corpus_id', 'corpus')}"
-        ),
+        evidence_cid=(f"benchmark:{getattr(benchmark_receipt, 'corpus_id', 'corpus')}"),
     )
     rollout_evidence_live = _bound(
         decision=rollout_decision,
@@ -1385,8 +1368,7 @@ def materialize_current_tree_gate_bundle(
     )
     if not decision.passed and not allow_failed_decision:
         raise ProofTestReuseCloseoutMaterializerError(
-            "current-tree gate decision failed: "
-            + ",".join(decision.reason_codes)
+            "current-tree gate decision failed: " + ",".join(decision.reason_codes)
         )
 
     bundle = gate.persist_bundle(decision, evaluate_packet=evaluate_packet)
@@ -1404,15 +1386,11 @@ def materialize_current_tree_gate_bundle(
         "schema": CURRENT_TREE_GATE_MATERIALIZER_SCHEMA,
         "benchmark_verified": benchmark_verified,
         "activation_probe": {
-            "activation_gap_present": activation_probe_summary.get(
-                "activation_gap_present"
-            ),
+            "activation_gap_present": activation_probe_summary.get("activation_gap_present"),
             "remaining_operator_actions": activation_probe_summary.get(
                 "remaining_operator_actions"
             ),
-            "repair_evidence_summary": activation_probe_summary.get(
-                "repair_evidence_summary"
-            ),
+            "repair_evidence_summary": activation_probe_summary.get("repair_evidence_summary"),
             "error": activation_probe_summary.get("error"),
         },
         "authority": False,

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from ipfs_accelerate_py.agent_supervisor.validation.proof_test_reuse_closeout_activation_probe import (
     ACTIVATION_PROBE_SCHEMA,
+    OPERATOR_HANDOFF_SCHEMA,
+    build_activation_gap_operator_handoff,
     produce_closeout_activation_probe,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.proof_test_reuse_closeout_materializer import (
@@ -100,3 +102,34 @@ def test_activation_probe_to_dict_is_json_serializable() -> None:
     encoded = json.dumps(payload)
     assert "activation_gap_present" in encoded
     assert payload["repair_evidence_summary"]["activation_gap"] is True
+
+
+def test_operator_handoff_lists_ceremony_steps_without_authority() -> None:
+    import json
+
+    identity = _identity()
+    report = produce_closeout_activation_probe(
+        identity,
+        objective_completion_tree_id="baguqeera-completion",
+        now_ms=1_800_000_000_000,
+    )
+    handoff = build_activation_gap_operator_handoff(
+        report, identity=identity, now_ms=1_800_000_000_000
+    )
+    assert handoff["schema"] == OPERATOR_HANDOFF_SCHEMA
+    assert handoff["authority"] is False
+    assert handoff["warm_skip_authorized"] is False
+    assert handoff["closeout_authorized"] is False
+    assert handoff["activation_gap_present"] is True
+    step_ids = [step["id"] for step in handoff["ceremony_steps"]]
+    assert "reviewed_v4_allowlist" in step_ids
+    assert "manifest_env_pin" in step_ids
+    assert "current_tree_controller_context" in step_ids
+    allowlist = next(
+        step for step in handoff["ceremony_steps"] if step["id"] == "reviewed_v4_allowlist"
+    )
+    assert allowlist["status"] == "blocked"
+    assert "empty" in allowlist["detail"].lower() or "intentionally" in allowlist["detail"].lower()
+    # JSON-serializable for state-root projection.
+    json.dumps(handoff)
+    assert handoff["identity"]["git_tree_id"] == identity.git_tree_id

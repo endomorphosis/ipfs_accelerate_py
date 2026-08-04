@@ -27,6 +27,10 @@ ACTIVATION_PROBE_INTERFACE: Final = "ProofTestReuseCloseoutActivationProbe@1"
 ACTIVATION_PROBE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/proof-test-reuse-closeout-activation-probe@1"
 )
+OPERATOR_HANDOFF_INTERFACE: Final = "ProofTestReuseActivationGapOperatorHandoff@1"
+OPERATOR_HANDOFF_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/proof-test-reuse-activation-gap-operator-handoff@1"
+)
 
 # Ordered operator handoff for remaining activation flags.
 ACTIVATION_CLAIM_FIELDS: Final = (
@@ -106,6 +110,228 @@ class CloseoutActivationProbeReport:
             "remaining_operator_actions": list(self.remaining_operator_actions),
             "notes": list(self.notes),
         }
+
+
+def build_activation_gap_operator_handoff(
+    report: CloseoutActivationProbeReport,
+    *,
+    identity: CloseoutMaterializerIdentity | None = None,
+    now_ms: int | None = None,
+) -> dict[str, Any]:
+    """Build a ceremony-owned operator checklist from the live activation probe.
+
+    Never grants warm-skip or production authority. Documents exact remaining
+    steps: reviewed v4 allowlist publication, manifest pin env vars, current-tree
+    controller context, and production e2e.
+    """
+
+    observed = int(now_ms if now_ms is not None else time.time() * 1000)
+    live = report.live_report if isinstance(report.live_report, Mapping) else {}
+    gap = live.get("activation_gap") if isinstance(live.get("activation_gap"), Mapping) else {}
+    measurements = (
+        live.get("measurements") if isinstance(live.get("measurements"), Mapping) else {}
+    )
+    meas_claims = (
+        measurements.get("claims_supported")
+        if isinstance(measurements.get("claims_supported"), Mapping)
+        else {}
+    )
+    by_field = {item.field: item for item in report.claims}
+
+    # Pull constants for accurate env/allowlist guidance when available.
+    manifest_env = "IPFS_TEST_PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST"
+    manifest_sha_env = "IPFS_TEST_PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_SHA256"
+    manifest_interface = "Groth16TestPassArtifactManifest@1"
+    datasets_revision = ""
+    source_fingerprint = ""
+    approved_count = 0
+    circuit_version = 4
+    circuit_cid = ""
+    try:
+        from ipfs_accelerate_py.testing.proof_reuse.services import (
+            DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256,
+            DATASETS_GROTH16_REVIEWED_SOURCE_FINGERPRINT,
+            DATASETS_VERIFIER_REVISION,
+            GROTH16_TEST_PASS_ARTIFACT_MANIFEST_INTERFACE,
+            PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_ENV,
+            PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_SHA256_ENV,
+            TEST_PASS_GROTH16_CIRCUIT_CID,
+            TEST_PASS_GROTH16_CIRCUIT_VERSION,
+        )
+
+        manifest_env = PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_ENV
+        manifest_sha_env = PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_SHA256_ENV
+        manifest_interface = GROTH16_TEST_PASS_ARTIFACT_MANIFEST_INTERFACE
+        datasets_revision = str(DATASETS_VERIFIER_REVISION or "")
+        source_fingerprint = str(DATASETS_GROTH16_REVIEWED_SOURCE_FINGERPRINT or "")
+        approved_count = len(frozenset(DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256 or ()))
+        circuit_version = int(TEST_PASS_GROTH16_CIRCUIT_VERSION)
+        circuit_cid = str(TEST_PASS_GROTH16_CIRCUIT_CID or "")
+    except Exception:
+        pass
+
+    composition_usable = bool(live.get("ordinary_default_composition_usable"))
+    path_ready = bool(
+        meas_claims.get("candidate_publish_and_controller_admit_ready")
+        or meas_claims.get("candidate_store_path_ready")
+    )
+    blockers = [str(item) for item in (live.get("activation_blocker_codes") or ())[:32]]
+    proven_claims = sorted(
+        name for name, item in by_field.items() if item.proven and name != "activation_gap"
+    )
+    open_claims = sorted(
+        name
+        for name, item in by_field.items()
+        if not item.proven and name != "activation_gap"
+    )
+
+    ceremony_steps = [
+        {
+            "id": "reviewed_v4_allowlist",
+            "title": "Publish reviewed v4 key/manifest digests into the allowlist",
+            "required": True,
+            "status": "blocked" if approved_count == 0 else "ready_to_pin",
+            "detail": (
+                "DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256 is intentionally "
+                f"empty (count={approved_count}) until an operator-reviewed trusted-setup "
+                "ceremony publishes exact proving/verifying-key manifest digests. "
+                "Local operational keys and env self-pins cannot invent this allowlist."
+            ),
+            "code_constant": "DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256",
+            "never_do": [
+                "Do not add local/dev key digests to the production allowlist",
+                "Do not treat PTR_CLOSEOUT_LOCAL_SETUP keys as ceremony authority",
+            ],
+        },
+        {
+            "id": "manifest_env_pin",
+            "title": "Pin the approved manifest path + SHA-256 via environment",
+            "required": True,
+            "status": "waiting_on_allowlist" if approved_count == 0 else "pending",
+            "detail": (
+                f"Set {manifest_env}=/path/to/manifest.json and "
+                f"{manifest_sha_env}=<sha256 of exact bytes>. The digest must match both "
+                "the file contents and an entry in the approved allowlist."
+            ),
+            "env": {
+                "manifest_path": manifest_env,
+                "manifest_sha256": manifest_sha_env,
+            },
+            "manifest_schema": {
+                "interface": manifest_interface,
+                "required_top_level_keys": [
+                    "interface",
+                    "reviewed_datasets_revision",
+                    "reviewed_source_fingerprint",
+                    "provider_source_sha256",
+                    "circuit",
+                    "artifacts",
+                    "native",
+                ],
+                "reviewed_datasets_revision_pin": datasets_revision,
+                "reviewed_source_fingerprint_pin": source_fingerprint,
+                "circuit_version": circuit_version,
+                "circuit_cid_pin": circuit_cid,
+                "artifact_relatives": {
+                    "proving_key": "v4/proving_key.bin",
+                    "verifying_key": "v4/verifying_key.bin",
+                },
+            },
+        },
+        {
+            "id": "production_activation_e2e",
+            "title": "Run production runtime activation e2e with reviewed pins",
+            "required": True,
+            "status": "waiting_on_authority",
+            "detail": (
+                "After allowlist + pin are live, re-run closeout materialize and the "
+                "production activation e2e path. Ordinary default composition is already "
+                f"usable={composition_usable}; remaining blockers are authority-only."
+            ),
+            "current_blockers": blockers,
+        },
+        {
+            "id": "current_tree_controller_context",
+            "title": "Publish controller-owned v2 context for the sealed current tree",
+            "required": True,
+            "status": "path_ready_tree_unbound" if path_ready else "path_incomplete",
+            "detail": (
+                "Candidate-store publish + complete controller admit work on synthetic "
+                "content. Bind a real retained pass receipt + execution key + candidate "
+                "context to the sealed current-tree identity (not smoke CIDs)."
+            ),
+            "path_ready": path_ready,
+            "current_tree_published": False,
+        },
+        {
+            "id": "exact_reviewed_identities",
+            "title": "Pin exact reviewed source/binary/capability/circuit/key identities",
+            "required": True,
+            "status": "waiting_on_authority",
+            "detail": (
+                "Gate claim exact_reviewed_source_binary_capability_circuit_key_identities "
+                "requires certificate authority with no activation gap."
+            ),
+        },
+    ]
+
+    identity_block: dict[str, Any] = {}
+    if identity is not None:
+        identity_block = {
+            "repository_id": identity.repository_id,
+            "git_commit_id": identity.git_commit_id,
+            "git_tree_id": identity.git_tree_id,
+            "gitlink_state_cid": identity.gitlink_state_cid,
+            "repository_forest_cid": identity.repository_forest_cid,
+            "dirty": bool(identity.dirty),
+            "policy_cid": identity.policy_cid,
+            "capability_cid": identity.capability_cid,
+            "verifying_key_cid": identity.verifying_key_cid,
+            "circuit_cid": identity.circuit_cid,
+        }
+
+    return {
+        "schema": OPERATOR_HANDOFF_SCHEMA,
+        "interface": OPERATOR_HANDOFF_INTERFACE,
+        "observed_at_ms": observed,
+        "authority": False,
+        "warm_skip_authorized": False,
+        "closeout_authorized": False,
+        "activation_gap_present": bool(report.activation_gap_present),
+        "activation_gap_reason": _text(
+            gap.get("reason_code") or live.get("reason_code") or "activation_gap"
+        ),
+        "ordinary_default_composition_usable": composition_usable,
+        "live_activation_blocker_codes": blockers,
+        "proven_claims": proven_claims,
+        "open_claims": open_claims,
+        "remaining_operator_actions": list(report.remaining_operator_actions),
+        "identity": identity_block,
+        "ceremony_steps": ceremony_steps,
+        "measurement_claims": {
+            "ordinary_default_composition_usable": bool(
+                meas_claims.get("ordinary_default_composition_usable")
+            ),
+            "candidate_publish_and_controller_admit_ready": bool(
+                meas_claims.get("candidate_publish_and_controller_admit_ready")
+            ),
+            "reviewed_manifest_pin_ready": bool(
+                meas_claims.get("reviewed_manifest_pin_ready")
+            ),
+            "fixture_keys_present": bool(meas_claims.get("fixture_keys_present")),
+        },
+        "invariants": [
+            "Local operational v4 keys never authorize production warm-skip.",
+            "Empty DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256 is fail-closed by design.",
+            "Synthetic candidate publish/admit is not current-tree publication.",
+            "Gate remains non-authoritative while activation_gap_present is true.",
+        ],
+        "notes": list(report.notes)
+        + [
+            "This handoff is operator guidance only; it is not completion authority.",
+            "Re-run scripts/materialize_proof_backed_test_reuse_closeout_inputs.py after ceremony pins land.",
+        ],
+    }
 
 
 def _text(value: Any) -> str:
@@ -319,7 +545,11 @@ def assess_activation_claims(
     native_ready = bool(live_report.get("native_groth16_ready"))
     warm_complete = bool(live_report.get("ordinary_warm_skip_path_complete"))
     composition_usable = bool(live_report.get("ordinary_default_composition_usable"))
-    gap = live_report.get("activation_gap") if isinstance(live_report.get("activation_gap"), Mapping) else {}
+    gap = (
+        live_report.get("activation_gap")
+        if isinstance(live_report.get("activation_gap"), Mapping)
+        else {}
+    )
     blockers = tuple(live_report.get("activation_blocker_codes") or ())
 
     # False-skip free MODE=off receipts retained for this tree.
@@ -343,9 +573,7 @@ def assess_activation_claims(
     controller_ok, controller_detail = _probe_module(
         "ipfs_accelerate_py.testing.proof_reuse.candidate_publication"
     )
-    issuance_ok, issuance_detail = _probe_module(
-        "ipfs_accelerate_py.testing.proof_reuse.receipt"
-    )
+    issuance_ok, issuance_detail = _probe_module("ipfs_accelerate_py.testing.proof_reuse.receipt")
     fixture_ok, fixture_detail = _probe_fixture_discover()
 
     # Proven only when live surfaces actually authorize the claim.
@@ -354,9 +582,7 @@ def assess_activation_claims(
             field="zero_false_skip_assurance",
             observed=receipt_count > 0,
             proven=zero_false and receipt_count > 0,
-            detail=(
-                f"mode_off_passed_receipts={receipt_count}; zero_false_skips={zero_false}"
-            ),
+            detail=(f"mode_off_passed_receipts={receipt_count}; zero_false_skips={zero_false}"),
             operator_action=""
             if zero_false and receipt_count > 0
             else "retain MODE=off validation receipts with skipped_count=0",
@@ -386,9 +612,9 @@ def assess_activation_claims(
             operator_action=(
                 ""
                 if composition_usable and not gap_present
+                # Composition may already be fully wired; remaining work is
+                # reviewed authority / gap closeout, not identity wiring.
                 else (
-                    # Composition may already be fully wired; remaining work is
-                    # reviewed authority / gap closeout, not identity wiring.
                     "close activation gap so ordinary default composition can authorize warm-skip"
                     if composition_usable
                     else "wire production identity providers into ordinary default composition"
@@ -400,9 +626,7 @@ def assess_activation_claims(
             observed=fixture_ok,
             proven=False,
             detail=fixture_detail,
-            operator_action=(
-                "measure three-repository cold/warm path with RealGroth16 fixture"
-            ),
+            operator_action=("measure three-repository cold/warm path with RealGroth16 fixture"),
         ),
         ActivationClaimAssessment(
             field="real_groth16_certificate",
@@ -422,9 +646,7 @@ def assess_activation_claims(
             observed=fixture_ok,
             proven=False,
             detail=f"fixture={fixture_detail}; api=run_subprocess_proof_reuse_benchmark",
-            operator_action=(
-                "run run_subprocess_proof_reuse_benchmark with reviewed fixture pins"
-            ),
+            operator_action=("run run_subprocess_proof_reuse_benchmark with reviewed fixture pins"),
         ),
         ActivationClaimAssessment(
             field="historical_activation_claims_superseded",
@@ -452,9 +674,7 @@ def assess_activation_claims(
             observed=issuance_ok,
             proven=False,
             detail=issuance_detail,
-            operator_action=(
-                "retain proof-bearing issuance material across lazy real issuer path"
-            ),
+            operator_action=("retain proof-bearing issuance material across lazy real issuer path"),
         ),
         ActivationClaimAssessment(
             field="exact_reviewed_source_binary_capability_circuit_key_identities",
@@ -465,9 +685,7 @@ def assess_activation_claims(
                 f"artifact_bindings="
                 f"{(live_report.get('test_certificate_authority') or {}).get('artifact_bindings')}"
             ),
-            operator_action=(
-                "pin exact reviewed source/binary/capability/circuit/key identities"
-            ),
+            operator_action=("pin exact reviewed source/binary/capability/circuit/key identities"),
         ),
         ActivationClaimAssessment(
             field="locally_verified_current_v4_certificate",
@@ -607,9 +825,7 @@ def produce_closeout_activation_probe(
                             f"measurement_supported={measurement_claims.get(claim.field)}; "
                             f"local_operational_keys_not_production={gap_still}"
                         ),
-                        operator_action=""
-                        if proven
-                        else claim.operator_action,
+                        operator_action="" if proven else claim.operator_action,
                     )
                 )
             elif claim.field in production_sensitive:
@@ -666,9 +882,7 @@ def produce_closeout_activation_probe(
                         observed=bool(claim.observed or path_ready),
                         proven=False,
                         detail=(
-                            f"{claim.detail}; "
-                            f"path_ready={path_ready}; "
-                            f"current_tree_published=False"
+                            f"{claim.detail}; path_ready={path_ready}; current_tree_published=False"
                         ),
                         operator_action=claim.operator_action,
                     )
@@ -706,9 +920,7 @@ def produce_closeout_activation_probe(
         three_repository_cold_warm=_proven("three_repository_cold_warm"),
         real_groth16_certificate=_proven("real_groth16_certificate"),
         measured_subprocess_benchmark=_proven("measured_subprocess_benchmark"),
-        historical_activation_claims_superseded=_proven(
-            "historical_activation_claims_superseded"
-        ),
+        historical_activation_claims_superseded=_proven("historical_activation_claims_superseded"),
         controller_owned_receipt_candidate_context=_proven(
             "controller_owned_receipt_candidate_context"
         ),
@@ -718,9 +930,7 @@ def produce_closeout_activation_probe(
         exact_reviewed_source_binary_capability_circuit_key_identities=_proven(
             "exact_reviewed_source_binary_capability_circuit_key_identities"
         ),
-        locally_verified_current_v4_certificate=_proven(
-            "locally_verified_current_v4_certificate"
-        ),
+        locally_verified_current_v4_certificate=_proven("locally_verified_current_v4_certificate"),
         supervisor_healthy=_proven("supervisor_healthy"),
         activation_gap=gap_present,
         activation_gap_present=gap_present,
@@ -772,9 +982,7 @@ def produce_closeout_activation_probe(
     repair["repair_id"] = PRODUCTION_RUNTIME_ACTIVATION_ID
     repair["requirement_id"] = PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT
     repair["probe_schema"] = ACTIVATION_PROBE_SCHEMA
-    repair["live_activation_blocker_codes"] = list(
-        live.get("activation_blocker_codes") or ()
-    )[:32]
+    repair["live_activation_blocker_codes"] = list(live.get("activation_blocker_codes") or ())[:32]
     repair["live_activation_gap_reason"] = _text(
         (live.get("activation_gap") or {}).get("reason_code")
         if isinstance(live.get("activation_gap"), Mapping)
@@ -788,8 +996,7 @@ def produce_closeout_activation_probe(
         and (
             # activation_gap.proven means the gap is confirmed present — still
             # an open operator action — whereas other proven claims are done.
-            not item.proven
-            or (item.field == "activation_gap" and item.proven)
+            not item.proven or (item.field == "activation_gap" and item.proven)
         )
     )
     # Deduplicate while preserving order.
@@ -815,8 +1022,11 @@ __all__ = [
     "ACTIVATION_CLAIM_FIELDS",
     "ACTIVATION_PROBE_INTERFACE",
     "ACTIVATION_PROBE_SCHEMA",
+    "OPERATOR_HANDOFF_INTERFACE",
+    "OPERATOR_HANDOFF_SCHEMA",
     "ActivationClaimAssessment",
     "CloseoutActivationProbeReport",
     "assess_activation_claims",
+    "build_activation_gap_operator_handoff",
     "produce_closeout_activation_probe",
 ]
