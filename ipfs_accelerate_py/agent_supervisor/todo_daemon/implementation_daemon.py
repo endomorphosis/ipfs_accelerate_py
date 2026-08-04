@@ -10010,18 +10010,27 @@ class PortalImplementationDaemon:
         }
 
     def _manual_completion_authority_policy_id(self) -> str:
-        """Return the epoch binding for staged-root completion evidence."""
+        """Return the binding for staged-root completion evidence.
+
+        Bind the *configured* required roots (not the live-revoked effective
+        set) so ordinary completion of an already-activated root does not
+        rewrite every durable receipt's context id.  Live revocation still
+        expands hard-blocks / revalidation sets via
+        ``_refresh_manual_completion_authority_guard`` and bumps the
+        revocation generation.  Scheduler epoch remains bound so a true seal
+        package reseal invalidates prior evidence.
+        """
 
         return content_identity(
             {
                 "schema": (
                     "ipfs_accelerate_py.agent_supervisor."
-                    "manual-completion-authority-context@3"
+                    "manual-completion-authority-context@4"
                 ),
                 "todo_path": str(self.todo_path.resolve(strict=False)),
                 "task_ids": sorted(self.manual_completion_authority_task_ids),
                 "required_task_ids": sorted(
-                    self._manual_completion_authority_effective_required_task_ids
+                    self.manual_completion_authority_required_task_ids
                 ),
                 "scheduler_epoch_id": (
                     self.manual_completion_authority_epoch_id

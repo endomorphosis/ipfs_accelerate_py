@@ -457,7 +457,11 @@ def test_live_status_revocation_requarantines_activated_root(
     revoked_context_id = daemon._manual_completion_authority_policy_id()
     update = daemon._mark_task_completed_in_todo("TEST-001")
 
-    assert activated_context_id != revoked_context_id
+    # Configured required roots (and thus durable receipt policy context) stay
+    # stable when a previously-activated root flips live status.  Hard-block
+    # and revalidation sets still expand from live revocation so dependents
+    # cannot complete without a fresh authority path.
+    assert activated_context_id == revoked_context_id
     assert result["manual_completion_authority_required_task_ids"] == [
         "TEST-001"
     ]
