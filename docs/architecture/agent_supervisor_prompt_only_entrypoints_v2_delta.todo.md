@@ -51,7 +51,7 @@ Wave 3:            ASE2-008 validation, materialization, and staged cutover
 
 ## ASE2-002 Separate exact provider policy from per-attempt and fallback evidence
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
