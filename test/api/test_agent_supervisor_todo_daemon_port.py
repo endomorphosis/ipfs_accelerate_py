@@ -11353,6 +11353,114 @@ def test_implementation_daemon_records_merged_root_submodule_gitlink(tmp_path):
     assert _git(repo, "status", "--porcelain") == ""
 
 
+def test_isolated_gitlink_recording_materializes_missing_checkout(tmp_path):
+    """Detached merge worktrees leave gitlinks empty; recording must auto-repair."""
+
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    (submodule / "merged.txt").write_text("isolated tip\n", encoding="utf-8")
+    _git(submodule, "add", "merged.txt")
+    _git(submodule, "commit", "-m", "isolated child tip")
+    merged_commit = _git(submodule, "rev-parse", "HEAD")
+    prior_gitlink = _git(repo, "rev-parse", "HEAD:libs/child")
+    assert prior_gitlink != merged_commit
+
+    workspace = tmp_path / "merge-workspace"
+    _git(repo, "worktree", "add", "--detach", str(workspace), "HEAD")
+    placeholder = workspace / "libs" / "child"
+    if placeholder.exists():
+        import shutil
+        shutil.rmtree(placeholder)
+    placeholder.mkdir(parents=True)
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_root=tmp_path / "worktrees",
+        worktree_submodule_paths=["libs/child"],
+    )
+    task = PortalTask(
+        task_id="AUTO-GITLINK",
+        title="Auto-repair missing isolated checkout",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+    )
+
+    result = daemon._record_merged_submodule_gitlinks(
+        workspace,
+        [
+            {
+                "path": "libs/child",
+                "merged": True,
+                "commit": merged_commit,
+                "isolated_target": True,
+            }
+        ],
+        task=task,
+    )
+
+    assert result.get("ok") is True, result
+    assert result.get("committed") is True, result
+    assert _git(workspace, "rev-parse", "HEAD:libs/child") == merged_commit
+    assert _git(submodule, "cat-file", "-t", merged_commit) == "commit"
+
+
+def test_isolated_gitlink_recording_cacheinfo_without_checkout_when_object_reachable(
+    tmp_path,
+):
+    """When host has the tip object, recording must succeed without a live checkout."""
+
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    (submodule / "merged.txt").write_text("cacheinfo tip\n", encoding="utf-8")
+    _git(submodule, "add", "merged.txt")
+    _git(submodule, "commit", "-m", "cacheinfo child tip")
+    merged_commit = _git(submodule, "rev-parse", "HEAD")
+
+    workspace = tmp_path / "merge-workspace"
+    _git(repo, "worktree", "add", "--detach", str(workspace), "HEAD")
+    placeholder = workspace / "libs" / "child"
+    if placeholder.exists():
+        import shutil
+        shutil.rmtree(placeholder)
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_root=tmp_path / "worktrees",
+        worktree_submodule_paths=["libs/child"],
+    )
+    result = daemon._record_isolated_target_submodule_gitlinks(
+        workspace,
+        [
+            {
+                "path": "libs/child",
+                "merged": True,
+                "commit": merged_commit,
+                "isolated_target": True,
+            }
+        ],
+        task=PortalTask(
+            task_id="AUTO-CACHEINFO",
+            title="Cacheinfo gitlink record",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+    )
+    assert result.get("ok") is True, result
+    assert _git(workspace, "rev-parse", "HEAD:libs/child") == merged_commit
+
+
 def test_implementation_daemon_records_nested_gitlink_chain_and_preserves_local_dirt(
     tmp_path,
 ):

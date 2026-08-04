@@ -34489,6 +34489,160 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             result["reason"] = "commit_failed"
         return result
 
+    def _host_submodule_object_repo(self, relative: str) -> Path | None:
+        """Return a local submodule repo that can resolve objects for ``relative``."""
+
+        relative = str(relative or "").strip().strip("/")
+        if not relative or not self._repo_relative_path_safe(relative):
+            return None
+        host = (self.repo_root / relative).resolve()
+        if self._is_git_worktree(host):
+            return host
+        git_marker = host / ".git"
+        if git_marker.exists():
+            return host
+        return None
+
+    def _submodule_commit_available(
+        self,
+        relative: str,
+        commit: str,
+        *,
+        checkout: Path | None = None,
+    ) -> bool:
+        """True when the commit object is reachable for gitlink recording."""
+
+        commit = str(commit or "").strip()
+        if not commit or not re.fullmatch(r"[0-9a-fA-F]{40,64}", commit):
+            return False
+        if checkout is not None and self._is_git_worktree(checkout):
+            if self._git_commit_exists_in_repo(checkout, commit):
+                return True
+        host = self._host_submodule_object_repo(relative)
+        if host is not None and self._git_commit_exists_in_repo(host, commit):
+            return True
+        return False
+
+    def _materialize_submodule_checkout_at_commit(
+        self,
+        workspace: Path,
+        relative: str,
+        commit: str,
+    ) -> dict[str, Any]:
+        """Populate ``workspace/relative`` at ``commit`` via a shared host clone.
+
+        Detached merge worktrees leave gitlink directories empty. Isolated
+        submodule merges already produced the durable tip; parent gitlink
+        recording only needs that object present (and optionally a checkout
+        for alignment).
+        """
+
+        relative = str(relative or "").strip().strip("/")
+        commit = str(commit or "").strip()
+        result: dict[str, Any] = {
+            "path": relative,
+            "commit": commit,
+            "materialized": False,
+        }
+        if (
+            not relative
+            or not commit
+            or not self._repo_relative_path_safe(relative)
+        ):
+            result["reason"] = "materialize_inputs_invalid"
+            return result
+        host = self._host_submodule_object_repo(relative)
+        if host is None:
+            result["reason"] = "host_submodule_checkout_missing"
+            return result
+        if not self._git_commit_exists_in_repo(host, commit):
+            result["reason"] = "host_missing_gitlink_object"
+            return result
+        target = workspace / relative
+        try:
+            if target.exists():
+                if self._is_git_worktree(target):
+                    if self._git_commit_exists_in_repo(target, commit):
+                        head = subprocess.run(
+                            ["git", "rev-parse", "HEAD"],
+                            cwd=target,
+                            text=True,
+                            capture_output=True,
+                            check=False,
+                        )
+                        if (
+                            head.returncode == 0
+                            and head.stdout.strip() == commit
+                        ):
+                            result["materialized"] = True
+                            result["reason"] = "already_at_commit"
+                            return result
+                        status = subprocess.run(
+                            [
+                                "git",
+                                "status",
+                                "--porcelain",
+                                "--untracked-files=all",
+                            ],
+                            cwd=target,
+                            text=True,
+                            capture_output=True,
+                            check=False,
+                        )
+                        if status.returncode == 0 and not status.stdout.strip():
+                            align = subprocess.run(
+                                ["git", "checkout", "--detach", commit],
+                                cwd=target,
+                                text=True,
+                                capture_output=True,
+                                check=False,
+                            )
+                            if align.returncode == 0:
+                                result["materialized"] = True
+                                result["reason"] = "detached_existing_checkout"
+                                return result
+                    shutil.rmtree(target, ignore_errors=True)
+                elif target.is_symlink() or target.is_file():
+                    target.unlink(missing_ok=True)
+                elif target.is_dir():
+                    shutil.rmtree(target, ignore_errors=True)
+            clone = subprocess.run(
+                [
+                    "git",
+                    "clone",
+                    "--shared",
+                    "--no-checkout",
+                    str(host),
+                    str(target),
+                ],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if clone.returncode != 0:
+                result["reason"] = "shared_clone_failed"
+                result["stderr"] = (clone.stderr or "")[-1000:]
+                return result
+            checkout = subprocess.run(
+                ["git", "checkout", "--force", "--detach", commit],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if checkout.returncode != 0:
+                result["reason"] = "gitlink_checkout_failed"
+                result["stderr"] = (checkout.stderr or "")[-1000:]
+                return result
+            result["materialized"] = True
+            result["reason"] = "shared_clone_at_commit"
+            return result
+        except OSError as exc:
+            result["reason"] = "materialize_os_error"
+            result["error"] = str(exc)[-500:]
+            return result
+
     def _record_isolated_target_submodule_gitlinks(
         self,
         workspace: Path,
@@ -34496,7 +34650,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         task: PortalTask,
     ) -> dict[str, Any]:
-        """Publish isolated child commits and align only this target checkout."""
+        """Publish isolated child commits and align only this target checkout.
+
+        Detached parent merge worktrees often leave gitlink directories empty
+        even after an isolated child tip has been proven. Automatically
+        materialize missing checkouts from the host monorepo object store, and
+        fall back to cacheinfo-only gitlink recording when the commit is
+        reachable without a live clean checkout.
+        """
 
         managed_roots = {
             path.strip().strip("/")
@@ -34505,6 +34666,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         }
         selected: dict[str, str] = {}
         failures: list[dict[str, Any]] = []
+        materializations: list[dict[str, Any]] = []
+        cacheinfo_only: set[str] = set()
         for item in submodule_merge_results:
             if not item.get("isolated_target", False):
                 continue
@@ -34522,43 +34685,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         "path": relative,
                         "reason": "isolated_submodule_result_not_publishable",
                         "commit": commit,
-                    }
-                )
-                continue
-            checkout = (workspace / relative).resolve()
-            if not self._is_git_worktree(checkout):
-                failures.append(
-                    {
-                        "path": relative,
-                        "reason": "isolated_submodule_checkout_missing",
-                        "commit": commit,
-                    }
-                )
-                continue
-            if not self._git_commit_exists_in_repo(checkout, commit):
-                failures.append(
-                    {
-                        "path": relative,
-                        "reason": "isolated_submodule_commit_unavailable",
-                        "commit": commit,
-                    }
-                )
-                continue
-            status = subprocess.run(
-                ["git", "status", "--porcelain", "--untracked-files=all"],
-                cwd=checkout,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            if status.returncode != 0 or status.stdout.strip():
-                failures.append(
-                    {
-                        "path": relative,
-                        "reason": "isolated_submodule_checkout_dirty",
-                        "commit": commit,
-                        "status": status.stdout[-4000:],
-                        "stderr": status.stderr[-4000:],
                     }
                 )
                 continue
@@ -34587,10 +34713,116 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     }
                 )
                 continue
+
+            checkout = (workspace / relative).resolve()
+            if not self._is_git_worktree(checkout):
+                materialize = self._materialize_submodule_checkout_at_commit(
+                    workspace,
+                    relative,
+                    commit,
+                )
+                materializations.append(materialize)
+                checkout = (workspace / relative).resolve()
+                if not materialize.get("materialized", False):
+                    if self._submodule_commit_available(relative, commit):
+                        selected[relative] = commit
+                        cacheinfo_only.add(relative)
+                        continue
+                    failures.append(
+                        {
+                            "path": relative,
+                            "reason": "isolated_submodule_checkout_missing",
+                            "commit": commit,
+                            "materialize": materialize,
+                        }
+                    )
+                    continue
+
+            if not self._submodule_commit_available(
+                relative,
+                commit,
+                checkout=checkout,
+            ):
+                materialize = self._materialize_submodule_checkout_at_commit(
+                    workspace,
+                    relative,
+                    commit,
+                )
+                materializations.append(materialize)
+                checkout = (workspace / relative).resolve()
+                if not self._submodule_commit_available(
+                    relative,
+                    commit,
+                    checkout=(
+                        checkout if self._is_git_worktree(checkout) else None
+                    ),
+                ):
+                    failures.append(
+                        {
+                            "path": relative,
+                            "reason": "isolated_submodule_commit_unavailable",
+                            "commit": commit,
+                            "materialize": materialize,
+                        }
+                    )
+                    continue
+
+            if self._is_git_worktree(checkout):
+                status = subprocess.run(
+                    [
+                        "git",
+                        "status",
+                        "--porcelain",
+                        "--untracked-files=all",
+                    ],
+                    cwd=checkout,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if status.returncode != 0 or status.stdout.strip():
+                    head = subprocess.run(
+                        ["git", "rev-parse", "HEAD"],
+                        cwd=checkout,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    if head.returncode == 0 and head.stdout.strip() == commit:
+                        selected[relative] = commit
+                        cacheinfo_only.add(relative)
+                        continue
+                    reset = subprocess.run(
+                        ["git", "checkout", "--force", "--detach", commit],
+                        cwd=checkout,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    if reset.returncode != 0:
+                        if self._submodule_commit_available(
+                            relative,
+                            commit,
+                            checkout=checkout,
+                        ):
+                            selected[relative] = commit
+                            cacheinfo_only.add(relative)
+                            continue
+                        failures.append(
+                            {
+                                "path": relative,
+                                "reason": "isolated_submodule_checkout_dirty",
+                                "commit": commit,
+                                "status": status.stdout[-4000:],
+                                "stderr": status.stderr[-4000:],
+                                "reset_stderr": (reset.stderr or "")[-2000:],
+                            }
+                        )
+                        continue
             selected[relative] = commit
 
         if failures:
-            return {
+            result = {
                 "attempted": True,
                 "ok": False,
                 "committed": False,
@@ -34598,6 +34830,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "paths": sorted(selected),
                 "failures": failures,
             }
+            if materializations:
+                result["materializations"] = materializations
+            if cacheinfo_only:
+                result["cacheinfo_only_paths"] = sorted(cacheinfo_only)
+            return result
         if not selected:
             return {
                 "attempted": False,
@@ -34740,7 +34977,38 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         alignments: list[dict[str, Any]] = []
         for relative, commit in sorted(selected.items()):
+            recorded = self._submodule_gitlink_ref(workspace, relative)
             checkout = (workspace / relative).resolve()
+            if not self._is_git_worktree(checkout):
+                materialize = self._materialize_submodule_checkout_at_commit(
+                    workspace,
+                    relative,
+                    commit,
+                )
+                materializations.append(materialize)
+                checkout = (workspace / relative).resolve()
+                if not materialize.get("materialized", False):
+                    if recorded == commit:
+                        alignments.append(
+                            {
+                                "path": relative,
+                                "commit": commit,
+                                "aligned": True,
+                                "reason": "gitlink_recorded_without_checkout",
+                                "materialize": materialize,
+                            }
+                        )
+                        continue
+                    alignments.append(
+                        {
+                            "path": relative,
+                            "commit": commit,
+                            "aligned": False,
+                            "reason": "alignment_checkout_missing",
+                            "materialize": materialize,
+                        }
+                    )
+                    continue
             current = subprocess.run(
                 ["git", "rev-parse", "HEAD"],
                 cwd=checkout,
@@ -34759,12 +35027,24 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
                 continue
             align = subprocess.run(
-                ["git", "checkout", "--detach", commit],
+                ["git", "checkout", "--force", "--detach", commit],
                 cwd=checkout,
                 text=True,
                 capture_output=True,
                 check=False,
             )
+            if align.returncode != 0 and recorded == commit:
+                alignments.append(
+                    {
+                        "path": relative,
+                        "commit": commit,
+                        "aligned": True,
+                        "reason": "gitlink_recorded_alignment_best_effort",
+                        "returncode": align.returncode,
+                        "stderr": (align.stderr or "")[-2000:],
+                    }
+                )
+                continue
             alignments.append(
                 {
                     "path": relative,
@@ -34789,6 +35069,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "stdout": str(commit_result.stdout)[-4000:],
             "stderr": str(commit_result.stderr)[-4000:],
         }
+        if materializations:
+            result["materializations"] = materializations
+        if cacheinfo_only:
+            result["cacheinfo_only_paths"] = sorted(cacheinfo_only)
         if alignment_failures:
             result["reason"] = "isolated_submodule_checkout_alignment_failed"
         else:
@@ -34860,10 +35144,34 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 continue
             checkout = workspace / relative
             if not self._is_git_worktree(checkout):
+                # Auto-repair empty gitlink placeholders in merge worktrees.
+                materialize = self._materialize_submodule_checkout_at_commit(
+                    workspace,
+                    relative,
+                    commit,
+                )
+                if not materialize.get("materialized", False):
+                    continue
+                checkout = workspace / relative
+            if not self._is_git_worktree(checkout):
                 continue
             current = self._run_git(["rev-parse", "HEAD"], cwd=checkout).stdout.strip()
             if current == commit:
                 expected_commits[relative] = commit
+            elif self._submodule_commit_available(
+                relative,
+                commit,
+                checkout=checkout,
+            ):
+                align = subprocess.run(
+                    ["git", "checkout", "--force", "--detach", commit],
+                    cwd=checkout,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if align.returncode == 0:
+                    expected_commits[relative] = commit
 
         # A descendant chain records every containing gitlink up to the root.
         # Its parent result therefore names the pre-propagation commit and must
@@ -34898,14 +35206,24 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             current_checkout = (workspace / relative).resolve()
             expected_commit = leaf_commit
             if not self._is_git_worktree(current_checkout):
-                failures.append(
-                    {
-                        "path": relative,
-                        "reason": "merged_submodule_checkout_missing",
-                        "expected_commit": expected_commit,
-                    }
+                materialize = self._materialize_submodule_checkout_at_commit(
+                    workspace,
+                    relative,
+                    expected_commit,
                 )
-                continue
+                current_checkout = (workspace / relative).resolve()
+                if not materialize.get("materialized", False) or not self._is_git_worktree(
+                    current_checkout
+                ):
+                    failures.append(
+                        {
+                            "path": relative,
+                            "reason": "merged_submodule_checkout_missing",
+                            "expected_commit": expected_commit,
+                            "materialize": materialize,
+                        }
+                    )
+                    continue
 
             while current_checkout != workspace:
                 parent_repo = current_checkout.parent
