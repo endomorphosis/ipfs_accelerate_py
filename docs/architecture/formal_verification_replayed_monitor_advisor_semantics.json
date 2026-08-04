@@ -1,0 +1,494 @@
+{
+  "schema_version": "formal-verification-replayed-monitor-advisor-semantics/v1",
+  "interface": "ReplayedMonitorAdvisorSemantics@1",
+  "goal_id": "FVT-G230",
+  "task_id": "FVT-098",
+  "program": "formal-verification-tactician/replayed-monitor-advisor-semantics",
+  "handler_id": "replayed_monitor_advisor_semantics@1",
+  "certification_surface": "tools.logic.certify_formal_verification_replayed_monitor_advisors",
+  "host_platform": "linux-aarch64",
+  "lock_path": "config/formal_verification_toolchains.lock.json",
+  "lock_digest_sha256": "sha256:b1d1bbad034fcc8d6189fa6eaa17555783720456ee01ca860a57a68fcce29ec2",
+  "managed_root": "<managed-tool-path-redacted>",
+  "managed_root_present": true,
+  "managed_root_approved_immutable": true,
+  "deployment_identity": "334324a1cd2800052819b2bee6cb93432ff3aeb87f7b5708bc550a21eaa13470",
+  "deployment_identity_expected": "334324a1cd2800052819b2bee6cb93432ff3aeb87f7b5708bc550a21eaa13470",
+  "deployment_identity_matched": true,
+  "certified": true,
+  "semantic_certification": true,
+  "certification_phase": {
+    "status": "completed",
+    "offline": true,
+    "network": false,
+    "download": false,
+    "install": false,
+    "skip_install": true,
+    "ambient_path_mutated": false,
+    "user_site_mutated": false,
+    "source_tree_mutated": false,
+    "system_package_mutated": false,
+    "managed_root": "<managed-tool-path-redacted>",
+    "runtime_mtl_install_root": "<managed-tool-path-redacted>",
+    "ergoai_install_root": "<managed-tool-path-redacted>/theorem-provers-ergoai-v10-runtime-binding-20260803",
+    "reason_codes": []
+  },
+  "policy": {
+    "offline_certification_forbids_network": true,
+    "offline_certification_forbids_download": true,
+    "offline_certification_forbids_install": true,
+    "offline_certification_forbids_ambient_path_mutation": true,
+    "offline_certification_forbids_user_site_mutation": true,
+    "offline_certification_forbids_source_tree_mutation": true,
+    "offline_certification_forbids_system_package_mutation": true,
+    "skip_install_only": true,
+    "owns_runtime_mtl_and_advisor_replay_fanin": true,
+    "does_not_make_core_ergoai_depend_on_java": true,
+    "does_not_promote_advice_to_theorem_authority": true,
+    "hermetic_parser_fixture_cannot_satisfy_external_runtime_mtl": true,
+    "runtime_mtl_authority_ceiling": "finite_trace",
+    "advisor_authority_ceiling": "advisory",
+    "support_authority_ceiling": "none",
+    "stack_and_temurin_support_only": true,
+    "finite_trace_authority_only_after_parity": true,
+    "advisors_proposal_only_until_independent_reconstruction": true,
+    "reuses_family_certifiers_without_weakening_ceilings": true,
+    "no_central_certificate_edit": true
+  },
+  "runtime_mtl": {
+    "lane_id": "runtime_mtl_vendor",
+    "interface": "ExternalRuntimeMTLVendorCertification@1",
+    "schema_version": "external-runtime-mtl-vendor-certification/v1",
+    "goal_id": "FVT-G210",
+    "task_id": "FVT-056",
+    "repair_task_id": "FVT-072",
+    "certified": true,
+    "tool_id": "runtime-mtl-external",
+    "in_process_tool_id": "runtime-mtl",
+    "authority_ceiling": "finite_trace",
+    "finite_trace_authority_granted": true,
+    "forbids_theorem_authority": true,
+    "forbids_global_correctness_claim": true,
+    "is_vendor_build": true,
+    "is_hermetic_parity_engine": false,
+    "hermetic_cannot_satisfy_vendor": true,
+    "host_platform": "linux-aarch64",
+    "version": "1.0.0-reviewed",
+    "package_identity": "@ipfs-datasets/logic-runtime-mtl",
+    "node_version": "18.19.1",
+    "executable": "<managed-tool-path-redacted>/runtime-mtl-vendor/runtime-mtl-external/1.0.0-reviewed/bin/runtime-mtl-external",
+    "executable_basename": "runtime-mtl-external",
+    "executable_sha256": "463c37783df48327cb699770b83dc95f075d8a1d6dd11b52b2663b047dfe34a5",
+    "identity": {
+      "package_digest_sha256": "9e3e60d9586abd9fad2774bf131dd5b51cf263d8246fad7d3ad8bf84209126fe",
+      "source_digest_sha256": "4396b2f990c912a1aac6dca244828dc2bae955cfff5e059d42cb3d91faf8d14b",
+      "lockfile_digest_sha256": "fa3d6cec7a231c100adfb2a17f930c938be1d48e316a8d8b259833afc3f6389d",
+      "runtime_digest_sha256": "cb9251bd9c861e1e79468f131244cd09c2edfdfa467e964a26f8608deb983cac",
+      "launcher_digest_sha256": "463c37783df48327cb699770b83dc95f075d8a1d6dd11b52b2663b047dfe34a5",
+      "launcher_target_digest_sha256": "be2c0ca0433b9ce827ec9d586aced8de8d452b21b3cc3ae0c514614a1ecec583",
+      "executable_digest_sha256": "463c37783df48327cb699770b83dc95f075d8a1d6dd11b52b2663b047dfe34a5",
+      "artifact_sha256": "c24e5f99e3b124c045ee98816ffa8d2cf13190120b00515772f6434aaa664b93"
+    },
+    "categories_exercised": [
+      "clean_prefix",
+      "event_mutation",
+      "interval_mutation",
+      "malformed",
+      "satisfied",
+      "shortest_violating_prefix",
+      "timestamp_boundary",
+      "violated"
+    ],
+    "mutation_kinds": [
+      "event",
+      "interval"
+    ],
+    "acceptance_axes": [
+      "boundary",
+      "disagreement_quarantine",
+      "malformed",
+      "mutation",
+      "negative",
+      "parity",
+      "positive",
+      "replay",
+      "timeout"
+    ],
+    "required_categories": [
+      "clean_prefix",
+      "event_mutation",
+      "interval_mutation",
+      "malformed",
+      "satisfied",
+      "shortest_violating_prefix",
+      "timestamp_boundary",
+      "violated"
+    ],
+    "required_mutation_kinds": [
+      "event",
+      "interval"
+    ],
+    "required_acceptance_axes": [
+      "boundary",
+      "disagreement_quarantine",
+      "malformed",
+      "mutation",
+      "negative",
+      "parity",
+      "positive",
+      "replay",
+      "timeout"
+    ],
+    "required_identity_fields": [
+      "package_digest_sha256",
+      "source_digest_sha256",
+      "lockfile_digest_sha256",
+      "runtime_digest_sha256",
+      "launcher_digest_sha256",
+      "launcher_target_digest_sha256",
+      "executable_digest_sha256",
+      "artifact_sha256"
+    ],
+    "checks_passed": 37,
+    "checks_total": 37,
+    "source_certificate_digest_sha256": "69061902ab1d59082375c53b8ee8847af86981b34461758e5e800731f2637987",
+    "hermetic_parity_shadow": {
+      "is_hermetic_parity_engine": true,
+      "is_vendor_build": false,
+      "non_production_shadow_evidence": true,
+      "cannot_satisfy_vendor": true,
+      "executable": "<managed-tool-path-redacted>/hermetic-shadow-probe/runtime-mtl-external/runtime-mtl-external/1.0.0-reviewed/bin/runtime-mtl-external"
+    },
+    "block_reasons": [],
+    "policy": {
+      "disagreement_quarantines_promotion": true,
+      "finite_trace_authority_only_after_parity": true,
+      "hermetic_parity_wrappers_are_non_production_shadows": true,
+      "hermetic_parity_wrappers_cannot_satisfy_vendor": true,
+      "never_grants_theorem_authority": true,
+      "no_global_correctness_claim": true,
+      "independent_node_package_without_python_dispatch": true,
+      "package_source_lockfile_runtime_launcher_executable_artifact_digests_bound": true,
+      "offline_certification_never_builds_or_downloads": true,
+      "authority_ceiling": "finite_trace"
+    },
+    "acceptance_source": {
+      "locked_typescript_dependency_graph": true,
+      "independent_node_package_without_python_dispatch": true,
+      "package_source_lockfile_runtime_launcher_executable_artifact_digests_bound": true,
+      "offline_certification_never_builds_or_downloads": true,
+      "hermetic_parity_wrappers_cannot_satisfy_vendor": true,
+      "finite_trace_authority_only": true
+    }
+  },
+  "advisors": {
+    "lane_id": "advisor_semantics",
+    "certified": true,
+    "authority_ceiling": "advisory",
+    "proposal_only_until_independent_reconstruction": true,
+    "grants_proof_authority": false,
+    "grants_theorem_authority": false,
+    "tool_ids": [
+      "ergoai",
+      "symbolicai"
+    ],
+    "ergoai": {
+      "lane_id": "ergoai_live_advisor",
+      "interface": "ErgoAILiveToolchainContract@1",
+      "schema_version": "ergoai-live-toolchain-contract/v1",
+      "goal_id": "FVT-G218",
+      "task_id": "FVT-085",
+      "tool_id": "ergoai",
+      "certified": true,
+      "live_vendor_execution": true,
+      "is_hermetic_advisor_shim": false,
+      "contract_passed": true,
+      "semantic_passed": true,
+      "authority_ceiling": "advisory",
+      "grants_proof_authority": false,
+      "grants_theorem_authority": false,
+      "proposal_only_until_independent_reconstruction": true,
+      "host_platform": "linux-aarch64",
+      "locked_version": "3.0",
+      "executable": null,
+      "case_kinds": [
+        "contradiction",
+        "entailment",
+        "malformed",
+        "mutation",
+        "non_entailment",
+        "replay",
+        "resource_bound",
+        "timeout"
+      ],
+      "required_case_kinds": [
+        "contradiction",
+        "entailment",
+        "malformed",
+        "mutation",
+        "non_entailment",
+        "replay",
+        "resource_bound",
+        "timeout"
+      ],
+      "source_certificate_digest_sha256": "f972479cb60589eeff70714428759fdf172febd933265fc9c53035de38708015",
+      "block_reasons": [],
+      "policy": {
+        "advisor_only": true,
+        "never_grants_proof_authority": true,
+        "never_grants_theorem_authority": true,
+        "hermetic_shim_cannot_satisfy_live_vendor": true,
+        "core_ergoai_does_not_depend_on_java": true,
+        "authority_ceiling": "advisory"
+      }
+    },
+    "symbolicai": {
+      "lane_id": "symbolicai_advisor",
+      "interface": "AdvisorRoleCertification@1",
+      "schema_version": "advisor-role-certification/v1",
+      "goal_id": "FVT-G160",
+      "task_id": "FVT-050",
+      "tool_id": "symbolicai",
+      "certified": true,
+      "authority_ceiling": "advisory",
+      "grants_proof_authority": false,
+      "grants_theorem_authority": false,
+      "proposal_only_until_independent_reconstruction": true,
+      "host_platform": "linux-aarch64",
+      "locked_version": ">=1.14.0,<2.0.0",
+      "case_kinds": [
+        "malformed",
+        "mutation",
+        "negative",
+        "positive",
+        "replay"
+      ],
+      "matched_case_kinds": [
+        "malformed",
+        "mutation",
+        "negative",
+        "positive",
+        "replay"
+      ],
+      "required_case_kinds": [
+        "malformed",
+        "mutation",
+        "negative",
+        "positive",
+        "replay"
+      ],
+      "production_certified_as_advisor": false,
+      "semantic_corpus_passed": true,
+      "source_certificate_digest_sha256": "9b46893d2a0b348c5fd7e730d0000afaf9d84a7943a8631aac8f91d743b9e4d5",
+      "block_reasons": [],
+      "policy": {
+        "advisor_only": true,
+        "never_grants_proof_authority": true,
+        "never_grants_theorem_authority": true,
+        "confidence_never_yields_proof": true,
+        "availability_is_not_authority": true,
+        "static_or_live_proposals_remain_candidates": true,
+        "authority_ceiling": "advisory"
+      }
+    },
+    "required_ergoai_case_kinds": [
+      "contradiction",
+      "entailment",
+      "malformed",
+      "mutation",
+      "non_entailment",
+      "replay",
+      "resource_bound",
+      "timeout"
+    ],
+    "required_symbolicai_case_kinds": [
+      "malformed",
+      "mutation",
+      "negative",
+      "positive",
+      "replay"
+    ],
+    "block_reasons": [],
+    "policy": {
+      "advisors_remain_proposal_only": true,
+      "independent_reconstruction_required_for_proof": true,
+      "never_promotes_advice_to_theorem_authority": true,
+      "core_ergoai_does_not_depend_on_java": true,
+      "hermetic_shim_cannot_satisfy_genuine_ergoai": true,
+      "authority_ceiling": "advisory"
+    }
+  },
+  "support": {
+    "lane_id": "support_dependencies",
+    "certified": true,
+    "authority_ceiling": "none",
+    "support_only": true,
+    "tool_ids": [
+      "stack",
+      "temurin-jdk"
+    ],
+    "tools": [
+      {
+        "tool_id": "stack",
+        "version": "3.11.1",
+        "role": "support",
+        "support_only": true,
+        "authority_ceiling": "none",
+        "authority_tool": false,
+        "can_satisfy_public_verification": false,
+        "can_satisfy_semantic_authority": false,
+        "can_satisfy_proof_authority": false,
+        "host_platform": "linux-aarch64",
+        "executable": "<managed-tool-path-redacted>/bin/stack",
+        "executable_sha256": "98fc0dbdfeb855219e3fbac28dcf8ce4eb24a1afb43979d72e08683a0d0af5e7",
+        "installer_entry": "ensure_stack",
+        "license": "BSD-3-Clause",
+        "source": "https://github.com/commercialhaskell/stack",
+        "families": [
+          "protocol"
+        ]
+      },
+      {
+        "tool_id": "temurin-jdk",
+        "version": "17.0.20+8",
+        "role": "support",
+        "support_only": true,
+        "authority_ceiling": "none",
+        "authority_tool": false,
+        "can_satisfy_public_verification": false,
+        "can_satisfy_semantic_authority": false,
+        "can_satisfy_proof_authority": false,
+        "host_platform": "linux-aarch64",
+        "executable": null,
+        "executable_sha256": null,
+        "installer_entry": "ensure_temurin_jdk",
+        "license": "GPL-2.0-with-classpath-exception",
+        "source": "https://adoptium.net/",
+        "families": [
+          "advisors",
+          "flogic"
+        ]
+      }
+    ],
+    "cannot_satisfy_public_verification": true,
+    "cannot_satisfy_semantic_authority": true,
+    "cannot_satisfy_proof_authority": true,
+    "block_reasons": [],
+    "policy": {
+      "stack_is_support_only": true,
+      "temurin_is_support_only": true,
+      "support_presence_never_satisfies_verification": true,
+      "support_presence_never_satisfies_semantic_authority": true,
+      "support_presence_never_satisfies_proof_authority": true,
+      "authority_ceiling": "none"
+    }
+  },
+  "lanes": {
+    "runtime_mtl": {
+      "certified": true,
+      "authority_ceiling": "finite_trace",
+      "finite_trace_authority_granted": true,
+      "tool_id": "runtime-mtl-external"
+    },
+    "advisors": {
+      "certified": true,
+      "authority_ceiling": "advisory",
+      "tool_ids": [
+        "ergoai",
+        "symbolicai"
+      ]
+    },
+    "support": {
+      "certified": true,
+      "authority_ceiling": "none",
+      "tool_ids": [
+        "stack",
+        "temurin-jdk"
+      ]
+    }
+  },
+  "summary": {
+    "certified": true,
+    "runtime_mtl_certified": true,
+    "advisors_certified": true,
+    "support_certified": true,
+    "runtime_mtl_tool_id": "runtime-mtl-external",
+    "advisor_tool_ids": [
+      "ergoai",
+      "symbolicai"
+    ],
+    "support_tool_ids": [
+      "stack",
+      "temurin-jdk"
+    ],
+    "runtime_mtl_checks_passed": 37,
+    "runtime_mtl_checks_total": 37,
+    "runtime_mtl_categories": [
+      "clean_prefix",
+      "event_mutation",
+      "interval_mutation",
+      "malformed",
+      "satisfied",
+      "shortest_violating_prefix",
+      "timestamp_boundary",
+      "violated"
+    ],
+    "runtime_mtl_acceptance_axes": [
+      "boundary",
+      "disagreement_quarantine",
+      "malformed",
+      "mutation",
+      "negative",
+      "parity",
+      "positive",
+      "replay",
+      "timeout"
+    ],
+    "ergoai_case_kinds": [
+      "contradiction",
+      "entailment",
+      "malformed",
+      "mutation",
+      "non_entailment",
+      "replay",
+      "resource_bound",
+      "timeout"
+    ],
+    "symbolicai_case_kinds": [
+      "malformed",
+      "mutation",
+      "negative",
+      "positive",
+      "replay"
+    ],
+    "finite_trace_authority_granted": true,
+    "advisors_proposal_only": true,
+    "block_reasons": []
+  },
+  "acceptance": {
+    "goal_id": "FVT-G230",
+    "task_id": "FVT-098",
+    "independent_node_typescript_runtime_mtl_positive_negative_boundary_malformed_mutation_replay_timeout_parity": true,
+    "cross_runtime_parity_with_disagreement_quarantine": true,
+    "real_ergoai_and_symbolicai_advisory_cases": true,
+    "package_lockfile_runtime_launcher_target_artifact_executable_identities_bound": true,
+    "runtime_mtl_finite_trace_authority_only_after_parity": true,
+    "advisors_remain_proposal_only_until_independent_reconstruction": true,
+    "stack_and_temurin_support_only_cannot_satisfy_verification_semantic_or_proof": true
+  },
+  "depends_on": [
+    "FVT-G210",
+    "FVT-G218",
+    "FVT-G223",
+    "FVT-G226",
+    "FVT-G227"
+  ],
+  "env_flags": {
+    "FORMAL_VERIFICATION_CERTIFY_OFFLINE": "1",
+    "FORMAL_VERIFICATION_FORBID_INSTALL": "1",
+    "FORMAL_VERIFICATION_FORBID_NETWORK": "1",
+    "FORMAL_VERIFICATION_REPLAYED_MONITOR_ADVISOR_OFFLINE": "1"
+  },
+  "receipt_digest_sha256": "sha256:83e4dd395fa7b62ee60dbebc647db6d6e1da0ea5f75df5c7b4f2726377ff66ab",
+  "certificate_digest_sha256": "sha256:83e4dd395fa7b62ee60dbebc647db6d6e1da0ea5f75df5c7b4f2726377ff66ab"
+}
