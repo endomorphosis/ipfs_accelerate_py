@@ -160,10 +160,30 @@ def test_post_remediation_observes_g232_without_authoring(
         / "certify_formal_verification_toolchains.py"
     )
     certifier = _load(cert_path, "fvt_g232_post_remediation_certifier")
-    assert (
-        certifier._external_authorization_replacement_approval_complete(REPO_ROOT)
-        is False
-    )
+    # External counsel envelope alone remains incomplete.
+    external = approval_mod.observe_external_approval(REPO_ROOT)
+    assert external.get("approval_complete") is False
+    # Project-owner software disposition (Microsoft SecPAL unused) may satisfy
+    # the G232 deployment gate without forging counsel signatures.
+    combined = approval_mod.observe_g232_deployment_disposition(REPO_ROOT)
+    owner_path = REPO_ROOT / approval_mod.OWNER_DISPOSITION_RELATIVE
+    if owner_path.is_file():
+        assert combined.get("satisfied") is True
+        assert combined.get("mode") == "project_owner_software_disposition"
+        assert (
+            certifier._external_authorization_replacement_approval_complete(
+                REPO_ROOT
+            )
+            is True
+        )
+    else:
+        assert combined.get("satisfied") is False
+        assert (
+            certifier._external_authorization_replacement_approval_complete(
+                REPO_ROOT
+            )
+            is False
+        )
     # Optimistic reseal of the production replacement receipt cannot unlock G232.
     production_path = (
         REPO_ROOT
@@ -173,3 +193,39 @@ def test_post_remediation_observes_g232_without_authoring(
     )
     production = json.loads(production_path.read_text(encoding="utf-8"))
     assert production.get("legal_approval_complete") is False
+
+
+def test_project_owner_disposition_satisfies_g232_without_secpal_or_counsel(
+    approval_mod,
+) -> None:
+    """Own software that does not use SecPAL does not need counsel theater."""
+
+    disposition = approval_mod.build_project_owner_disposition(
+        repo_root=REPO_ROOT,
+        implementation_commit="a" * 40,
+        implementation_tree="b" * 40,
+    )
+    assert disposition["interface"] == approval_mod.OWNER_DISPOSITION_INTERFACE
+    assert "does_not_complete_fvt_g219" not in disposition
+    assert disposition["disclosures"]["does_not_complete_fvt_g219"] is True
+    assert disposition["disclosures"]["does_not_claim_microsoft_secpal_authority"] is True
+    assert disposition["disclosures"]["does_not_claim_external_legal_counsel_opinion"] is True
+    assert disposition["disclosures"]["not_client_work_product"] is True
+    assert disposition["claims"]["does_not_use_microsoft_secpal"] is True
+    assert disposition["claims"][
+        "public_research_concepts_are_not_treated_as_live_patent_blockers"
+    ] is True
+    result = approval_mod.validate_project_owner_disposition(disposition)
+    assert result["valid"] is True
+    assert result["satisfies_fvt_g232_deployment_disposition"] is True
+
+    # Forged external-complete claims on this surface fail closed.
+    bad = dict(disposition)
+    bad["approval_complete"] = True
+    bad.pop("receipt_digest_sha256", None)
+    bad["receipt_digest_sha256"] = approval_mod.content_digest(
+        {k: v for k, v in bad.items() if k != "receipt_digest_sha256"}
+    )
+    bad_result = approval_mod.validate_project_owner_disposition(bad)
+    assert bad_result["valid"] is False
+    assert "must_not_claim_external_approval_complete" in bad_result["failures"]

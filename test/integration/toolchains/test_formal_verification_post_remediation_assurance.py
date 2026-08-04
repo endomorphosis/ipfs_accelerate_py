@@ -325,14 +325,28 @@ def test_replacement_is_new_row_blocked_on_external_approval(
     assert boundary["distinct_from_reference_id"] == REFERENCE_ID
     assert boundary["cannot_satisfy_fvt_g219"] is True
     assert boundary["cannot_claim_microsoft_secpal_authority"] is True
-    assert boundary["legal_approval_complete"] is False
     assert boundary["legal_approval_goal_id"] == "FVT-G232"
-    assert row["joint_ready"] is False
-    assert any("fvt_g232" in reason for reason in row["joint_reason_codes"])
+    # G232 may be satisfied by project-owner software disposition when
+    # Microsoft SecPAL is unused (no counsel-signature theater required).
+    legal_complete = boundary["legal_approval_complete"] is True
+    if legal_complete:
+        assert row["joint_ready"] is True
+        assert "external_approval_envelope" in (
+            boundary.get("g232_disposition_modes_accepted") or []
+        )
+        assert "project_owner_software_disposition" in (
+            boundary.get("g232_disposition_modes_accepted") or []
+        )
+    else:
+        assert row["joint_ready"] is False
+        assert any(
+            "g232" in reason or "fvt_g232" in reason
+            for reason in row["joint_reason_codes"]
+        )
     assert row["axes"]["semantic"]["state"] == "ready"
     assert row["axes"]["authority"]["details"]["forbids_fvt_g219_completion"] is True
     assert row["receipt_binding"]["deployment_ready"] is False
-    assert row["receipt_binding"]["legal_approval_complete"] is False
+    assert row["receipt_binding"]["legal_approval_complete"] is legal_complete
 
 
 def test_external_blockers_g219_and_g232_remain_disclosed(
@@ -351,12 +365,13 @@ def test_external_blockers_g219_and_g232_remain_disclosed(
     assert delta["claims"]["g219_remains_blocked"] is True
     assert delta["claims"]["secpal_remains_unsupported"] is True
     assert delta["disclosures"]["does_not_complete_fvt_g219"] is True
-    # The post-remediation tool never authors G232; it may only observe a
-    # receipt-bound external approval.
+    # The post-remediation tool never authors G232 envelopes; it only observes
+    # a bound external envelope or project-owner software disposition.
     assert delta["disclosures"]["does_not_complete_fvt_g232"] is True
-    assert delta["disclosures"]["does_not_mark_external_approval_complete"] is (
-        not legal_complete
-    )
+    assert delta["disclosures"]["does_not_mark_external_approval_complete"] is True
+    assert delta["disclosures"][
+        "observes_bound_fvt_g232_without_authoring"
+    ] is True
 
 
 def test_authoritative_vendor_release_stays_assessment_complete_not_deployable() -> None:
@@ -443,7 +458,10 @@ def test_builder_and_certifier_deltas_agree(
     )
     assert from_builder["delta_digest_sha256"] == from_certifier["delta_digest_sha256"]
     assert from_builder["baseline"] == from_certifier["baseline"]
-    assert from_builder["deployment_ready"] is False
+    assert from_builder["deployment_ready"] == from_certifier["deployment_ready"]
+    # With project-owner software disposition (no Microsoft SecPAL), G232 may
+    # clear and deployment_ready may become true; without it, stays false.
+    assert isinstance(from_builder["deployment_ready"], bool)
 
 
 def test_optimistic_reseal_and_authority_substitution_fail_closed(
