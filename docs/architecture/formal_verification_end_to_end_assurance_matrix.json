@@ -4,7 +4,7 @@
   "goal_id": "FVT-G220",
   "task_id": "FVT-088",
   "program": "formal-verification-tactician/end-to-end-assurance",
-  "observed_at": "2026-08-04T22:56:15Z",
+  "observed_at": "2026-08-04T23:01:02Z",
   "binding_mode": "per_provider_host_independent_nine_axis_fail_closed",
   "axis_order": [
     "dependency",
@@ -41,7 +41,7 @@
       "interface": "FormalVerificationToolchainCertificate@1"
     },
     "certificate_lock_digest_matches": true,
-    "packaging_snapshot_digest_sha256": "4b4b94a3e652243c4485cc58787bb8e848560ac2702ce5e0e98a39100ed1912a",
+    "packaging_snapshot_digest_sha256": "b27146ac9f0440ae6a594e83d139946192bf4fe776632fc55d21283b7033e0f7",
     "installer_registry_digest_sha256": "411120d6d8d71966f4e46ee3e4549831624b0a5717f0b0d25aa441b42151246d",
     "public_surface_catalog_digest_sha256": "27b151f0789881658d213b09425eaa08dd74c6a26c787327739d6563090ab63d"
   },
@@ -248,7 +248,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -610,7 +610,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -974,7 +974,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -1336,7 +1336,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -1701,7 +1701,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -2051,7 +2051,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -2413,7 +2413,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -2772,7 +2772,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -3136,7 +3136,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -3501,7 +3501,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -3842,7 +3842,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -4204,7 +4204,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -4558,7 +4558,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -4922,7 +4922,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -5276,7 +5276,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -5638,7 +5638,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -5988,7 +5988,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -6365,7 +6365,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -6760,7 +6760,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -7110,7 +7110,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -7472,7 +7472,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -7826,7 +7826,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -8182,7 +8182,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -8545,7 +8545,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -8899,7 +8899,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -9261,7 +9261,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -9626,7 +9626,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -9986,7 +9986,7 @@
               "kind": "repository_file",
               "path": "ipfs_datasets_py/requirements-lazy.txt",
               "present": true,
-              "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3",
+              "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc",
               "interface": "FormalVerificationPackagingGate@1"
             },
             {
@@ -10328,5 +10328,5 @@
     "unsupported_is_not_ready": true,
     "fixtures_parsers_shims_and_advisors_do_not_gain_proof_authority": true
   },
-  "matrix_digest_sha256": "9a69934e653f4ace15f628076d2e5c14d1fd424d828f768abaa3bd8450511805"
+  "matrix_digest_sha256": "b92c270a468bc911cc8c536a371bdcf584085118a9e67cd0a67db516be551dd0"
 }
