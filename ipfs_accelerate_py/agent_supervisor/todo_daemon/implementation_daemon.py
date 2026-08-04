@@ -21,6 +21,7 @@ import threading
 import time
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
+from enum import Enum
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -214,6 +215,7 @@ from .production_provider_cli import (
 )
 from .production_context_slice import (
     DEFAULT_RESERVED_PROMPT_TOKENS,
+    MAX_PROVIDER_PROMPT_TOKENS as PRODUCTION_CONTEXT_MAX_PROVIDER_PROMPT_TOKENS,
     ProductionContextSliceError,
     assert_proposal_covered_by_context,
     build_production_context_slice,
@@ -424,6 +426,41 @@ class _PostMergeCorrectionRouteRegistryEntry:
     capability: _LivePostMergeCorrectionRouteCapability
     material: Mapping[str, Any]
     canonical: bytes
+
+
+class _PostMergeCorrectionLandedRouteDisposition(str, Enum):
+    """Typed outcome of the non-consuming landed-route preflight."""
+
+    VERIFIED = "verified"
+    TASK_LEAF_DIVERGED = "task_leaf_diverged"
+    REJECTED = "rejected"
+
+
+@dataclass(frozen=True, slots=True)
+class _PostMergeCorrectionLandedRoutePreflight:
+    """Fail-closed preflight result; only two outcomes carry a candidate."""
+
+    disposition: _PostMergeCorrectionLandedRouteDisposition
+    reason: str
+    candidate: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(
+            self.disposition,
+            _PostMergeCorrectionLandedRouteDisposition,
+        ):
+            raise TypeError("landed-route disposition must be typed")
+        reason = str(self.reason or "").strip()
+        if not reason:
+            raise ValueError("landed-route preflight reason is required")
+        candidate = MappingProxyType(dict(self.candidate))
+        if self.disposition is _PostMergeCorrectionLandedRouteDisposition.REJECTED:
+            if candidate:
+                raise ValueError("rejected landed-route preflight carries no candidate")
+        elif not candidate:
+            raise ValueError("accepted landed-route preflight requires a candidate")
+        object.__setattr__(self, "reason", reason)
+        object.__setattr__(self, "candidate", candidate)
 
 
 def _correction_route_material_snapshot(
@@ -16562,6 +16599,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         repo_root=self.repo_root,
                         task=task,
                         task_identity=identity,
+                        allowed_nested_repository_roots=tuple(
+                            self.worktree_submodule_paths
+                        ),
                     )
                     metadata["provider_execution_receipt"] = (
                         provider_receipt.to_dict()
@@ -22019,6 +22059,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     if parsed_binding is not None
                     else ""
                 ),
+                allowed_nested_repository_roots=tuple(
+                    self.worktree_submodule_paths
+                ),
             )
             result = verification.to_dict()
         self._record_event(
@@ -22068,6 +22111,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     task=task,
                     task_identity=self._identity_for_task(task),
                     implementation_commit=implementation_commit,
+                    allowed_nested_repository_roots=tuple(
+                        self.worktree_submodule_paths
+                    ),
                 )
             except (OSError, TypeError, ValueError) as exc:
                 raise RuntimeError(
@@ -22718,7 +22764,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     use_production_route
                     and production_landed_guard.get("guarded") is True
                 ):
-                    correction_landed_route_candidate = (
+                    correction_landed_route_preflight = (
                         self._post_merge_correction_landed_route_candidate(
                             task,
                             attempt=attempt,
@@ -22727,21 +22773,40 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             workspace_path=worktree_path,
                         )
                     )
-                    if not correction_landed_route_candidate:
-                        # Landed route is only valid when the denied land is
-                        # still exactly present on the tip.  After a completed
-                        # repair (e.g. UIR-085) rewrites task-owned outputs,
-                        # preflight correctly fails; fall through to normal
-                        # production correction with bound feedback instead of
-                        # blocking the authorized attempt.
+                    if (
+                        correction_landed_route_preflight.disposition
+                        is _PostMergeCorrectionLandedRouteDisposition.REJECTED
+                    ):
+                        self.task_queue.defer(
+                            self._canonical_ref(task),
+                            300,
+                            reason=(
+                                "post_merge_correction_landed_route_unverified"
+                            ),
+                        )
+                        self.task_queue.save()
+                        raise WorktreeLifecycleError(
+                            "post_merge_correction_landed_route_unverified:"
+                            + correction_landed_route_preflight.reason
+                        )
+                    correction_landed_route_candidate = dict(
+                        correction_landed_route_preflight.candidate
+                    )
+                    if (
+                        correction_landed_route_preflight.disposition
+                        is _PostMergeCorrectionLandedRouteDisposition.TASK_LEAF_DIVERGED
+                    ):
+                        # A true ``git diff --quiet`` return code of one means
+                        # another landed repair changed the task-owned leaf.
+                        # Preserve the guard until the strict start consumes
+                        # authority and the normal activation path seals one
+                        # exact correction capability.
                         self._record_event(
                             "post_merge_correction_landed_route_inapplicable",
                             {
                                 "task_id": task.task_id,
                                 "attempt": attempt,
-                                "reason": (
-                                    "landed_outputs_diverged_or_unverified"
-                                ),
+                                "reason": "task_leaf_diverged",
                                 "provider_call_allowed": True,
                                 "durable_denial_id": str(
                                     post_merge_correction_authority.get(
@@ -22750,14 +22815,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                     or ""
                                 ),
                                 "baseline_ref": str(baseline_ref or ""),
+                                "route_candidate_id": str(
+                                    correction_landed_route_candidate[
+                                        "route_candidate_id"
+                                    ]
+                                ),
                             },
                         )
                         production_landed_guard = {
                             **dict(production_landed_guard),
-                            "guarded": False,
-                            "reason": (
-                                "landed_outputs_diverged_or_unverified"
-                            ),
+                            "reason": "task_leaf_diverged",
                             "landed_route_inapplicable": True,
                         }
             task_identity = self._identity_for_task(task)
@@ -22939,6 +23006,32 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         "was not durably activated"
                     )
                 production_landed_guard = activated_landed_route
+            elif (
+                production_correction_feedback
+                and post_merge_correction_authority
+            ):
+                # An ordinary correction still charges the durable start CAS.
+                # Seal its exact consumption before the private provider route
+                # tries to claim the one-shot process-local capability.
+                sealed_correction_route = (
+                    self._seal_post_merge_correction_route_after_start(
+                        task,
+                        attempt=attempt,
+                        authority=post_merge_correction_authority,
+                        started_event=implementation_started_event,
+                        complete_feedback_id=str(
+                            production_correction_feedback.get(
+                                "feedback_binding_id"
+                            )
+                            or ""
+                        ),
+                    )
+                )
+                if not sealed_correction_route:
+                    raise MergeQueueFenceError(
+                        "post-merge correction route reservation was not "
+                        "sealed after durable start"
+                    )
             with log_path.open("w", encoding="utf-8") as log_fh:
                 log_fh.write(f"Task: {task.task_id} {task.title}\n")
                 log_fh.write(f"Started: {started_at}\n")
@@ -34098,6 +34191,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         findings = feedback.get("findings")
         identity = self._identity_for_task(task)
+
+        def integer_matches(value: Any, expected: Any) -> bool:
+            if isinstance(value, bool) or isinstance(expected, bool):
+                return False
+            try:
+                return int(value) == int(expected)
+            except (TypeError, ValueError):
+                return False
+
         if (
             not authority_binding_id
             or content_identity(authority_material) != authority_binding_id
@@ -34119,8 +34221,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             != identity.board_namespace
             or str(authority_material.get("task_binding_id") or "")
             != post_merge_task_binding_id(task)
-            or int(authority_material.get("authorized_attempt") or 0)
-            != int(attempt)
+            or not integer_matches(
+                authority_material.get("authorized_attempt"),
+                attempt,
+            )
             or str(authority_material.get("origin_stream_id") or "")
             != str(_event_stream_binding(self.events_path)[0])
             or str(authority_material.get("target_repository_id") or "")
@@ -34204,11 +34308,27 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         authority: Mapping[str, Any],
         landed_guard: Mapping[str, Any],
         workspace_path: Path,
-    ) -> dict[str, Any]:
-        """Preflight an exact landed correction; this is not yet authority."""
+    ) -> _PostMergeCorrectionLandedRoutePreflight:
+        """Classify landed-route evidence without consuming any authority."""
+
+        def rejected(reason: str) -> _PostMergeCorrectionLandedRoutePreflight:
+            return _PostMergeCorrectionLandedRoutePreflight(
+                disposition=(
+                    _PostMergeCorrectionLandedRouteDisposition.REJECTED
+                ),
+                reason=reason,
+            )
+
+        def integer_matches(value: Any, expected: Any) -> bool:
+            if isinstance(value, bool) or isinstance(expected, bool):
+                return False
+            try:
+                return int(value) == int(expected)
+            except (TypeError, ValueError):
+                return False
 
         if landed_guard.get("guarded") is not True:
-            return {}
+            return rejected("landed_guard_not_applicable")
         authority_material = dict(authority)
         authority_binding_id = str(
             authority_material.pop("authority_binding_id", "") or ""
@@ -34238,8 +34358,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
             or authority_kind not in {"review_denial", "repair_grant"}
             or not denial_id
-            or int(authority_material.get("authorized_attempt") or 0)
-            != int(attempt)
+            or not integer_matches(
+                authority_material.get("authorized_attempt"),
+                attempt,
+            )
             or str(authority_material.get("task_id") or "")
             != task.task_id
             or str(authority_material.get("canonical_task_key") or "")
@@ -34265,7 +34387,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 or ""
             )
         ):
-            return {}
+            return rejected("authority_invalid")
         denial = self._verified_durable_post_merge_denial(
             task,
             denial_id,
@@ -34286,7 +34408,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             or not complete_feedback
             or not callable(authority_reader)
         ):
-            return {}
+            return rejected("durable_evidence_unavailable")
         try:
             durable_authority = authority_reader(denial_id)
         except (
@@ -34296,7 +34418,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             TypeError,
             ValueError,
         ):
-            return {}
+            return rejected("durable_authority_read_failed")
         exact_denial_fields = (
             "implementation_commit",
             "merge_commit",
@@ -34314,8 +34436,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             != authority_kind
             or str(durable_authority.get("authority_id") or "")
             != str(authority_material.get("authority_id") or "")
-            or int(durable_authority.get("authorized_attempt") or 0)
-            != int(attempt)
+            or not integer_matches(
+                durable_authority.get("authorized_attempt"),
+                attempt,
+            )
             or str(durable_authority.get("head_record_id") or "")
             != str(
                 authority_material.get(
@@ -34323,12 +34447,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
                 or ""
             )
-            or int(durable_authority.get("head_ordinal") or 0)
-            != int(
+            or not integer_matches(
+                durable_authority.get("head_ordinal"),
                 authority_material.get(
                     "durable_authority_head_ordinal"
-                )
-                or 0
+                ),
             )
             or str(durable_authority.get("authority_state_id") or "")
             != str(
@@ -34346,29 +34469,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 != str(denial.get(name) or "")
                 for name in exact_denial_fields
             )
-            or int(
-                authority_material.get("source_event_sequence") or 0
+            or not integer_matches(
+                authority_material.get("source_event_sequence"),
+                denial.get("source_event_sequence"),
             )
-            != int(denial.get("source_event_sequence") or 0)
-            or int(authority_material.get("review_attempt") or 0)
-            != int(denial.get("review_attempt") or 0)
-            or int(
-                authority_material.get("source_implementation_attempt")
-                or 0
+            or not integer_matches(
+                authority_material.get("review_attempt"),
+                denial.get("review_attempt"),
             )
-            != int(denial.get("implementation_attempt") or 0)
+            or not integer_matches(
+                authority_material.get("source_implementation_attempt"),
+                denial.get("implementation_attempt"),
+            )
         ):
-            return {}
-        baseline_ref = str(landed_guard.get("baseline_ref") or "")
-        baseline_tree = self._candidate_repository_tree(baseline_ref)
-        baseline_tree_id = f"git-tree:{baseline_tree}" if baseline_tree else ""
-        workspace_head = self._resolve_git_commit_in_repo(
-            workspace_path,
-            "HEAD",
-        )
-        expected_workspace_head = str(
-            authority_material.get("recovery_seed_ref") or baseline_ref
-        )
+            return rejected("durable_authority_invalid")
         safe_output_paths: list[str] = []
         for raw_path in task.outputs:
             value = str(raw_path or "").strip()
@@ -34382,32 +34496,25 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 or value in {".", ".."}
                 or ".." in path.parts
             ):
-                return {}
+                return rejected("task_output_scope_invalid")
             safe_output_paths.append(value)
         if not safe_output_paths:
-            return {}
-        task_leaf_compatibility = subprocess.run(
-            [
-                "git",
-                "--literal-pathspecs",
-                "-c",
-                "diff.external=",
-                "-c",
-                "diff.trustExitCode=false",
-                "diff",
-                "--quiet",
-                "--no-ext-diff",
-                "--no-textconv",
-                str(denial["merge_commit"]),
-                baseline_ref,
-                "--",
-                *safe_output_paths,
-            ],
-            cwd=self.repo_root,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            env=sanitized_git_environment(),
-            check=False,
+            return rejected("task_output_scope_invalid")
+
+        baseline_ref = str(landed_guard.get("baseline_ref") or "")
+        try:
+            baseline_tree = self._candidate_repository_tree(baseline_ref)
+            workspace_head = self._resolve_git_commit_in_repo(
+                workspace_path,
+                "HEAD",
+            )
+        except (OSError, RuntimeError, TypeError, ValueError):
+            return rejected("landed_workspace_invalid")
+        baseline_tree_id = (
+            f"git-tree:{baseline_tree}" if baseline_tree else ""
+        )
+        expected_workspace_head = str(
+            authority_material.get("recovery_seed_ref") or baseline_ref
         )
         if (
             landed_guard.get("workspace_clean") is not True
@@ -34428,24 +34535,68 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             or baseline_tree_id
             != str(landed_guard.get("repository_tree_id") or "")
             or workspace_head != expected_workspace_head
-            or task_leaf_compatibility.returncode != 0
-            or not self._git_ref_is_ancestor(
-                str(denial["implementation_commit"]),
-                str(denial["merge_commit"]),
-            )
-            or not self._git_ref_is_ancestor(
-                str(denial["merge_commit"]),
-                baseline_ref,
-            )
-            or (
-                "git-tree:"
-                + self._candidate_repository_tree(
-                    str(denial["merge_commit"])
-                )
-            )
-            != str(denial["repository_tree_id"])
         ):
-            return {}
+            return rejected("landed_workspace_invalid")
+
+        try:
+            ancestry_valid = (
+                self._git_ref_is_ancestor(
+                    str(denial["implementation_commit"]),
+                    str(denial["merge_commit"]),
+                )
+                and self._git_ref_is_ancestor(
+                    str(denial["merge_commit"]),
+                    baseline_ref,
+                )
+                and (
+                    "git-tree:"
+                    + self._candidate_repository_tree(
+                        str(denial["merge_commit"])
+                    )
+                )
+                == str(denial["repository_tree_id"])
+            )
+        except (OSError, RuntimeError, TypeError, ValueError):
+            ancestry_valid = False
+        if not ancestry_valid:
+            return rejected("landed_ancestry_invalid")
+
+        try:
+            task_leaf_compatibility = subprocess.run(
+                [
+                    "git",
+                    "--literal-pathspecs",
+                    "-c",
+                    "diff.external=",
+                    "-c",
+                    "diff.trustExitCode=false",
+                    "diff",
+                    "--quiet",
+                    "--no-ext-diff",
+                    "--no-textconv",
+                    str(denial["merge_commit"]),
+                    baseline_ref,
+                    "--",
+                    *safe_output_paths,
+                ],
+                cwd=self.repo_root,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=sanitized_git_environment(),
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return rejected("task_leaf_comparison_failed")
+        if task_leaf_compatibility.returncode == 0:
+            disposition = (
+                _PostMergeCorrectionLandedRouteDisposition.VERIFIED
+            )
+        elif task_leaf_compatibility.returncode == 1:
+            disposition = (
+                _PostMergeCorrectionLandedRouteDisposition.TASK_LEAF_DIVERGED
+            )
+        else:
+            return rejected("task_leaf_comparison_failed")
         material = {
             "schema": POST_MERGE_CORRECTION_LANDED_ROUTE_SCHEMA,
             "task_id": task.task_id,
@@ -34478,6 +34629,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "baseline_ref": baseline_ref,
             "baseline_repository_tree_id": baseline_tree_id,
             "workspace_head": workspace_head,
+            "task_leaf_disposition": disposition.value,
             "source_finding_count": int(
                 denial["source_finding_count"]
             ),
@@ -34492,47 +34644,47 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "denial_completion_authoritative": False,
             "denial_proof_authoritative": False,
         }
-        return {
-            **material,
-            "route_candidate_id": content_identity(material),
-        }
+        try:
+            candidate = {
+                **material,
+                "route_candidate_id": content_identity(material),
+            }
+        except (TypeError, ValueError):
+            return rejected("candidate_identity_failed")
+        return _PostMergeCorrectionLandedRoutePreflight(
+            disposition=disposition,
+            reason=disposition.value,
+            candidate=candidate,
+        )
 
-    def _activate_post_merge_correction_landed_route(
+    def _seal_post_merge_correction_route_after_start(
         self,
         task: PortalTask,
         *,
         attempt: int,
         authority: Mapping[str, Any],
-        candidate: Mapping[str, Any],
         started_event: Mapping[str, Any],
-        landed_guard: Mapping[str, Any],
+        complete_feedback_id: str,
     ) -> dict[str, Any]:
-        """Activate a bypass only after the strict start CAS is durable."""
+        """Seal one process-local capability after durable start consumption.
 
-        candidate_material = dict(candidate)
-        route_candidate_id = str(
-            candidate_material.pop("route_candidate_id", "") or ""
-        )
+        Landed-route activation is optional. Ordinary repair-grant / denial
+        corrections and a landed-route fallthrough still require exactly one
+        sealed capability before the private provider route may run.
+        """
+
         authority_binding_id = str(
             authority.get("authority_binding_id") or ""
         )
+        denial_id = str(authority.get("durable_denial_id") or "")
+        expected_feedback_id = str(complete_feedback_id or "").strip()
         if (
-            not route_candidate_id
-            or content_identity(candidate_material) != route_candidate_id
-            or candidate_material.get("schema")
-            != POST_MERGE_CORRECTION_LANDED_ROUTE_SCHEMA
-            or candidate_material.get("authority_binding_id")
-            != authority_binding_id
+            not authority_binding_id
+            or not denial_id
+            or not expected_feedback_id
             or started_event.get("type") != "implementation_started"
             or str(started_event.get("task_id") or "") != task.task_id
             or int(started_event.get("attempt") or 0) != int(attempt)
-            or str(
-                started_event.get(
-                    "post_merge_correction_landed_route_candidate_id"
-                )
-                or ""
-            )
-            != route_candidate_id
             or str(
                 (
                     started_event.get("post_merge_correction_authority")
@@ -34547,7 +34699,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             != authority_binding_id
         ):
             return {}
-        denial_id = str(candidate.get("durable_denial_id") or "")
         chain_reader = getattr(
             self.merge_queue,
             "verified_post_merge_correction_chain",
@@ -34632,7 +34783,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if (
             not complete_feedback
             or str(complete_feedback.get("feedback_binding_id") or "")
-            != str(candidate.get("complete_denial_feedback_id") or "")
+            != expected_feedback_id
         ):
             return {}
         capability_material = {
@@ -34689,7 +34840,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 registry_entry
             )
         return {
-            **dict(landed_guard),
             "guarded": False,
             "action": "post_merge_correction_implementation_route_allowed",
             "invoke_grok_implementation": True,
@@ -34697,11 +34847,77 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "provider_review_pending": False,
             "legacy_fallback_counts_as_review": False,
             "reason": "exact_post_merge_correction_reservation",
-            "post_merge_correction_route": dict(candidate),
             "post_merge_correction_reservation": reservation,
             "fresh_independent_review_required": True,
             "completion_authoritative": False,
             "proof_authoritative": False,
+        }
+
+    def _activate_post_merge_correction_landed_route(
+        self,
+        task: PortalTask,
+        *,
+        attempt: int,
+        authority: Mapping[str, Any],
+        candidate: Mapping[str, Any],
+        started_event: Mapping[str, Any],
+        landed_guard: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Activate a landed bypass only after the strict start CAS is durable."""
+
+        candidate_material = dict(candidate)
+        route_candidate_id = str(
+            candidate_material.pop("route_candidate_id", "") or ""
+        )
+        authority_binding_id = str(
+            authority.get("authority_binding_id") or ""
+        )
+        if (
+            not route_candidate_id
+            or content_identity(candidate_material) != route_candidate_id
+            or candidate_material.get("schema")
+            != POST_MERGE_CORRECTION_LANDED_ROUTE_SCHEMA
+            or candidate_material.get("authority_binding_id")
+            != authority_binding_id
+            or started_event.get("type") != "implementation_started"
+            or str(started_event.get("task_id") or "") != task.task_id
+            or int(started_event.get("attempt") or 0) != int(attempt)
+            or str(
+                started_event.get(
+                    "post_merge_correction_landed_route_candidate_id"
+                )
+                or ""
+            )
+            != route_candidate_id
+            or str(
+                (
+                    started_event.get("post_merge_correction_authority")
+                    or {}
+                ).get("authority_binding_id")
+                if isinstance(
+                    started_event.get("post_merge_correction_authority"),
+                    Mapping,
+                )
+                else ""
+            )
+            != authority_binding_id
+        ):
+            return {}
+        sealed = self._seal_post_merge_correction_route_after_start(
+            task,
+            attempt=attempt,
+            authority=authority,
+            started_event=started_event,
+            complete_feedback_id=str(
+                candidate.get("complete_denial_feedback_id") or ""
+            ),
+        )
+        if not sealed:
+            return {}
+        return {
+            **dict(landed_guard),
+            **sealed,
+            "post_merge_correction_route": dict(candidate),
         }
 
     def _verified_post_merge_correction_route_reservation(
@@ -35069,7 +35285,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             write_paths=write_paths,
         )
         configured_prompt_tokens = min(
-            4096,
+            PRODUCTION_CONTEXT_MAX_PROVIDER_PROMPT_TOKENS,
             int(
                 max_provider_prompt_tokens
                 or getattr(
@@ -35077,7 +35293,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "production_provider_context_budget_tokens",
                     0,
                 )
-                or 4096
+                or PRODUCTION_CONTEXT_MAX_PROVIDER_PROMPT_TOKENS
             ),
         )
         reserved_prompt_tokens = DEFAULT_RESERVED_PROMPT_TOKENS
@@ -35374,6 +35590,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 or value != value.strip()
                 or "\x00" in value
                 or "\\" in value
+                or any(
+                    ord(character) < 32 or ord(character) == 127
+                    for character in value
+                )
             ):
                 raise RuntimeError(f"{label} is not a canonical relative path")
             path = PurePosixPath(value)
@@ -35398,6 +35618,198 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if not allowed:
             raise RuntimeError("production writer requires explicit task output paths")
 
+        configured_submodule_roots = tuple(
+            canonical_relative_path(
+                root,
+                label="configured submodule root",
+            )
+            for root in self.worktree_submodule_paths
+        )
+        if len(configured_submodule_roots) != len(
+            set(configured_submodule_roots)
+        ):
+            raise RuntimeError("duplicate configured submodule root")
+        for root in configured_submodule_roots:
+            root_path = PurePosixPath(root)
+            if ".git" in root_path.parts:
+                raise RuntimeError(
+                    f"git administrative path forbidden in submodule root: {root}"
+                )
+            if any(
+                root.startswith(f"{other}/")
+                or other.startswith(f"{root}/")
+                for other in configured_submodule_roots
+                if other != root
+            ):
+                raise RuntimeError(
+                    "configured production submodule roots must be disjoint"
+                )
+
+        def run_git(
+            root: Path,
+            *arguments: str,
+            input_text: str | None = None,
+        ) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                ["git", *arguments],
+                cwd=root,
+                input=input_text,
+                text=True,
+                capture_output=True,
+                check=False,
+                env=sanitized_git_environment(),
+            )
+
+        def exact_submodule_root(rel: str) -> str | None:
+            matching = [
+                root
+                for root in configured_submodule_roots
+                if rel == root or rel.startswith(f"{root}/")
+            ]
+            if not matching:
+                return None
+            if len(matching) != 1:
+                raise RuntimeError(
+                    f"ambiguous configured submodule boundary for path: {rel}"
+                )
+            root = matching[0]
+            if rel == root:
+                raise RuntimeError(
+                    f"submodule root itself is not a writable file: {rel}"
+                )
+            return root
+
+        def assert_directory_components(relative: str) -> None:
+            """Reject missing, non-directory, and symlink boundary components."""
+
+            current = workspace
+            for part in PurePosixPath(relative).parts:
+                current = current / part
+                try:
+                    info = os.lstat(current)
+                except FileNotFoundError as exc:
+                    raise RuntimeError(
+                        f"submodule boundary component is missing: {relative}"
+                    ) from exc
+                if stat_module.S_ISLNK(info.st_mode):
+                    raise RuntimeError(
+                        f"symlink path component forbidden: {relative}"
+                    )
+                if not stat_module.S_ISDIR(info.st_mode):
+                    raise RuntimeError(
+                        f"non-directory path component: {relative}"
+                    )
+
+        def verified_submodule_root(rel: str) -> str | None:
+            root = exact_submodule_root(rel)
+            if root is None:
+                return None
+
+            # A configured path is authority only when the outer repository
+            # records that exact direct entry as a gitlink at its current HEAD.
+            outer_top = run_git(workspace, "rev-parse", "--show-toplevel")
+            if outer_top.returncode != 0:
+                raise RuntimeError("production workspace is not a Git worktree")
+            try:
+                resolved_outer_top = Path(outer_top.stdout.strip()).resolve(
+                    strict=True
+                )
+            except (OSError, RuntimeError) as exc:
+                raise RuntimeError(
+                    "production workspace Git root is not resolvable"
+                ) from exc
+            if resolved_outer_top != workspace:
+                raise RuntimeError(
+                    "production workspace must be the exact outer Git top-level"
+                )
+
+            assert_directory_components(root)
+            gitlink = run_git(
+                workspace,
+                "--literal-pathspecs",
+                "ls-tree",
+                "-z",
+                "HEAD",
+                "--",
+                root,
+            )
+            if gitlink.returncode != 0:
+                raise RuntimeError(
+                    f"could not verify configured submodule gitlink: {root}"
+                )
+            if gitlink.stdout.count("\x00") != 1 or not gitlink.stdout.endswith(
+                "\x00"
+            ):
+                raise RuntimeError(
+                    f"configured submodule is not an exact HEAD gitlink: {root}"
+                )
+            record = gitlink.stdout[:-1]
+            if "\t" not in record:
+                raise RuntimeError(
+                    f"configured submodule is not an exact HEAD gitlink: {root}"
+                )
+            metadata, recorded_path = record.split("\t", 1)
+            fields = metadata.split()
+            if (
+                recorded_path != root
+                or len(fields) != 3
+                or fields[0] != "160000"
+                or fields[1] != "commit"
+                or re.fullmatch(
+                    r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})",
+                    fields[2],
+                )
+                is None
+            ):
+                raise RuntimeError(
+                    f"configured submodule is not an exact HEAD gitlink: {root}"
+                )
+            expected_head = fields[2].lower()
+
+            child = workspace.joinpath(*PurePosixPath(root).parts)
+            try:
+                git_admin_info = os.lstat(child / ".git")
+            except FileNotFoundError as exc:
+                raise RuntimeError(
+                    f"configured submodule checkout is missing Git metadata: {root}"
+                ) from exc
+            if stat_module.S_ISLNK(git_admin_info.st_mode):
+                raise RuntimeError(
+                    f"symlink Git metadata forbidden at submodule root: {root}"
+                )
+            if not (
+                stat_module.S_ISREG(git_admin_info.st_mode)
+                or stat_module.S_ISDIR(git_admin_info.st_mode)
+            ):
+                raise RuntimeError(
+                    f"invalid Git metadata at submodule root: {root}"
+                )
+
+            child_top = run_git(child, "rev-parse", "--show-toplevel")
+            child_head = run_git(child, "rev-parse", "--verify", "HEAD^{commit}")
+            if child_top.returncode != 0 or child_head.returncode != 0:
+                raise RuntimeError(
+                    f"configured submodule checkout is not usable: {root}"
+                )
+            try:
+                resolved_child_top = Path(child_top.stdout.strip()).resolve(
+                    strict=True
+                )
+                resolved_child = child.resolve(strict=True)
+            except (OSError, RuntimeError) as exc:
+                raise RuntimeError(
+                    f"configured submodule checkout is not resolvable: {root}"
+                ) from exc
+            if resolved_child_top != resolved_child or resolved_child != child:
+                raise RuntimeError(
+                    f"configured submodule is not the exact child Git top-level: {root}"
+                )
+            if child_head.stdout.strip().lower() != expected_head:
+                raise RuntimeError(
+                    f"configured submodule HEAD does not match outer gitlink: {root}"
+                )
+            return root
+
         def safe_target(
             rel: str,
             *,
@@ -35406,13 +35818,28 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         ) -> Path:
             if ".git" in PurePosixPath(rel).parts:
                 raise RuntimeError(f"git administrative path forbidden: {rel}")
+            submodule_root = verified_submodule_root(rel)
             target = workspace.joinpath(*PurePosixPath(rel).parts)
             current = workspace
+            traversed: list[str] = []
             for part in PurePosixPath(rel).parts[:-1]:
                 current = current / part
+                traversed.append(part)
+                current_relative = PurePosixPath(*traversed).as_posix()
                 try:
                     info = os.lstat(current)
                 except FileNotFoundError:
+                    if (
+                        submodule_root is not None
+                        and (
+                            current_relative == submodule_root
+                            or submodule_root.startswith(f"{current_relative}/")
+                        )
+                    ):
+                        raise RuntimeError(
+                            "configured submodule boundary component is missing: "
+                            f"{rel}"
+                        ) from None
                     if not create_parents:
                         break
                     try:
@@ -35434,7 +35861,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 except FileNotFoundError:
                     pass
                 else:
-                    raise RuntimeError(f"nested repository path forbidden: {rel}")
+                    if current_relative != submodule_root:
+                        raise RuntimeError(
+                            f"nested repository path forbidden: {rel}"
+                        )
             try:
                 target_info = os.lstat(target)
             except FileNotFoundError:
@@ -35487,8 +35917,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         ) -> list[str]:
             failures: list[str] = []
             for rel, original in reversed(tuple(snapshots.items())):
-                target = workspace.joinpath(*PurePosixPath(rel).parts)
                 try:
+                    target = safe_target(rel)
                     if original is None:
                         target.unlink(missing_ok=True)
                     else:
@@ -35515,18 +35945,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         f"{type(exc).__name__}: {exc}"
                     )
             return failures
-
-        def missing_parent_dirs(paths: Sequence[str]) -> list[Path]:
-            missing: list[Path] = []
-            for rel in paths:
-                current = workspace
-                for part in PurePosixPath(rel).parts[:-1]:
-                    current = current / part
-                    if current.exists():
-                        continue
-                    if current not in missing:
-                        missing.append(current)
-            return missing
 
         def fsync_paths(paths: Sequence[str]) -> None:
             parents: set[Path] = set()
@@ -35558,6 +35976,98 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     os.fsync(descriptor)
                 finally:
                     os.close(descriptor)
+
+        def apply_target_results(
+            results: Mapping[str, tuple[bytes, int] | None],
+            *,
+            failure_label: str,
+            expected_baseline: Mapping[
+                str,
+                tuple[bytes, int] | None,
+            ]
+            | None = None,
+        ) -> None:
+            """Materialize a fully validated result as one rollback unit."""
+
+            paths = tuple(results)
+            snapshots = snapshot_targets(paths)
+            if expected_baseline is not None and snapshots != dict(
+                expected_baseline
+            ):
+                raise RuntimeError(
+                    f"{failure_label}: production write baseline changed"
+                )
+            staged: dict[str, Path] = {}
+            created_dirs: list[Path] = []
+            mutation_started = False
+            try:
+                for rel, result in results.items():
+                    if result is None:
+                        continue
+                    content, mode = result
+                    target = safe_target(
+                        rel,
+                        create_parents=True,
+                        created_dirs=created_dirs,
+                    )
+                    staged[rel] = stage_bytes(target, content, mode)
+
+                # Staging may take time. Refuse to overwrite any target that
+                # changed after the initial snapshot.
+                if snapshot_targets(paths) != snapshots:
+                    raise RuntimeError(
+                        "production write targets changed during staging"
+                    )
+
+                for rel, result in results.items():
+                    target = safe_target(rel)
+                    mutation_started = True
+                    if result is None:
+                        target.unlink()
+                    else:
+                        os.replace(staged[rel], target)
+
+                for rel, expected in results.items():
+                    target = safe_target(rel)
+                    try:
+                        info = os.lstat(target)
+                    except FileNotFoundError:
+                        actual = None
+                    else:
+                        if not stat_module.S_ISREG(info.st_mode):
+                            raise RuntimeError(
+                                f"non-regular production write result: {rel}"
+                            )
+                        actual = (
+                            target.read_bytes(),
+                            stat_module.S_IMODE(info.st_mode),
+                        )
+                    if actual != expected:
+                        raise RuntimeError(
+                            f"production write result mismatch: {rel}"
+                        )
+                fsync_paths(paths)
+            except BaseException as exc:
+                # Remove unconsumed staging files before pruning any parent
+                # directories that this transaction created.
+                for temporary in staged.values():
+                    temporary.unlink(missing_ok=True)
+                staged.clear()
+                rollback_failures = (
+                    restore_targets(snapshots) if mutation_started else []
+                )
+                rollback_failures.extend(clean_created_dirs(created_dirs))
+                detail = (
+                    "; rollback failures: " + "; ".join(rollback_failures)
+                    if rollback_failures
+                    else ""
+                )
+                raise RuntimeError(
+                    f"{failure_label}: {exc}{detail}"
+                ) from exc
+            finally:
+                for temporary in staged.values():
+                    temporary.unlink(missing_ok=True)
 
         def patch_paths(patch: str) -> tuple[str, ...]:
             paths: list[str] = []
@@ -35673,39 +36183,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         "declared proposal paths must exactly match replacements"
                     )
 
-                # Validate and stage every replacement before changing any
-                # target, then restore the complete snapshot on any failure.
                 snapshots = snapshot_targets([rel for rel, _ in replacements])
-                staged: list[tuple[str, Path]] = []
-                created_dirs: list[Path] = []
-                try:
-                    for rel, content in replacements:
-                        target = safe_target(
-                            rel,
-                            create_parents=True,
-                            created_dirs=created_dirs,
+                apply_target_results(
+                    {
+                        rel: (
+                            content,
+                            snapshots[rel][1]
+                            if snapshots[rel] is not None
+                            else 0o644,
                         )
-                        original = snapshots[rel]
-                        mode = original[1] if original is not None else 0o644
-                        staged.append((rel, stage_bytes(target, content, mode)))
-                    for rel, temporary in staged:
-                        target = safe_target(rel)
-                        os.replace(temporary, target)
-                    fsync_paths([rel for rel, _content in replacements])
-                except BaseException as exc:
-                    rollback_failures = restore_targets(snapshots)
-                    rollback_failures.extend(clean_created_dirs(created_dirs))
-                    detail = (
-                        "; rollback failures: " + "; ".join(rollback_failures)
-                        if rollback_failures
-                        else ""
-                    )
-                    raise RuntimeError(
-                        f"transactional file replacement failed: {exc}{detail}"
-                    ) from exc
-                finally:
-                    for _rel, temporary in staged:
-                        temporary.unlink(missing_ok=True)
+                        for rel, content in replacements
+                    },
+                    failure_label="transactional file replacement failed",
+                    expected_baseline=snapshots,
+                )
                 return
             if patch_value is not None and not isinstance(patch_value, str):
                 raise RuntimeError("patch must be a string")
@@ -35723,113 +36214,210 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         f"patch path not declared on proposal: {rel}"
                     )
                 safe_target(rel)
-            # Bounded unified-diff apply; reject paths outside task scope.
-            proc = subprocess.run(
-                ["git", "apply", "--check", "--whitespace=nowarn", "-"],
-                cwd=workspace,
-                input=patch,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            if proc.returncode != 0:
+            if set(declared_paths) != set(parsed_names):
                 raise RuntimeError(
-                    f"patch check failed: {proc.stderr[-500:] or proc.stdout[-500:]}"
+                    "declared proposal paths must exactly match parsed patch paths"
                 )
-            # Enumerate paths from the patch and enforce scope.
-            path_proc = subprocess.run(
-                ["git", "apply", "--numstat", "--whitespace=nowarn", "-"],
-                cwd=workspace,
-                input=patch,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            # Prefer --name-only listing when available.
-            name_proc = subprocess.run(
-                ["git", "apply", "--name-only", "--whitespace=nowarn", "-"],
-                cwd=workspace,
-                input=patch,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            names = [
-                canonical_relative_path(line, label="git-reported patch path")
-                for line in (name_proc.stdout or "").splitlines()
-                if line
-            ]
-            if not names and path_proc.returncode == 0:
-                for line in (path_proc.stdout or "").splitlines():
-                    parts = line.split("\t")
-                    if len(parts) >= 3:
-                        names.append(
+
+            # A normal outer ``git apply`` treats a gitlink as one opaque path
+            # and cannot safely write files beneath it. Reconstruct the exact
+            # declared baseline in a private, flat Git worktree, let Git parse
+            # and apply there, then copy only the validated regular-file result
+            # into the real outer/child worktrees as one rollback unit.
+            baseline = snapshot_targets(parsed_names)
+            with tempfile.TemporaryDirectory(
+                prefix="ipfs-accelerate-production-patch-"
+            ) as temporary_root:
+                synthetic = Path(temporary_root) / "workspace"
+                synthetic.mkdir(mode=0o700)
+                init_proc = run_git(synthetic, "init", "--quiet")
+                if init_proc.returncode != 0:
+                    raise RuntimeError("could not initialize synthetic patch tree")
+                config_proc = run_git(synthetic, "config", "core.symlinks", "true")
+                if config_proc.returncode != 0:
+                    raise RuntimeError("could not secure synthetic patch tree")
+
+                for rel, original in baseline.items():
+                    if original is None:
+                        continue
+                    content, mode = original
+                    synthetic_target = synthetic.joinpath(
+                        *PurePosixPath(rel).parts
+                    )
+                    synthetic_target.parent.mkdir(
+                        mode=0o755,
+                        parents=True,
+                        exist_ok=True,
+                    )
+                    synthetic_target.write_bytes(content)
+                    os.chmod(synthetic_target, mode)
+
+                check_proc = run_git(
+                    synthetic,
+                    "apply",
+                    "--check",
+                    "--whitespace=nowarn",
+                    "-",
+                    input_text=patch,
+                )
+                if check_proc.returncode != 0:
+                    raise RuntimeError(
+                        "patch check failed: "
+                        f"{check_proc.stderr[-500:] or check_proc.stdout[-500:]}"
+                    )
+                path_proc = run_git(
+                    synthetic,
+                    "apply",
+                    "--numstat",
+                    "-z",
+                    "--whitespace=nowarn",
+                    "-",
+                    input_text=patch,
+                )
+                names: list[str] = []
+                if path_proc.returncode == 0:
+                    records = (path_proc.stdout or "").split("\x00")
+                    if not records or records[-1] != "":
+                        raise RuntimeError(
+                            "git reported a malformed NUL-delimited path set"
+                        )
+                    records.pop()
+                    index = 0
+                    while index < len(records):
+                        parts = records[index].split("\t")
+                        if (
+                            len(parts) != 3
+                            or re.fullmatch(r"(?:[0-9]+|-)", parts[0]) is None
+                            or re.fullmatch(r"(?:[0-9]+|-)", parts[1]) is None
+                        ):
+                            raise RuntimeError(
+                                "git reported a malformed patch path record"
+                            )
+                        if parts[2]:
+                            names.append(
+                                canonical_relative_path(
+                                    parts[2],
+                                    label="git-reported patch path",
+                                )
+                            )
+                            index += 1
+                            continue
+                        if index + 2 >= len(records):
+                            raise RuntimeError(
+                                "git reported an incomplete rename path record"
+                            )
+                        names.extend(
                             canonical_relative_path(
-                                parts[-1],
+                                candidate,
                                 label="git-reported patch path",
                             )
+                            for candidate in records[index + 1 : index + 3]
                         )
-            if name_proc.returncode != 0 or not names:
-                raise RuntimeError("git could not enumerate patch paths")
-            if len(names) != len(set(names)):
-                raise RuntimeError("git reported duplicate patch paths")
-            if set(parsed_names) != set(names):
-                raise RuntimeError(
-                    "parsed patch paths do not match git-reported paths"
-                )
-            if set(declared_paths) != set(names):
-                raise RuntimeError(
-                    "declared proposal paths must exactly match patch paths"
-                )
-            for rel in names:
-                if rel not in allowed:
-                    raise RuntimeError(f"patch path out of task scope: {rel}")
-                if declared_paths and rel not in declared_paths:
+                        index += 3
+                if path_proc.returncode != 0 or not names:
+                    enumeration_detail = (
+                        path_proc.stderr
+                        or path_proc.stdout
+                    )[-500:]
                     raise RuntimeError(
-                        f"patch path not declared on proposal: {rel}"
+                        "git could not enumerate patch paths: "
+                        f"{enumeration_detail}"
                     )
-                safe_target(rel)
-            transactional_paths = tuple(dict.fromkeys((*parsed_names, *names)))
-            snapshots = snapshot_targets(transactional_paths)
-            absent_parent_dirs = missing_parent_dirs(transactional_paths)
-            apply_proc = subprocess.run(
-                ["git", "apply", "--whitespace=nowarn", "-"],
-                cwd=workspace,
-                input=patch,
-                text=True,
-                capture_output=True,
-                check=False,
+                if len(names) != len(set(names)):
+                    raise RuntimeError("git reported duplicate patch paths")
+                if set(parsed_names) != set(names):
+                    raise RuntimeError(
+                        "parsed patch paths do not match git-reported paths"
+                    )
+                if set(declared_paths) != set(names):
+                    raise RuntimeError(
+                        "declared proposal paths must exactly match patch paths"
+                    )
+                for rel in names:
+                    if rel not in allowed:
+                        raise RuntimeError(
+                            f"patch path out of task scope: {rel}"
+                        )
+                    safe_target(rel)
+
+                apply_proc = run_git(
+                    synthetic,
+                    "apply",
+                    "--whitespace=nowarn",
+                    "-",
+                    input_text=patch,
+                )
+                if apply_proc.returncode != 0:
+                    raise RuntimeError(
+                        "synthetic patch apply failed: "
+                        f"{apply_proc.stderr[-500:] or apply_proc.stdout[-500:]}"
+                    )
+
+                result_files: set[str] = set()
+                for directory, directory_names, file_names in os.walk(
+                    synthetic,
+                    topdown=True,
+                    followlinks=False,
+                ):
+                    directory_path = Path(directory)
+                    if directory_path == synthetic:
+                        directory_names[:] = [
+                            name for name in directory_names if name != ".git"
+                        ]
+                    for name in directory_names:
+                        child = directory_path / name
+                        if stat_module.S_ISLNK(os.lstat(child).st_mode):
+                            raise RuntimeError(
+                                "synthetic patch produced a symlink directory"
+                            )
+                    for name in file_names:
+                        child = directory_path / name
+                        info = os.lstat(child)
+                        relative = child.relative_to(synthetic).as_posix()
+                        if not stat_module.S_ISREG(info.st_mode):
+                            raise RuntimeError(
+                                "synthetic patch produced a non-regular file: "
+                                f"{relative}"
+                            )
+                        result_files.add(
+                            canonical_relative_path(
+                                relative,
+                                label="synthetic patch result path",
+                            )
+                        )
+                unexpected_results = result_files - set(names)
+                if unexpected_results:
+                    raise RuntimeError(
+                        "synthetic patch produced undeclared files: "
+                        + ", ".join(sorted(unexpected_results))
+                    )
+
+                results: dict[str, tuple[bytes, int] | None] = {}
+                for rel in names:
+                    synthetic_target = synthetic.joinpath(
+                        *PurePosixPath(rel).parts
+                    )
+                    try:
+                        info = os.lstat(synthetic_target)
+                    except FileNotFoundError:
+                        results[rel] = None
+                        continue
+                    if not stat_module.S_ISREG(info.st_mode):
+                        raise RuntimeError(
+                            f"synthetic patch result is not a regular file: {rel}"
+                        )
+                    mode = stat_module.S_IMODE(info.st_mode)
+                    if mode & 0o7000:
+                        raise RuntimeError(
+                            f"synthetic patch result has an unsafe mode: {rel}"
+                        )
+                    results[rel] = (synthetic_target.read_bytes(), mode)
+
+            apply_target_results(
+                results,
+                failure_label="transactional patch materialization failed",
+                expected_baseline=baseline,
             )
-            if apply_proc.returncode != 0:
-                rollback_failures = restore_targets(snapshots)
-                rollback_failures.extend(clean_created_dirs(absent_parent_dirs))
-                rollback_detail = (
-                    "; rollback failures: " + "; ".join(rollback_failures)
-                    if rollback_failures
-                    else ""
-                )
-                raise RuntimeError(
-                    "patch apply failed: "
-                    f"{apply_proc.stderr[-500:] or apply_proc.stdout[-500:]}"
-                    f"{rollback_detail}"
-                )
-            try:
-                for rel in snapshots:
-                    target = workspace.joinpath(*PurePosixPath(rel).parts)
-                    if target.exists():
-                        safe_target(rel)
-                fsync_paths(transactional_paths)
-            except BaseException as exc:
-                rollback_failures = restore_targets(snapshots)
-                rollback_failures.extend(clean_created_dirs(absent_parent_dirs))
-                detail = (
-                    "; rollback failures: " + "; ".join(rollback_failures)
-                    if rollback_failures
-                    else ""
-                )
-                raise RuntimeError(
-                    f"unsafe patch result: {exc}{detail}"
-                ) from exc
 
         return writer
 
@@ -36268,6 +36856,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     packet=route_packet,
                     route_result=route_result,
                     baseline_ref=baseline_ref,
+                    allowed_nested_repository_roots=tuple(
+                        self.worktree_submodule_paths
+                    ),
                 )
             except (OSError, TypeError, ValueError) as exc:
                 raise RuntimeError(
@@ -51931,31 +52522,46 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         parent_capsule, parent_receipt_id = parent
         stem = self._implementation_context_file_stem(task)
         maximum = int(self.implementation_max_repair_rounds)
+
+        def verified_parent_receipt(base_attempt: int) -> bool:
+            payload = load_json_dict(
+                self.implementation_log_dir
+                / f"{stem}-attempt-{base_attempt}-context-receipt.json"
+            )
+            if payload is None:
+                return False
+            try:
+                receipt = ContextCompilationReceipt.from_dict(payload)
+            except (TypeError, ValueError):
+                return False
+            return (
+                receipt.capsule_id == parent_capsule.capsule_id
+                and receipt.receipt_id == parent_receipt_id
+                and receipt.repository_id == parent_capsule.repository_id
+                and receipt.tree_id == parent_capsule.tree_id
+                and receipt.objective_id == parent_capsule.objective_id
+                and receipt.objective_id == task.task_id
+                and receipt.policy_id == parent_capsule.policy_id
+                and receipt.policy_revision
+                == parent_capsule.policy_revision
+                and receipt.stage == parent_capsule.stage
+                and parent_capsule.objective_revision
+                == self._canonical_ref(task)
+            )
+
+        # Context compilation happens before worktree setup.  A non-consuming
+        # setup failure may therefore re-enter the same lifetime attempt with
+        # an exact persisted base receipt; that remains repair round zero.
+        if verified_parent_receipt(int(attempt)):
+            return 0
+
         # Only the bounded window can authorize another repair. Avoid an
         # unbounded directory scan even when a task has a long history.
         for repair_round in range(1, maximum + 1):
             base_attempt = int(attempt) - repair_round
             if base_attempt < 1:
                 break
-            payload = load_json_dict(
-                self.implementation_log_dir
-                / f"{stem}-attempt-{base_attempt}-context-receipt.json"
-            )
-            if payload is None:
-                continue
-            try:
-                receipt = ContextCompilationReceipt.from_dict(payload)
-            except (TypeError, ValueError):
-                continue
-            if (
-                receipt.capsule_id == parent_capsule.capsule_id
-                and receipt.receipt_id == parent_receipt_id
-                and receipt.repository_id == parent_capsule.repository_id
-                and receipt.tree_id == parent_capsule.tree_id
-                and receipt.objective_id == task.task_id
-                and parent_capsule.objective_revision
-                == self._canonical_ref(task)
-            ):
+            if verified_parent_receipt(base_attempt):
                 return repair_round
         # No receipt-bound base exists inside the allowed window. Return the
         # first forbidden round so callers fail closed.

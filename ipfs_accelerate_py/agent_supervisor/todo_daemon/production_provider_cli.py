@@ -431,6 +431,14 @@ class ProductionCLIProviderPolicy:
     def predecessor_policy_ids(self) -> tuple[str, ...]:
         """Return the exact, more-restrictive v1 policy identity for migration."""
 
+        # V1's protocol ceiling was 4096 tokens.  Raising the V2 default must
+        # not invent an impossible V1/65536 predecessor or orphan durable V1
+        # receipts issued under the former default.  Explicit narrower V1
+        # configurations retain their exact historical identity.
+        predecessor_context_budget_tokens = min(
+            int(self.context_budget_tokens),
+            4_096,
+        )
         body = {
             "schema": (
                 "ipfs_accelerate_py/agent-supervisor/"
@@ -438,7 +446,7 @@ class ProductionCLIProviderPolicy:
             ),
             "name": self.name,
             "declared_roles": list(self.declared_roles),
-            "context_budget_tokens": int(self.context_budget_tokens),
+            "context_budget_tokens": predecessor_context_budget_tokens,
             "provider_timeout_seconds": float(self.provider_timeout_seconds),
             "max_new_tokens": int(self.max_new_tokens),
             "implementation": {

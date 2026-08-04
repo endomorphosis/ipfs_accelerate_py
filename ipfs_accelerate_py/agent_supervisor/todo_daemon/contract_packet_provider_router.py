@@ -70,8 +70,11 @@ SCAEV615ROUTE_COVERAGE: Final = (
 
 # These are protocol limits, not provider suggestions.  Size checks are over
 # UTF-8 bytes and are inclusive at the boundary.
-MAX_PROVIDER_PROMPT_TOKENS: Final = 4_096
-MAX_PROVIDER_PROMPT_BYTES: Final = 64 * 1_024
+# Keep in lockstep with production_context_slice.MAX_PROVIDER_PROMPT_TOKENS:
+# multi-file schema corrections (e.g. UIR-010) need ~24k+ context tokens under
+# utf8-bytes/4, plus reserved envelope and correction feedback.
+MAX_PROVIDER_PROMPT_TOKENS: Final = 65_536
+MAX_PROVIDER_PROMPT_BYTES: Final = 512 * 1_024
 MAX_PROVIDER_RESPONSE_BYTES: Final = 256 * 1_024
 MAX_PROVIDER_TIMEOUT_SECONDS: Final = 600.0
 MAX_PROVIDER_JSON_DEPTH: Final = 24
@@ -210,10 +213,17 @@ class ProviderBounds:
     timeout_seconds: float = 120.0
 
     def __post_init__(self) -> None:
-        for name in ("max_prompt_tokens", "max_prompt_bytes", "max_response_bytes"):
+        protocol_ceilings = {
+            "max_prompt_tokens": MAX_PROVIDER_PROMPT_TOKENS,
+            "max_prompt_bytes": MAX_PROVIDER_PROMPT_BYTES,
+            "max_response_bytes": MAX_PROVIDER_RESPONSE_BYTES,
+        }
+        for name, ceiling in protocol_ceilings.items():
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ValueError(f"{name} must be a positive integer")
+            if value > ceiling:
+                raise ValueError(f"{name} may not exceed {ceiling}")
         timeout = self.timeout_seconds
         if (
             isinstance(timeout, bool)
@@ -914,8 +924,8 @@ def _bounded_evidence_slice(
     # A reviewer cannot independently assess a patch against source it never
     # saw.  Production packets may attach the supervisor-built, CID-addressed
     # bounded context manifest; Codex receives that same exact manifest.  The
-    # completed Codex envelope is still measured against the hard 4096-token
-    # provider bound in ``_request``.
+    # completed Codex envelope is still measured against the hard provider
+    # prompt token/byte bounds in ``_request``.
     if isinstance(context_slice, Mapping):
         evidence["context_slice"] = dict(context_slice)
     if isinstance(correction_feedback, Mapping):

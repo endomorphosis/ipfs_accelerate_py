@@ -546,6 +546,7 @@ def _reviewed_effect_failures(
     expected_provider_policy_id: str,
     expected_implementation_commit: str,
     expected_implementation_tree_id: str,
+    allowed_nested_repository_roots: Sequence[str] = (),
 ) -> tuple[ProductionReviewedEffectBinding | None, tuple[str, ...]]:
     """Reconstruct the immutable proposal-to-Git effect, never queue metadata."""
 
@@ -568,6 +569,7 @@ def _reviewed_effect_failures(
         task_identity=task_identity,
         expected_implementation_commit=expected_implementation_commit,
         expected_implementation_tree_id=expected_implementation_tree_id,
+        allowed_nested_repository_roots=allowed_nested_repository_roots,
     )
     failures = list(verification.reason_codes)
     expected = {
@@ -840,6 +842,7 @@ class ProductionProviderReviewAuthority:
         repo_root: str | Path | None = None,
         task: Any = None,
         task_identity: Any = None,
+        allowed_nested_repository_roots: Sequence[str] = (),
         issued_at_ms: int | None = None,
         nonce: str = "",
     ) -> ProductionProviderReviewAttestation:
@@ -873,6 +876,7 @@ class ProductionProviderReviewAuthority:
             expected_provider_policy_id=policy_id,
             expected_implementation_commit=commit,
             expected_implementation_tree_id=tree_id,
+            allowed_nested_repository_roots=allowed_nested_repository_roots,
         )
         failures = (*receipt_failures, *binding_failures, *effect_failures)
         if failures or effect is None:
@@ -959,6 +963,7 @@ def verify_production_provider_review_attestation(
     task_identity: Any = None,
     expected_snapshot_id: str = "",
     expected_provider_policy_id: str = "",
+    allowed_nested_repository_roots: Sequence[str] = (),
 ) -> ProductionProviderReviewVerification:
     """Verify issuer, full receipt, binding, and exact candidate identity.
 
@@ -1061,6 +1066,7 @@ def verify_production_provider_review_attestation(
         expected_provider_policy_id=parsed.provider_policy_id,
         expected_implementation_commit=implementation_commit,
         expected_implementation_tree_id=tree_id,
+        allowed_nested_repository_roots=allowed_nested_repository_roots,
     )
     failures.extend(effect_failures)
 

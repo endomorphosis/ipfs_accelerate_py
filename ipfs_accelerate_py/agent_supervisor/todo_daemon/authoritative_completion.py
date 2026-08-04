@@ -1165,6 +1165,9 @@ class AuthoritativeCompletionMixin:
                 expected_implementation_tree_id=implementation_tree_id,
                 expected_snapshot_id=expected_snapshot_id,
                 expected_provider_policy_id=expected_policy_id,
+                allowed_nested_repository_roots=tuple(
+                    getattr(self, "worktree_submodule_paths", ()) or ()
+                ),
             )
             if candidate.admitted:
                 verification = candidate

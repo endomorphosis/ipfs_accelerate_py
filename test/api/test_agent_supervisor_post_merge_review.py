@@ -494,6 +494,50 @@ def test_recursive_submodule_binding_uses_explicit_pre_seed_baseline(
     )
 
 
+def test_post_merge_task_binding_ignores_production_context_symbol_hints() -> None:
+    """Routing overlays must not rotate durable correction task bindings."""
+
+    base = PortalTask(
+        task_id="UIR-010",
+        title="Implement the closed UI/UX IR v1 envelope and JSON Schema",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="schema",
+        depends_on=["UIR-001"],
+        outputs=[
+            "external/ipfs_datasets/ipfs_datasets_py/logic/ui_ux_ir/schema.py",
+        ],
+        validation=["pytest -q"],
+        acceptance="closed envelope",
+        metadata={
+            "board namespace": "ipfs-datasets-ui-ux-ir-v1",
+            "priority": "P0",
+            "track": "schema",
+        },
+    )
+    with_hints = replace(
+        base,
+        metadata={
+            **dict(base.metadata or {}),
+            "production context symbol hints": json.dumps(
+                {
+                    "external/ipfs_datasets/ipfs_datasets_py/logic/ui_ux_ir/schema.py": [
+                        "UIIRDocument",
+                        "_validate_cross_references",
+                    ]
+                }
+            ),
+        },
+    )
+    assert review.post_merge_task_binding_id(
+        base
+    ) == review.post_merge_task_binding_id(with_hints)
+    assert review.post_merge_task_binding_id(base) != review.post_merge_task_binding_id(
+        replace(base, acceptance="Different acceptance.")
+    )
+
+
 def _land_composite_child_with_sibling(
     case: SimpleNamespace,
     *,

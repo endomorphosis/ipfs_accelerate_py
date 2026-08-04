@@ -46,6 +46,9 @@ TARGET = "src/value.py"
 BASELINE = "VALUE = 'baseline'\n"
 PROPOSAL_A = "VALUE = 'proposal-a'\n"
 PROPOSAL_B = "VALUE = 'proposal-b'\n"
+NESTED_ROOT = "vendor/lib"
+NESTED_TARGET = f"{NESTED_ROOT}/{TARGET}"
+OUTER_TARGET = "root_value.py"
 
 
 @dataclass(frozen=True)
@@ -100,6 +103,38 @@ def _repo(tmp_path: Path) -> Path:
     return repo
 
 
+def _repo_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
+    child_origin = tmp_path / "child-origin"
+    child_origin.mkdir()
+    _git(child_origin, "init")
+    _git(child_origin, "config", "user.name", "Reviewed Effect Test")
+    _git(child_origin, "config", "user.email", "effect@example.invalid")
+    target = child_origin / TARGET
+    target.parent.mkdir()
+    target.write_text(BASELINE, encoding="utf-8")
+    _git(child_origin, "add", ".")
+    _git(child_origin, "commit", "-m", "child baseline")
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Reviewed Effect Test")
+    _git(repo, "config", "user.email", "effect@example.invalid")
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child_origin),
+        NESTED_ROOT,
+    )
+    (repo / OUTER_TARGET).write_text(BASELINE, encoding="utf-8")
+    _git(repo, "add", OUTER_TARGET)
+    _git(repo, "commit", "-m", "superproject baseline")
+    return repo, repo / NESTED_ROOT
+
+
 def _child_receipt(config) -> LlmChildResultEnvelope:
     return LlmChildResultEnvelope(
         usage_mode=LLM_USAGE_MODE_ENFORCE,
@@ -113,8 +148,17 @@ def _child_receipt(config) -> LlmChildResultEnvelope:
     )
 
 
-def _route(repo: Path, *, content: str = PROPOSAL_A, patch: str = ""):
-    task = _Task()
+def _route(
+    repo: Path,
+    *,
+    content: str = PROPOSAL_A,
+    patch: str = "",
+    task: _Task | None = None,
+    allowed_nested_repository_roots: tuple[str, ...] = (),
+    capture_allowed_nested_repository_roots: tuple[str, ...] | None = None,
+):
+    task = task or _Task()
+    target_paths = tuple(task.outputs)
     contract = production_task_contract(task, IDENTITY)
     baseline = _git(repo, "rev-parse", "HEAD")
     snapshot = f"git-commit:{baseline}"
@@ -124,6 +168,7 @@ def _route(repo: Path, *, content: str = PROPOSAL_A, patch: str = ""):
         task_payload=contract,
         read_paths=task.outputs,
         effect_paths=task.outputs,
+        allowed_nested_repository_roots=allowed_nested_repository_roots,
     )
     base_packet = build_production_contract_packet(
         task_id=task.task_id,
@@ -149,11 +194,14 @@ def _route(repo: Path, *, content: str = PROPOSAL_A, patch: str = ""):
 
     def invoke(_prompt: str, config):
         if config.provider == policy.grok_provider:
-            proposal = {"declared_paths": [TARGET]}
+            proposal = {"declared_paths": list(target_paths)}
             if patch:
                 proposal["patch"] = patch
             else:
-                proposal["files"] = [{"path": TARGET, "content": content}]
+                proposal["files"] = [
+                    {"path": target_path, "content": content}
+                    for target_path in target_paths
+                ]
             output = {"proposal": proposal}
         else:
             output = {"decision": "approve", "findings": []}
@@ -173,10 +221,11 @@ def _route(repo: Path, *, content: str = PROPOSAL_A, patch: str = ""):
                 check=True,
             )
         else:
-            (repo / body["files"][0]["path"]).write_text(
-                body["files"][0]["content"],
-                encoding="utf-8",
-            )
+            for item in body["files"]:
+                (repo / item["path"]).write_text(
+                    item["content"],
+                    encoding="utf-8",
+                )
 
     result = ImplementationProviderRouter(
         grok_provider=grok,
@@ -199,6 +248,11 @@ def _route(repo: Path, *, content: str = PROPOSAL_A, patch: str = ""):
         packet=packet,
         route_result=result,
         baseline_ref=baseline,
+        allowed_nested_repository_roots=(
+            allowed_nested_repository_roots
+            if capture_allowed_nested_repository_roots is None
+            else capture_allowed_nested_repository_roots
+        ),
     )
     return task, baseline, packet, result, binding
 
@@ -209,14 +263,64 @@ def _commit(repo: Path, message: str) -> str:
     return _git(repo, "rev-parse", "HEAD")
 
 
-def _recid(binding: ProductionReviewedEffectBinding, **changes) -> ProductionReviewedEffectBinding:
+def _recid(
+    binding: ProductionReviewedEffectBinding, **changes
+) -> ProductionReviewedEffectBinding:
     candidate = replace(binding, binding_id="", **changes)
     return replace(candidate, binding_id=content_identity(candidate.unsigned_dict()))
+
+
+def _nested_task() -> _Task:
+    return replace(
+        _Task(),
+        outputs=(NESTED_TARGET,),
+        validation=(f"python -m py_compile {NESTED_TARGET}",),
+    )
+
+
+def _nested_patch(proposal: str = "proposal-a") -> str:
+    return (
+        f"diff --git a/{NESTED_TARGET} b/{NESTED_TARGET}\n"
+        f"--- a/{NESTED_TARGET}\n"
+        f"+++ b/{NESTED_TARGET}\n"
+        "@@ -1 +1 @@\n"
+        "-VALUE = 'baseline'\n"
+        f"+VALUE = '{proposal}'\n"
+    )
+
+
+def _mixed_patch() -> str:
+    return (
+        f"diff --git a/{OUTER_TARGET} b/{OUTER_TARGET}\n"
+        f"--- a/{OUTER_TARGET}\n"
+        f"+++ b/{OUTER_TARGET}\n"
+        "@@ -1 +1 @@\n"
+        "-VALUE = 'baseline'\n"
+        "+VALUE = 'proposal-a'\n" + _nested_patch()
+    )
+
+
+def _nested_route(repo: Path):
+    return _route(
+        repo,
+        task=_nested_task(),
+        patch=_nested_patch(),
+        allowed_nested_repository_roots=(NESTED_ROOT,),
+    )
 
 
 def test_reviewed_effect_round_trip_reconstructs_exact_commit(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     task, _baseline, _packet, _result, captured = _route(repo)
+
+    legacy_payload = captured.to_dict()
+    assert legacy_payload["schema"].endswith("production-reviewed-effect-binding@1")
+    assert legacy_payload["interface"] == "ProductionReviewedEffectBinding@1"
+    assert "nested_repository_effects" not in legacy_payload
+    assert (
+        ProductionReviewedEffectBinding.from_dict(legacy_payload).to_dict()
+        == legacy_payload
+    )
 
     assert verify_production_reviewed_workspace(
         captured,
@@ -288,9 +392,7 @@ def test_reviewed_effect_rejects_approval_with_findings_at_both_boundaries(
     contradictory_binding_payload = json.loads(
         json.dumps(finalized.review_proposal_payload)
     )
-    contradictory_binding_payload["findings"] = [
-        "approval cannot carry a finding"
-    ]
+    contradictory_binding_payload["findings"] = ["approval cannot carry a finding"]
     contradictory_binding = _recid(
         finalized,
         review_proposal_payload=contradictory_binding_payload,
@@ -309,7 +411,9 @@ def test_reviewed_effect_rejects_approval_with_findings_at_both_boundaries(
     assert "reviewed_effect_codex_approval_invalid" in verification.reason_codes
 
 
-def test_validation_mutation_and_proposal_a_commit_b_are_rejected(tmp_path: Path) -> None:
+def test_validation_mutation_and_proposal_a_commit_b_are_rejected(
+    tmp_path: Path,
+) -> None:
     repo = _repo(tmp_path)
     task, _baseline, _packet, _result, captured = _route(repo)
 
@@ -321,7 +425,9 @@ def test_validation_mutation_and_proposal_a_commit_b_are_rejected(tmp_path: Path
         task_identity=IDENTITY,
     )
     assert not verification.admitted
-    assert "reviewed_effect_workspace_bytes_or_modes_changed" in verification.reason_codes
+    assert (
+        "reviewed_effect_workspace_bytes_or_modes_changed" in verification.reason_codes
+    )
 
     commit_b = _commit(repo, "unreviewed proposal B")
     try:
@@ -513,7 +619,9 @@ def test_exact_unified_patch_is_reconstructed_and_substitution_is_rejected(
         expected_implementation_tree_id=tree,
     )
     assert not verification.admitted
-    assert any("grok_patch_blob_mismatch" in reason for reason in verification.reason_codes)
+    assert any(
+        "grok_patch_blob_mismatch" in reason for reason in verification.reason_codes
+    )
 
     receipt = json.loads(json.dumps(finalized.provider_receipt))
     receipt["attempts"][0]["configured_model"] = "wrong-model"
@@ -534,7 +642,9 @@ def test_exact_unified_patch_is_reconstructed_and_substitution_is_rejected(
         expected_implementation_tree_id=tree,
     )
     assert not verification.admitted
-    assert any("provider_execution_invalid" in reason for reason in verification.reason_codes)
+    assert any(
+        "provider_execution_invalid" in reason for reason in verification.reason_codes
+    )
 
     receipt = json.loads(json.dumps(finalized.provider_receipt))
     receipt["attempts"][1].pop("child_exit_code")
@@ -554,3 +664,389 @@ def test_exact_unified_patch_is_reconstructed_and_substitution_is_rejected(
         expected_implementation_commit=commit,
         expected_implementation_tree_id=tree,
     ).admitted
+
+
+def test_registered_submodule_effect_round_trip_binds_outer_and_child_commits(
+    tmp_path: Path,
+) -> None:
+    repo, child = _repo_with_submodule(tmp_path)
+    task, baseline, _packet, _result, captured = _nested_route(repo)
+
+    payload = captured.to_dict()
+    assert payload["schema"].endswith("production-reviewed-effect-binding@2")
+    assert payload["interface"] == "ProductionReviewedEffectBinding@2"
+    assert captured.changed_paths == (NESTED_TARGET,)
+    assert len(captured.nested_repository_effects) == 1
+    nested = captured.nested_repository_effects[0]
+    assert nested.root == NESTED_ROOT
+    assert nested.changed_paths == (NESTED_TARGET,)
+    assert nested.baseline_gitlink_commit == _git(child, "rev-parse", "HEAD")
+    assert not nested.implementation_gitlink_commit
+    assert ProductionReviewedEffectBinding.from_dict(payload).to_dict() == payload
+
+    assert verify_production_reviewed_workspace(
+        captured,
+        repo_root=repo,
+        task=task,
+        task_identity=IDENTITY,
+        allowed_nested_repository_roots=(NESTED_ROOT,),
+    ).admitted
+    assert not verify_production_reviewed_workspace(
+        captured,
+        repo_root=repo,
+        task=task,
+        task_identity=IDENTITY,
+    ).admitted
+
+    child_commit = _commit(child, "reviewed nested proposal")
+    implementation_commit = _commit(repo, "advance reviewed submodule gitlink")
+    tree = f"git-tree:{_git(repo, 'rev-parse', f'{implementation_commit}^{{tree}}')}"
+    finalized = finalize_production_reviewed_effect(
+        captured,
+        repo_root=repo,
+        task=task,
+        task_identity=IDENTITY,
+        implementation_commit=implementation_commit,
+        allowed_nested_repository_roots=(NESTED_ROOT,),
+    )
+
+    nested = finalized.nested_repository_effects[0]
+    assert nested.implementation_gitlink_commit == child_commit
+    assert nested.implementation_tree_id.startswith("git-tree:")
+    assert nested.implementation_diff_sha256.startswith("sha256:")
+    assert nested.implementation_diff_bytes > 0
+    assert finalized.implementation_diff_bytes > 0
+    assert verify_finalized_production_reviewed_effect(
+        finalized.to_dict(),
+        repo_root=repo,
+        task=task,
+        task_identity=IDENTITY,
+        expected_implementation_commit=implementation_commit,
+        expected_implementation_tree_id=tree,
+        allowed_nested_repository_roots=(NESTED_ROOT,),
+    ).admitted
+    assert not verify_finalized_production_reviewed_effect(
+        finalized,
+        repo_root=repo,
+        task=task,
+        task_identity=IDENTITY,
+        expected_implementation_commit=implementation_commit,
+        expected_implementation_tree_id=tree,
+    ).admitted
+
+    substituted_payload = json.loads(json.dumps(finalized.selected_proposal_payload))
+    substituted_payload["proposal"]["patch"] = _nested_patch("proposal-b")
+    substituted = _recid(
+        finalized,
+        selected_proposal_payload=substituted_payload,
+        selected_proposal_payload_cid=content_identity(substituted_payload),
+    )
+    substitution = verify_finalized_production_reviewed_effect(
+        substituted,
+        repo_root=repo,
+        task=task,
+        task_identity=IDENTITY,
+        expected_implementation_commit=implementation_commit,
+        expected_implementation_tree_id=tree,
+        allowed_nested_repository_roots=(NESTED_ROOT,),
+    )
+    assert not substitution.admitted
+    assert any(
+        "grok_patch_blob_mismatch" in reason for reason in substitution.reason_codes
+    )
+    assert finalized.baseline_commit == baseline
+
+
+def test_linked_nested_worktree_effect_attests_from_supervisor_checkout(
+    tmp_path: Path,
+) -> None:
+    """Nested immutable objects verify outside the implementation checkouts."""
+
+    supervisor, supervisor_child = _repo_with_submodule(tmp_path)
+    baseline = _git(supervisor, "rev-parse", "HEAD")
+    child_baseline = _git(supervisor_child, "rev-parse", "HEAD")
+    implementation = tmp_path / "implementation-worktree"
+    _git(
+        supervisor,
+        "worktree",
+        "add",
+        "-b",
+        "reviewed-effect-implementation",
+        str(implementation),
+        baseline,
+    )
+    implementation_child = implementation / NESTED_ROOT
+    if implementation_child.exists():
+        implementation_child.rmdir()
+    _git(
+        supervisor_child,
+        "worktree",
+        "add",
+        "-b",
+        "reviewed-effect-child-implementation",
+        str(implementation_child),
+        child_baseline,
+    )
+
+    task, routed_baseline, _packet, result, captured = _nested_route(
+        implementation
+    )
+    assert routed_baseline == baseline
+    assert verify_production_reviewed_workspace(
+        captured,
+        repo_root=implementation,
+        task=task,
+        task_identity=IDENTITY,
+        allowed_nested_repository_roots=(NESTED_ROOT,),
+    ).admitted
+
+    child_commit = _commit(
+        implementation_child,
+        "reviewed linked-worktree nested proposal",
+    )
+    implementation_commit = _commit(
+        implementation,
+        "advance linked-worktree reviewed submodule gitlink",
+    )
+    implementation_tree_id = (
+        "git-tree:"
+        + _git(
+            supervisor,
+            "rev-parse",
+            f"{implementation_commit}^{{tree}}",
+        )
+    )
+    finalized = finalize_production_reviewed_effect(
+        captured,
+        repo_root=implementation,
+        task=task,
+        task_identity=IDENTITY,
+        implementation_commit=implementation_commit,
+        allowed_nested_repository_roots=(NESTED_ROOT,),
+    )
+    assert (
+        finalized.nested_repository_effects[0].implementation_gitlink_commit
+        == child_commit
+    )
+
+    chain_binding = bind_applied_patch_to_review_chain(
+        result,
+        implementation_commit=implementation_commit,
+    )
+    assert chain_binding is not None
+    authority = ProductionProviderReviewAuthority.generate()
+    policy_id = ProductionCLIProviderPolicy().policy_id
+    assert _git(supervisor_child, "rev-parse", "HEAD") == child_baseline
+    attestation = authority.issue(
+        provider_receipt=result.provider_receipt,
+        review_chain_binding=chain_binding,
+        provider_policy_id=policy_id,
+        implementation_commit=implementation_commit,
+        implementation_tree_id=implementation_tree_id,
+        reviewed_effect_binding=finalized,
+        repo_root=supervisor,
+        task=task,
+        task_identity=IDENTITY,
+        allowed_nested_repository_roots=(NESTED_ROOT,),
+        issued_at_ms=1_800_000_000_000,
+        nonce="linked-nested-effect-test-nonce-0001",
+    )
+    verification = verify_production_provider_review_attestation(
+        attestation,
+        trusted_public_keys={
+            authority.issuer_key_id: authority.public_key_bytes,
+        },
+        provider_receipt=result.provider_receipt,
+        review_chain_binding=chain_binding,
+        reviewed_effect_binding=finalized.to_dict(),
+        repo_root=supervisor,
+        task=task,
+        task_identity=IDENTITY,
+        expected_task_id=task.task_id,
+        expected_snapshot_id=finalized.snapshot_id,
+        expected_provider_policy_id=policy_id,
+        expected_implementation_commit=implementation_commit,
+        expected_implementation_tree_id=implementation_tree_id,
+        allowed_nested_repository_roots=(NESTED_ROOT,),
+    )
+
+    assert verification.admitted
+    assert attestation.reviewed_effect_binding_cid == finalized.binding_id
+    assert _git(supervisor_child, "rev-parse", "HEAD") == child_baseline
+
+
+def test_mixed_outer_and_registered_submodule_effects_flatten_deterministically(
+    tmp_path: Path,
+) -> None:
+    repo, child = _repo_with_submodule(tmp_path)
+    task = replace(
+        _Task(),
+        outputs=(OUTER_TARGET, NESTED_TARGET),
+        validation=(f"python -m py_compile {OUTER_TARGET} {NESTED_TARGET}",),
+    )
+    task, _baseline, _packet, _result, captured = _route(
+        repo,
+        task=task,
+        patch=_mixed_patch(),
+        allowed_nested_repository_roots=(NESTED_ROOT,),
+    )
+
+    assert captured.changed_paths == (OUTER_TARGET, NESTED_TARGET)
+    assert tuple(effect.path for effect in captured.path_effects) == (
+        OUTER_TARGET,
+        NESTED_TARGET,
+    )
+    assert captured.nested_repository_effects[0].changed_paths == (NESTED_TARGET,)
+    assert verify_production_reviewed_workspace(
+        captured,
+        repo_root=repo,
+        task=task,
+        task_identity=IDENTITY,
+        allowed_nested_repository_roots=(NESTED_ROOT,),
+    ).admitted
+
+    _commit(child, "reviewed nested half")
+    implementation_commit = _commit(repo, "reviewed mixed outer and nested effect")
+    tree = f"git-tree:{_git(repo, 'rev-parse', f'{implementation_commit}^{{tree}}')}"
+    finalized = finalize_production_reviewed_effect(
+        captured,
+        repo_root=repo,
+        task=task,
+        task_identity=IDENTITY,
+        implementation_commit=implementation_commit,
+        allowed_nested_repository_roots=(NESTED_ROOT,),
+    )
+    assert verify_finalized_production_reviewed_effect(
+        finalized,
+        repo_root=repo,
+        task=task,
+        task_identity=IDENTITY,
+        expected_implementation_commit=implementation_commit,
+        expected_implementation_tree_id=tree,
+        allowed_nested_repository_roots=(NESTED_ROOT,),
+    ).admitted
+
+
+def test_nested_effect_capture_rejects_an_unregistered_gitlink(tmp_path: Path) -> None:
+    repo, _child = _repo_with_submodule(tmp_path)
+    try:
+        _route(
+            repo,
+            task=_nested_task(),
+            patch=_nested_patch(),
+            allowed_nested_repository_roots=(NESTED_ROOT,),
+            capture_allowed_nested_repository_roots=(),
+        )
+    except ValueError as error:
+        assert "paths do not match" in str(error) or "nested" in str(error)
+    else:  # pragma: no cover - a release-critical fail-closed assertion
+        raise AssertionError("unregistered nested effects must fail capture")
+
+
+def test_nested_effect_rejects_stale_child_head_and_symlink_tampering(
+    tmp_path: Path,
+) -> None:
+    stale_root = tmp_path / "stale"
+    stale_root.mkdir()
+    repo, child = _repo_with_submodule(stale_root)
+    task, _baseline, _packet, _result, captured = _nested_route(repo)
+    _commit(child, "premature child head movement")
+    stale = verify_production_reviewed_workspace(
+        captured,
+        repo_root=repo,
+        task=task,
+        task_identity=IDENTITY,
+        allowed_nested_repository_roots=(NESTED_ROOT,),
+    )
+    assert not stale.admitted
+    assert "reviewed_effect_workspace_reconstruction_failed" in stale.reason_codes
+
+    symlink_root = tmp_path / "symlink"
+    symlink_root.mkdir()
+    repo, child = _repo_with_submodule(symlink_root)
+    task, _baseline, _packet, _result, captured = _nested_route(repo)
+    target = child / TARGET
+    target.unlink()
+    target.symlink_to("/etc/passwd")
+    symlinked = verify_production_reviewed_workspace(
+        captured,
+        repo_root=repo,
+        task=task,
+        task_identity=IDENTITY,
+        allowed_nested_repository_roots=(NESTED_ROOT,),
+    )
+    assert not symlinked.admitted
+    assert "reviewed_effect_workspace_reconstruction_failed" in symlinked.reason_codes
+
+
+def test_nested_effect_rejects_deeper_repository_and_finalized_gitlink_tamper(
+    tmp_path: Path,
+) -> None:
+    deeper_root = tmp_path / "deeper"
+    deeper_root.mkdir()
+    repo, child = _repo_with_submodule(deeper_root)
+    task, _baseline, _packet, _result, captured = _nested_route(repo)
+    deeper = child / "deeper"
+    deeper.mkdir()
+    _git(deeper, "init")
+    _git(deeper, "config", "user.name", "Reviewed Effect Test")
+    _git(deeper, "config", "user.email", "effect@example.invalid")
+    (deeper / "value.py").write_text("VALUE = 3\n", encoding="utf-8")
+    _git(deeper, "add", ".")
+    _git(deeper, "commit", "-m", "unbound deeper repository")
+    nested = verify_production_reviewed_workspace(
+        captured,
+        repo_root=repo,
+        task=task,
+        task_identity=IDENTITY,
+        allowed_nested_repository_roots=(NESTED_ROOT,),
+    )
+    assert not nested.admitted
+
+    final_root = tmp_path / "final"
+    final_root.mkdir()
+    repo, child = _repo_with_submodule(final_root)
+    task, _baseline, _packet, _result, captured = _nested_route(repo)
+    child_baseline = captured.nested_repository_effects[0].baseline_gitlink_commit
+    _commit(child, "reviewed nested proposal")
+    implementation_commit = _commit(repo, "advance reviewed submodule gitlink")
+    tree = f"git-tree:{_git(repo, 'rev-parse', f'{implementation_commit}^{{tree}}')}"
+    finalized = finalize_production_reviewed_effect(
+        captured,
+        repo_root=repo,
+        task=task,
+        task_identity=IDENTITY,
+        implementation_commit=implementation_commit,
+        allowed_nested_repository_roots=(NESTED_ROOT,),
+    )
+    _git(child, "checkout", "--detach", child_baseline)
+    historical = verify_finalized_production_reviewed_effect(
+        finalized,
+        repo_root=repo,
+        task=task,
+        task_identity=IDENTITY,
+        expected_implementation_commit=implementation_commit,
+        expected_implementation_tree_id=tree,
+        allowed_nested_repository_roots=(NESTED_ROOT,),
+    )
+    assert historical.admitted
+
+    tampered_nested = replace(
+        finalized.nested_repository_effects[0],
+        implementation_gitlink_commit=child_baseline,
+    )
+    tampered_binding = _recid(
+        finalized,
+        nested_repository_effects=(tampered_nested,),
+    )
+    tampered = verify_finalized_production_reviewed_effect(
+        tampered_binding,
+        repo_root=repo,
+        task=task,
+        task_identity=IDENTITY,
+        expected_implementation_commit=implementation_commit,
+        expected_implementation_tree_id=tree,
+        allowed_nested_repository_roots=(NESTED_ROOT,),
+    )
+    assert not tampered.admitted
+    assert "reviewed_effect_nested_gitlink_mismatch:vendor/lib" in tampered.reason_codes

@@ -16,6 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_ro
     RouteStatus,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.production_context_slice import (
+    MAX_PROVIDER_PROMPT_TOKENS,
     ProductionContextSliceError,
     assert_proposal_covered_by_context,
     build_production_context_slice,
@@ -339,9 +340,12 @@ def test_recomputed_root_cannot_widen_corpus_budget_or_authority(tmp_path) -> No
     )
 
     unbounded = manifest.to_dict()
-    unbounded["budget"]["max_provider_prompt_tokens"] = 8192
+    # Exceed the protocol ceiling (not merely the default) so verification
+    # rejects the declaration as budget_invalid.
+    oversized = int(MAX_PROVIDER_PROMPT_TOKENS) + 1
+    unbounded["budget"]["max_provider_prompt_tokens"] = oversized
     unbounded["budget"]["context_token_limit"] = (
-        8192 - unbounded["budget"]["reserved_prompt_tokens"]
+        oversized - unbounded["budget"]["reserved_prompt_tokens"]
     )
     _recompute_root(unbounded)
     _assert_reason(
@@ -540,6 +544,80 @@ def test_ast_slice_has_byte_complete_residual_identity(tmp_path) -> None:
     )
 
 
+def test_large_text_prefix_is_verifiable_and_limits_patch_preimages(tmp_path) -> None:
+    repo = _repo(tmp_path)
+    path = "data/schema.json"
+    target = repo / path
+    target.parent.mkdir()
+    source = "{\n  \"version\": 1,\n" + "".join(
+        f'  \"field_{index:04d}\": \"value_{index:04d}\",\n'
+        for index in range(800)
+    ) + '  \"tail\": true\n}\n'
+    target.write_text(source, encoding="utf-8")
+    _git(repo, "add", path)
+    _git(repo, "commit", "-m", "large text fixture")
+    task = {
+        "task_id": "ASE-CONTEXT-TEXT-001",
+        "title": "Patch bounded JSON context",
+        "acceptance": "Only visible text preimages may be changed.",
+        "outputs": [path],
+    }
+    manifest = build_production_context_slice(
+        repo_root=repo,
+        task_id=task["task_id"],
+        task_payload=task,
+        read_paths=[path],
+        effect_paths=[path],
+    )
+    record = manifest.to_dict()["sources"][0]
+
+    assert record["selection"]["mode"] == "text-prefix@1"
+    assert 0 < record["selection"]["prefix_byte_length"] <= 1_024
+    assert record["full_visible_coverage"] is False
+    assert record["residuals"]
+    verified = verify_production_context_slice(
+        manifest,
+        repo_root=repo,
+        current_task_id=task["task_id"],
+        current_task_payload=task,
+        expected_read_paths=[path],
+        expected_effect_paths=[path],
+    )
+    assert verified.manifest_cid == manifest.manifest_cid
+
+    _assert_reason(
+        "context_insufficient",
+        lambda: assert_proposal_covered_by_context(
+            manifest,
+            {"files": [{"path": path, "content": source.replace('"version": 1', '"version": 2')}]},
+            repo_root=repo,
+            current_task_id=task["task_id"],
+            current_task_payload=task,
+            expected_read_paths=[path],
+            expected_effect_paths=[path],
+        ),
+    )
+    visible_patch = (
+        f"diff --git a/{path} b/{path}\n"
+        f"--- a/{path}\n"
+        f"+++ b/{path}\n"
+        "@@ -1,3 +1,3 @@\n"
+        " {\n"
+        '-  "version": 1,\n'
+        '+  "version": 2,\n'
+        '   "field_0000": "value_0000",\n'
+    )
+    assert_proposal_covered_by_context(
+        manifest,
+        {"patch": visible_patch},
+        repo_root=repo,
+        current_task_id=task["task_id"],
+        current_task_payload=task,
+        expected_read_paths=[path],
+        expected_effect_paths=[path],
+    )
+
+
 def test_sliced_context_allows_only_visible_patch_preimages(tmp_path) -> None:
     source = (
         "class Calculator:\n"
@@ -662,6 +740,86 @@ def test_sliced_context_allows_only_visible_patch_preimages(tmp_path) -> None:
         ),
     )
 
+
+@pytest.mark.parametrize("scope_kind", ["read", "effect"])
+def test_allowlisted_nested_path_requires_registered_baseline_gitlink(
+    tmp_path,
+    scope_kind: str,
+) -> None:
+    """An allowlist entry cannot turn an unregistered checkout into scope."""
+
+    root = _repo(tmp_path)
+    child = root / "vendor" / "lib"
+    child.mkdir(parents=True)
+    _git(child, "init")
+    _git(child, "config", "user.name", "Context Slice Test")
+    _git(child, "config", "user.email", "context-slice@example.invalid")
+    (child / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(child, "add", ".")
+    _git(child, "commit", "-m", "unregistered child")
+    task = {
+        "task_id": "ASE-NESTED-UNREGISTERED-001",
+        "title": "reject unregistered nested checkout",
+        "acceptance": "nested repository authority stays fail closed",
+        "outputs": [
+            "src/greeting.py",
+            "vendor/lib/module.py",
+            "vendor/lib/generated.py",
+        ],
+    }
+    read_paths = (
+        ["src/greeting.py", "vendor/lib/module.py"]
+        if scope_kind == "read"
+        else []
+    )
+    effect_paths = (
+        ["src/greeting.py"]
+        if scope_kind == "read"
+        else ["vendor/lib/generated.py"]
+    )
+
+    _assert_reason(
+        "nested_repository_escape",
+        lambda: build_production_context_slice(
+            repo_root=root,
+            task_id=task["task_id"],
+            task_payload=task,
+            read_paths=read_paths,
+            effect_paths=effect_paths,
+            allowed_nested_repository_roots=["vendor/lib"],
+        ),
+    )
+
+
+def test_allowlisted_nested_root_requires_mode_160000_not_outer_tree(tmp_path) -> None:
+    """A regular outer-tree directory cannot impersonate a registered gitlink."""
+
+    root = _repo(tmp_path)
+    child = root / "vendor" / "lib"
+    child.mkdir(parents=True)
+    (child / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(root, "add", "vendor/lib/module.py")
+    _git(root, "commit", "-m", "ordinary vendor tree")
+    task = {
+        "task_id": "ASE-NESTED-TREE-001",
+        "title": "reject ordinary tree as nested repository",
+        "acceptance": "only a baseline gitlink grants nested scope",
+        "outputs": ["vendor/lib/generated.py"],
+    }
+
+    _assert_reason(
+        "nested_repository_escape",
+        lambda: build_production_context_slice(
+            repo_root=root,
+            task_id=task["task_id"],
+            task_payload=task,
+            read_paths=[],
+            effect_paths=["vendor/lib/generated.py"],
+            allowed_nested_repository_roots=["vendor/lib"],
+        ),
+    )
+
+
 def test_allowed_nested_repository_roots_can_read_submodule_effects(tmp_path) -> None:
     """Registered submodule roots may host effect blobs via gitlink commits."""
 
@@ -716,3 +874,84 @@ def test_allowed_nested_repository_roots_can_read_submodule_effects(tmp_path) ->
     paths = {item["path"] for item in manifest.to_dict()["sources"]}
     assert paths == {"vendor/lib/module.py", "README.md"}
 
+    expected_scope = {
+        "repo_root": root,
+        "current_task_id": task["task_id"],
+        "current_task_payload": task,
+        "expected_read_paths": ["vendor/lib/module.py", "README.md"],
+        "expected_effect_paths": ["vendor/lib/module.py", "README.md"],
+    }
+    _assert_reason(
+        "nested_repository_escape",
+        lambda: verify_production_context_slice(
+            manifest,
+            **expected_scope,
+        ),
+    )
+    marker = child / ".git"
+    parked_marker = child / ".git.context-slice-test"
+    marker.rename(parked_marker)
+    try:
+        # Without its own Git metadata, `git -C vendor/lib` would discover the
+        # superproject by walking upward.  That must not satisfy the allowlist.
+        _assert_reason(
+            "nested_repository_escape",
+            lambda: verify_production_context_slice(
+                manifest,
+                allowed_nested_repository_roots=["vendor/lib"],
+                **expected_scope,
+            ),
+        )
+    finally:
+        parked_marker.rename(marker)
+    verified = verify_production_context_slice(
+        manifest,
+        allowed_nested_repository_roots=["vendor/lib"],
+        **expected_scope,
+    )
+    assert verified.manifest_cid == manifest.manifest_cid
+
+    replacement = {
+        "files": [
+            {
+                "path": "vendor/lib/module.py",
+                "content": "VALUE = 2\n",
+            }
+        ]
+    }
+    _assert_reason(
+        "nested_repository_escape",
+        lambda: assert_proposal_covered_by_context(
+            manifest,
+            replacement,
+            **expected_scope,
+        ),
+    )
+    assert_proposal_covered_by_context(
+        manifest,
+        replacement,
+        allowed_nested_repository_roots=["vendor/lib"],
+        **expected_scope,
+    )
+
+    deeper = child / "plugins" / "deep"
+    deeper.mkdir(parents=True)
+    _git(deeper, "init")
+    (deeper / "plugin.py").write_text("ENABLED = True\n", encoding="utf-8")
+    deeper_task = {
+        "task_id": "ASE-NESTED-DEEP-001",
+        "title": "reject deeper unregistered repository",
+        "acceptance": "nested boundaries remain explicit",
+        "outputs": ["vendor/lib/plugins/deep/plugin.py"],
+    }
+    _assert_reason(
+        "nested_repository_escape",
+        lambda: build_production_context_slice(
+            repo_root=root,
+            task_id=deeper_task["task_id"],
+            task_payload=deeper_task,
+            read_paths=["vendor/lib/plugins/deep/plugin.py"],
+            effect_paths=["vendor/lib/plugins/deep/plugin.py"],
+            allowed_nested_repository_roots=["vendor/lib"],
+        ),
+    )

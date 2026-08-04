@@ -847,6 +847,23 @@ def test_prompt_exact_byte_and_token_limits_are_inclusive() -> None:
     assert token_over.reason_code == ProviderReason.PROMPT_TOKEN_BUDGET.value
 
 
+@pytest.mark.parametrize(
+    ("field", "ceiling"),
+    [
+        ("max_prompt_tokens", MAX_PROVIDER_PROMPT_TOKENS),
+        ("max_prompt_bytes", MAX_PROVIDER_PROMPT_BYTES),
+        ("max_response_bytes", MAX_PROVIDER_RESPONSE_BYTES),
+    ],
+)
+def test_provider_bounds_reject_values_above_protocol_ceilings(
+    field: str,
+    ceiling: int,
+) -> None:
+    assert getattr(ProviderBounds(**{field: ceiling}), field) == ceiling
+    with pytest.raises(ValueError, match=rf"{field} may not exceed {ceiling}"):
+        ProviderBounds(**{field: ceiling + 1})
+
+
 def test_response_exact_utf8_byte_limit_is_inclusive() -> None:
     payload = {"proposal": {"patch": "é"}}
     exact_bytes = len(

@@ -30,6 +30,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router import (
     MAX_PROVIDER_JSON_DEPTH,
     MAX_PROVIDER_JSON_ITEMS,
+    MAX_PROVIDER_PROMPT_TOKENS,
     PRODUCTION_PROVIDER_ROUTE_EVALUATION_SCHEMA,
     PRODUCTION_PROVIDER_ROUTE_INTERFACE,
     PRODUCTION_REVIEW_CHAIN_BINDING_SCHEMA,
@@ -85,6 +86,16 @@ def _git(repo: Path, *arguments: str) -> None:
         text=True,
         capture_output=True,
     )
+
+
+def _git_output(repo: Path, *arguments: str) -> str:
+    return subprocess.run(
+        ["git", *arguments],
+        cwd=repo,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
 
 
 def _snapshot(daemon: TodoImplementationDaemon) -> str:
@@ -160,11 +171,470 @@ def _task(**overrides: Any) -> PortalTask:
         ),
         "metadata": {
             "Provider role": "grok-implement, codex-review",
-            "Context budget tokens": "4096",
+            "Context budget tokens": str(MAX_PROVIDER_PROMPT_TOKENS),
         },
     }
     payload.update(overrides)
     return PortalTask(**payload)
+
+
+def _install_landed_route_preflight_evidence(
+    daemon: TodoImplementationDaemon,
+    task: PortalTask,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    task_leaf_diverged: bool,
+) -> tuple[
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+]:
+    """Install one real Git chain and exact durable preflight projections."""
+
+    repo = daemon.repo_root
+    implementation_commit = _git_output(repo, "rev-parse", "HEAD^{commit}")
+    (repo / PATH).write_text("# denied implementation\n", encoding="utf-8")
+    _git(repo, "add", PATH)
+    _git(repo, "commit", "-m", "land denied implementation")
+    merge_commit = _git_output(repo, "rev-parse", "HEAD^{commit}")
+    merge_tree_id = "git-tree:" + _git_output(
+        repo,
+        "rev-parse",
+        f"{merge_commit}^{{tree}}",
+    )
+    if task_leaf_diverged:
+        (repo / PATH).write_text("# later repair\n", encoding="utf-8")
+        _git(repo, "add", PATH)
+        _git(repo, "commit", "-m", "repair task leaf")
+    else:
+        (repo / "unrelated.txt").write_text("unrelated\n", encoding="utf-8")
+        _git(repo, "add", "unrelated.txt")
+        _git(repo, "commit", "-m", "advance unrelated leaf")
+    baseline_ref = _git_output(repo, "rev-parse", "HEAD^{commit}")
+    baseline_tree_id = "git-tree:" + _git_output(
+        repo,
+        "rev-parse",
+        f"{baseline_ref}^{{tree}}",
+    )
+
+    identity = daemon._identity_for_task(task)
+    task_binding_id = implementation_daemon_module.post_merge_task_binding_id(
+        task
+    )
+    origin_stream_id = implementation_daemon_module._event_stream_binding(
+        daemon.events_path
+    )[0]
+    denial_id = "denial:landed-route-preflight"
+    denial = {
+        "denial_id": denial_id,
+        "correction_origin_stream_id": origin_stream_id,
+        "implementation_commit": implementation_commit,
+        "merge_commit": merge_commit,
+        "repository_tree_id": merge_tree_id,
+        "review_receipt_id": "review:landed-route-preflight",
+        "diff_binding_id": "diff:landed-route-preflight",
+        "source_event_id": "event:landed-route-preflight",
+        "source_event_sequence": 17,
+        "review_attempt": 1,
+        "implementation_attempt": 1,
+        "source_finding_count": 1,
+        "included_finding_count": 1,
+        "truncated": False,
+    }
+    feedback = {
+        "feedback_binding_id": "feedback:landed-route-preflight",
+        "findings": [{"finding_id": "finding:landed-route-preflight"}],
+        "truncated": False,
+    }
+    authority_material = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "post-merge-correction-dispatch-authority@1"
+        ),
+        "authority_kind": "review_denial",
+        "authority_id": "authority:landed-route-preflight",
+        "authorized_attempt": 2,
+        "durable_denial_id": denial_id,
+        "task_id": task.task_id,
+        "canonical_task_key": identity.canonical_task_key,
+        "canonical_task_cid": identity.canonical_task_cid,
+        "board_namespace": identity.board_namespace,
+        "task_binding_id": task_binding_id,
+        "target_repository_id": daemon.merge_target_repository_id,
+        "target_branch": daemon.resolved_merge_target_branch,
+        "durable_authority_head_record_id": "record:ready",
+        "durable_authority_head_ordinal": 3,
+        "durable_authority_state_id": "state:ready",
+        "origin_stream_id": origin_stream_id,
+        "implementation_commit": implementation_commit,
+        "merge_commit": merge_commit,
+        "repository_tree_id": merge_tree_id,
+        "review_receipt_id": denial["review_receipt_id"],
+        "diff_binding_id": denial["diff_binding_id"],
+        "source_event_id": denial["source_event_id"],
+        "source_event_sequence": denial["source_event_sequence"],
+        "review_attempt": denial["review_attempt"],
+        "source_implementation_attempt": denial["implementation_attempt"],
+    }
+    authority = {
+        **authority_material,
+        "authority_binding_id": implementation_daemon_module.content_identity(
+            authority_material
+        ),
+    }
+    durable_authority = {
+        "authority_available": True,
+        "denial_id": denial_id,
+        "authority_kind": authority["authority_kind"],
+        "authority_id": authority["authority_id"],
+        "authorized_attempt": 2,
+        "head_record_id": authority["durable_authority_head_record_id"],
+        "head_ordinal": authority["durable_authority_head_ordinal"],
+        "authority_state_id": authority["durable_authority_state_id"],
+        "origin_stream_id": origin_stream_id,
+    }
+    landed_guard = {
+        "guarded": True,
+        "workspace_clean": True,
+        "recovery_reason": "recovered_implementation_binding",
+        "recovery_source": "strict-ledger",
+        "landed_implementation_commit": implementation_commit,
+        "landed_merge_commit": merge_commit,
+        "landed_repository_tree_id": merge_tree_id,
+        "baseline_ref": baseline_ref,
+        "repository_tree_id": baseline_tree_id,
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_verified_durable_post_merge_denial",
+        lambda *_args, **_kwargs: denial,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_verified_complete_post_merge_denial_feedback",
+        lambda *_args, **_kwargs: feedback,
+    )
+    monkeypatch.setattr(
+        daemon.merge_queue,
+        "verified_post_merge_correction_authority",
+        lambda *_args, **_kwargs: durable_authority,
+    )
+    return authority, denial, feedback, durable_authority, landed_guard
+
+
+@pytest.mark.parametrize(
+    ("failure_class", "expected_reason"),
+    [
+        ("authority", "authority_invalid"),
+        ("durable", "durable_authority_invalid"),
+        ("workspace", "landed_workspace_invalid"),
+        ("ancestry", "landed_ancestry_invalid"),
+        ("git-comparison", "task_leaf_comparison_failed"),
+    ],
+)
+def test_landed_route_preflight_rejects_non_leaf_failures_without_spending_authority(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_class: str,
+    expected_reason: str,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    authority, _denial, _feedback, durable, landed_guard = (
+        _install_landed_route_preflight_evidence(
+            daemon,
+            task,
+            monkeypatch,
+            task_leaf_diverged=False,
+        )
+    )
+    if failure_class == "authority":
+        authority["target_branch"] = "tampered"
+    elif failure_class == "durable":
+        durable["authority_available"] = False
+    elif failure_class == "workspace":
+        landed_guard["workspace_clean"] = False
+    elif failure_class == "ancestry":
+        monkeypatch.setattr(
+            daemon,
+            "_git_ref_is_ancestor",
+            lambda *_args, **_kwargs: False,
+        )
+    else:
+        real_run = subprocess.run
+
+        def fail_leaf_comparison(*args, **kwargs):
+            command = args[0]
+            if (
+                command[:2] == ["git", "--literal-pathspecs"]
+                and "diff" in command
+            ):
+                return subprocess.CompletedProcess(command, 128)
+            return real_run(*args, **kwargs)
+
+        monkeypatch.setattr(subprocess, "run", fail_leaf_comparison)
+
+    result = daemon._post_merge_correction_landed_route_candidate(
+        task,
+        attempt=2,
+        authority=authority,
+        landed_guard=landed_guard,
+        workspace_path=daemon.repo_root,
+    )
+
+    assert result.disposition is (
+        implementation_daemon_module
+        ._PostMergeCorrectionLandedRouteDisposition.REJECTED
+    )
+    assert result.reason == expected_reason
+    assert not result.candidate
+    assert not _events(daemon)
+    assert not daemon._sealed_post_merge_correction_routes
+    assert not daemon._claimed_post_merge_correction_routes
+
+
+def test_complete_feedback_authority_rejects_boolean_attempt_fail_closed(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Malformed attempt types return no feedback instead of raising at runtime."""
+
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    identity = daemon._identity_for_task(task)
+    material = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "post-merge-correction-dispatch-authority@1"
+        ),
+        "authority_kind": "review_denial",
+        "authority_id": "authority:boolean-attempt",
+        "authorized_attempt": True,
+        "task_id": task.task_id,
+        "canonical_task_key": identity.canonical_task_key,
+        "canonical_task_cid": identity.canonical_task_cid,
+        "board_namespace": identity.board_namespace,
+        "task_binding_id": (
+            implementation_daemon_module.post_merge_task_binding_id(task)
+        ),
+        "complete_denial_feedback": {},
+    }
+    authority = {
+        **material,
+        "authority_binding_id": implementation_daemon_module.content_identity(
+            material
+        ),
+    }
+
+    assert daemon._validated_complete_denial_feedback_from_authority(
+        task,
+        attempt=1,
+        authority=authority,
+    ) == {}
+
+
+@pytest.mark.parametrize(
+    ("task_leaf_diverged", "expected_disposition"),
+    [
+        (False, "verified"),
+        (True, "task_leaf_diverged"),
+    ],
+)
+def test_landed_route_preflight_activates_one_sealed_capability(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    task_leaf_diverged: bool,
+    expected_disposition: str,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    authority, denial, feedback, _durable, landed_guard = (
+        _install_landed_route_preflight_evidence(
+            daemon,
+            task,
+            monkeypatch,
+            task_leaf_diverged=task_leaf_diverged,
+        )
+    )
+    preflight = daemon._post_merge_correction_landed_route_candidate(
+        task,
+        attempt=2,
+        authority=authority,
+        landed_guard=landed_guard,
+        workspace_path=daemon.repo_root,
+    )
+    assert preflight.disposition.value == expected_disposition
+    candidate = dict(preflight.candidate)
+    identity = daemon._identity_for_task(task)
+    started_event = {
+        "type": "implementation_started",
+        "task_id": task.task_id,
+        "attempt": 2,
+        "event_id": "event:implementation-started",
+        "sequence": 23,
+        "post_merge_correction_landed_route_candidate_id": candidate[
+            "route_candidate_id"
+        ],
+        "post_merge_correction_authority": authority,
+    }
+    consumption = {
+        "record_kind": "denial_consumed",
+        "record_id": "record:consumed",
+        "denial_id": denial["denial_id"],
+        "task_id": task.task_id,
+        "canonical_task_key": identity.canonical_task_key,
+        "canonical_task_cid": identity.canonical_task_cid,
+        "board_namespace": identity.board_namespace,
+        "task_binding_id": (
+            implementation_daemon_module.post_merge_task_binding_id(task)
+        ),
+        "attempt": 2,
+        "parent_record_id": authority["durable_authority_head_record_id"],
+        "detail": {
+            "authority_kind": authority["authority_kind"],
+            "authority_id": authority["authority_id"],
+            "started_event_id": started_event["event_id"],
+            "started_event_sequence": started_event["sequence"],
+        },
+    }
+    consumed_state = {
+        "authority_available": False,
+        "complete_feedback_available": True,
+        "state": "consumed",
+        "head_record_id": consumption["record_id"],
+    }
+    monkeypatch.setattr(
+        daemon.merge_queue,
+        "verified_post_merge_correction_chain",
+        lambda *_args, **_kwargs: (consumption,),
+    )
+    monkeypatch.setattr(
+        daemon.merge_queue,
+        "verified_post_merge_correction_authority",
+        lambda *_args, **_kwargs: consumed_state,
+    )
+
+    activated = daemon._activate_post_merge_correction_landed_route(
+        task,
+        attempt=2,
+        authority=authority,
+        candidate=candidate,
+        started_event=started_event,
+        landed_guard=landed_guard,
+    )
+
+    assert activated["guarded"] is False
+    assert activated["invoke_grok_implementation"] is True
+    assert activated["invoke_codex_review"] is True
+    assert activated["post_merge_correction_route"] == candidate
+    assert len(daemon._sealed_post_merge_correction_routes) == 1
+    assert not daemon._claimed_post_merge_correction_routes
+    entry = next(iter(daemon._sealed_post_merge_correction_routes.values()))
+    material = implementation_daemon_module._correction_route_material_snapshot(
+        entry
+    )
+    assert material is not None
+    assert material["authority_binding_id"] == authority["authority_binding_id"]
+    assert material["consumption_record_id"] == consumption["record_id"]
+    assert material["complete_denial_feedback_id"] == feedback[
+        "feedback_binding_id"
+    ]
+
+
+def test_ordinary_correction_start_seals_capability_without_landed_candidate(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A consumed ordinary correction cannot reach the private route unsealed."""
+
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    authority, denial, feedback, _durable, _landed_guard = (
+        _install_landed_route_preflight_evidence(
+            daemon,
+            task,
+            monkeypatch,
+            task_leaf_diverged=False,
+        )
+    )
+    identity = daemon._identity_for_task(task)
+    started_event = {
+        "type": "implementation_started",
+        "task_id": task.task_id,
+        "attempt": 2,
+        "event_id": "event:ordinary-correction-started",
+        "sequence": 29,
+        "post_merge_correction_authority": authority,
+    }
+    consumption = {
+        "record_kind": "denial_consumed",
+        "record_id": "record:ordinary-correction-consumed",
+        "denial_id": denial["denial_id"],
+        "task_id": task.task_id,
+        "canonical_task_key": identity.canonical_task_key,
+        "canonical_task_cid": identity.canonical_task_cid,
+        "board_namespace": identity.board_namespace,
+        "task_binding_id": (
+            implementation_daemon_module.post_merge_task_binding_id(task)
+        ),
+        "attempt": 2,
+        "parent_record_id": authority["durable_authority_head_record_id"],
+        "detail": {
+            "authority_kind": authority["authority_kind"],
+            "authority_id": authority["authority_id"],
+            "started_event_id": started_event["event_id"],
+            "started_event_sequence": started_event["sequence"],
+        },
+    }
+    consumed_state = {
+        "authority_available": False,
+        "complete_feedback_available": True,
+        "state": "consumed",
+        "head_record_id": consumption["record_id"],
+    }
+    monkeypatch.setattr(
+        daemon.merge_queue,
+        "verified_post_merge_correction_chain",
+        lambda *_args, **_kwargs: (consumption,),
+    )
+    monkeypatch.setattr(
+        daemon.merge_queue,
+        "verified_post_merge_correction_authority",
+        lambda *_args, **_kwargs: consumed_state,
+    )
+
+    assert not daemon._seal_post_merge_correction_route_after_start(
+        task,
+        attempt=2,
+        authority=authority,
+        started_event=started_event,
+        complete_feedback_id="feedback:wrong",
+    )
+    assert not daemon._sealed_post_merge_correction_routes
+
+    sealed = daemon._seal_post_merge_correction_route_after_start(
+        task,
+        attempt=2,
+        authority=authority,
+        started_event=started_event,
+        complete_feedback_id=feedback["feedback_binding_id"],
+    )
+
+    assert sealed["guarded"] is False
+    assert sealed["post_merge_correction_reservation"]["record_id"] == (
+        consumption["record_id"]
+    )
+    assert len(daemon._sealed_post_merge_correction_routes) == 1
+    assert not daemon._claimed_post_merge_correction_routes
+    assert not daemon._seal_post_merge_correction_route_after_start(
+        task,
+        attempt=2,
+        authority=authority,
+        started_event=started_event,
+        complete_feedback_id=feedback["feedback_binding_id"],
+    )
 
 
 def _install_claimable_correction_route(
@@ -1016,6 +1486,391 @@ def _admitted_file_proposal(*entries: tuple[str, str]) -> SimpleNamespace:
     )
 
 
+def _admitted_patch_proposal(
+    patch: str,
+    *declared_paths: str,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        admitted=True,
+        payload={
+            "proposal": {
+                "declared_paths": list(declared_paths),
+                "patch": patch,
+            }
+        },
+    )
+
+
+def _install_direct_submodule(
+    tmp_path: Path,
+    daemon: TodoImplementationDaemon,
+) -> tuple[str, str, Path]:
+    root = "external/ipfs_datasets"
+    inner_path = f"{root}/logic/ui.py"
+    source = tmp_path / "ipfs-datasets-source"
+    source.mkdir()
+    _git(source, "init")
+    _git(source, "config", "user.name", "Production Route Test")
+    _git(source, "config", "user.email", "production-route@example.invalid")
+    source_target = source / "logic" / "ui.py"
+    source_target.parent.mkdir(parents=True)
+    source_target.write_text("# child baseline\n", encoding="utf-8")
+    _git(source, "add", ".")
+    _git(source, "commit", "-m", "child baseline")
+
+    _git(
+        daemon.repo_root,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(source),
+        root,
+    )
+    _git(daemon.repo_root, "commit", "-am", "add datasets submodule")
+    daemon.worktree_submodule_paths = (root,)
+    return root, inner_path, daemon.repo_root / root
+
+
+def _mixed_outer_child_patch(inner_path: str) -> str:
+    return (
+        f"diff --git a/{PATH} b/{PATH}\n"
+        f"--- a/{PATH}\n"
+        f"+++ b/{PATH}\n"
+        "@@ -1 +1 @@\n"
+        "-# baseline\n"
+        "+# outer patched\n"
+        f"diff --git a/{inner_path} b/{inner_path}\n"
+        f"--- a/{inner_path}\n"
+        f"+++ b/{inner_path}\n"
+        "@@ -1 +1 @@\n"
+        "-# child baseline\n"
+        "+# child patched\n"
+    )
+
+
+def test_production_writer_supports_transactional_outer_and_submodule_files(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    _root, inner_path, child = _install_direct_submodule(tmp_path, daemon)
+    writer = daemon._make_production_workspace_writer(
+        daemon.repo_root,
+        task=_task(outputs=[PATH, inner_path]),
+        expected_lease_id="lease:mixed-files",
+    )
+
+    writer(
+        _admitted_file_proposal(
+            (PATH, "# outer replacement\n"),
+            (inner_path, "# child replacement\n"),
+        ),
+        "lease:mixed-files",
+    )
+
+    assert (daemon.repo_root / PATH).read_text(encoding="utf-8") == (
+        "# outer replacement\n"
+    )
+    assert (child / "logic" / "ui.py").read_text(encoding="utf-8") == (
+        "# child replacement\n"
+    )
+
+
+def test_production_writer_applies_mixed_patch_through_synthetic_flat_tree(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    _root, inner_path, child = _install_direct_submodule(tmp_path, daemon)
+    writer = daemon._make_production_workspace_writer(
+        daemon.repo_root,
+        task=_task(outputs=[PATH, inner_path]),
+        expected_lease_id="lease:mixed-patch",
+    )
+    real_run = subprocess.run
+    apply_worktrees: list[Path] = []
+
+    def observe_git_apply(*args, **kwargs):
+        command = args[0]
+        if command[:2] == ["git", "apply"]:
+            apply_worktrees.append(Path(kwargs["cwd"]))
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", observe_git_apply)
+
+    writer(
+        _admitted_patch_proposal(
+            _mixed_outer_child_patch(inner_path),
+            PATH,
+            inner_path,
+        ),
+        "lease:mixed-patch",
+    )
+
+    assert (daemon.repo_root / PATH).read_text(encoding="utf-8") == (
+        "# outer patched\n"
+    )
+    assert (child / "logic" / "ui.py").read_text(encoding="utf-8") == (
+        "# child patched\n"
+    )
+    assert len(apply_worktrees) == 3
+    assert daemon.repo_root not in apply_worktrees
+    assert child not in apply_worktrees
+
+
+def test_production_writer_revalidates_exact_gitlink_and_child_head(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    root, inner_path, child = _install_direct_submodule(tmp_path, daemon)
+    writer = daemon._make_production_workspace_writer(
+        daemon.repo_root,
+        task=_task(outputs=[inner_path]),
+        expected_lease_id="lease:head-fence",
+    )
+
+    (child / "logic" / "ui.py").write_text("# next child\n", encoding="utf-8")
+    _git(child, "add", ".")
+    _git(child, "commit", "-m", "unrecorded child head")
+
+    with pytest.raises(RuntimeError, match="HEAD does not match outer gitlink"):
+        writer(
+            _admitted_file_proposal((inner_path, "# forbidden\n")),
+            "lease:head-fence",
+        )
+    assert (child / "logic" / "ui.py").read_text(encoding="utf-8") == (
+        "# next child\n"
+    )
+
+    root_writer = daemon._make_production_workspace_writer(
+        daemon.repo_root,
+        task=_task(outputs=[root]),
+        expected_lease_id="lease:root-fence",
+    )
+    with pytest.raises(RuntimeError, match="root itself is not a writable file"):
+        root_writer(
+            _admitted_file_proposal((root, "# forbidden\n")),
+            "lease:root-fence",
+        )
+
+
+def test_production_writer_rejects_repository_below_registered_submodule(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    root, _inner_path, child = _install_direct_submodule(tmp_path, daemon)
+    nested_path = f"{root}/logic/nested/target.py"
+    nested = child / "logic" / "nested"
+    nested.mkdir()
+    (nested / ".git").write_text("gitdir: elsewhere\n", encoding="utf-8")
+    (nested / "target.py").write_text("nested baseline\n", encoding="utf-8")
+    writer = daemon._make_production_workspace_writer(
+        daemon.repo_root,
+        task=_task(outputs=[nested_path]),
+        expected_lease_id="lease:deeper-repo",
+    )
+
+    with pytest.raises(RuntimeError, match="nested repository path"):
+        writer(
+            _admitted_file_proposal((nested_path, "nested replacement\n")),
+            "lease:deeper-repo",
+        )
+    assert (nested / "target.py").read_text(encoding="utf-8") == (
+        "nested baseline\n"
+    )
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside_target = outside / "target.py"
+    outside_target.write_text("outside baseline\n", encoding="utf-8")
+    link = child / "logic" / "link"
+    link.symlink_to(outside, target_is_directory=True)
+    symlink_path = f"{root}/logic/link/target.py"
+    symlink_writer = daemon._make_production_workspace_writer(
+        daemon.repo_root,
+        task=_task(outputs=[symlink_path]),
+        expected_lease_id="lease:child-symlink",
+    )
+    with pytest.raises(RuntimeError, match="symlink path component"):
+        symlink_writer(
+            _admitted_file_proposal((symlink_path, "escaped\n")),
+            "lease:child-symlink",
+        )
+    assert outside_target.read_text(encoding="utf-8") == "outside baseline\n"
+
+
+def test_production_writer_requires_mode_160000_at_registered_boundary(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    root = "ordinary-child"
+    inner_path = f"{root}/target.py"
+    child = daemon.repo_root / root
+    child.mkdir()
+    (child / "target.py").write_text("ordinary baseline\n", encoding="utf-8")
+    _git(daemon.repo_root, "add", root)
+    _git(daemon.repo_root, "commit", "-m", "ordinary directory")
+    _git(child, "init")
+    _git(child, "config", "user.name", "Production Route Test")
+    _git(child, "config", "user.email", "production-route@example.invalid")
+    _git(child, "add", ".")
+    _git(child, "commit", "-m", "standalone child")
+    daemon.worktree_submodule_paths = (root,)
+    writer = daemon._make_production_workspace_writer(
+        daemon.repo_root,
+        task=_task(outputs=[inner_path]),
+        expected_lease_id="lease:not-gitlink",
+    )
+
+    with pytest.raises(RuntimeError, match="not an exact HEAD gitlink"):
+        writer(
+            _admitted_file_proposal((inner_path, "forbidden\n")),
+            "lease:not-gitlink",
+        )
+    assert (child / "target.py").read_text(encoding="utf-8") == (
+        "ordinary baseline\n"
+    )
+
+
+def test_production_writer_rolls_back_mixed_patch_materialization_failure(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    _root, inner_path, child = _install_direct_submodule(tmp_path, daemon)
+    outer_target = daemon.repo_root / PATH
+    child_target = child / "logic" / "ui.py"
+    outer_before = outer_target.read_bytes()
+    child_before = child_target.read_bytes()
+    writer = daemon._make_production_workspace_writer(
+        daemon.repo_root,
+        task=_task(outputs=[PATH, inner_path]),
+        expected_lease_id="lease:mixed-patch-rollback",
+    )
+
+    real_replace = os.replace
+    failed = False
+
+    def fail_child_once(source, destination):
+        nonlocal failed
+        if Path(destination) == child_target and not failed:
+            failed = True
+            raise OSError("injected child patch replacement failure")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", fail_child_once)
+    with pytest.raises(
+        RuntimeError,
+        match="transactional patch materialization failed",
+    ):
+        writer(
+            _admitted_patch_proposal(
+                _mixed_outer_child_patch(inner_path),
+                PATH,
+                inner_path,
+            ),
+            "lease:mixed-patch-rollback",
+        )
+
+    assert failed
+    assert outer_target.read_bytes() == outer_before
+    assert child_target.read_bytes() == child_before
+    assert not list(daemon.repo_root.rglob(".production-provider-write-*"))
+
+
+def test_production_writer_rejects_target_tamper_after_synthetic_patch(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    _root, inner_path, child = _install_direct_submodule(tmp_path, daemon)
+    outer_target = daemon.repo_root / PATH
+    child_target = child / "logic" / "ui.py"
+    outer_before = outer_target.read_bytes()
+    writer = daemon._make_production_workspace_writer(
+        daemon.repo_root,
+        task=_task(outputs=[PATH, inner_path]),
+        expected_lease_id="lease:patch-tamper",
+    )
+    real_run = subprocess.run
+    tampered = False
+
+    def tamper_after_synthetic_apply(*args, **kwargs):
+        nonlocal tampered
+        result = real_run(*args, **kwargs)
+        command = args[0]
+        if (
+            command[:2] == ["git", "apply"]
+            and "--check" not in command
+            and "--numstat" not in command
+            and not tampered
+        ):
+            child_target.write_text("# concurrent tamper\n", encoding="utf-8")
+            tampered = True
+        return result
+
+    monkeypatch.setattr(subprocess, "run", tamper_after_synthetic_apply)
+    with pytest.raises(RuntimeError, match="write baseline changed"):
+        writer(
+            _admitted_patch_proposal(
+                _mixed_outer_child_patch(inner_path),
+                PATH,
+                inner_path,
+            ),
+            "lease:patch-tamper",
+        )
+
+    assert tampered
+    assert outer_target.read_bytes() == outer_before
+    assert child_target.read_text(encoding="utf-8") == "# concurrent tamper\n"
+
+
+def test_production_writer_rollback_prunes_new_submodule_directories(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    root, _inner_path, child = _install_direct_submodule(tmp_path, daemon)
+    new_path = f"{root}/generated/nested/new.py"
+    new_target = daemon.repo_root / new_path
+    outer_target = daemon.repo_root / PATH
+    outer_before = outer_target.read_bytes()
+    writer = daemon._make_production_workspace_writer(
+        daemon.repo_root,
+        task=_task(outputs=[new_path, PATH]),
+        expected_lease_id="lease:new-directory-rollback",
+    )
+    real_replace = os.replace
+    failed = False
+
+    def fail_outer_once(source, destination):
+        nonlocal failed
+        if Path(destination) == outer_target and not failed:
+            failed = True
+            raise OSError("injected outer replacement failure")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", fail_outer_once)
+    with pytest.raises(RuntimeError, match="transactional file replacement failed"):
+        writer(
+            _admitted_file_proposal(
+                (new_path, "# generated\n"),
+                (PATH, "# outer replacement\n"),
+            ),
+            "lease:new-directory-rollback",
+        )
+
+    assert failed
+    assert outer_target.read_bytes() == outer_before
+    assert not new_target.exists()
+    assert not (child / "generated").exists()
+    assert not list(daemon.repo_root.rglob(".production-provider-write-*"))
+
+
 def test_production_writer_rejects_path_aliases_symlinks_and_nested_repositories(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1216,7 +2071,7 @@ def test_codex_receives_only_bounded_proposal_evidence_slice(
         assert "goal_ids" in slice_
         assert "context_slice" in slice_
         assert slice_["context_slice"]["manifest_cid"].startswith("b")
-        assert request.prompt_tokens <= 4096
+        assert request.prompt_tokens <= MAX_PROVIDER_PROMPT_TOKENS
         # Full goal corpus / counterexample bodies must not appear.
         encoded = json.dumps(request["provider_input"], sort_keys=True)
         assert "counterexample" not in encoded
@@ -1235,7 +2090,10 @@ def test_codex_receives_only_bounded_proposal_evidence_slice(
     )
     assert result["route_result"].status is RouteStatus.SUCCEEDED
     assert "admitted_implementation_proposal" in seen["input"]
-    assert all(attempt.prompt_tokens <= 4096 for attempt in result["route_result"].attempts)
+    assert all(
+        attempt.prompt_tokens <= MAX_PROVIDER_PROMPT_TOKENS
+        for attempt in result["route_result"].attempts
+    )
 
 
 def test_caller_packet_without_context_fails_before_any_provider(

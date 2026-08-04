@@ -59,6 +59,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.production_provider_attesta
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.production_provider_cli import (
     DEFAULT_CODEX_IMPLEMENTATION_FALLBACK_MODEL,
     DEFAULT_CODEX_IMPLEMENTATION_FALLBACK_REASONING_EFFORT,
+    DEFAULT_CONTEXT_BUDGET_TOKENS,
     PRODUCTION_CLI_EXECUTION_SCHEMA,
     PRODUCTION_CLI_POLICY_NAME,
     BoundProductionCLIProvider,
@@ -1942,7 +1943,10 @@ def test_supervisor_policy_cli_normalizes_budget_and_fences_daemon_adoption(
     )
     config = supervisor_config_from_args(args, repo_root=tmp_path)
     assert config.production_provider_policy == PRODUCTION_CLI_POLICY_NAME
-    assert config.production_provider_context_budget_tokens == 4096
+    assert (
+        config.production_provider_context_budget_tokens
+        == DEFAULT_CONTEXT_BUDGET_TOKENS
+    )
     assert config.production_provider_timeout_seconds == 240.0
     assert config.production_provider_review_authority_key_path == key_path
 

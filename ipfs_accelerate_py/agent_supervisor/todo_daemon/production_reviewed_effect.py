@@ -6,7 +6,9 @@ carried them.  ``ProductionReviewedEffectBinding@1`` closes that gap in three
 steps: capture the fenced workspace immediately after the writer, compare the
 same workspace after validation, then bind the immutable implementation commit
 and tree.  Completion verification reconstructs the task, packet, diff, modes,
-and blobs from Git rather than trusting queue metadata.
+and blobs from Git rather than trusting queue metadata.  Root-only effects keep
+the byte-compatible ``@1`` shape.  ``@2`` adds provenance only when a declared
+global path crosses an operator-registered, direct mode-160000 gitlink.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import stat
 import subprocess
 import tempfile
@@ -49,7 +52,17 @@ from .production_provider_cli import (
 PRODUCTION_REVIEWED_EFFECT_BINDING_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/production-reviewed-effect-binding@1"
 )
-PRODUCTION_REVIEWED_EFFECT_BINDING_INTERFACE: Final = "ProductionReviewedEffectBinding@1"
+PRODUCTION_REVIEWED_EFFECT_BINDING_INTERFACE: Final = (
+    "ProductionReviewedEffectBinding@1"
+)
+PRODUCTION_REVIEWED_EFFECT_BINDING_SCHEMA_V2: Final = (
+    "ipfs_accelerate_py/agent-supervisor/production-reviewed-effect-binding@2"
+)
+PRODUCTION_REVIEWED_EFFECT_BINDING_INTERFACE_V2: Final = (
+    "ProductionReviewedEffectBinding@2"
+)
+
+_GIT_OID_RE: Final = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 
 # Git treats these ambient variables as repository-routing authority.  A
 # long-lived supervisor must not let its service environment redirect proof
@@ -87,6 +100,18 @@ _PATH_EFFECT_KEYS: Final = frozenset(
         "applied_blob_oid",
         "applied_sha256",
         "applied_bytes",
+    }
+)
+_NESTED_REPOSITORY_EFFECT_KEYS: Final = frozenset(
+    {
+        "root",
+        "changed_paths",
+        "baseline_gitlink_commit",
+        "baseline_tree_id",
+        "implementation_gitlink_commit",
+        "implementation_tree_id",
+        "implementation_diff_sha256",
+        "implementation_diff_bytes",
     }
 )
 _BINDING_KEYS: Final = frozenset(
@@ -129,6 +154,7 @@ _BINDING_KEYS: Final = frozenset(
         "proof_authoritative",
     }
 )
+_BINDING_V2_KEYS: Final = _BINDING_KEYS | {"nested_repository_effects"}
 _PROVIDER_RECEIPT_KEYS: Final = frozenset(
     {
         "schema",
@@ -221,6 +247,32 @@ def _canonical_path(value: Any) -> str:
     ):
         raise ValueError("effect path must be canonical and repository-relative")
     return value
+
+
+def _canonical_nested_repository_roots(
+    values: Sequence[str] | None,
+) -> tuple[str, ...]:
+    """Return strict operator-owned direct nested-repository roots."""
+
+    if values is None:
+        return ()
+    if isinstance(values, (str, bytes, bytearray)):
+        raise ValueError("allowed nested repository roots must be a path sequence")
+    roots = tuple(_canonical_path(value) for value in values)
+    if len(roots) > 256:
+        raise ValueError("allowed nested repository root count exceeds its bound")
+    if len(roots) != len(set(roots)):
+        raise ValueError("allowed nested repository roots must be unique")
+    return tuple(sorted(roots))
+
+
+def _path_under_root(path: str, root: str) -> str | None:
+    if path == root:
+        return ""
+    prefix = root + "/"
+    if path.startswith(prefix):
+        return path[len(prefix) :]
+    return None
 
 
 def _repository_root(value: str | Path) -> Path:
@@ -377,6 +429,95 @@ def _tree_id(repo_root: Path, commit: str) -> str:
     return f"git-tree:{tree}" if tree else ""
 
 
+def _tree_entry(
+    repo_root: Path,
+    commit: str,
+    path: str,
+) -> tuple[str, str, str] | None:
+    """Return one exact tree entry without following a tree/gitlink prefix."""
+
+    canonical = _canonical_path(path)
+    output = _run_git(
+        repo_root,
+        ["ls-tree", "-z", "--full-tree", commit, "--", canonical],
+    )
+    records = [record for record in output.split(b"\x00") if record]
+    if not records:
+        return None
+    if len(records) != 1 or b"\t" not in records[0]:
+        raise ValueError(f"Git tree path is ambiguous: {canonical}")
+    header, raw_path = records[0].split(b"\t", 1)
+    if raw_path.decode("utf-8", errors="strict") != canonical:
+        raise ValueError(f"Git tree path identity mismatch: {canonical}")
+    parts = header.decode("ascii", errors="strict").split()
+    if len(parts) != 3 or not _GIT_OID_RE.fullmatch(parts[2]):
+        raise ValueError(f"Git tree entry is malformed: {canonical}")
+    return parts[0], parts[1], parts[2]
+
+
+def _gitlink_commit(repo_root: Path, commit: str, nested_root: str) -> str:
+    entry = _tree_entry(repo_root, commit, nested_root)
+    if entry is None or entry[0] != "160000" or entry[1] != "commit":
+        raise ValueError(
+            f"registered nested repository is not an exact Git gitlink: {nested_root}"
+        )
+    return entry[2]
+
+
+def _optional_direct_gitlink(
+    repo_root: Path,
+    commit: str,
+    nested_root: str,
+) -> str | None:
+    entry = _tree_entry(repo_root, commit, nested_root)
+    if entry is None or entry[0] != "160000" or entry[1] != "commit":
+        return None
+    return entry[2]
+
+
+def _exact_nested_repository(repo_root: Path, nested_root: str) -> Path:
+    nested = repo_root.joinpath(*PurePosixPath(_canonical_path(nested_root)).parts)
+    try:
+        marker = os.lstat(nested / ".git")
+    except OSError as exc:
+        raise ValueError(
+            f"registered nested repository checkout is unavailable: {nested_root}"
+        ) from exc
+    if stat.S_ISLNK(marker.st_mode) or not (
+        stat.S_ISREG(marker.st_mode) or stat.S_ISDIR(marker.st_mode)
+    ):
+        raise ValueError(
+            f"registered nested repository metadata is unsafe: {nested_root}"
+        )
+    exact = _repository_root(nested)
+    if exact != nested:
+        raise ValueError(
+            f"registered nested repository top-level is inexact: {nested_root}"
+        )
+    return exact
+
+
+def _require_ancestor(repo_root: Path, baseline: str, commit: str) -> None:
+    result = subprocess.run(
+        [
+            "git",
+            "--literal-pathspecs",
+            "merge-base",
+            "--is-ancestor",
+            baseline,
+            commit,
+        ],
+        cwd=repo_root,
+        env=_sanitized_git_environment(),
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise ValueError(
+            "nested implementation commit does not descend from its gitlink"
+        )
+
+
 def _nul_paths(value: bytes) -> tuple[str, ...]:
     paths: list[str] = []
     for raw in value.split(b"\x00"):
@@ -398,6 +539,7 @@ def _workspace_changed_paths(repo_root: Path, baseline: str) -> tuple[str, ...]:
                 "--no-textconv",
                 "--name-only",
                 "--no-renames",
+                "--ignore-submodules=none",
                 "-z",
                 baseline,
                 "--",
@@ -429,6 +571,7 @@ def _commit_changed_paths(
                         "--no-textconv",
                         "--name-only",
                         "--no-renames",
+                        "--ignore-submodules=none",
                         "-z",
                         baseline,
                         implementation_commit,
@@ -455,6 +598,7 @@ def _commit_diff(
             "--binary",
             "--full-index",
             "--no-renames",
+            "--ignore-submodules=none",
             baseline,
             implementation_commit,
             "--",
@@ -463,13 +607,228 @@ def _commit_diff(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class _NestedWorkspaceState:
+    root: str
+    repo_root: Path
+    baseline_commit: str
+    head_commit: str
+    changed_paths: tuple[str, ...]
+
+    @property
+    def global_changed_paths(self) -> tuple[str, ...]:
+        return tuple(f"{self.root}/{path}" for path in self.changed_paths)
+
+
+@dataclass(frozen=True, slots=True)
+class _WorkspaceEffectState:
+    changed_paths: tuple[str, ...]
+    outer_changed_paths: tuple[str, ...]
+    nested: tuple[_NestedWorkspaceState, ...]
+
+
+def _direct_gitlinks(
+    repo_root: Path,
+    baseline: str,
+    allowed_nested_repository_roots: Sequence[str],
+) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for nested_root in allowed_nested_repository_roots:
+        commit = _optional_direct_gitlink(repo_root, baseline, nested_root)
+        if commit is not None:
+            result[nested_root] = commit
+    return result
+
+
+def _nested_root_for_path(
+    path: str,
+    direct_gitlinks: Mapping[str, str],
+) -> str | None:
+    matches = [
+        root
+        for root in direct_gitlinks
+        if _path_under_root(path, root) not in (None, "")
+    ]
+    return max(matches, key=len) if matches else None
+
+
+def _reject_deeper_gitlink_changes(
+    repo_root: Path,
+    baseline: str,
+    head: str,
+    paths: Sequence[str],
+) -> None:
+    for path in paths:
+        before = _tree_entry(repo_root, baseline, path)
+        after = _tree_entry(repo_root, head, path)
+        if any(
+            entry is not None and (entry[0] == "160000" or entry[1] == "commit")
+            for entry in (before, after)
+        ):
+            raise ValueError(
+                f"reviewed effect crosses a deeper nested Git repository: {path}"
+            )
+
+
+def _workspace_effect_state(
+    repo_root: Path,
+    baseline: str,
+    *,
+    allowed_nested_repository_roots: Sequence[str],
+    declared_paths: Sequence[str] = (),
+    expected_nested_roots: Sequence[str] = (),
+    allowed_outer_head_commit: str = "",
+) -> _WorkspaceEffectState:
+    """Flatten direct outer changes and registered child changes into global paths."""
+
+    allowed = _canonical_nested_repository_roots(allowed_nested_repository_roots)
+    expected_roots = tuple(
+        sorted(_canonical_path(root) for root in expected_nested_roots)
+    )
+    if len(expected_roots) != len(set(expected_roots)):
+        raise ValueError("bound nested repository roots must be unique")
+    if not set(expected_roots).issubset(allowed):
+        raise ValueError("bound nested repository root is not operator-registered")
+    direct_gitlinks = _direct_gitlinks(repo_root, baseline, allowed)
+    for nested_root in expected_roots:
+        if nested_root not in direct_gitlinks:
+            raise ValueError(
+                f"bound nested repository is not a direct baseline gitlink: {nested_root}"
+            )
+
+    outer_changed = _workspace_changed_paths(repo_root, baseline)
+    used_roots = set(expected_roots)
+    used_roots.update(path for path in outer_changed if path in direct_gitlinks)
+    for raw_path in declared_paths:
+        path = _canonical_path(raw_path)
+        nested_root = _nested_root_for_path(path, direct_gitlinks)
+        if nested_root is not None:
+            used_roots.add(nested_root)
+
+    nested_states: list[_NestedWorkspaceState] = []
+    expected_outer_head = _text(allowed_outer_head_commit)
+    for nested_root in sorted(used_roots):
+        baseline_gitlink = direct_gitlinks[nested_root]
+        expected_head = (
+            _gitlink_commit(repo_root, expected_outer_head, nested_root)
+            if expected_outer_head
+            else baseline_gitlink
+        )
+        child_root = _exact_nested_repository(repo_root, nested_root)
+        if _resolve_commit(child_root, baseline_gitlink) != baseline_gitlink:
+            raise ValueError(
+                f"baseline nested repository commit is unavailable: {nested_root}"
+            )
+        child_head = _resolve_commit(child_root, "HEAD")
+        if child_head != expected_head:
+            raise ValueError(
+                f"nested repository HEAD does not match its outer gitlink: {nested_root}"
+            )
+        changed = _workspace_changed_paths(child_root, baseline_gitlink)
+        _reject_deeper_gitlink_changes(
+            child_root,
+            baseline_gitlink,
+            child_head,
+            changed,
+        )
+        nested_states.append(
+            _NestedWorkspaceState(
+                root=nested_root,
+                repo_root=child_root,
+                baseline_commit=baseline_gitlink,
+                head_commit=child_head,
+                changed_paths=changed,
+            )
+        )
+
+    for path in outer_changed:
+        for nested_root in used_roots:
+            inner = _path_under_root(path, nested_root)
+            if inner not in (None, ""):
+                raise ValueError(
+                    f"outer Git exposed an inexact nested repository path: {path}"
+                )
+    outer_direct = tuple(sorted(set(outer_changed) - used_roots))
+    global_paths = tuple(
+        sorted(
+            {
+                *outer_direct,
+                *(
+                    path
+                    for state in nested_states
+                    for path in state.global_changed_paths
+                ),
+            }
+        )
+    )
+    return _WorkspaceEffectState(
+        changed_paths=global_paths,
+        outer_changed_paths=outer_direct,
+        nested=tuple(nested_states),
+    )
+
+
+def _bound_nested_effect_for_path(
+    binding: ProductionReviewedEffectBinding,
+    path: str,
+) -> ProductionNestedRepositoryEffect | None:
+    matches = [
+        effect
+        for effect in binding.nested_repository_effects
+        if _path_under_root(path, effect.root) not in (None, "")
+    ]
+    if len(matches) > 1:
+        raise ValueError(f"reviewed effect path has ambiguous nested binding: {path}")
+    return matches[0] if matches else None
+
+
+def _global_baseline_blob(
+    binding: ProductionReviewedEffectBinding,
+    *,
+    repo_root: Path,
+    path: str,
+    allowed_nested_repository_roots: Sequence[str],
+) -> tuple[str, str, bytes] | None:
+    nested = _bound_nested_effect_for_path(binding, path)
+    if nested is None:
+        return _tree_blob(repo_root, binding.baseline_commit, path)
+    allowed = _canonical_nested_repository_roots(allowed_nested_repository_roots)
+    if nested.root not in allowed:
+        raise ValueError("reviewed nested effect root is not operator-registered")
+    if (
+        _gitlink_commit(repo_root, binding.baseline_commit, nested.root)
+        != nested.baseline_gitlink_commit
+    ):
+        raise ValueError("reviewed nested effect baseline gitlink changed")
+    child_root = _exact_nested_repository(repo_root, nested.root)
+    inner = _path_under_root(path, nested.root) or ""
+    return _tree_blob(child_root, nested.baseline_gitlink_commit, inner)
+
+
+def _outer_effect_paths(binding: ProductionReviewedEffectBinding) -> tuple[str, ...]:
+    nested_paths = {
+        path
+        for nested_effect in binding.nested_repository_effects
+        for path in nested_effect.changed_paths
+    }
+    return tuple(
+        sorted(
+            {
+                *(set(binding.changed_paths) - nested_paths),
+                *(effect.root for effect in binding.nested_repository_effects),
+            }
+        )
+    )
+
+
 def _patch_index_effect_failures(
     binding: ProductionReviewedEffectBinding,
     *,
     repo_root: Path,
     patch: str,
+    allowed_nested_repository_roots: Sequence[str] = (),
 ) -> list[str]:
-    """Apply exact reviewed patch to an isolated baseline index and compare blobs."""
+    """Apply a patch to a synthetic flat baseline index and compare exact blobs."""
 
     failures: list[str] = []
     raw_objects = (
@@ -506,12 +865,66 @@ def _patch_index_effect_failures(
                 check=False,
             )
             if result.returncode != 0:
-                detail = (result.stderr or result.stdout).decode("utf-8", errors="replace")
-                raise ValueError("isolated reviewed patch reconstruction failed: " + detail[-500:])
+                detail = (result.stderr or result.stdout).decode(
+                    "utf-8", errors="replace"
+                )
+                raise ValueError(
+                    "isolated reviewed patch reconstruction failed: " + detail[-500:]
+                )
             return bytes(result.stdout)
 
         try:
-            run(["read-tree", binding.baseline_commit])
+            run(["read-tree", "--empty"])
+            for effect in binding.path_effects:
+                before = _global_baseline_blob(
+                    binding,
+                    repo_root=repo_root,
+                    path=effect.path,
+                    allowed_nested_repository_roots=(allowed_nested_repository_roots),
+                )
+                if before is None:
+                    if (
+                        effect.status != "added"
+                        or effect.baseline_mode
+                        or effect.baseline_blob_oid
+                    ):
+                        failures.append(
+                            f"reviewed_effect_grok_patch_baseline_mismatch:{effect.path}"
+                        )
+                    continue
+                mode, oid, content = before
+                if (
+                    effect.status == "added"
+                    or mode != effect.baseline_mode
+                    or oid != effect.baseline_blob_oid
+                ):
+                    failures.append(
+                        f"reviewed_effect_grok_patch_baseline_mismatch:{effect.path}"
+                    )
+                    continue
+                written_oid = (
+                    run(["hash-object", "-w", "--stdin"], input_bytes=content)
+                    .decode("ascii", errors="strict")
+                    .strip()
+                )
+                if written_oid != oid:
+                    failures.append(
+                        f"reviewed_effect_grok_patch_baseline_mismatch:{effect.path}"
+                    )
+                    continue
+                run(
+                    [
+                        "update-index",
+                        "--add",
+                        "--cacheinfo",
+                        f"{mode},{oid},{effect.path}",
+                    ]
+                )
+            if failures:
+                return failures
+            synthetic_baseline = (
+                run(["write-tree"]).decode("ascii", errors="strict").strip()
+            )
             run(
                 ["apply", "--cached", "--whitespace=nowarn", "-"],
                 input_bytes=patch.encode("utf-8"),
@@ -526,7 +939,7 @@ def _patch_index_effect_failures(
                         "--name-only",
                         "--no-renames",
                         "-z",
-                        binding.baseline_commit,
+                        synthetic_baseline,
                         "--",
                     ]
                 )
@@ -539,10 +952,14 @@ def _patch_index_effect_failures(
                 records = [record for record in output.split(b"\x00") if record]
                 if effect.status == "deleted":
                     if records:
-                        failures.append(f"reviewed_effect_grok_patch_blob_mismatch:{effect.path}")
+                        failures.append(
+                            f"reviewed_effect_grok_patch_blob_mismatch:{effect.path}"
+                        )
                     continue
                 if len(records) != 1 or b"\t" not in records[0]:
-                    failures.append(f"reviewed_effect_grok_patch_blob_mismatch:{effect.path}")
+                    failures.append(
+                        f"reviewed_effect_grok_patch_blob_mismatch:{effect.path}"
+                    )
                     continue
                 header, raw_path = records[0].split(b"\t", 1)
                 parts = header.decode("ascii", errors="strict").split()
@@ -551,7 +968,9 @@ def _patch_index_effect_failures(
                     or len(parts) != 3
                     or parts[2] != "0"
                 ):
-                    failures.append(f"reviewed_effect_grok_patch_blob_mismatch:{effect.path}")
+                    failures.append(
+                        f"reviewed_effect_grok_patch_blob_mismatch:{effect.path}"
+                    )
                     continue
                 mode, oid, _stage = parts
                 content = run(["cat-file", "blob", oid])
@@ -559,9 +978,12 @@ def _patch_index_effect_failures(
                     mode != effect.applied_git_mode
                     or oid != effect.applied_blob_oid
                     or len(content) != effect.applied_bytes
-                    or "sha256:" + hashlib.sha256(content).hexdigest() != effect.applied_sha256
+                    or "sha256:" + hashlib.sha256(content).hexdigest()
+                    != effect.applied_sha256
                 ):
-                    failures.append(f"reviewed_effect_grok_patch_blob_mismatch:{effect.path}")
+                    failures.append(
+                        f"reviewed_effect_grok_patch_blob_mismatch:{effect.path}"
+                    )
         except (OSError, TypeError, UnicodeError, ValueError):
             failures.append("reviewed_effect_grok_patch_reconstruction_failed")
     return failures
@@ -616,7 +1038,9 @@ def _workspace_blob(repo_root: Path, path: str) -> tuple[str, int, str, bytes] |
             )
             descriptors.append(parent_descriptor)
             if any(name.casefold() == ".git" for name in os.listdir(parent_descriptor)):
-                raise ValueError(f"reviewed effect crosses a nested Git repository: {path}")
+                raise ValueError(
+                    f"reviewed effect crosses a nested Git repository: {path}"
+                )
         try:
             descriptor = os.open(
                 parts[-1],
@@ -636,7 +1060,14 @@ def _workspace_blob(repo_root: Path, path: str) -> tuple[str, int, str, bytes] |
                 break
             chunks.append(chunk)
         after = os.fstat(descriptor)
-        stable_fields = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns")
+        stable_fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
         if any(getattr(before, key) != getattr(after, key) for key in stable_fields):
             raise ValueError(f"reviewed effect target changed during read: {path}")
         content = b"".join(chunks)
@@ -714,9 +1145,30 @@ class ProductionPathEffect:
         )
 
 
-def _path_effect(repo_root: Path, baseline: str, path: str) -> ProductionPathEffect:
-    before = _tree_blob(repo_root, baseline, path)
-    after = _workspace_blob(repo_root, path)
+def _path_effect(
+    repo_root: Path,
+    baseline: str,
+    path: str,
+    *,
+    nested: Sequence[_NestedWorkspaceState] = (),
+) -> ProductionPathEffect:
+    effect_root = repo_root
+    effect_baseline = baseline
+    effect_path = path
+    matches = [
+        state
+        for state in nested
+        if _path_under_root(path, state.root) not in (None, "")
+    ]
+    if len(matches) > 1:
+        raise ValueError(f"reviewed effect path has ambiguous nested ownership: {path}")
+    if matches:
+        state = matches[0]
+        effect_root = state.repo_root
+        effect_baseline = state.baseline_commit
+        effect_path = _path_under_root(path, state.root) or ""
+    before = _tree_blob(effect_root, effect_baseline, effect_path)
+    after = _workspace_blob(effect_root, effect_path)
     if before is None and after is None:
         raise ValueError(f"changed effect path is absent before and after: {path}")
     if before is None:
@@ -741,9 +1193,101 @@ def _path_effect(repo_root: Path, baseline: str, path: str) -> ProductionPathEff
         applied_git_mode=applied_mode,
         applied_filesystem_mode=filesystem_mode,
         applied_blob_oid=applied_oid,
-        applied_sha256=("sha256:" + hashlib.sha256(content).hexdigest()) if after else "",
+        applied_sha256=(
+            ("sha256:" + hashlib.sha256(content).hexdigest()) if after else ""
+        ),
         applied_bytes=len(content),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class ProductionNestedRepositoryEffect:
+    """Gitlink and child-commit facts for one used direct nested repository."""
+
+    root: str
+    changed_paths: tuple[str, ...]
+    baseline_gitlink_commit: str
+    baseline_tree_id: str
+    implementation_gitlink_commit: str = ""
+    implementation_tree_id: str = ""
+    implementation_diff_sha256: str = ""
+    implementation_diff_bytes: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "root": self.root,
+            "changed_paths": list(self.changed_paths),
+            "baseline_gitlink_commit": self.baseline_gitlink_commit,
+            "baseline_tree_id": self.baseline_tree_id,
+            "implementation_gitlink_commit": self.implementation_gitlink_commit,
+            "implementation_tree_id": self.implementation_tree_id,
+            "implementation_diff_sha256": self.implementation_diff_sha256,
+            "implementation_diff_bytes": self.implementation_diff_bytes,
+        }
+
+    @classmethod
+    def from_dict(
+        cls,
+        value: Mapping[str, Any],
+    ) -> ProductionNestedRepositoryEffect:
+        payload = _mapping(value)
+        if set(payload) != _NESTED_REPOSITORY_EFFECT_KEYS:
+            raise ValueError("nested reviewed effect shape is invalid")
+        root = _canonical_path(payload.get("root"))
+        changed = tuple(
+            _canonical_path(path) for path in payload.get("changed_paths", ())
+        )
+        if (
+            not changed
+            or changed != tuple(sorted(set(changed)))
+            or any(_path_under_root(path, root) in (None, "") for path in changed)
+        ):
+            raise ValueError("nested reviewed effect path set is invalid")
+        baseline_commit = _text(payload.get("baseline_gitlink_commit"))
+        baseline_tree_id = _text(payload.get("baseline_tree_id"))
+        implementation_commit = _text(payload.get("implementation_gitlink_commit"))
+        implementation_tree_id = _text(payload.get("implementation_tree_id"))
+        implementation_diff = _text(payload.get("implementation_diff_sha256"))
+        implementation_diff_bytes = payload.get("implementation_diff_bytes")
+        if (
+            not _GIT_OID_RE.fullmatch(baseline_commit)
+            or not baseline_tree_id.startswith("git-tree:")
+            or not _GIT_OID_RE.fullmatch(baseline_tree_id.removeprefix("git-tree:"))
+            or isinstance(implementation_diff_bytes, bool)
+            or not isinstance(implementation_diff_bytes, int)
+            or implementation_diff_bytes < 0
+        ):
+            raise ValueError("nested reviewed effect Git facts are invalid")
+        finalized = (
+            implementation_commit,
+            implementation_tree_id,
+            implementation_diff,
+        )
+        if any(finalized) != all(finalized):
+            raise ValueError("nested reviewed effect finalization is incomplete")
+        if all(finalized):
+            if (
+                not _GIT_OID_RE.fullmatch(implementation_commit)
+                or not implementation_tree_id.startswith("git-tree:")
+                or not _GIT_OID_RE.fullmatch(
+                    implementation_tree_id.removeprefix("git-tree:")
+                )
+                or not implementation_diff.startswith("sha256:")
+                or implementation_diff_bytes < 1
+            ):
+                raise ValueError("nested reviewed effect final Git facts are invalid")
+        elif implementation_diff_bytes != 0:
+            raise ValueError("nested reviewed effect final diff is incomplete")
+        return cls(
+            root=root,
+            changed_paths=changed,
+            baseline_gitlink_commit=baseline_commit,
+            baseline_tree_id=baseline_tree_id,
+            implementation_gitlink_commit=implementation_commit,
+            implementation_tree_id=implementation_tree_id,
+            implementation_diff_sha256=implementation_diff,
+            implementation_diff_bytes=implementation_diff_bytes,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -776,15 +1320,25 @@ class ProductionReviewedEffectBinding:
     writer_lease_id: str
     changed_paths: tuple[str, ...]
     path_effects: tuple[ProductionPathEffect, ...]
+    nested_repository_effects: tuple[ProductionNestedRepositoryEffect, ...] = ()
     implementation_commit: str = ""
     implementation_tree_id: str = ""
     implementation_diff_sha256: str = ""
     implementation_diff_bytes: int = 0
 
     def unsigned_dict(self) -> dict[str, Any]:
-        return {
-            "schema": PRODUCTION_REVIEWED_EFFECT_BINDING_SCHEMA,
-            "interface": PRODUCTION_REVIEWED_EFFECT_BINDING_INTERFACE,
+        nested = bool(self.nested_repository_effects)
+        payload = {
+            "schema": (
+                PRODUCTION_REVIEWED_EFFECT_BINDING_SCHEMA_V2
+                if nested
+                else PRODUCTION_REVIEWED_EFFECT_BINDING_SCHEMA
+            ),
+            "interface": (
+                PRODUCTION_REVIEWED_EFFECT_BINDING_INTERFACE_V2
+                if nested
+                else PRODUCTION_REVIEWED_EFFECT_BINDING_INTERFACE
+            ),
             "task_identity": dict(self.task_identity),
             "task_contract_cid": self.task_contract_cid,
             "packet_id": self.packet_id,
@@ -819,6 +1373,11 @@ class ProductionReviewedEffectBinding:
             "completion_authoritative": False,
             "proof_authoritative": False,
         }
+        if nested:
+            payload["nested_repository_effects"] = [
+                effect.to_dict() for effect in self.nested_repository_effects
+            ]
+        return payload
 
     def to_dict(self) -> dict[str, Any]:
         return {**self.unsigned_dict(), "binding_id": self.binding_id}
@@ -826,7 +1385,9 @@ class ProductionReviewedEffectBinding:
     @classmethod
     def create(cls, **values: Any) -> ProductionReviewedEffectBinding:
         candidate = cls(binding_id="", **values)
-        return replace(candidate, binding_id=content_identity(candidate.unsigned_dict()))
+        return replace(
+            candidate, binding_id=content_identity(candidate.unsigned_dict())
+        )
 
     @classmethod
     def from_dict(
@@ -834,19 +1395,33 @@ class ProductionReviewedEffectBinding:
         value: Mapping[str, Any],
     ) -> ProductionReviewedEffectBinding:
         payload = _mapping(value)
-        if set(payload) != _BINDING_KEYS:
+        schema = payload.get("schema")
+        interface = payload.get("interface")
+        is_v1 = (
+            schema == PRODUCTION_REVIEWED_EFFECT_BINDING_SCHEMA
+            and interface == PRODUCTION_REVIEWED_EFFECT_BINDING_INTERFACE
+        )
+        is_v2 = (
+            schema == PRODUCTION_REVIEWED_EFFECT_BINDING_SCHEMA_V2
+            and interface == PRODUCTION_REVIEWED_EFFECT_BINDING_INTERFACE_V2
+        )
+        expected_keys = _BINDING_KEYS if is_v1 else _BINDING_V2_KEYS
+        if not (is_v1 or is_v2) or set(payload) != expected_keys:
             raise ValueError("production reviewed effect binding shape is invalid")
-        if payload.get("schema") != PRODUCTION_REVIEWED_EFFECT_BINDING_SCHEMA:
-            raise ValueError("production reviewed effect binding schema is invalid")
-        if payload.get("interface") != PRODUCTION_REVIEWED_EFFECT_BINDING_INTERFACE:
-            raise ValueError("production reviewed effect binding interface is invalid")
         if payload.get("completion_authoritative") is not False:
             raise ValueError("reviewed effect cannot claim completion authority")
         if payload.get("proof_authoritative") is not False:
             raise ValueError("reviewed effect cannot claim proof authority")
-        changed = tuple(_canonical_path(path) for path in payload.get("changed_paths", ()))
+        changed = tuple(
+            _canonical_path(path) for path in payload.get("changed_paths", ())
+        )
         effects = tuple(
-            ProductionPathEffect.from_dict(item) for item in payload.get("path_effects", ())
+            ProductionPathEffect.from_dict(item)
+            for item in payload.get("path_effects", ())
+        )
+        nested_effects = tuple(
+            ProductionNestedRepositoryEffect.from_dict(item)
+            for item in payload.get("nested_repository_effects", ())
         )
         if (
             not changed
@@ -854,6 +1429,27 @@ class ProductionReviewedEffectBinding:
             or tuple(effect.path for effect in effects) != changed
         ):
             raise ValueError("production reviewed effect path set is invalid")
+        if is_v2 and not nested_effects:
+            raise ValueError("version 2 reviewed effect requires nested provenance")
+        if is_v1 and nested_effects:
+            raise ValueError(
+                "version 1 reviewed effect cannot contain nested provenance"
+            )
+        if tuple(effect.root for effect in nested_effects) != tuple(
+            sorted({effect.root for effect in nested_effects})
+        ):
+            raise ValueError("nested reviewed effect roots are invalid")
+        nested_paths = tuple(
+            sorted(
+                path
+                for nested_effect in nested_effects
+                for path in nested_effect.changed_paths
+            )
+        )
+        if len(nested_paths) != len(set(nested_paths)) or not set(
+            nested_paths
+        ).issubset(changed):
+            raise ValueError("nested reviewed effect paths are invalid")
         candidate = cls(
             binding_id=_text(payload.get("binding_id")),
             task_identity=_task_identity_payload(payload.get("task_identity")),
@@ -874,15 +1470,24 @@ class ProductionReviewedEffectBinding:
             provider_receipt=_mapping(payload.get("provider_receipt")),
             review_chain_digest=_text(payload.get("review_chain_digest")),
             selected_proposal_digest=_text(payload.get("selected_proposal_digest")),
-            selected_proposal_payload_cid=_text(payload.get("selected_proposal_payload_cid")),
-            selected_proposal_payload=_mapping(payload.get("selected_proposal_payload")),
-            implementation_proposal_digest=_text(payload.get("implementation_proposal_digest")),
+            selected_proposal_payload_cid=_text(
+                payload.get("selected_proposal_payload_cid")
+            ),
+            selected_proposal_payload=_mapping(
+                payload.get("selected_proposal_payload")
+            ),
+            implementation_proposal_digest=_text(
+                payload.get("implementation_proposal_digest")
+            ),
             review_proposal_digest=_text(payload.get("review_proposal_digest")),
-            review_proposal_payload_cid=_text(payload.get("review_proposal_payload_cid")),
+            review_proposal_payload_cid=_text(
+                payload.get("review_proposal_payload_cid")
+            ),
             review_proposal_payload=_mapping(payload.get("review_proposal_payload")),
             writer_lease_id=_text(payload.get("writer_lease_id")),
             changed_paths=changed,
             path_effects=effects,
+            nested_repository_effects=nested_effects,
             implementation_commit=_text(payload.get("implementation_commit")),
             implementation_tree_id=_text(payload.get("implementation_tree_id")),
             implementation_diff_sha256=_text(payload.get("implementation_diff_sha256")),
@@ -929,6 +1534,17 @@ class ProductionReviewedEffectBinding:
             raise ValueError("production reviewed effect finalization is incomplete")
         if all(finalized_fields) != (candidate.implementation_diff_bytes > 0):
             raise ValueError("production reviewed effect final diff is incomplete")
+        nested_finalized = tuple(
+            bool(effect.implementation_gitlink_commit)
+            for effect in candidate.nested_repository_effects
+        )
+        if nested_finalized and (
+            len(set(nested_finalized)) != 1
+            or nested_finalized[0] != all(finalized_fields)
+        ):
+            raise ValueError(
+                "nested reviewed effect finalization state is inconsistent"
+            )
         if candidate.binding_id != content_identity(candidate.unsigned_dict()):
             raise ValueError("production reviewed effect binding CID is invalid")
         return candidate
@@ -959,7 +1575,9 @@ class ProductionReviewedEffectVerification:
         }
 
 
-def _packet_payload(packet: ProductionContractPacket | Mapping[str, Any]) -> dict[str, Any]:
+def _packet_payload(
+    packet: ProductionContractPacket | Mapping[str, Any],
+) -> dict[str, Any]:
     if isinstance(packet, ProductionContractPacket):
         return _mapping(packet.payload)
     payload = _mapping(packet)
@@ -1012,7 +1630,9 @@ def _context_binding_failures(
         failures.append("reviewed_effect_context_scope_invalid")
     else:
         try:
-            canonical_effects = tuple(sorted(_canonical_path(path) for path in effect_paths))
+            canonical_effects = tuple(
+                sorted(_canonical_path(path) for path in effect_paths)
+            )
         except ValueError:
             canonical_effects = ()
             failures.append("reviewed_effect_context_scope_invalid")
@@ -1172,12 +1792,17 @@ def _provider_receipt_failures(
         ):
             failures.append(f"reviewed_effect_provider_execution_invalid:{index}")
         request_ids.append(_text(attempt.get("execution_request_id")))
-        failures.extend(_execution_metadata_failures(proposal_payload, attempt, role=role))
+        failures.extend(
+            _execution_metadata_failures(proposal_payload, attempt, role=role)
+        )
     if not all(request_ids) or len(set(request_ids)) != 2:
         failures.append("reviewed_effect_provider_request_ids_invalid")
     if receipt.get("selected_proposal_digest") != binding.selected_proposal_digest:
         failures.append("reviewed_effect_selected_proposal_digest_mismatch")
-    if receipt.get("implementation_proposal_digest") != binding.implementation_proposal_digest:
+    if (
+        receipt.get("implementation_proposal_digest")
+        != binding.implementation_proposal_digest
+    ):
         failures.append("reviewed_effect_implementation_proposal_digest_mismatch")
     if receipt.get("review_proposal_digest") != binding.review_proposal_digest:
         failures.append("reviewed_effect_review_proposal_digest_mismatch")
@@ -1192,6 +1817,7 @@ def _proposal_payload_failures(
     binding: ProductionReviewedEffectBinding,
     *,
     repo_root: Path | None = None,
+    allowed_nested_repository_roots: Sequence[str] = (),
 ) -> list[str]:
     failures: list[str] = []
     if binding.selected_proposal_payload_cid != content_identity(
@@ -1239,6 +1865,7 @@ def _proposal_payload_failures(
                     binding,
                     repo_root=repo_root,
                     patch=patch_value,
+                    allowed_nested_repository_roots=(allowed_nested_repository_roots),
                 )
             )
         return failures
@@ -1271,7 +1898,9 @@ def _proposal_payload_failures(
     scope = dict(scope) if isinstance(scope, Mapping) else {}
     absences = scope.get("absence_proofs")
     absences = list(absences) if isinstance(absences, list) else []
-    absent_paths = {_text(record.get("path")) for record in absences if isinstance(record, Mapping)}
+    absent_paths = {
+        _text(record.get("path")) for record in absences if isinstance(record, Mapping)
+    }
     for effect in binding.path_effects:
         content = file_content.get(effect.path)
         if effect.status == "deleted" or content is None:
@@ -1297,6 +1926,7 @@ def _packet_contract_failures(
     task: Any,
     task_identity: Any,
     repo_root: Path | None = None,
+    allowed_nested_repository_roots: Sequence[str] = (),
 ) -> list[str]:
     failures: list[str] = []
     try:
@@ -1317,7 +1947,11 @@ def _packet_contract_failures(
         failures.append("reviewed_effect_snapshot_baseline_mismatch")
     goal = payload.get("goal") if isinstance(payload.get("goal"), Mapping) else {}
     scope = payload.get("scope") if isinstance(payload.get("scope"), Mapping) else {}
-    acceptance = payload.get("acceptance") if isinstance(payload.get("acceptance"), Mapping) else {}
+    acceptance = (
+        payload.get("acceptance")
+        if isinstance(payload.get("acceptance"), Mapping)
+        else {}
+    )
     if goal.get("task_id") != contract["task_id"]:
         failures.append("reviewed_effect_packet_task_mismatch")
     for key in ("title", "priority", "track"):
@@ -1333,7 +1967,13 @@ def _packet_contract_failures(
         failures.append("reviewed_effect_changed_paths_outside_task_scope")
     failures.extend(_context_binding_failures(binding))
     failures.extend(_provider_receipt_failures(binding))
-    failures.extend(_proposal_payload_failures(binding, repo_root=repo_root))
+    failures.extend(
+        _proposal_payload_failures(
+            binding,
+            repo_root=repo_root,
+            allowed_nested_repository_roots=allowed_nested_repository_roots,
+        )
+    )
     return failures
 
 
@@ -1345,6 +1985,7 @@ def capture_production_reviewed_effect(
     packet: ProductionContractPacket | Mapping[str, Any],
     route_result: Any,
     baseline_ref: str,
+    allowed_nested_repository_roots: Sequence[str] = (),
 ) -> ProductionReviewedEffectBinding:
     """Capture the exact supervisor-applied effect immediately after writing."""
 
@@ -1387,15 +2028,48 @@ def capture_production_reviewed_effect(
     declared_paths = tuple(sorted(_canonical_path(path) for path in declared))
     if not declared_paths or len(declared_paths) != len(set(declared_paths)):
         raise ValueError("reviewed proposal paths must be explicit and unique")
-    changed_paths = _workspace_changed_paths(root, baseline)
+    nested_roots = _canonical_nested_repository_roots(allowed_nested_repository_roots)
+    workspace_state = _workspace_effect_state(
+        root,
+        baseline,
+        allowed_nested_repository_roots=nested_roots,
+        declared_paths=declared_paths,
+    )
+    changed_paths = workspace_state.changed_paths
     if changed_paths != declared_paths:
         raise ValueError("reviewed proposal paths do not match the applied Git effect")
-    effects = tuple(_path_effect(root, baseline, path) for path in changed_paths)
+    effects = tuple(
+        _path_effect(
+            root,
+            baseline,
+            path,
+            nested=workspace_state.nested,
+        )
+        for path in changed_paths
+    )
+    nested_effects = tuple(
+        ProductionNestedRepositoryEffect(
+            root=state.root,
+            changed_paths=state.global_changed_paths,
+            baseline_gitlink_commit=state.baseline_commit,
+            baseline_tree_id=_tree_id(state.repo_root, state.baseline_commit),
+        )
+        for state in workspace_state.nested
+        if state.changed_paths
+    )
+    if len(nested_effects) != len(workspace_state.nested):
+        raise ValueError("declared nested repository has no exact child effect")
     packet_mapping = _mapping(packet)
     packet_payload = _packet_payload(packet)
-    packet_id = _text(getattr(packet, "packet_id", "") or packet_mapping.get("packet_id"))
-    snapshot_id = _text(getattr(packet, "snapshot_id", "") or packet_mapping.get("snapshot_id"))
-    packet_task_id = _text(getattr(packet, "task_id", "") or packet_mapping.get("task_id"))
+    packet_id = _text(
+        getattr(packet, "packet_id", "") or packet_mapping.get("packet_id")
+    )
+    snapshot_id = _text(
+        getattr(packet, "snapshot_id", "") or packet_mapping.get("snapshot_id")
+    )
+    packet_task_id = _text(
+        getattr(packet, "task_id", "") or packet_mapping.get("task_id")
+    )
     route_packet = getattr(route_result, "packet", None)
     route_packet_cid = _text(getattr(route_packet, "packet_cid", ""))
     if (
@@ -1411,16 +2085,22 @@ def capture_production_reviewed_effect(
     receipt = route_result.provider_receipt
     receipt_payload = _mapping(receipt)
     attempts = tuple(getattr(route_result, "attempts", ()) or ())
-    policy_ids = {_text(getattr(attempt, "execution_policy_id", "")) for attempt in attempts}
+    policy_ids = {
+        _text(getattr(attempt, "execution_policy_id", "")) for attempt in attempts
+    }
     if len(attempts) != 2 or len(policy_ids) != 1 or not next(iter(policy_ids), ""):
-        raise ValueError("reviewed effect requires one bound production provider policy")
+        raise ValueError(
+            "reviewed effect requires one bound production provider policy"
+        )
     provider_policy_id = next(iter(policy_ids))
     context = packet_payload.get("context_slice")
     context = dict(context) if isinstance(context, Mapping) else {}
     task_binding = context.get("task_binding")
     task_binding = dict(task_binding) if isinstance(task_binding, Mapping) else {}
     repository_binding = context.get("repository_binding")
-    repository_binding = dict(repository_binding) if isinstance(repository_binding, Mapping) else {}
+    repository_binding = (
+        dict(repository_binding) if isinstance(repository_binding, Mapping) else {}
+    )
     context_scope = context.get("scope")
     context_scope = dict(context_scope) if isinstance(context_scope, Mapping) else {}
     selected_payload = _mapping(selected.payload)
@@ -1456,12 +2136,14 @@ def capture_production_reviewed_effect(
         writer_lease_id=writer_lease_id,
         changed_paths=changed_paths,
         path_effects=effects,
+        nested_repository_effects=nested_effects,
     )
     failures = _packet_contract_failures(
         binding,
         task=task,
         task_identity=task_identity,
         repo_root=root,
+        allowed_nested_repository_roots=nested_roots,
     )
     if failures:
         raise ValueError("reviewed effect task/packet mismatch: " + ",".join(failures))
@@ -1475,6 +2157,7 @@ def verify_production_reviewed_workspace(
     task: Any,
     task_identity: Any,
     allowed_head_commit: str = "",
+    allowed_nested_repository_roots: Sequence[str] = (),
 ) -> ProductionReviewedEffectVerification:
     """Compare post-validation workspace facts with the post-write capture."""
 
@@ -1488,6 +2171,9 @@ def verify_production_reviewed_workspace(
         return ProductionReviewedEffectVerification(False, ("reviewed_effect_invalid",))
     try:
         root = _repository_root(repo_root)
+        nested_roots = _canonical_nested_repository_roots(
+            allowed_nested_repository_roots
+        )
     except ValueError:
         return ProductionReviewedEffectVerification(
             False,
@@ -1501,22 +2187,71 @@ def verify_production_reviewed_workspace(
         task=task,
         task_identity=task_identity,
         repo_root=root,
+        allowed_nested_repository_roots=nested_roots,
     )
     try:
         baseline = _resolve_commit(root, value.baseline_commit)
         head = _resolve_commit(root, "HEAD")
         expected_head = (
-            _resolve_commit(root, allowed_head_commit) if _text(allowed_head_commit) else baseline
+            _resolve_commit(root, allowed_head_commit)
+            if _text(allowed_head_commit)
+            else baseline
         )
         if baseline != value.baseline_commit or head != expected_head:
             failures.append("reviewed_effect_workspace_baseline_mismatch")
         if _tree_id(root, baseline) != value.baseline_tree_id:
             failures.append("reviewed_effect_workspace_baseline_tree_mismatch")
-        changed = _workspace_changed_paths(root, baseline)
+        workspace_state = _workspace_effect_state(
+            root,
+            baseline,
+            allowed_nested_repository_roots=nested_roots,
+            declared_paths=value.changed_paths,
+            expected_nested_roots=tuple(
+                effect.root for effect in value.nested_repository_effects
+            ),
+            allowed_outer_head_commit=expected_head if allowed_head_commit else "",
+        )
+        changed = workspace_state.changed_paths
+        nested_by_root = {state.root: state for state in workspace_state.nested}
+        if tuple(nested_by_root) != tuple(
+            effect.root for effect in value.nested_repository_effects
+        ):
+            failures.append("reviewed_effect_workspace_nested_root_set_changed")
+        for nested_effect in value.nested_repository_effects:
+            state = nested_by_root.get(nested_effect.root)
+            if state is None:
+                continue
+            if (
+                state.baseline_commit != nested_effect.baseline_gitlink_commit
+                or _tree_id(state.repo_root, state.baseline_commit)
+                != nested_effect.baseline_tree_id
+                or state.global_changed_paths != nested_effect.changed_paths
+            ):
+                failures.append(
+                    f"reviewed_effect_workspace_nested_facts_changed:{nested_effect.root}"
+                )
+            if nested_effect.implementation_gitlink_commit and (
+                state.head_commit != nested_effect.implementation_gitlink_commit
+                or _tree_id(state.repo_root, state.head_commit)
+                != nested_effect.implementation_tree_id
+            ):
+                failures.append(
+                    f"reviewed_effect_workspace_nested_head_changed:{nested_effect.root}"
+                )
+        if workspace_state.nested and not value.nested_repository_effects:
+            failures.append("reviewed_effect_workspace_nested_binding_missing")
         if changed != value.changed_paths:
             failures.append("reviewed_effect_workspace_path_set_changed")
         else:
-            observed = tuple(_path_effect(root, baseline, path) for path in changed)
+            observed = tuple(
+                _path_effect(
+                    root,
+                    baseline,
+                    path,
+                    nested=workspace_state.nested,
+                )
+                for path in changed
+            )
             if tuple(effect.to_dict() for effect in observed) != tuple(
                 effect.to_dict() for effect in value.path_effects
             ):
@@ -1540,6 +2275,7 @@ def finalize_production_reviewed_effect(
     task: Any,
     task_identity: Any,
     implementation_commit: str,
+    allowed_nested_repository_roots: Sequence[str] = (),
 ) -> ProductionReviewedEffectBinding:
     """Bind a validated, unchanged capture to its exact commit and tree."""
 
@@ -1549,6 +2285,7 @@ def finalize_production_reviewed_effect(
         else ProductionReviewedEffectBinding.from_dict(binding)
     )
     root = _repository_root(repo_root)
+    nested_roots = _canonical_nested_repository_roots(allowed_nested_repository_roots)
     commit = _resolve_commit(root, implementation_commit)
     workspace = verify_production_reviewed_workspace(
         value,
@@ -1556,20 +2293,87 @@ def finalize_production_reviewed_effect(
         task=task,
         task_identity=task_identity,
         allowed_head_commit=commit,
+        allowed_nested_repository_roots=nested_roots,
     )
     if not workspace.admitted:
         raise ValueError(
-            "post-validation reviewed effect changed: " + ",".join(workspace.reason_codes)
+            "post-validation reviewed effect changed: "
+            + ",".join(workspace.reason_codes)
+        )
+    finalized_nested: list[ProductionNestedRepositoryEffect] = []
+    for nested_effect in value.nested_repository_effects:
+        if nested_effect.root not in nested_roots:
+            raise ValueError("reviewed nested effect root is not operator-registered")
+        baseline_gitlink = _gitlink_commit(
+            root,
+            value.baseline_commit,
+            nested_effect.root,
+        )
+        implementation_gitlink = _gitlink_commit(
+            root,
+            commit,
+            nested_effect.root,
+        )
+        if baseline_gitlink != nested_effect.baseline_gitlink_commit:
+            raise ValueError("reviewed nested baseline gitlink changed")
+        child_root = _exact_nested_repository(root, nested_effect.root)
+        child_head = _resolve_commit(child_root, "HEAD")
+        if child_head != implementation_gitlink:
+            raise ValueError(
+                "reviewed nested HEAD does not match implementation gitlink"
+            )
+        _require_ancestor(child_root, baseline_gitlink, implementation_gitlink)
+        inner_paths = tuple(
+            _path_under_root(path, nested_effect.root) or ""
+            for path in nested_effect.changed_paths
+        )
+        changed = _commit_changed_paths(
+            child_root,
+            baseline_gitlink,
+            implementation_gitlink,
+        )
+        if changed != inner_paths:
+            raise ValueError("reviewed nested commit path set changed")
+        _reject_deeper_gitlink_changes(
+            child_root,
+            baseline_gitlink,
+            implementation_gitlink,
+            changed,
+        )
+        child_diff = _commit_diff(
+            child_root,
+            baseline_gitlink,
+            implementation_gitlink,
+            inner_paths,
+        )
+        if not child_diff:
+            raise ValueError("reviewed nested implementation diff is empty")
+        finalized_nested.append(
+            replace(
+                nested_effect,
+                implementation_gitlink_commit=implementation_gitlink,
+                implementation_tree_id=_tree_id(child_root, implementation_gitlink),
+                implementation_diff_sha256=(
+                    "sha256:" + hashlib.sha256(child_diff).hexdigest()
+                ),
+                implementation_diff_bytes=len(child_diff),
+            )
         )
     finalized = replace(
         value,
         binding_id="",
+        nested_repository_effects=tuple(finalized_nested),
         implementation_commit=commit,
         implementation_tree_id=_tree_id(root, commit),
         implementation_diff_sha256="",
         implementation_diff_bytes=0,
     )
-    diff = _commit_diff(root, value.baseline_commit, commit, value.changed_paths)
+    diff = _commit_diff(
+        root,
+        value.baseline_commit,
+        commit,
+        _outer_effect_paths(finalized),
+    )
     finalized = replace(
         finalized,
         implementation_diff_sha256="sha256:" + hashlib.sha256(diff).hexdigest(),
@@ -1586,6 +2390,7 @@ def finalize_production_reviewed_effect(
         task_identity=task_identity,
         expected_implementation_commit=commit,
         expected_implementation_tree_id=finalized.implementation_tree_id,
+        allowed_nested_repository_roots=nested_roots,
     )
     if not verification.admitted:
         raise ValueError(
@@ -1603,6 +2408,7 @@ def verify_finalized_production_reviewed_effect(
     task_identity: Any,
     expected_implementation_commit: str,
     expected_implementation_tree_id: str,
+    allowed_nested_repository_roots: Sequence[str] = (),
 ) -> ProductionReviewedEffectVerification:
     """Recompute task and Git facts for an immutable reviewed-effect binding."""
 
@@ -1616,6 +2422,9 @@ def verify_finalized_production_reviewed_effect(
         return ProductionReviewedEffectVerification(False, ("reviewed_effect_invalid",))
     try:
         root = _repository_root(repo_root)
+        nested_roots = _canonical_nested_repository_roots(
+            allowed_nested_repository_roots
+        )
     except ValueError:
         return ProductionReviewedEffectVerification(
             False,
@@ -1629,6 +2438,7 @@ def verify_finalized_production_reviewed_effect(
         task=task,
         task_identity=task_identity,
         repo_root=root,
+        allowed_nested_repository_roots=nested_roots,
     )
     try:
         baseline = _resolve_commit(root, value.baseline_commit)
@@ -1660,22 +2470,128 @@ def verify_finalized_production_reviewed_effect(
         )
         if ancestry.returncode != 0:
             failures.append("reviewed_effect_baseline_not_ancestor")
-        changed = _commit_changed_paths(root, baseline, commit)
+        outer_changed = _commit_changed_paths(root, baseline, commit)
+        expected_outer_changed = _outer_effect_paths(value)
+        if outer_changed != expected_outer_changed:
+            failures.append("reviewed_effect_outer_commit_path_set_mismatch")
+
+        nested_by_root = {
+            effect.root: effect for effect in value.nested_repository_effects
+        }
+        global_changed = set(outer_changed) - set(nested_by_root)
+        child_roots: dict[str, Path] = {}
+        for nested_effect in value.nested_repository_effects:
+            if nested_effect.root not in nested_roots:
+                failures.append(
+                    f"reviewed_effect_nested_root_unregistered:{nested_effect.root}"
+                )
+                continue
+            baseline_gitlink = _gitlink_commit(
+                root,
+                baseline,
+                nested_effect.root,
+            )
+            implementation_gitlink = _gitlink_commit(
+                root,
+                commit,
+                nested_effect.root,
+            )
+            child_root = _exact_nested_repository(root, nested_effect.root)
+            child_roots[nested_effect.root] = child_root
+            if (
+                baseline_gitlink != nested_effect.baseline_gitlink_commit
+                or implementation_gitlink != nested_effect.implementation_gitlink_commit
+                or _tree_id(child_root, baseline_gitlink)
+                != nested_effect.baseline_tree_id
+                or _tree_id(child_root, implementation_gitlink)
+                != nested_effect.implementation_tree_id
+            ):
+                failures.append(
+                    f"reviewed_effect_nested_gitlink_mismatch:{nested_effect.root}"
+                )
+            _require_ancestor(child_root, baseline_gitlink, implementation_gitlink)
+            child_changed = _commit_changed_paths(
+                child_root,
+                baseline_gitlink,
+                implementation_gitlink,
+            )
+            expected_inner = tuple(
+                _path_under_root(path, nested_effect.root) or ""
+                for path in nested_effect.changed_paths
+            )
+            if child_changed != expected_inner:
+                failures.append(
+                    f"reviewed_effect_nested_commit_path_set_mismatch:{nested_effect.root}"
+                )
+            _reject_deeper_gitlink_changes(
+                child_root,
+                baseline_gitlink,
+                implementation_gitlink,
+                child_changed,
+            )
+            global_changed.update(
+                f"{nested_effect.root}/{path}" for path in child_changed
+            )
+            child_diff = _commit_diff(
+                child_root,
+                baseline_gitlink,
+                implementation_gitlink,
+                expected_inner,
+            )
+            if (
+                nested_effect.implementation_diff_sha256
+                != "sha256:" + hashlib.sha256(child_diff).hexdigest()
+                or nested_effect.implementation_diff_bytes != len(child_diff)
+                or not child_diff
+            ):
+                failures.append(
+                    f"reviewed_effect_nested_implementation_diff_mismatch:{nested_effect.root}"
+                )
+
+        changed = tuple(sorted(global_changed))
         if changed != value.changed_paths:
             failures.append("reviewed_effect_commit_path_set_mismatch")
         else:
             for effect in value.path_effects:
-                before = _tree_blob(root, baseline, effect.path)
-                after = _tree_blob(root, commit, effect.path)
+                nested_effect = _bound_nested_effect_for_path(value, effect.path)
+                if nested_effect is None:
+                    before = _tree_blob(root, baseline, effect.path)
+                    after = _tree_blob(root, commit, effect.path)
+                else:
+                    child_root = child_roots.get(nested_effect.root)
+                    if child_root is None:
+                        failures.append(
+                            f"reviewed_effect_nested_blob_unavailable:{effect.path}"
+                        )
+                        continue
+                    inner = _path_under_root(effect.path, nested_effect.root) or ""
+                    before = _tree_blob(
+                        child_root,
+                        nested_effect.baseline_gitlink_commit,
+                        inner,
+                    )
+                    after = _tree_blob(
+                        child_root,
+                        nested_effect.implementation_gitlink_commit,
+                        inner,
+                    )
                 if effect.status == "added":
-                    if before is not None or effect.baseline_mode or effect.baseline_blob_oid:
-                        failures.append(f"reviewed_effect_baseline_blob_mismatch:{effect.path}")
+                    if (
+                        before is not None
+                        or effect.baseline_mode
+                        or effect.baseline_blob_oid
+                    ):
+                        failures.append(
+                            f"reviewed_effect_baseline_blob_mismatch:{effect.path}"
+                        )
                 elif (
                     before is None
                     or before[0] != effect.baseline_mode
                     or before[1] != effect.baseline_blob_oid
                 ):
-                    failures.append(f"reviewed_effect_baseline_blob_mismatch:{effect.path}")
+                    failures.append(
+                        f"reviewed_effect_baseline_blob_mismatch:{effect.path}"
+                    )
                 if effect.status == "deleted":
                     if (
                         after is not None
@@ -1685,10 +2601,14 @@ def verify_finalized_production_reviewed_effect(
                         or effect.applied_bytes != 0
                         or effect.applied_filesystem_mode != 0
                     ):
-                        failures.append(f"reviewed_effect_commit_blob_mismatch:{effect.path}")
+                        failures.append(
+                            f"reviewed_effect_commit_blob_mismatch:{effect.path}"
+                        )
                     continue
                 if after is None:
-                    failures.append(f"reviewed_effect_commit_blob_mismatch:{effect.path}")
+                    failures.append(
+                        f"reviewed_effect_commit_blob_mismatch:{effect.path}"
+                    )
                     continue
                 mode, oid, content = after
                 if (
@@ -1698,12 +2618,16 @@ def verify_finalized_production_reviewed_effect(
                     or mode != effect.applied_git_mode
                     or oid != effect.applied_blob_oid
                     or len(content) != effect.applied_bytes
-                    or "sha256:" + hashlib.sha256(content).hexdigest() != effect.applied_sha256
+                    or "sha256:" + hashlib.sha256(content).hexdigest()
+                    != effect.applied_sha256
                 ):
-                    failures.append(f"reviewed_effect_commit_blob_mismatch:{effect.path}")
-        diff = _commit_diff(root, baseline, commit, value.changed_paths)
+                    failures.append(
+                        f"reviewed_effect_commit_blob_mismatch:{effect.path}"
+                    )
+        diff = _commit_diff(root, baseline, commit, expected_outer_changed)
         if (
-            value.implementation_diff_sha256 != "sha256:" + hashlib.sha256(diff).hexdigest()
+            value.implementation_diff_sha256
+            != "sha256:" + hashlib.sha256(diff).hexdigest()
             or value.implementation_diff_bytes != len(diff)
             or not diff
         ):
@@ -1724,7 +2648,10 @@ def verify_finalized_production_reviewed_effect(
 
 __all__ = [
     "PRODUCTION_REVIEWED_EFFECT_BINDING_INTERFACE",
+    "PRODUCTION_REVIEWED_EFFECT_BINDING_INTERFACE_V2",
     "PRODUCTION_REVIEWED_EFFECT_BINDING_SCHEMA",
+    "PRODUCTION_REVIEWED_EFFECT_BINDING_SCHEMA_V2",
+    "ProductionNestedRepositoryEffect",
     "ProductionPathEffect",
     "ProductionReviewedEffectBinding",
     "ProductionReviewedEffectVerification",
