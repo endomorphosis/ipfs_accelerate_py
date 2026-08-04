@@ -393,6 +393,121 @@ def test_checked_release_is_content_addressed_public_and_blocked(builder) -> Non
     assert RELEASE_PATH.stat().st_size < 500_000
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing_dependency",
+        "missing_binding_field",
+        "non_boolean_acceptance",
+        "blocker_mismatch",
+        "assessment_claim_mismatch",
+        "deployment_claim_mismatch",
+        "status_mismatch",
+        "objective_terms_missing",
+    ],
+)
+def test_malformed_assessment_state_cannot_claim_complete(
+    builder,
+    mutation: str,
+) -> None:
+    checked = json.loads(RELEASE_PATH.read_text(encoding="utf-8"))
+    assert builder._authoritative_assessment_complete(checked) is True
+    malformed = copy.deepcopy(checked)
+
+    if mutation == "missing_dependency":
+        malformed["dependency_bindings"].pop("secpal_authoritative_live")
+    elif mutation == "missing_binding_field":
+        malformed["dependency_bindings"][
+            "ergoai_managed_vendor_live"
+        ].pop("freshness")
+    elif mutation == "non_boolean_acceptance":
+        malformed["acceptance"]["dependencies_fresh"] = "blocked"
+    elif mutation == "blocker_mismatch":
+        malformed["blockers"] = []
+    elif mutation == "assessment_claim_mismatch":
+        malformed["claims"]["assessment_complete"] = False
+    elif mutation == "deployment_claim_mismatch":
+        malformed["claims"]["deployment_ready"] = True
+    elif mutation == "status_mismatch":
+        malformed["status"] = (
+            "authoritative_vendor_release_ready_for_publication"
+        )
+    else:
+        malformed["evidence"]["objective_evidence_terms"] = []
+
+    assert builder._authoritative_assessment_complete(malformed) is False
+
+
+def test_public_audit_observes_claim_and_failure_demotes_consistently(
+    builder,
+    monkeypatch,
+) -> None:
+    observed_at = _now()
+    audited_claims: list[tuple[bool, bool]] = []
+    original_audit = builder._authoritative_public_audit
+
+    def reject_authoritative_release(*, certifier, payload, repo_root):
+        if payload.get("interface") == INTERFACE:
+            audited_claims.append(
+                (
+                    payload.get("assessment_complete"),
+                    payload.get("claims", {}).get("assessment_complete"),
+                )
+            )
+            return {
+                "satisfied": False,
+                "failure_count": 1,
+                "failures": ["forced_assessment_claim_rejection"],
+            }
+        return original_audit(
+            certifier=certifier,
+            payload=payload,
+            repo_root=repo_root,
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "_authoritative_public_audit",
+        reject_authoritative_release,
+    )
+    monkeypatch.setattr(
+        builder,
+        "_observe_recursive_gitlinks",
+        lambda _root: {
+            "valid": True,
+            "gitlink_count": 1,
+            "rows": [{"path": "ipfs_datasets_py", "bound": True}],
+            "network_used": False,
+            "fetch_attempted": False,
+        },
+    )
+    release = builder.build_authoritative_vendor_release(
+        repo_root=REPO_ROOT,
+        observed_at=observed_at,
+        **_inputs(builder, observed_at),
+    )
+
+    # The affirmative candidate claim is audited, not added afterward.
+    assert audited_claims == [(True, True)]
+    assert release["public_evidence_policy"] == {
+        "satisfied": False,
+        "failure_count": 1,
+        "failures": ["forced_assessment_claim_rejection"],
+    }
+    assert release["assessment_complete"] is False
+    assert release["claims"]["assessment_complete"] is False
+    assert release["deployment_ready"] is False
+    assert release["claims"]["deployment_ready"] is False
+    assert release["status"] == "authoritative_vendor_release_blocked"
+    assert release["acceptance"]["public_safe_envelopes_bound"] is False
+    assert "public_safe_envelopes_bound" in release["blockers"]
+    assert release["blockers"] == sorted(
+        key
+        for key, satisfied in release["acceptance"].items()
+        if not satisfied
+    )
+
+
 def test_exact_recovered_secpal_eula_is_an_unoverrideable_hard_gate(builder) -> None:
     receipt = _secpal(builder, "2026-08-03T12:00:00Z")
     audit = builder._audit_secpal_authoritative_live(receipt)
