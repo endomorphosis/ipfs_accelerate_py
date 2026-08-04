@@ -565,6 +565,8 @@ def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
     disallowed_tools = set(
         grok_command[grok_command.index("--disallowed-tools") + 1].split(",")
     )
+    # Production proposals must never regain Grok's default tool set, including
+    # write/media helpers that remain available after the prior allowlist miss.
     assert {
         "run_terminal_cmd",
         "run_terminal_command",
@@ -572,6 +574,7 @@ def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
         "grep",
         "search_replace",
         "list_dir",
+        "write",
         "web_search",
         "web_fetch",
         "todo_write",
@@ -580,7 +583,7 @@ def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
         "memory_search",
         "get_command_or_subagent_output",
         "Agent",
-    } == disallowed_tools
+    }.issubset(disallowed_tools)
     assert grok_command[grok_command.index("--deny") + 1] == "*"
     assert (
         observed["grok_cli"]["command"][

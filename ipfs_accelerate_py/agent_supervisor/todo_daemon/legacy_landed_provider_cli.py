@@ -74,6 +74,7 @@ _GROK_PROPOSAL_DISALLOWED_TOOLS: Final = (
     "grep",
     "search_replace",
     "list_dir",
+    "write",
     "web_search",
     "web_fetch",
     "todo_write",
@@ -82,6 +83,20 @@ _GROK_PROPOSAL_DISALLOWED_TOOLS: Final = (
     "memory_search",
     "get_command_or_subagent_output",
     "Agent",
+    "image_gen",
+    "image_edit",
+    "image_to_video",
+    "reference_to_video",
+    "scheduler_create",
+    "scheduler_delete",
+    "scheduler_list",
+    "monitor",
+    "search_tool",
+    "use_tool",
+    "workflow",
+    "enter_plan_mode",
+    "exit_plan_mode",
+    "ask_user_question",
 )
 _NATIVE_CLI_SUBREAPER_PATH: Final = Path(__file__).with_name(
     "native_cli_subreaper.py"
@@ -603,19 +618,7 @@ def _grok_native_structured_output(
     payload = _last_json_object(stdout)
     if str(payload.get("type") or "").casefold() == "error":
         raise RuntimeError("legacy Grok CLI returned an error result")
-    if "text" in payload:
-        response_value = payload.get("text")
-        if isinstance(response_value, Mapping):
-            response_text = _canonical_json(response_value)
-        elif isinstance(response_value, str) and response_value.strip():
-            response_text = response_value.strip()
-        else:
-            raise RuntimeError("legacy Grok CLI structured result is missing")
-    else:
-        # Current Grok releases may emit the schema object directly, while
-        # older releases wrap it in ``text``. The caller's strict validator
-        # decides whether the direct object is the requested response shape.
-        response_text = _canonical_json(payload)
+    response_text = _extract_grok_structured_response_text(payload)
     endpoint_value = payload.get("requestId")
     endpoint_receipt_id = ""
     if isinstance(endpoint_value, str) and endpoint_value:
@@ -629,6 +632,45 @@ def _grok_native_structured_output(
             }
         )
     return response_text, endpoint_receipt_id
+
+
+def _extract_grok_structured_response_text(payload: Mapping[str, Any]) -> str:
+    """Extract the schema object from current Grok streaming CLI shapes.
+
+    Recent Grok Build releases stream many status lines and terminate with an
+    ``end`` event that embeds the enforced ``structuredOutput`` object. Older
+    shapes wrap the object in ``text`` or emit the schema object directly.
+    """
+
+    if not isinstance(payload, Mapping):
+        raise RuntimeError("legacy Grok CLI structured result is missing")
+
+    # Preferred: terminal streaming event with enforced structured output.
+    structured = payload.get("structuredOutput")
+    if isinstance(structured, Mapping) and structured:
+        return _canonical_json(structured)
+
+    if "text" in payload:
+        response_value = payload.get("text")
+        if isinstance(response_value, Mapping):
+            return _canonical_json(response_value)
+        if isinstance(response_value, str) and response_value.strip():
+            return response_value.strip()
+        raise RuntimeError("legacy Grok CLI structured result is missing")
+
+    # Direct schema object (no stream envelope). Reject stream status events
+    # that lack structuredOutput so we do not treat thought/end shells as
+    # proposals.
+    event_type = str(payload.get("type") or "").casefold()
+    if event_type in {
+        "",
+        "result",
+        "final",
+        "response",
+        "message",
+    } or ("proposal" in payload or "decision" in payload):
+        return _canonical_json(dict(payload))
+    raise RuntimeError("legacy Grok CLI structured result is missing")
 
 
 def _codex_native_structured_output(
