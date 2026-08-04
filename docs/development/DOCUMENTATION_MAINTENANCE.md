@@ -144,7 +144,7 @@ capability-gated suites. Prefer `-rs` so skips remain visible.
 | Mechanism | What it actually does | What it does **not** do |
 | --- | --- | --- |
 | `.github/workflows/documentation-maintenance.yml` | Scheduled / manual workflow described in [`.github/workflows/README_DOCUMENTATION_MAINTENANCE.md`](../../.github/workflows/README_DOCUMENTATION_MAINTENANCE.md): codebase docstring analysis, example syntax sampling, pdoc-oriented generation, report artifacts / optional maintenance PRs | Not a required PR merge gate for every documentation change; not a full-tree link checker |
-| `.github/workflows/documentation-gates.yml` | Path-filtered PR/push job: supervisor vocabulary gate, allowlisted link checker, packaging version pins, closeout navigation markers | Not automatically a **required** status check until branch protection lists it; not a full-tree crawl; does not execute doc examples |
+| `.github/workflows/documentation-gates.yml` | PR job always runs on PRs to `main`; push job is path-filtered. Supervisor vocabulary, allowlisted links, packaging pins, closeout markers | Status check name: `documentation-gates`. Not a full-tree crawl; does not execute doc examples |
 | `scripts/docs/check_agent_supervisor_docs.py` | Fails if board-prefix ticket IDs appear in listed primary supervisor docs | Does not validate all of `docs/`; does not check links, versions, or examples |
 | `scripts/docs/check_current_docs_links.py` | Fail-closed relative-link + heading-anchor check over an explicit allowlist of Current/Reference surfaces | Not a full-tree crawl; skips fenced/inline code and absolute URLs |
 | Default pytest `testpaths` | Runs configured API / distributed / MCP tests when CI invokes pytest that way | Does not run every `test/test_*.py` module unless named; does not validate markdown |
@@ -168,9 +168,9 @@ authorized CI/code task. **They are not all enforced today.**
 | Version / metadata consistency | Packaging and runtime pins stay aligned | `documentation-gates.yml` packaging pin step; local version alignment tests |
 | Capability honesty | Optional stacks not claimed universal | Review checklist §C; optional lint for “always available” language (not implemented) |
 
-Local commands remain required for authors when the path filter does not fire.
-To block merges on red gates, mark **Documentation Gates /
-documentation-gates** required under repository branch protection.
+Local commands remain useful before push. To block merges on red gates, mark
+the status check **documentation-gates** required under repository branch
+protection for `main` (enforce_admins may stay off for emergency fixes).
 
 ## Automation gaps (explicit follow-up)
 
@@ -180,7 +180,7 @@ edit that pretends the automation already exists.
 
 | Gap | Symptom today | Follow-up direction (separate authorization) |
 | --- | --- | --- |
-| **Required branch-protection status** | `documentation-gates.yml` runs on path-filtered PRs but is not forced by this repo file | Repository admins: require status check **documentation-gates** on `main` |
+| **Required branch-protection status** | Workflow always reports on PRs; protection may still be unset | Repository admins: require status check **documentation-gates** on `main` |
 | **Allowlist growth** | Link checker covers maintained surfaces only | Expand `ALLOWLIST` in `scripts/docs/check_current_docs_links.py` deliberately when promoting pages |
 | **Export / generated artifact drift** | Generated or export trees can go stale while still looking official | Enforce status labels and regeneration instructions; exclude Generated from Current navigation |
 | **Weekly maintenance vs gates** | Scheduled `documentation-maintenance` still invents inventory/reports | Keep it non-blocking; do not treat its green run as link or version proof |

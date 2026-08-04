@@ -6,8 +6,8 @@ This directory contains GitHub Actions workflows for documentation quality.
 
 **Workflow:** [`documentation-gates.yml`](documentation-gates.yml)
 
-Path-filtered job for pull requests and pushes to `main` that touch docs,
-doc checkers, packaging version pins, or the workflow itself. It runs:
+Runs on **every pull request to `main`** (so a required status check can
+always report) and on path-filtered pushes to `main`. Steps:
 
 1. `python scripts/docs/check_agent_supervisor_docs.py`
 2. `python scripts/docs/check_current_docs_links.py`
@@ -15,9 +15,9 @@ doc checkers, packaging version pins, or the workflow itself. It runs:
    `_PACKAGING_VERSION`)
 4. Closeout navigation marker presence
 
-No package install is required. To **block merges** on failure, repository
-admins must mark the **documentation-gates** check required under branch
-protection for `main`. The workflow file alone does not enable required status.
+No package install is required. Status check context name:
+**`documentation-gates`**. Enabling it as a required check is a repository
+branch-protection setting.
 
 ## Weekly documentation maintenance
 
