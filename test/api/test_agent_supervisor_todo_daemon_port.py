@@ -179,6 +179,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     WorktreeSubmoduleInitializationDeferred,
     implied_validation_test_output_paths,
     dependency_satisfied_references,
+    downstream_unlock_counts,
     normalize_implementation_protected_paths,
     parse_task_file,
     parse_args as parse_implementation_daemon_args,
@@ -12430,6 +12431,225 @@ def test_implementation_daemon_accepts_planner_proven_external_dependency(tmp_pa
     assert state.ready_task_ids == ["ACCEL-002"]
 
 
+def test_soft_completed_references_unlock_dependents_without_board_completion():
+    tasks = [
+        PortalTask(
+            task_id="ACCEL-001",
+            title="Merged but acceptance pending",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        ),
+        PortalTask(
+            task_id="ACCEL-002",
+            title="Blocked only by soft-complete dep",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+            depends_on=["ACCEL-001"],
+        ),
+    ]
+
+    hard_only = dependency_satisfied_references(
+        tasks,
+        completed_task_ids=set(),
+    )
+    assert "ACCEL-001" not in hard_only
+
+    soft = dependency_satisfied_references(
+        tasks,
+        completed_task_ids=set(),
+        soft_completed_references={"ACCEL-001"},
+    )
+    assert "ACCEL-001" in soft
+    assert "ACCEL-002" not in soft
+
+
+def test_orphaned_dependency_references_auto_resolve():
+    tasks = [
+        PortalTask(
+            task_id="ACCEL-010",
+            title="Depends on missing external alias",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+            depends_on=["EXT-NEVER-ON-BOARD"],
+        ),
+    ]
+
+    satisfied = dependency_satisfied_references(tasks, completed_task_ids=set())
+    assert "EXT-NEVER-ON-BOARD" in satisfied
+
+    disabled = dependency_satisfied_references(
+        tasks,
+        completed_task_ids=set(),
+        auto_resolve_orphaned_references=False,
+    )
+    assert "EXT-NEVER-ON-BOARD" not in disabled
+
+
+def test_downstream_unlock_counts_prefer_critical_path_roots():
+    tasks = [
+        PortalTask(
+            task_id="ROOT",
+            title="Critical root",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        ),
+        PortalTask(
+            task_id="MID",
+            title="Mid",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+            depends_on=["ROOT"],
+        ),
+        PortalTask(
+            task_id="LEAF",
+            title="Leaf",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+            depends_on=["MID"],
+        ),
+        PortalTask(
+            task_id="SIDE",
+            title="Side leaf",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        ),
+    ]
+    counts = downstream_unlock_counts(tasks)
+    assert counts["ROOT"] == 2
+    assert counts["MID"] == 1
+    assert counts["LEAF"] == 0
+    assert counts["SIDE"] == 0
+
+
+def test_implementation_daemon_soft_complete_merge_unblocks_dependents(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Merged in another lane
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+
+## ACCEL-002 Waiting on soft-complete dep
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ACCEL-001
+""",
+        encoding="utf-8",
+    )
+    queue = MergeQueue(repo / "merge-queue")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        merge_queue=queue,
+    )
+    tasks = {task.task_id: task for task in parse_task_file(todo_path, "## ACCEL-")}
+    completed_request = queue.enqueue(
+        branch_name="implementation/accel-001",
+        task_id="OTHER-001",
+        canonical_task_id=daemon._canonical_ref(tasks["ACCEL-001"]),
+        commit_sha="a" * 40,
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None and claimed.request_id == completed_request.request_id
+    queue.complete(claimed)
+    daemon._consume_one_merge_candidate = lambda: None  # type: ignore[method-assign]
+    daemon._reconcile_failed_merges = lambda **kwargs: []  # type: ignore[method-assign]
+
+    result = daemon.run_once()
+    state = TodoTaskState.load(daemon.state_path)
+
+    assert "ACCEL-001" in result.get("soft_completed_task_ids", [])
+    assert "ACCEL-001" in result.get("shared_completed_task_ids", [])
+    assert "ACCEL-001" not in state.completed_task_ids
+    # Upstream stays waiting for acceptance; dependent becomes ready.
+    assert state.task_statuses["ACCEL-001"] == "waiting"
+    assert state.task_statuses["ACCEL-002"] == "ready"
+    assert result["active_task_id"] == "ACCEL-002"
+
+
+def test_implementation_daemon_selects_critical_path_blocker_first(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-LEAF Side leaf work
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+
+## ACCEL-ROOT Critical path root
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+
+## ACCEL-MID Mid cascade
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ACCEL-ROOT
+
+## ACCEL-END Cascade end
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ACCEL-MID
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    daemon._reconcile_failed_merges = lambda **kwargs: []  # type: ignore[method-assign]
+
+    result = daemon.run_once()
+
+    assert result["active_task_id"] == "ACCEL-ROOT"
+    unlock = result.get("downstream_unlock_counts") or {}
+    assert unlock.get("ACCEL-ROOT", 0) >= 2
+
+
 def test_implementation_daemon_uses_shared_merge_receipts_across_lanes(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -12498,7 +12718,6 @@ def test_implementation_daemon_uses_shared_merge_receipts_across_lanes(tmp_path)
     assert state.task_statuses["ACCEL-001"] == "completed"
     assert state.task_statuses["ACCEL-002"] == "merge-queued"
     assert state.task_statuses["ACCEL-003"] == "ready"
-
 
 def test_bundle_runtime_taskboard_preserves_reviewed_shard_digest_on_shared_completion(
     tmp_path,
