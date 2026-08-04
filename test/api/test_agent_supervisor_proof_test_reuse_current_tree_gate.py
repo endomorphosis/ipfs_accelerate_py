@@ -365,8 +365,8 @@ def test_production_population_includes_repair_and_closeout_tasks():
     ):
         assert task_id in REQUIRED_PTR_TASK_IDS
     # PTR-149 corrects PTR-142's activation evidence and expands the sealed
-    # board from 53 to exactly 60 tasks.
-    assert len(REQUIRED_PTR_TASK_IDS) == SEALED_PRODUCTION_TASK_COUNT == 60
+    # board from 53 to exactly 66 tasks (PTR-143 … PTR-155).
+    assert len(REQUIRED_PTR_TASK_IDS) == SEALED_PRODUCTION_TASK_COUNT == 66
     assert RUNTIME_ACTIVATION_REPAIR_TASK_IDS <= REQUIRED_PTR_TASK_IDS
     for task_id in sorted(RUNTIME_ACTIVATION_REPAIR_TASK_IDS):
         assert task_id in REQUIRED_PTR_TASK_IDS
@@ -380,7 +380,14 @@ def test_production_population_includes_repair_and_closeout_tasks():
         "PTR-147",
         "PTR-148",
         "PTR-149",
+        "PTR-150",
+        "PTR-151",
+        "PTR-152",
+        "PTR-153",
+        "PTR-154",
+        "PTR-155",
     }
+    assert len(PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS) == 13
     assert FINAL_GATE_TASK_ID == "PTR-122"
     assert FINAL_GATE_GOAL_ID not in REQUIRED_CHILD_GOAL_IDS
     assert REQUIRED_CHILD_GOAL_IDS == {
@@ -414,7 +421,7 @@ def test_production_population_includes_repair_and_closeout_tasks():
 
 
 def test_production_gate_requires_fresh_repair_evidence(monkeypatch):
-    """The full 60-task population rejects historical PTR-142 evidence."""
+    """The full 66-task population rejects historical PTR-142 evidence."""
 
     policy = ProofReuseRolloutPolicy(
         policy_id="policy:ptr",
@@ -439,7 +446,7 @@ def test_production_gate_requires_fresh_repair_evidence(monkeypatch):
         g110_objective_revision=G110_OBJECTIVE_REVISION,
         root_objective_revision=ROOT_OBJECTIVE_REVISION,
         rollout_policy=policy,
-        # Production default: exact 60-task set.
+        # Production default: exact 66-task set.
         required_child_goal_ids=GOALS,
         required_adversarial_populations=POPULATIONS,
         required_analyzers=ANALYZERS,
@@ -447,7 +454,7 @@ def test_production_gate_requires_fresh_repair_evidence(monkeypatch):
         clock=lambda: NOW_SECONDS,
     )
     assert gate.required_task_ids == REQUIRED_PTR_TASK_IDS
-    assert len(gate.required_task_ids) == 60
+    assert len(gate.required_task_ids) == 66
 
     monkeypatch.setattr(
         "ipfs_accelerate_py.agent_supervisor.validation."
@@ -614,22 +621,111 @@ def test_production_gate_requires_fresh_repair_evidence(monkeypatch):
     assert admitted.final_gate_completion_evidence is not None
     assert admitted.root_completion_evidence is not None
 
-    # Injected / pseudo-certificate / synthetic timing evidence fails closed.
+    # Injected / pseudo-certificate / synthetic / structural evidence fails closed.
     for flag, reason in (
         ("injected", "repair_evidence_injected"),
         ("pseudo_certificate", "repair_evidence_pseudo_certificate"),
         ("synthetic_timing", "repair_evidence_synthetic_timing"),
         ("service_injection", "repair_evidence_service_injection"),
+        ("structural_only_verification", "repair_evidence_structural_only_verification"),
+        ("activation_gap", "repair_evidence_activation_gap_not_closeout_authority"),
+        (
+            "activation_gap_present",
+            "repair_evidence_activation_gap_not_closeout_authority",
+        ),
     ):
         bad = dict(packet["repair_evidence"])
         bad[flag] = True
+        # Keep other positive flags so the named fail-closed reason is exercised.
         packet["repair_evidence"] = bad
         rejected = gate.evaluate(**packet)
         assert rejected.passed is False
         assert reason in rejected.reason_codes
 
-    # 53-task sealed count is historical and inadmissible.
-    fifty_three = dict(
+    # Missing positive authority material fails closed.
+    for field, reason in (
+        (
+            "controller_owned_receipt_candidate_context",
+            "repair_evidence_controller_context_missing",
+        ),
+        (
+            "retained_proof_bearing_issuance_material",
+            "repair_evidence_proof_material_missing",
+        ),
+        (
+            "exact_reviewed_source_binary_capability_circuit_key_identities",
+            "repair_evidence_reviewed_identities_missing",
+        ),
+        (
+            "locally_verified_current_v4_certificate",
+            "repair_evidence_local_v4_verification_missing",
+        ),
+    ):
+        incomplete = dict(
+            build_production_runtime_activation_evidence(
+                repository_id=gate.repository_id,
+                tree_id=gate.tree_id,
+                commit_id=gate.commit_id,
+                gitlink_state_cid=gate.gitlink_state_cid,
+                repository_forest_cid=gate.repository_forest_cid,
+                capability_cid=gate.capability_cid,
+                verifying_key_cid=gate.verifying_key_cid,
+                circuit_cid=gate.circuit_cid,
+                policy_cid=gate.policy_cid,
+                objective_completion_tree_id=gate.objective_completion_tree_id,
+                observed_at_ms=FRESH_FROM,
+                fresh_until_ms=FRESH_UNTIL,
+                evidence_cid=f"repair:missing-{field}",
+            )
+        )
+        incomplete[field] = False
+        incomplete["passed"] = True  # hostile self-claim; gate must still refuse
+        packet["repair_evidence"] = incomplete
+        missing_material = gate.evaluate(**packet)
+        assert missing_material.passed is False
+        assert reason in missing_material.reason_codes
+
+    # 53-task, pre-v4 60-task, and pre-material 63-task sealed counts fail closed.
+    for count, reason in (
+        (53, "repair_evidence_historical_53_task_population"),
+        (60, "repair_evidence_pre_v4_60_task_population"),
+        (63, "repair_evidence_pre_material_63_task_population"),
+    ):
+        historical = dict(
+            build_production_runtime_activation_evidence(
+                repository_id=gate.repository_id,
+                tree_id=gate.tree_id,
+                commit_id=gate.commit_id,
+                gitlink_state_cid=gate.gitlink_state_cid,
+                repository_forest_cid=gate.repository_forest_cid,
+                capability_cid=gate.capability_cid,
+                verifying_key_cid=gate.verifying_key_cid,
+                circuit_cid=gate.circuit_cid,
+                policy_cid=gate.policy_cid,
+                objective_completion_tree_id=gate.objective_completion_tree_id,
+                observed_at_ms=FRESH_FROM,
+                fresh_until_ms=FRESH_UNTIL,
+                evidence_cid=f"repair:historical-{count}",
+            )
+        )
+        historical["sealed_task_count"] = count
+        packet["repair_evidence"] = historical
+        historical_count = gate.evaluate(**packet)
+        assert historical_count.passed is False
+        assert "repair_evidence_task_count_mismatch" in historical_count.reason_codes
+        assert reason in historical_count.reason_codes
+
+    # Pre-v4 seven-task coverage (PTR-143…149 only) cannot satisfy the wave.
+    pre_v4_tasks = {
+        "PTR-143",
+        "PTR-144",
+        "PTR-145",
+        "PTR-146",
+        "PTR-147",
+        "PTR-148",
+        "PTR-149",
+    }
+    pre_v4 = dict(
         build_production_runtime_activation_evidence(
             repository_id=gate.repository_id,
             tree_id=gate.tree_id,
@@ -643,17 +739,17 @@ def test_production_gate_requires_fresh_repair_evidence(monkeypatch):
             objective_completion_tree_id=gate.objective_completion_tree_id,
             observed_at_ms=FRESH_FROM,
             fresh_until_ms=FRESH_UNTIL,
-            evidence_cid="repair:historical-53",
+            evidence_cid="repair:pre-v4-wave",
         )
     )
-    fifty_three["sealed_task_count"] = 53
-    packet["repair_evidence"] = fifty_three
-    historical_count = gate.evaluate(**packet)
-    assert historical_count.passed is False
-    assert "repair_evidence_task_count_mismatch" in historical_count.reason_codes
-    assert (
-        "repair_evidence_historical_53_task_population"
-        in historical_count.reason_codes
+    pre_v4["repair_task_ids"] = sorted(pre_v4_tasks)
+    pre_v4["sealed_task_count"] = 60
+    packet["repair_evidence"] = pre_v4
+    pre_v4_decision = gate.evaluate(**packet)
+    assert pre_v4_decision.passed is False
+    assert any(
+        code.startswith("repair_evidence_missing_task:PTR-15")
+        for code in pre_v4_decision.reason_codes
     )
 
 

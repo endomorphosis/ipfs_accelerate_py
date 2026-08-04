@@ -436,6 +436,7 @@ class ProofReuseRuntimeActivationReport:
     native_groth16: Mapping[str, Any] = field(default_factory=dict)
     test_certificate_authority: Mapping[str, Any] = field(default_factory=dict)
     inventory: Mapping[str, Any] = field(default_factory=dict)
+    activation_gap: Mapping[str, Any] = field(default_factory=dict)
     activation_blocker_codes: tuple[str, ...] = ()
     ordinary_default_composition_usable: bool = False
     ordinary_warm_skip_path_complete: bool = False
@@ -443,6 +444,10 @@ class ProofReuseRuntimeActivationReport:
     native_groth16_ready: bool = False
     test_certificate_authority_ready: bool = False
     knowledge_of_axioms_cannot_satisfy_test_certificate_authority: bool = True
+    unmanifested_native_binary_cannot_satisfy_test_certificate_authority: bool = (
+        True
+    )
+    activation_gap_present: bool = False
     source: str = "live"
     reason_code: str = ""
 
@@ -462,6 +467,7 @@ class ProofReuseRuntimeActivationReport:
                 self.test_certificate_authority
             ),
             "inventory": _bounded_mapping(self.inventory),
+            "activation_gap": _bounded_mapping(self.activation_gap),
             "activation_blocker_codes": list(self.activation_blocker_codes),
             "ordinary_default_composition_usable": (
                 self.ordinary_default_composition_usable
@@ -475,6 +481,8 @@ class ProofReuseRuntimeActivationReport:
                 self.test_certificate_authority_ready
             ),
             "knowledge_of_axioms_cannot_satisfy_test_certificate_authority": True,
+            "unmanifested_native_binary_cannot_satisfy_test_certificate_authority": True,
+            "activation_gap_present": bool(self.activation_gap_present),
             "source": str(self.source)[:32],
             "reason_code": str(self.reason_code)[:96],
         }
@@ -496,6 +504,12 @@ class ProofReuseRuntimeActivationReport:
         if not isinstance(blockers_raw, (list, tuple)):
             raise ValueError("activation_blocker_codes must be a sequence")
         blockers = tuple(str(item)[:96] for item in blockers_raw[:64])
+        gap = _bounded_mapping(payload.get("activation_gap") or {})
+        gap_present = bool(
+            payload.get("activation_gap_present")
+            if "activation_gap_present" in payload
+            else gap.get("present")
+        )
         return cls(
             composition=_bounded_mapping(payload.get("composition") or {}),
             native_groth16=_bounded_mapping(payload.get("native_groth16") or {}),
@@ -503,6 +517,7 @@ class ProofReuseRuntimeActivationReport:
                 payload.get("test_certificate_authority") or {}
             ),
             inventory=_bounded_mapping(payload.get("inventory") or {}),
+            activation_gap=gap,
             activation_blocker_codes=blockers,
             ordinary_default_composition_usable=bool(
                 payload.get("ordinary_default_composition_usable")
@@ -515,6 +530,7 @@ class ProofReuseRuntimeActivationReport:
             test_certificate_authority_ready=bool(
                 payload.get("test_certificate_authority_ready")
             ),
+            activation_gap_present=gap_present,
             process_started=bool(payload.get("process_started")),
             source=str(payload.get("source") or "live")[:32],
             reason_code=str(payload.get("reason_code") or "")[:96],
@@ -586,6 +602,7 @@ def proof_reuse_runtime_activation_report(
     composition = inventory.get("composition") or {}
     native = inventory.get("native_groth16") or {}
     certificate = inventory.get("test_certificate_authority") or {}
+    activation_gap_raw = inventory.get("activation_gap") or {}
     blockers = tuple(
         str(item)[:96]
         for item in (inventory.get("activation_blocker_codes") or ())[:64]
@@ -593,13 +610,66 @@ def proof_reuse_runtime_activation_report(
 
     # Hard invariant: knowledge-of-axioms can never satisfy certificate authority.
     cert_ready = bool(inventory.get("test_certificate_authority_ready"))
-    if certificate.get("knowledge_of_axioms_circuit") and cert_ready:
+    if isinstance(certificate, Mapping) and certificate.get(
+        "knowledge_of_axioms_circuit"
+    ) and cert_ready:
         cert_ready = False
         certificate = dict(certificate)
         certificate["ready"] = False
         certificate["reason_code"] = (
             "knowledge_of_axioms_cannot_satisfy_test_certificate_authority"
         )
+    # Unmanifested native binary alone can never satisfy certificate authority.
+    if (
+        cert_ready
+        and isinstance(certificate, Mapping)
+        and certificate.get("unmanifested_native_binary_rejected")
+    ):
+        cert_ready = False
+        certificate = dict(certificate)
+        certificate["ready"] = False
+        certificate["reason_code"] = (
+            "unmanifested_native_binary_cannot_satisfy_test_certificate_authority"
+        )
+
+    gap = (
+        _bounded_mapping(activation_gap_raw)
+        if isinstance(activation_gap_raw, Mapping)
+        else {}
+    )
+    gap_present = bool(
+        inventory.get("activation_gap_present")
+        if "activation_gap_present" in inventory
+        else gap.get("present")
+    )
+    if not cert_ready and not gap_present:
+        # Truthful gap when authority is unready even if the inventory omitted
+        # the packet (fail-closed default for missing reviewed keys/manifest).
+        gap = {
+            "present": True,
+            "reason_code": str(
+                (certificate.get("reason_code") if isinstance(certificate, Mapping) else "")
+                or "reviewed_v4_keys_or_manifest_absent"
+            )[:96],
+            "warm_skip_authorized": False,
+            "closeout_authorized": False,
+            "tests_continue": True,
+            "reviewed_v4_keys_or_manifest_required": True,
+            "native_binary_alone_non_authoritative": True,
+            "knowledge_of_axioms_cannot_satisfy": True,
+        }
+        gap_present = True
+    if gap_present:
+        gap = dict(gap)
+        gap["present"] = True
+        gap["warm_skip_authorized"] = False
+        gap["closeout_authorized"] = False
+
+    warm_complete = (
+        bool(inventory.get("ordinary_warm_skip_path_complete"))
+        and cert_ready
+        and not gap_present
+    )
 
     return ProofReuseRuntimeActivationReport(
         composition=_bounded_mapping(composition if isinstance(composition, Mapping) else {}),
@@ -608,19 +678,18 @@ def proof_reuse_runtime_activation_report(
             certificate if isinstance(certificate, Mapping) else {}
         ),
         inventory=_bounded_mapping(inventory if isinstance(inventory, Mapping) else {}),
+        activation_gap=gap,
         activation_blocker_codes=blockers,
         ordinary_default_composition_usable=bool(
             composition.get("ordinary_default_composition_usable")
             if isinstance(composition, Mapping)
             else False
         ),
-        ordinary_warm_skip_path_complete=bool(
-            inventory.get("ordinary_warm_skip_path_complete")
-        )
-        and cert_ready,
+        ordinary_warm_skip_path_complete=warm_complete,
         native_groth16_installed=bool(inventory.get("native_groth16_installed")),
         native_groth16_ready=bool(inventory.get("native_groth16_ready")),
         test_certificate_authority_ready=cert_ready,
+        activation_gap_present=gap_present,
         process_started=bool(
             native.get("process_started") if isinstance(native, Mapping) else False
         ),

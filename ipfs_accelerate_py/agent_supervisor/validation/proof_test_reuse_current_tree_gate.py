@@ -22,9 +22,13 @@ PTR-142 refreshes the sealed production population from 41 to the exact 53-task
 board (adding the runtime-activation repair ``PTR-131`` … ``PTR-142``) and
 required runtime-activation repair evidence.  A later current-tree audit found
 that its injected/pseudo-certificate activation evidence was not production
-authority.  PTR-149 therefore expands the population to 60 and requires fresh
-evidence for the corrective ``PTR-143`` … ``PTR-149`` wave; historical PTR-142
-evidence cannot satisfy that premise.
+authority.  The first corrective wave would have expanded to 60
+(``PTR-143`` … ``PTR-149``) and a pre-material wave to 63, but the reviewed
+authority path further requires ``PTR-150`` … ``PTR-155``.  PTR-149 therefore
+expands the population to the exact 66-task board and requires fresh evidence
+for the full corrective ``PTR-143`` … ``PTR-155`` wave; historical PTR-142,
+53-task, pre-v4 60-task, and pre-material 63-task evidence cannot satisfy that
+premise.
 """
 
 from __future__ import annotations
@@ -137,6 +141,9 @@ RUNTIME_ACTIVATION_REPAIR_EVIDENCE_REQUIREMENT: Final = (
 # establish through the ordinary default two-process path.  Keep the historical
 # constants above for replay/import compatibility; they are not the fresh
 # repair population accepted by the current production gate.
+#
+# Exact corrective wave is PTR-143 … PTR-155 (13 tasks).  PTR-149 produces the
+# evidence and is dependency-ordered last after PTR-155.
 PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS: Final = frozenset(
     {
         "PTR-143",
@@ -146,6 +153,12 @@ PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS: Final = frozenset(
         "PTR-147",
         "PTR-148",
         "PTR-149",
+        "PTR-150",
+        "PTR-151",
+        "PTR-152",
+        "PTR-153",
+        "PTR-154",
+        "PTR-155",
     }
 )
 PRODUCTION_RUNTIME_ACTIVATION_ID: Final = "production-runtime-activation"
@@ -154,7 +167,12 @@ PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT: Final = (
 )
 PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID: Final = "PTR-149"
 
-# Sealed production population: all 60 implementation tasks on the board.
+# Historical sealed counts that must never be re-admitted as production authority.
+HISTORICAL_53_TASK_POPULATION_COUNT: Final = 53
+PRE_V4_60_TASK_POPULATION_COUNT: Final = 60
+PRE_MATERIAL_63_TASK_POPULATION_COUNT: Final = 63
+
+# Sealed production population: all 66 implementation tasks on the board.
 REQUIRED_PTR_TASK_IDS: Final = frozenset(
     {
         "PTR-000",
@@ -202,8 +220,9 @@ REQUIRED_PTR_TASK_IDS: Final = frozenset(
         *PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS,
     }
 )
-SEALED_PRODUCTION_TASK_COUNT: Final = 60
+SEALED_PRODUCTION_TASK_COUNT: Final = 66
 assert len(REQUIRED_PTR_TASK_IDS) == SEALED_PRODUCTION_TASK_COUNT
+assert len(PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS) == 13
 # Verified child premises only — G110 is not a child premise of itself.
 REQUIRED_CHILD_GOAL_IDS: Final = frozenset(
     {
@@ -1448,7 +1467,7 @@ class ProofTestReuseCurrentTreeGate:
             len(self.required_task_ids) != SEALED_PRODUCTION_TASK_COUNT
         ):
             raise ProofTestReuseCurrentTreeGateError(
-                "production population must be the exact 60-task board"
+                "production population must be the exact 66-task board"
             )
         if (
             self.required_task_ids == REQUIRED_PTR_TASK_IDS
@@ -1940,6 +1959,25 @@ class ProofTestReuseCurrentTreeGate:
             ("real_groth16_certificate", "repair_evidence_real_groth16_missing"),
             ("measured_subprocess_benchmark", "repair_evidence_measured_benchmark_missing"),
             ("historical_activation_claims_superseded", "repair_evidence_supersession_missing"),
+            # Positive authority binds genuine material from PTR-153/154/155 and
+            # exact reviewed identities from PTR-151/152; absence fails closed.
+            (
+                "controller_owned_receipt_candidate_context",
+                "repair_evidence_controller_context_missing",
+            ),
+            (
+                "retained_proof_bearing_issuance_material",
+                "repair_evidence_proof_material_missing",
+            ),
+            (
+                "exact_reviewed_source_binary_capability_circuit_key_identities",
+                "repair_evidence_reviewed_identities_missing",
+            ),
+            (
+                "locally_verified_current_v4_certificate",
+                "repair_evidence_local_v4_verification_missing",
+            ),
+            ("supervisor_healthy", "repair_evidence_supervisor_unhealthy"),
         ):
             if record.get(field_name) is not True:
                 reasons.append(reason_code)
@@ -1952,12 +1990,24 @@ class ProofTestReuseCurrentTreeGate:
             reasons.append("repair_evidence_synthetic_timing")
         if record.get("service_injection") is True:
             reasons.append("repair_evidence_service_injection")
+        if record.get("structural_only_verification") is True:
+            reasons.append("repair_evidence_structural_only_verification")
+        # Activation gap (missing reviewed keys/manifest) continues tests but
+        # cannot admit closeout or warm-skip authority.
+        if record.get("activation_gap") is True or record.get(
+            "activation_gap_present"
+        ) is True:
+            reasons.append("repair_evidence_activation_gap_not_closeout_authority")
         sealed = record.get("sealed_task_count")
         if sealed != SEALED_PRODUCTION_TASK_COUNT:
             reasons.append("repair_evidence_task_count_mismatch")
-        # Historical 53-task packets cannot be re-admitted by omission tricks.
-        if sealed == 53:
+        # Historical / intermediate sealed counts cannot be re-admitted.
+        if sealed == HISTORICAL_53_TASK_POPULATION_COUNT:
             reasons.append("repair_evidence_historical_53_task_population")
+        if sealed == PRE_V4_60_TASK_POPULATION_COUNT:
+            reasons.append("repair_evidence_pre_v4_60_task_population")
+        if sealed == PRE_MATERIAL_63_TASK_POPULATION_COUNT:
+            reasons.append("repair_evidence_pre_material_63_task_population")
         if producer_task_id == "PTR-142" or repair_id == RUNTIME_ACTIVATION_REPAIR_ID:
             reasons.append("repair_evidence_historical_ptr142_inadmissible")
 
@@ -2448,25 +2498,52 @@ def build_production_runtime_activation_evidence(
     measured_subprocess_benchmark: bool = True,
     historical_activation_claims_superseded: bool = True,
     zero_false_skip_assurance: bool = True,
+    controller_owned_receipt_candidate_context: bool = True,
+    retained_proof_bearing_issuance_material: bool = True,
+    exact_reviewed_source_binary_capability_circuit_key_identities: bool = True,
+    locally_verified_current_v4_certificate: bool = True,
     passed: bool = True,
     supervisor_healthy: bool = True,
     injected: bool = False,
     pseudo_certificate: bool = False,
     synthetic_timing: bool = False,
     service_injection: bool = False,
+    structural_only_verification: bool = False,
+    activation_gap: bool = False,
+    activation_gap_present: bool = False,
     extra: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a fresh PTR-149 production-runtime-activation evidence record.
 
     Callers must supply genuine current-tree bindings and only set the boolean
-    activation claims after the corresponding no-injection e2e, real Groth16,
-    and measured subprocess evidence has actually been observed.
+    activation claims after the corresponding no-injection e2e, real current-v4
+    Groth16 certificate, controller-owned context, retained proof-bearing
+    issuance material, exact reviewed identities, and measured subprocess
+    evidence has actually been observed for the full ``PTR-143`` … ``PTR-155``
+    wave.  An activation gap (missing reviewed keys/manifest) is never closeout
+    authority.
     """
 
     if false_skips != 0:
         passed = False
         zero_false_skip_assurance = False
-    if injected or pseudo_certificate or synthetic_timing or service_injection:
+    if (
+        injected
+        or pseudo_certificate
+        or synthetic_timing
+        or service_injection
+        or structural_only_verification
+        or activation_gap
+        or activation_gap_present
+    ):
+        passed = False
+    if not (
+        controller_owned_receipt_candidate_context
+        and retained_proof_bearing_issuance_material
+        and exact_reviewed_source_binary_capability_circuit_key_identities
+        and locally_verified_current_v4_certificate
+        and real_groth16_certificate
+    ):
         passed = False
     record: dict[str, Any] = {
         "authority": _AUTHORITATIVE,
@@ -2483,6 +2560,18 @@ def build_production_runtime_activation_evidence(
         "measured_subprocess_benchmark": bool(measured_subprocess_benchmark),
         "historical_activation_claims_superseded": bool(
             historical_activation_claims_superseded
+        ),
+        "controller_owned_receipt_candidate_context": bool(
+            controller_owned_receipt_candidate_context
+        ),
+        "retained_proof_bearing_issuance_material": bool(
+            retained_proof_bearing_issuance_material
+        ),
+        "exact_reviewed_source_binary_capability_circuit_key_identities": bool(
+            exact_reviewed_source_binary_capability_circuit_key_identities
+        ),
+        "locally_verified_current_v4_certificate": bool(
+            locally_verified_current_v4_certificate
         ),
         "sealed_task_count": SEALED_PRODUCTION_TASK_COUNT,
         "requirement_id": PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT,
@@ -2505,6 +2594,9 @@ def build_production_runtime_activation_evidence(
         "pseudo_certificate": bool(pseudo_certificate),
         "synthetic_timing": bool(synthetic_timing),
         "service_injection": bool(service_injection),
+        "structural_only_verification": bool(structural_only_verification),
+        "activation_gap": bool(activation_gap),
+        "activation_gap_present": bool(activation_gap_present),
     }
     if extra:
         for key, value in extra.items():
@@ -2526,6 +2618,9 @@ __all__ = [
     "PROOF_TEST_REUSE_CURRENT_TREE_GATE_INTERFACE",
     "PROOF_TEST_REUSE_GATE_BUNDLE_INTERFACE",
     "PROOF_TEST_REUSE_PERSISTED_GATE_BUNDLE_INTERFACE",
+    "HISTORICAL_53_TASK_POPULATION_COUNT",
+    "PRE_MATERIAL_63_TASK_POPULATION_COUNT",
+    "PRE_V4_60_TASK_POPULATION_COUNT",
     "PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT",
     "PRODUCTION_RUNTIME_ACTIVATION_ID",
     "PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID",

@@ -4489,10 +4489,13 @@ def probe_test_certificate_authority(
         ]
 
     # Authority requires exact test-pass artifact provenance.  Never promote
-    # knowledge_of_axioms (or any generic native readiness) to certificate
-    # authority.
+    # knowledge_of_axioms, generic native readiness, or an unmanifested binary
+    # to certificate authority.
     ready = bool(bindings_payload.get("provenance_ready"))
     reason = str(bindings_payload.get("reason_code") or "unready")
+    unmanifested_binary = bool(
+        native.get("installed") and not bindings_payload.get("provenance_ready")
+    )
     if knowledge_of_axioms and not ready:
         reason = "knowledge_of_axioms_cannot_satisfy_test_certificate_authority"
     elif knowledge_of_axioms and ready:
@@ -4504,6 +4507,11 @@ def probe_test_certificate_authority(
         "provenance_ready"
     ):
         reason = "native_ready_without_test_pass_provenance"
+    elif not ready and unmanifested_binary:
+        # Binary presence without an approved reviewed key/manifest is never
+        # certificate authority.
+        if reason in {"unready", "artifact_probe_not_run", "installer_unavailable"}:
+            reason = "unmanifested_native_binary"
 
     return {
         "interface": TEST_CERTIFICATE_AUTHORITY_PROBE_INTERFACE,
@@ -4512,6 +4520,7 @@ def probe_test_certificate_authority(
         "skip_authority": ready,  # only exact test-pass provenance may skip
         "knowledge_of_axioms_rejected": knowledge_of_axioms,
         "knowledge_of_axioms_circuit": knowledge_of_axioms,
+        "unmanifested_native_binary_rejected": unmanifested_binary and not ready,
         "native_groth16_ready": bool(native.get("ready")),
         "native_groth16_installed": bool(native.get("installed")),
         "artifact_bindings": bindings_payload,
@@ -4520,6 +4529,69 @@ def probe_test_certificate_authority(
         "install_attempted": False,
         "import_for_readiness": False,
         "prove_attempted": False,
+    }
+
+
+def _activation_gap_from_certificate(
+    certificate: Mapping[str, Any],
+    *,
+    native: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Explicit activation-gap packet when reviewed authority artifacts are absent.
+
+    Missing operator-provided reviewed v4 keys or a trusted-setup/key manifest
+    is never warm-skip or closeout authority.  Tests and the supervisor continue
+    under typed RUN/DEFERRED; this packet only surfaces the gap truthfully.
+    """
+
+    ready = bool(certificate.get("ready"))
+    reason = str(certificate.get("reason_code") or "")[:96]
+    bindings = certificate.get("artifact_bindings")
+    if not isinstance(bindings, Mapping):
+        bindings = {}
+    native_installed = bool(
+        (native or {}).get("installed")
+        if native is not None
+        else certificate.get("native_groth16_installed")
+    )
+    gap_reasons = {
+        "artifact_manifest_unapproved",
+        "artifact_manifest_missing",
+        "artifact_manifest_digest_mismatch",
+        "artifacts_root_missing",
+        "test_pass_keys_missing",
+        "artifact_read_failed",
+        "artifact_probe_not_run",
+        "native_ready_without_test_pass_provenance",
+        "knowledge_of_axioms_cannot_satisfy_test_certificate_authority",
+        "binary_alone_non_authoritative",
+        "unmanifested_native_binary",
+    }
+    # Unmanifested native binary alone can never close the gap.
+    unmanifested_binary = bool(
+        native_installed
+        and not ready
+        and not bindings.get("provenance_ready")
+    )
+    present = (not ready) and (
+        reason in gap_reasons
+        or unmanifested_binary
+        or not bindings.get("provenance_ready")
+    )
+    gap_reason = reason
+    if present and unmanifested_binary and reason not in gap_reasons:
+        gap_reason = "unmanifested_native_binary_cannot_satisfy_test_certificate_authority"
+    elif present and not gap_reason:
+        gap_reason = "reviewed_v4_keys_or_manifest_absent"
+    return {
+        "present": present,
+        "reason_code": gap_reason[:96] if present else "",
+        "warm_skip_authorized": False,
+        "closeout_authorized": False,
+        "tests_continue": True,
+        "reviewed_v4_keys_or_manifest_required": True,
+        "native_binary_alone_non_authoritative": True,
+        "knowledge_of_axioms_cannot_satisfy": True,
     }
 
 
@@ -4544,6 +4616,9 @@ def live_runtime_activation_inventory(
         artifacts_root=artifacts_root,
         binary_path=binary_path,
         installer=installer,
+    )
+    activation_gap = _activation_gap_from_certificate(
+        certificate, native=native
     )
 
     identity_configured = handles["identity_services"]["present"]
@@ -4571,6 +4646,8 @@ def live_runtime_activation_inventory(
         blockers.append("certificate_store_unconfigured")
     if not certificate["ready"]:
         blockers.append("test_certificate_authority_unready")
+    if activation_gap["present"]:
+        blockers.append("activation_gap_reviewed_authority_absent")
 
     ordinary_warm = (
         identity_configured
@@ -4580,6 +4657,13 @@ def live_runtime_activation_inventory(
         and current_context
         and store_configured
         and issuer_configured
+    )
+    # Warm skip and completion authority require exact certificate authority;
+    # an activation gap can never invent either.
+    warm_complete = (
+        ordinary_warm
+        and bool(certificate["ready"])
+        and not activation_gap["present"]
     )
 
     return {
@@ -4613,7 +4697,7 @@ def live_runtime_activation_inventory(
         "authoritative_candidate_publication_configured": (
             candidate_store_configured and store_configured and issuer_configured
         ),
-        "ordinary_warm_skip_path_complete": ordinary_warm and certificate["ready"],
+        "ordinary_warm_skip_path_complete": warm_complete,
         "missing_provider_action": "run",
         "completion_authority": False,
         "native_groth16_installed": native["installed"],
@@ -4621,6 +4705,9 @@ def live_runtime_activation_inventory(
         "test_certificate_authority_ready": certificate["ready"],
         "test_certificate_authority_reason": certificate["reason_code"],
         "knowledge_of_axioms_cannot_satisfy_test_certificate_authority": True,
+        "unmanifested_native_binary_cannot_satisfy_test_certificate_authority": True,
+        "activation_gap": activation_gap,
+        "activation_gap_present": bool(activation_gap["present"]),
         "activation_blocker_codes": blockers,
         "live_probe": True,
         "network_attempted": False,

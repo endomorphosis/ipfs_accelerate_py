@@ -301,3 +301,65 @@ def test_module_exports_remain_import_safe() -> None:
     )
     assert callable(services.probe_test_certificate_authority)
     assert callable(services.live_runtime_activation_inventory)
+
+
+def test_activation_gap_when_reviewed_keys_absent(tmp_path: Path) -> None:
+    """Missing reviewed v4 keys/manifest is an explicit gap, not warm-skip authority."""
+
+    installer = _RecordingInstaller(ready=False, installed=False)
+    report = proof_reuse_runtime_activation_report(
+        mode=ProofReuseMode.WRITE,
+        root_path=tmp_path,
+        cache_root=tmp_path / "cache",
+        installer=installer,
+        environ={
+            "IPFS_TEST_PROOF_REUSE_AUTO_INSTALL": "0",
+            "IPFS_TEST_PROOF_REUSE_GROTH16_BUILD": "0",
+        },
+        artifacts_root=tmp_path / "missing-artifacts",
+    )
+    assert report.test_certificate_authority_ready is False
+    assert report.activation_gap_present is True
+    assert report.activation_gap["present"] is True
+    assert report.activation_gap["warm_skip_authorized"] is False
+    assert report.activation_gap["closeout_authorized"] is False
+    assert report.activation_gap["tests_continue"] is True
+    assert report.ordinary_warm_skip_path_complete is False
+    assert "activation_gap" in " ".join(report.activation_blocker_codes) or any(
+        "activation_gap" in code for code in report.activation_blocker_codes
+    )
+
+
+def test_unmanifested_native_binary_cannot_satisfy_certificate_authority(
+    tmp_path: Path,
+) -> None:
+    installer = _RecordingInstaller(ready=True, installed=True)
+    env = {
+        "IPFS_TEST_PROOF_REUSE_AUTO_INSTALL": "0",
+        "IPFS_TEST_PROOF_REUSE_GROTH16_BUILD": "0",
+        "GROTH16_BACKEND_ARTIFACTS_ROOT": str(tmp_path / "missing-artifacts"),
+    }
+    certificate = probe_test_certificate_authority(
+        installer=installer,
+        environ=env,
+        artifacts_root=tmp_path / "missing-artifacts",
+    )
+    assert certificate["ready"] is False
+    assert certificate.get("unmanifested_native_binary_rejected") is True
+
+    report = proof_reuse_runtime_activation_report(
+        mode=ProofReuseMode.OFF,
+        root_path=tmp_path,
+        cache_root=tmp_path / "cache",
+        installer=installer,
+        environ=env,
+        artifacts_root=tmp_path / "missing-artifacts",
+    )
+    assert report.native_groth16_installed is True or report.native_groth16_ready is True
+    assert report.test_certificate_authority_ready is False
+    assert (
+        report.unmanifested_native_binary_cannot_satisfy_test_certificate_authority
+        is True
+    )
+    assert report.ordinary_warm_skip_path_complete is False
+    assert report.activation_gap_present is True
