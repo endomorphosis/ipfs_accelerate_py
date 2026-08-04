@@ -36423,12 +36423,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         baseline_ref: str = "",
         landed_commit: str = "",
         changed_submodule_paths: set[str] | None = None,
+        parent_already_integrated: bool = False,
     ) -> list[dict[str, Any]]:
         """Return only submodule failures that should block task completion.
 
         Ambient nested dirt, missing optional nested gitlinks, and failed
         merges for gitlinks the parent task never changed must not keep a
         successfully landed parent implementation pending forever.
+
+        Host-checkout dirt (``submodule_checkout_dirty``) is never a completion
+        blocker once the parent implementation is already on the merge target:
+        the durable gitlink already encodes the task tip, and operator dirt in
+        the shared monorepo checkout must not stall dependency unlock.
         """
 
         results = [
@@ -36450,10 +36456,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 landed_commit,
             )
             changed_known = True
-        ambient_reasons = {
+        # Dirt that only means "shared monorepo submodule checkout is dirty".
+        host_checkout_ambient_reasons = {
             "submodule_checkout_dirty",
-            "submodule_target_gitlink_unavailable",
             "isolated_submodule_checkout_dirty",
+        }
+        ambient_reasons = {
+            *host_checkout_ambient_reasons,
+            "submodule_target_gitlink_unavailable",
             "unchanged_gitlink_in_task",
             "submodule_branch_missing",
             "submodule_worktree_missing",
@@ -36474,6 +36484,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     )
                 )
             )
+            if reason in host_checkout_ambient_reasons:
+                # Host dirt is irrelevant to durable integration proof.
+                continue
+            if parent_already_integrated and reason in ambient_reasons:
+                # Parent already on target: nested ambient failures cannot
+                # un-land the immutable merge commit.
+                continue
             if path_was_changed:
                 blocking.append(item)
                 continue
@@ -39857,6 +39874,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         target_branch: str,
     ) -> tuple[list[str], list[str]]:
+        configured_roots = {
+            str(path).strip("/")
+            for path in self.worktree_submodule_paths
+            if str(path).strip("/")
+        }
         blocking: list[str] = []
         nonblocking: list[str] = []
         for relative in sorted(self._dirty_worktree_paths(self.repo_root)):
@@ -39866,6 +39888,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             except (OSError, ValueError):
                 pass
             if state_relative and self._path_matches_prefix(relative, state_relative):
+                nonblocking.append(relative)
+                continue
+            root = relative.split("/", 1)[0] if relative else ""
+            # Shared monorepo submodule checkouts are frequently dirty while
+            # supervisors run. Isolated merge worktrees do not consume that
+            # dirt, so root gitlink dirt must not freeze every landed candidate.
+            if relative in configured_roots or root in configured_roots:
                 nonblocking.append(relative)
                 continue
             if self._dirty_git_sync_recovery_note_is_untracked_for_candidates(
@@ -40376,6 +40405,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     baseline_ref=baseline_ref,
                     landed_commit=landed_tip,
                     changed_submodule_paths=changed_gitlinks,
+                    parent_already_integrated=True,
                 )
                 submodule_gitlink_recording: dict[str, Any] = {}
                 publication_workspace: Path | None = None

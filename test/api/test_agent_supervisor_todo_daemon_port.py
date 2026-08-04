@@ -10590,7 +10590,34 @@ def test_implementation_daemon_filters_ambient_submodule_failures_for_parent_onl
         changed_submodule_paths=None,
     )
     # Without a known change set, non-ambient failures remain blocking.
+    # Host-checkout dirt is never a completion blocker.
     assert [item["path"] for item in blocking_unknown] == ["libs/other"]
+
+    # Even when the task changed the gitlink, shared monorepo dirt must not
+    # keep an already-landed parent pending forever.
+    blocking_changed_dirty = daemon._blocking_submodule_merge_failures(
+        ambient_failures,
+        baseline_ref=baseline_ref,
+        landed_commit=implementation_commit,
+        changed_submodule_paths={"libs/child"},
+        parent_already_integrated=True,
+    )
+    # Host dirt filtered; unrelated real conflicts still block.
+    assert [item["path"] for item in blocking_changed_dirty] == ["libs/other"]
+    blocking_real_conflict = daemon._blocking_submodule_merge_failures(
+        [
+            {
+                "path": "libs/child",
+                "merged": False,
+                "reason": "submodule_merge_conflict",
+            }
+        ],
+        baseline_ref=baseline_ref,
+        landed_commit=implementation_commit,
+        changed_submodule_paths={"libs/child"},
+        parent_already_integrated=True,
+    )
+    assert [item["path"] for item in blocking_real_conflict] == ["libs/child"]
 
 
 def test_implementation_daemon_parent_only_merge_skips_ambient_dirty_submodule(
