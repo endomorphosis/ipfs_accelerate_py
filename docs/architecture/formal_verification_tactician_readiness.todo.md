@@ -5683,10 +5683,13 @@ disable objective refill and use only the generated FVT bundle index.
 
 ## FVT-086 FVT:: Bind the genuine SecPAL artifact-intake and capability ceiling
 
-- Status: todo
-- Completion: manual
-- Is schedulable: true
-- Review only: false
+- Status: blocked
+- Completion: superseded:FVT-101
+- Superseded by: FVT-101
+- Supersession completion authority: none
+- Historical task: true
+- Is schedulable: false
+- Review only: true
 - Priority: P0
 - Track: external-capability
 - Depends on: FVT-055, FVT-073, FVT-087
@@ -5712,7 +5715,7 @@ disable objective refill and use only the generated FVT bundle index.
 - Generated artifacts:
 - Allow concurrent with:
 - Goal id: FVT-G217
-- Completion authority: local
+- Completion authority: none
 - External authority blockers:
 - Canonical task key: task/v1/673ddca40390b034f58919f5226f741b2125329a9949e689dc59c27aec8c82b0
 - Canonical task CID: baguqeeram465zjadscydj5mjdh2se33udmqskmu2tfe6nco4lhbhv3emqkya
@@ -5749,7 +5752,6 @@ disable objective refill and use only the generated FVT bundle index.
 - Candidate kind: aggregate
 - Todo vector key: 27c4c3f6a87f0134
 - Acceptance: Objective scan filed this gap for FVT-G217. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-086-objective-gap-d9aca6db2ede.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_secpal_live_toolchain_contract.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
-
 ## FVT-087 FVT:: Bind the public Logic API to transactional lazy installers
 
 - Status: todo
@@ -5827,7 +5829,7 @@ disable objective refill and use only the generated FVT bundle index.
 - Review only: false
 - Priority: P0
 - Track: certification-integrity
-- Depends on: FVT-084, FVT-087, FVT-086, FVT-085
+- Depends on: FVT-084, FVT-087, FVT-101, FVT-085
 - Outputs: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_end_to_end_assurance_matrix.json, test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py
 - Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py test/integration/test_formal_verification_real_tool_matrix.py test/packaging/test_logic_verification_clean_install.py -q
 - Board namespace: formal_verification_tactician_readiness.todo.md
@@ -5887,7 +5889,6 @@ disable objective refill and use only the generated FVT bundle index.
 - Candidate kind: aggregate
 - Todo vector key: 881608d4da8e1fd4
 - Acceptance: Objective scan filed this gap for FVT-G220. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-088-objective-gap-2c7c735deb11.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py, docs/architecture/formal_verification_end_to_end_assurance_matrix.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
-
 ## FVT-089 FVT:: Reissue deployment certification with authoritative vendor evidence
 
 - Status: todo
@@ -6103,7 +6104,7 @@ disable objective refill and use only the generated FVT bundle index.
 - Review only: false
 - Priority: P0
 - Track: external-capability
-- Depends on: FVT-086
+- Depends on: FVT-101
 - Outputs: tools/logic/certify_secpal_operator_compatibility.py, docs/architecture/formal_verification_secpal_operator_compatibility_receipt.json, test/integration/toolchains/test_secpal_operator_compatibility_receipt.py
 - Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_secpal_operator_compatibility_receipt.py -q
 - Board namespace: formal_verification_tactician_readiness.todo.md
@@ -6163,7 +6164,6 @@ disable objective refill and use only the generated FVT bundle index.
 - Candidate kind: aggregate
 - Todo vector key: a2567f8aef0bf022
 - Acceptance: Objective scan filed this gap for FVT-G224. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-092-objective-gap-0838d7c72929.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_secpal_operator_compatibility_receipt.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
-
 ## FVT-093 Close objective gap: Certify usable in-process authorization and Runtime MTL semantics
 
 - Status: todo
@@ -6586,7 +6586,7 @@ disable objective refill and use only the generated FVT bundle index.
 - Review only: false
 - Priority: P0
 - Track: authorization-engine
-- Depends on: FVT-086, FVT-092, FVT-093, FVT-095
+- Depends on: FVT-101, FVT-092, FVT-093, FVT-095
 - Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/secpal_style_authorization.py, ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py, docs/architecture/formal_verification_production_authorization_replacement_receipt.json, test/integration/toolchains/test_production_authorization_replacement.py
 - Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_production_authorization_replacement.py -q
 - Board namespace: formal_verification_tactician_readiness.todo.md
@@ -6646,7 +6646,6 @@ disable objective refill and use only the generated FVT bundle index.
 - Candidate kind: aggregate
 - Todo vector key: f0290cdd9a104255
 - Acceptance: Objective scan filed this gap for FVT-G231. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-03-fvt-099-objective-gap-3721985e57d6.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (docs/architecture/formal_verification_production_authorization_replacement_receipt.json, test/integration/toolchains/test_production_authorization_replacement.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
-
 ## FVT-100 Close objective gap: Re-audit the post-remediation matrix and release gate
 
 - Status: todo
