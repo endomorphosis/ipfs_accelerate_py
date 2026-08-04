@@ -33286,26 +33286,22 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     def _prepare_main_merge_workspace(self, target_branch: str, branch_name: str) -> dict[str, Any]:
         if self._git_current_branch(self.repo_root) == target_branch:
             host_dirty = sorted(self._dirty_worktree_paths(self.repo_root))
-            blocking_host_dirty = [
-                path
-                for path in host_dirty
-                if not self._host_path_is_configured_submodule_dirt(path)
-            ]
-            if not blocking_host_dirty:
+            if not host_dirty:
                 return {
                     "available": True,
                     "path": str(self.repo_root),
                     "ephemeral": False,
                     "target_branch": target_branch,
-                    "nonblocking_dirty_paths": host_dirty,
                 }
-            # Host sits on the merge target with real dirt (mid-land files,
-            # operator edits). Isolated detached worktree keeps progress moving.
+            # Any host dirt (including configured submodule checkouts) can
+            # collide with branch-changed gitlinks when merging on the shared
+            # checkout. Always isolate merges so ambient monorepo dirt cannot
+            # force main_checkout_dirty_conflict loops.
             return self._create_detached_main_merge_workspace(
                 target_branch,
                 branch_name,
                 reason="host_target_checkout_dirty",
-                dirty_paths=blocking_host_dirty,
+                dirty_paths=host_dirty,
             )
 
         merge_root = self._main_merge_worktree_root()
@@ -33313,24 +33309,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         for checked_out_path in checked_out_paths:
             if checked_out_path.resolve() == self.repo_root.resolve():
                 host_dirty = sorted(self._dirty_worktree_paths(self.repo_root))
-                blocking_host_dirty = [
-                    path
-                    for path in host_dirty
-                    if not self._host_path_is_configured_submodule_dirt(path)
-                ]
-                if not blocking_host_dirty:
+                if not host_dirty:
                     return {
                         "available": True,
                         "path": str(self.repo_root),
                         "ephemeral": False,
                         "target_branch": target_branch,
-                        "nonblocking_dirty_paths": host_dirty,
                     }
                 return self._create_detached_main_merge_workspace(
                     target_branch,
                     branch_name,
                     reason="host_target_checkout_dirty",
-                    dirty_paths=blocking_host_dirty,
+                    dirty_paths=host_dirty,
                 )
             if self._path_is_under(checked_out_path, merge_root):
                 dirty_paths = sorted(self._dirty_worktree_paths(checked_out_path))
@@ -39511,6 +39501,46 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             self._record_event("dirty_submodule_reset_deferred", result)
         return result
 
+    def _dirty_worktree_paths_ignore_submodule_dirt(self, cwd: Path) -> set[str]:
+        """Dirty paths excluding nested submodule checkout dirt.
+
+        Shared monorepo submodule checkouts stay dirty while supervisors run.
+        Those dirty checkouts must not block parent merges once the durable
+        gitlink tip is already correct; only non-submodule file dirt and
+        gitlink pointer changes remain conflict-relevant.
+        """
+
+        result = subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+                "--ignore-submodules=dirty",
+            ],
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return set()
+        paths: set[str] = set()
+        for line in result.stdout.splitlines():
+            if len(line) < 4:
+                continue
+            path_text = line[3:].strip()
+            if " -> " in path_text:
+                original, renamed = path_text.split(" -> ", 1)
+                if original:
+                    paths.add(original.strip())
+                if renamed:
+                    paths.add(renamed.strip())
+                continue
+            if path_text:
+                paths.add(path_text)
+        return paths
+
     def _dirty_merge_conflict_paths(
         self,
         branch_name: str,
@@ -39519,13 +39549,24 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         ignore_paths: set[str] | None = None,
     ) -> list[str]:
         workspace = cwd or self.repo_root
-        dirty_paths = self._dirty_worktree_paths(workspace)
+        # Prefer ignore-submodules=dirty so ambient nested dirt never freezes
+        # merges that only touch parent/gitlink paths.
+        dirty_paths = self._dirty_worktree_paths_ignore_submodule_dirt(workspace)
         if not dirty_paths:
             return []
         branch_paths = self._branch_changed_paths(branch_name)
         overlap = dirty_paths & branch_paths
         if ignore_paths:
             overlap -= ignore_paths
+        # Configured monorepo submodule roots are frequently dirty while
+        # isolated merge worktrees do not consume that dirt.
+        configured = self._configured_submodule_root_names()
+        overlap = {
+            path
+            for path in overlap
+            if path not in configured
+            and path.split("/", 1)[0] not in configured
+        }
         return sorted(overlap)
 
     def _restore_generated_dirty_merge_overlap(
