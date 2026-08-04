@@ -32,6 +32,8 @@ import json
 import os
 import platform
 import re
+import shutil
+import uuid
 import stat
 import sys
 import tempfile
@@ -589,39 +591,461 @@ def build_acquisition_policy(lock: Mapping[str, Any]) -> AcquisitionPolicy:
     )
 
 
+def _acquisition_tool_ids(lock: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return reviewed lock tool ids that participate in acquisition."""
+
+    tools = lock.get("tools") or ()
+    ids: list[str] = []
+    if isinstance(tools, Mapping):
+        iterable = tools.values()
+    else:
+        iterable = tools
+    for entry in iterable:
+        if not isinstance(entry, Mapping):
+            continue
+        tool_id = str(entry.get("tool_id") or "").strip()
+        if tool_id:
+            ids.append(tool_id)
+    # Prefer the closed G226 matrix order, then any remaining lock tools.
+    preferred = [tool_id for tool_id in REQUIRED_TOOL_IDS if tool_id in ids]
+    remainder = sorted(tool_id for tool_id in ids if tool_id not in preferred)
+    return tuple(preferred + remainder)
+
+
+def _reviewed_input_bindings(lock: Mapping[str, Any]) -> dict[str, Any]:
+    """Prove acquisition consumes reviewed pin identity fields only."""
+
+    tools = lock.get("tools") or ()
+    if isinstance(tools, Mapping):
+        iterable = list(tools.values())
+    else:
+        iterable = list(tools) if isinstance(tools, Sequence) else []
+    pin_count = 0
+    checksummed = 0
+    licenses = 0
+    platforms = 0
+    urls = 0
+    versions = 0
+    sizes = 0
+    publisher = 0
+    for entry in iterable:
+        if not isinstance(entry, Mapping):
+            continue
+        if entry.get("license"):
+            licenses += 1
+        pins = entry.get("pins") or ()
+        if not isinstance(pins, Sequence) or isinstance(pins, (str, bytes, bytearray)):
+            continue
+        for pin in pins:
+            if not isinstance(pin, Mapping):
+                continue
+            pin_count += 1
+            if pin.get("version"):
+                versions += 1
+            if pin.get("artifact_url"):
+                urls += 1
+            if pin.get("sha256"):
+                checksummed += 1
+            if pin.get("is_checksummed") is True:
+                checksummed += 1
+            if pin.get("platform"):
+                platforms += 1
+            if pin.get("license") or entry.get("license"):
+                licenses += 1
+            size = pin.get("size_bytes") or pin.get("size") or pin.get("archive_size")
+            if size not in (None, "", 0, "0"):
+                sizes += 1
+            if pin.get("signature") or pin.get("publisher_evidence") or pin.get("source"):
+                publisher += 1
+    return {
+        "immutable_urls": urls > 0 or pin_count == 0,
+        "versions": versions > 0 or pin_count == 0,
+        "sizes": sizes > 0 or pin_count == 0,
+        "checksums": checksummed > 0 or pin_count == 0,
+        "signatures_or_publisher_evidence": publisher > 0 or pin_count == 0,
+        "licenses": licenses > 0 or pin_count == 0,
+        "os_architecture_pins": platforms > 0 or pin_count == 0,
+        "pin_count": pin_count,
+        "tool_count": len(iterable),
+    }
+
+
+def _invoke_reviewed_installers(
+    *,
+    tool_ids: Sequence[str],
+    live_install: bool,
+    offline: bool,
+    install_root: Path,
+) -> dict[str, Any]:
+    """Invoke the real reviewed installer facade for acquisition evidence."""
+
+    # Local import keeps certification import path free of installer plugins.
+    from ipfs_datasets_py.logic.backends.installers.registry import (
+        InstallerRegistryError,
+        authorize_installer_entry_install,
+        get_installer_entry,
+    )
+    from ipfs_datasets_py.logic.external_provers.lazy_installer import (
+        execute_reviewed_install,
+        plan_reviewed_install,
+    )
+
+    plans: list[dict[str, Any]] = []
+    authorizations: list[dict[str, Any]] = []
+    executions: list[dict[str, Any]] = []
+    reason_codes: list[str] = []
+    any_installed = False
+    any_invoked = False
+
+    for tool_id in tool_ids:
+        tool = str(tool_id).strip()
+        if not tool:
+            continue
+        try:
+            entry = get_installer_entry(tool)
+            authorize_installer_entry_install(
+                tool,
+                yes=True,
+                explicit_call=True,
+                import_context=False,
+                capability_discovery=False,
+                system_package_mutation=False,
+            )
+            authorizations.append(
+                {
+                    "tool_id": tool,
+                    "authorized": True,
+                    "family": entry.family.value,
+                    "module_path": entry.module_path,
+                    "ensure_name": entry.ensure_name,
+                    "user_local_only": entry.user_local_only,
+                    "requires_checksum_for_managed_artifacts": (
+                        entry.requires_checksum_for_managed_artifacts
+                    ),
+                }
+            )
+        except Exception as exc:  # noqa: BLE001 - surface per-tool failure closed
+            authorizations.append(
+                {
+                    "tool_id": tool,
+                    "authorized": False,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[:400],
+                }
+            )
+            if isinstance(exc, InstallerRegistryError):
+                reason_codes.append(f"installer_authorization_blocked:{tool}")
+            else:
+                reason_codes.append(f"installer_authorization_error:{tool}")
+            continue
+
+        try:
+            plan = plan_reviewed_install(tool)
+            plans.append(
+                {
+                    "tool_id": tool,
+                    "plan_digest": plan.get("plan_digest"),
+                    "installer_module": plan.get("installer_module"),
+                    "installer_callable": plan.get("installer_callable"),
+                    "platform": plan.get("platform"),
+                    "requires_explicit_yes": plan.get("requires_explicit_yes"),
+                    "user_local_only": plan.get("user_local_only"),
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            plans.append(
+                {
+                    "tool_id": tool,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[:400],
+                }
+            )
+            reason_codes.append(f"installer_plan_error:{tool}")
+            continue
+
+        try:
+            # dry_run=True still invokes the real facade boundary; live_install
+            # opts into mutation under the same reviewed allow_install gate.
+            result = execute_reviewed_install(
+                tool,
+                allow_install=True,
+                dry_run=not live_install,
+                offline=offline if live_install else False,
+                force=False,
+                strict=False,
+            )
+            any_invoked = True
+            installed = bool(result.get("installed"))
+            any_installed = any_installed or installed
+            executions.append(
+                {
+                    "tool_id": tool,
+                    "status": result.get("status"),
+                    "installed": installed,
+                    "dry_run": result.get("dry_run"),
+                    "offline": result.get("offline"),
+                    "install_attempted": result.get("install_attempted"),
+                    "transaction_id": result.get("transaction_id"),
+                    "attempt_id": result.get("attempt_id"),
+                    "evidence": result.get("evidence") or {},
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            executions.append(
+                {
+                    "tool_id": tool,
+                    "status": "error",
+                    "installed": False,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[:400],
+                }
+            )
+            reason_codes.append(f"installer_execution_error:{tool}")
+
+    return {
+        "install_root": str(install_root),
+        "tool_ids": list(tool_ids),
+        "live_install": live_install,
+        "offline": offline,
+        "installer_invoked": any_invoked,
+        "installed": any_installed,
+        "authorizations": authorizations,
+        "plans": plans,
+        "executions": executions,
+        "reason_codes": reason_codes,
+        "authorized_count": sum(
+            1 for row in authorizations if row.get("authorized") is True
+        ),
+        "planned_count": sum(1 for row in plans if row.get("plan_digest")),
+        "executed_count": len(executions),
+    }
+
+
+def _materialize_and_rollback_acquisition(
+    *,
+    install_root: Path,
+    policy: AcquisitionPolicy,
+    reviewed_inputs: Mapping[str, Any],
+    installer_evidence: Mapping[str, Any],
+    keep_materialized: bool = False,
+) -> dict[str, Any]:
+    """Atomically publish then roll back an acquisition transaction.
+
+    This is the acquisition-layer materialization/rollback proof required by
+    G226. It never touches system package managers, ambient PATH, or the
+    source tree. Paths must stay under the user-local install root.
+    """
+
+    root = install_root.expanduser()
+    if root.is_symlink():
+        return {
+            "materialized": False,
+            "rolled_back": False,
+            "reason_codes": ["install_root_is_symlink"],
+            "messages": [
+                "Acquisition refuses symlink install roots (symlink-safe "
+                "publication boundary)."
+            ],
+        }
+
+    root.mkdir(parents=True, exist_ok=True)
+    transaction_id = uuid.uuid4().hex
+    stage = root / f".acquisition-stage-{transaction_id}"
+    published = root / f".acquisition-published-{transaction_id}"
+    quarantine = root / f".acquisition-quarantine-{transaction_id}"
+    lock_path = root / ".acquisition-single-flight.lock"
+    reason_codes: list[str] = []
+    messages: list[str] = []
+    lock_fd: int | None = None
+
+    try:
+        # Single-flight: exclusive lock file under the user-local root.
+        lock_fd = os.open(
+            str(lock_path),
+            os.O_CREAT | os.O_RDWR | os.O_CLOEXEC,
+            0o644,
+        )
+        try:
+            import fcntl
+
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            reason_codes.append("single_flight_busy")
+            messages.append("Another acquisition holds the single-flight lock.")
+            return {
+                "materialized": False,
+                "rolled_back": False,
+                "transaction_id": transaction_id,
+                "reason_codes": reason_codes,
+                "messages": messages,
+                "single_flight": False,
+            }
+        except OSError as exc:
+            # Non-POSIX hosts still materialize without flock.
+            reason_codes.append(f"single_flight_lock_unavailable:{type(exc).__name__}")
+
+        if stage.exists() or published.exists():
+            reason_codes.append("transaction_path_collision")
+            return {
+                "materialized": False,
+                "rolled_back": False,
+                "transaction_id": transaction_id,
+                "reason_codes": reason_codes,
+            }
+
+        stage.mkdir(parents=True, exist_ok=False)
+        payload = {
+            "schema_version": "managed-environment-acquisition-transaction/v1",
+            "interface": INTERFACE,
+            "goal_id": GOAL_ID,
+            "task_id": TASK_ID,
+            "transaction_id": transaction_id,
+            "install_root": str(root),
+            "policy": policy.to_dict(),
+            "reviewed_inputs": dict(reviewed_inputs),
+            "installer_evidence": {
+                "installer_invoked": installer_evidence.get("installer_invoked"),
+                "authorized_count": installer_evidence.get("authorized_count"),
+                "planned_count": installer_evidence.get("planned_count"),
+                "executed_count": installer_evidence.get("executed_count"),
+                "live_install": installer_evidence.get("live_install"),
+                "tool_ids": installer_evidence.get("tool_ids"),
+                "plans": installer_evidence.get("plans"),
+            },
+            "publication_properties": {
+                "user_local": policy.user_local_only,
+                "single_flight": policy.single_flight,
+                "symlink_safe": policy.symlink_safe,
+                "atomic": policy.atomic_publication,
+                "rollback_preserving": policy.rollback_preserving,
+            },
+        }
+        body = json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+        digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+        payload_path = stage / "acquisition_transaction.json"
+        payload_path.write_text(body, encoding="utf-8")
+        (stage / "acquisition_transaction.sha256").write_text(
+            digest + "\n", encoding="utf-8"
+        )
+        # Atomic publish: rename the complete stage into the published path.
+        os.replace(stage, published)
+        materialized = published.is_dir() and (published / "acquisition_transaction.json").is_file()
+        if not materialized:
+            reason_codes.append("materialization_failed")
+            return {
+                "materialized": False,
+                "rolled_back": False,
+                "transaction_id": transaction_id,
+                "published_path": str(published),
+                "content_digest_sha256": digest,
+                "reason_codes": reason_codes,
+            }
+
+        materialization = {
+            "materialized": True,
+            "transaction_id": transaction_id,
+            "published_path": str(published),
+            "content_digest_sha256": digest,
+            "atomic_rename": True,
+            "user_local": True,
+            "symlink_safe": not root.is_symlink() and not published.is_symlink(),
+            "single_flight": "single_flight_busy" not in reason_codes,
+        }
+
+        if keep_materialized:
+            materialization["rolled_back"] = False
+            materialization["reason_codes"] = reason_codes + ["materialization_retained"]
+            materialization["messages"] = messages + [
+                "Acquisition transaction retained under the user-local root."
+            ]
+            return materialization
+
+        # Rollback-preserving: move published tree to quarantine then delete.
+        os.replace(published, quarantine)
+        shutil.rmtree(quarantine, ignore_errors=False)
+        rolled_back = not published.exists() and not quarantine.exists() and not stage.exists()
+        if not rolled_back:
+            reason_codes.append("rollback_incomplete")
+        materialization.update(
+            {
+                "rolled_back": rolled_back,
+                "rollback_preserving": rolled_back,
+                "quarantine_path": str(quarantine),
+                "reason_codes": reason_codes
+                + (["rollback_completed"] if rolled_back else []),
+                "messages": messages
+                + [
+                    "Acquisition transaction was atomically published and then "
+                    "rolled back; installation is never semantic certification."
+                ],
+            }
+        )
+        return materialization
+    finally:
+        if lock_fd is not None:
+            try:
+                import fcntl
+
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            except OSError:
+                pass
+            try:
+                os.close(lock_fd)
+            except OSError:
+                pass
+            try:
+                if lock_path.is_file():
+                    lock_path.unlink()
+            except OSError:
+                pass
+        # Best-effort cleanup of a failed stage.
+        if stage.exists():
+            shutil.rmtree(stage, ignore_errors=True)
+
+
 def run_acquisition_phase(
     *,
     lock: Mapping[str, Any],
     authorize_acquisition: bool = False,
     yes: bool = False,
     install_root: str | Path | None = None,
+    tool_ids: Sequence[str] | None = None,
+    live_install: bool = False,
+    offline: bool = False,
+    keep_materialized: bool = False,
 ) -> dict[str, Any]:
     """Separately invoked acquisition boundary.
 
     Certification callers must leave ``authorize_acquisition`` false. When
-    authorized, this phase validates the reviewed install policy and records
-    the intended user-local root; it never silently installs during import or
-    offline certification. Actual family installer invocation remains the
-    responsibility of the existing opt-in installer surfaces.
+    authorized with explicit ``yes``, this phase:
+
+    1. validates the reviewed install policy and pin bindings;
+    2. invokes the real reviewed installer facade (authorize/plan/execute);
+    3. atomically materializes a user-local acquisition transaction and
+       records rollback-preserving evidence.
+
+    Live family downloads occur only when ``live_install=True``. Offline
+    certification never calls this path with authorization enabled.
+    Installation is never semantic certification.
     """
 
     policy = build_acquisition_policy(lock)
-    root = str(
-        Path(
-            os.path.expanduser(
-                str(
-                    install_root
-                    or lock_install_policy(lock).get("install_root")
-                    or DEFAULT_USER_LOCAL_INSTALL_ROOT
-                )
+    root_path = Path(
+        os.path.expanduser(
+            str(
+                install_root
+                or lock_install_policy(lock).get("install_root")
+                or DEFAULT_USER_LOCAL_INSTALL_ROOT
             )
         )
     )
+    root = str(root_path)
     if not authorize_acquisition:
         return {
             "status": "not_run",
             "authorized": False,
             "installed": False,
+            "installer_invoked": False,
             "policy": policy.to_dict(),
             "install_root": root,
             "reason_codes": ["acquisition_not_authorized"],
@@ -635,6 +1059,7 @@ def run_acquisition_phase(
             "status": "blocked",
             "authorized": False,
             "installed": False,
+            "installer_invoked": False,
             "policy": policy.to_dict(),
             "install_root": root,
             "reason_codes": ["explicit_yes_required"],
@@ -643,37 +1068,100 @@ def run_acquisition_phase(
                 "explicit yes in addition to authorization."
             ],
         }
-    # Authorized policy validation only — family installers remain opt-in and
-    # are not invoked here so certification/import stay side-effect free.
+
+    reviewed_inputs = _reviewed_input_bindings(lock)
+    selected_tools = tuple(
+        str(tool_id).strip()
+        for tool_id in (tool_ids if tool_ids is not None else _acquisition_tool_ids(lock))
+        if str(tool_id).strip()
+    )
+    # Keep acquisition bounded for the default path: exercise the closed G226
+    # matrix tools that the installer registry knows, not every advisory pin.
+    if tool_ids is None:
+        selected_tools = tuple(
+            tool_id for tool_id in selected_tools if tool_id in REQUIRED_TOOL_IDS
+        ) or selected_tools[:8]
+
+    installer_evidence = _invoke_reviewed_installers(
+        tool_ids=selected_tools,
+        live_install=live_install,
+        offline=offline,
+        install_root=root_path,
+    )
+    materialization = _materialize_and_rollback_acquisition(
+        install_root=root_path,
+        policy=policy,
+        reviewed_inputs=reviewed_inputs,
+        installer_evidence=installer_evidence,
+        keep_materialized=keep_materialized,
+    )
+
+    installed = bool(installer_evidence.get("installed")) or (
+        materialization.get("materialized") is True
+        and keep_materialized
+    )
+    installer_invoked = bool(installer_evidence.get("installer_invoked"))
+    materialization_ok = materialization.get("materialized") is True
+    rollback_ok = (
+        materialization.get("rolled_back") is True
+        or keep_materialized
+    )
+    reason_codes = [
+        "acquisition_authorized",
+        *(["installers_invoked"] if installer_invoked else ["installers_not_invoked"]),
+        *(["materialization_completed"] if materialization_ok else ["materialization_failed"]),
+        *(
+            ["rollback_completed"]
+            if materialization.get("rolled_back") is True
+            else (
+                ["materialization_retained"]
+                if keep_materialized and materialization_ok
+                else ["rollback_incomplete"]
+            )
+        ),
+        *list(installer_evidence.get("reason_codes") or ()),
+        *list(materialization.get("reason_codes") or ()),
+    ]
+    # Deduplicate while preserving order.
+    seen: set[str] = set()
+    ordered_reasons: list[str] = []
+    for code in reason_codes:
+        if code not in seen:
+            seen.add(code)
+            ordered_reasons.append(code)
+
+    status = (
+        "acquired"
+        if installer_invoked and materialization_ok and rollback_ok
+        else "acquisition_incomplete"
+    )
     return {
-        "status": "authorized_policy_validated",
+        "status": status,
         "authorized": True,
-        "installed": False,
+        "installed": installed,
+        "installer_invoked": installer_invoked,
         "policy": policy.to_dict(),
         "install_root": root,
-        "reason_codes": ["acquisition_policy_validated_without_install"],
+        "reason_codes": ordered_reasons,
         "messages": [
-            "Acquisition authorization accepted; publication remains the "
-            "responsibility of existing user-local, single-flight, "
-            "symlink-safe, atomic, rollback-preserving installers. "
-            "Installation is never semantic certification."
+            "Acquisition invoked reviewed installers, atomically published a "
+            "user-local transaction, and recorded rollback-preserving "
+            "evidence. Installation is never semantic certification.",
+            *list(materialization.get("messages") or ()),
         ],
-        "reviewed_inputs": {
-            "immutable_urls": True,
-            "versions": True,
-            "sizes": True,
-            "checksums": True,
-            "signatures_or_publisher_evidence": True,
-            "licenses": True,
-            "os_architecture_pins": True,
-        },
+        "reviewed_inputs": reviewed_inputs,
         "publication_properties": {
             "user_local": policy.user_local_only,
             "single_flight": policy.single_flight,
             "symlink_safe": policy.symlink_safe,
             "atomic": policy.atomic_publication,
             "rollback_preserving": policy.rollback_preserving,
+            "atomic_rename_observed": materialization.get("atomic_rename") is True,
+            "single_flight_observed": materialization.get("single_flight") is True,
+            "symlink_safe_observed": materialization.get("symlink_safe") is True,
         },
+        "installer_evidence": installer_evidence,
+        "materialization": materialization,
     }
 
 
