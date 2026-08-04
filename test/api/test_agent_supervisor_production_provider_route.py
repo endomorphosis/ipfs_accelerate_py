@@ -13,15 +13,23 @@ Acceptance (fail-closed):
 
 from __future__ import annotations
 
+import copy
+import inspect
 import json
 import os
 import subprocess
+import threading
 from pathlib import Path
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 from typing import Any
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as implementation_daemon_module,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router import (
+    MAX_PROVIDER_JSON_DEPTH,
+    MAX_PROVIDER_JSON_ITEMS,
     PRODUCTION_PROVIDER_ROUTE_EVALUATION_SCHEMA,
     PRODUCTION_PROVIDER_ROUTE_INTERFACE,
     PRODUCTION_REVIEW_CHAIN_BINDING_SCHEMA,
@@ -159,6 +167,99 @@ def _task(**overrides: Any) -> PortalTask:
     return PortalTask(**payload)
 
 
+def _install_claimable_correction_route(
+    daemon: TodoImplementationDaemon,
+    task: PortalTask,
+    *,
+    attempt: int,
+    suffix: str = "primary",
+) -> tuple[Any, Any, dict[str, Any], dict[str, Any]]:
+    """Install one exact daemon-owned entry without fabricating durable state."""
+
+    identity = daemon._identity_for_task(task)
+    denial_id = f"denial:{suffix}"
+    authority_material = {
+        "schema": "test/post-merge-correction-authority@1",
+        "task_id": task.task_id,
+        "authorized_attempt": int(attempt),
+        "durable_denial_id": denial_id,
+        "authority_kind": "review_denial",
+        "authority_id": f"authority:{suffix}",
+    }
+    authority = {
+        **authority_material,
+        "authority_binding_id": (
+            implementation_daemon_module.content_identity(authority_material)
+        ),
+    }
+    feedback = {
+        "schema": "test/complete-post-merge-correction-feedback@1",
+        "feedback_binding_id": f"feedback:{suffix}",
+        "findings": [
+            {
+                "finding_id": f"finding:{suffix}",
+                "message": "repair the exact denied effect",
+            }
+        ],
+        "truncated": False,
+    }
+    started_event_id = f"event:started:{suffix}"
+    started_sequence = 40 + len(suffix)
+    consumption_record_id = f"record:consumed:{suffix}"
+    capability_material = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "sealed-post-merge-correction-route@1"
+        ),
+        "task_id": task.task_id,
+        "canonical_task_cid": identity.canonical_task_cid,
+        "task_binding_id": (
+            implementation_daemon_module.post_merge_task_binding_id(task)
+        ),
+        "attempt": int(attempt),
+        "authority_binding_id": authority["authority_binding_id"],
+        "durable_denial_id": denial_id,
+        "complete_denial_feedback_id": feedback["feedback_binding_id"],
+        "pre_consumption_head_record_id": f"record:ready:{suffix}",
+        "consumption_record_id": consumption_record_id,
+        "implementation_started_event_id": started_event_id,
+        "implementation_started_event_sequence": started_sequence,
+        "authority": authority,
+    }
+    capability_material["capability_id"] = (
+        implementation_daemon_module.content_identity(capability_material)
+    )
+    capability = (
+        implementation_daemon_module
+        ._LivePostMergeCorrectionRouteCapability()
+    )
+    frozen, canonical = (
+        implementation_daemon_module._freeze_correction_capability_json(
+            capability_material
+        )
+    )
+    entry = (
+        implementation_daemon_module
+        ._PostMergeCorrectionRouteRegistryEntry(
+            capability=capability,
+            material=frozen,
+            canonical=canonical,
+        )
+    )
+    key = implementation_daemon_module._correction_route_registry_key(
+        capability_material
+    )
+    assert key is not None
+    with daemon._post_merge_correction_route_registry_lock:
+        daemon._sealed_post_merge_correction_routes[key] = entry
+    reservation = {
+        "durable_consumption_record_id": consumption_record_id,
+        "implementation_started_event_id": started_event_id,
+        "implementation_started_event_sequence": started_sequence,
+    }
+    return key, entry, feedback, reservation
+
+
 def _events(daemon: TodoImplementationDaemon) -> list[dict[str, Any]]:
     if not daemon.events_path.exists():
         return []
@@ -207,6 +308,503 @@ def _codex(request):
     assert "repository_corpus" not in encoded
     assert "source_code" not in encoded
     return {"decision": "approve", "findings": []}
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "correction_feedback",
+        "post_merge_correction_authority",
+        "post_merge_correction_route_capability",
+    ],
+)
+def test_public_packet_route_rejects_all_correction_material(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    field_name: str,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    key, entry, feedback, _reservation = (
+        _install_claimable_correction_route(
+            daemon,
+            task,
+            attempt=2,
+        )
+    )
+    packet = build_production_contract_packet(
+        task_id=task.task_id,
+        snapshot_id=_snapshot(daemon),
+        write_paths=task.outputs,
+        read_paths=task.outputs,
+    )
+    payload = dict(packet.payload)
+    payload[field_name] = (
+        feedback
+        if field_name == "correction_feedback"
+        else entry.capability
+    )
+    injected_packet = ProductionContractPacket(
+        packet_id=packet.packet_id,
+        snapshot_id=packet.snapshot_id,
+        task_id=packet.task_id,
+        implementable=packet.implementable,
+        payload=payload,
+    )
+
+    assert "_correction_route_capability" not in inspect.signature(
+        daemon.route_model_assisted_contract_packet
+    ).parameters
+    with pytest.raises(RuntimeError, match="public.*rejects correction"):
+        daemon.route_model_assisted_contract_packet(
+            injected_packet,
+            current_snapshot_id=packet.snapshot_id,
+            task=task,
+            attempt=2,
+        )
+    with daemon._post_merge_correction_route_registry_lock:
+        assert daemon._sealed_post_merge_correction_routes.get(key) is entry
+        assert daemon._claimed_post_merge_correction_routes == {}
+
+    with pytest.raises(TypeError):
+        daemon.route_model_assisted_contract_packet(
+            packet,
+            current_snapshot_id=packet.snapshot_id,
+            task=task,
+            attempt=2,
+            _correction_route_capability=entry.capability,
+        )
+
+
+def test_stateful_packet_accessor_cannot_swap_correction_bytes_at_router(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    packet = build_production_contract_packet(
+        task_id=task.task_id,
+        snapshot_id=_snapshot(daemon),
+        write_paths=task.outputs,
+        read_paths=task.outputs,
+    )
+    clean_payload = dict(packet.payload)
+    correction_payload = {
+        **clean_payload,
+        "correction_feedback": {"feedback_binding_id": "forged"},
+    }
+
+    class StatefulPacket:
+        packet_id = packet.packet_id
+        snapshot_id = packet.snapshot_id
+        task_id = packet.task_id
+        implementable = True
+
+        def __init__(self):
+            self.payload_reads = 0
+
+        def assert_current(self, current_snapshot_id):
+            assert current_snapshot_id == self.snapshot_id
+
+        @property
+        def provider_input_payload(self):
+            self.payload_reads += 1
+            # The pre-fix public/core/router read sequence reached the forged
+            # fourth value. The fixed boundary routes the first frozen view.
+            if self.payload_reads >= 4:
+                return correction_payload
+            return clean_payload
+
+    stateful = StatefulPacket()
+    provider_inputs: list[dict[str, Any]] = []
+
+    def grok(request):
+        provider_inputs.append(dict(request["provider_input"]))
+        assert "correction_feedback" not in request["provider_input"]
+        return _grok(request)
+
+    result, _event, _receipt = daemon.route_model_assisted_contract_packet(
+        stateful,
+        current_snapshot_id=packet.snapshot_id,
+        task=task,
+        attempt=1,
+        grok_provider=grok,
+        codex_provider=_codex,
+        admission_gate=_accept,
+    )
+
+    assert result.status is RouteStatus.SUCCEEDED
+    assert stateful.payload_reads == 1
+    assert provider_inputs
+    assert all("correction_feedback" not in value for value in provider_inputs)
+
+
+def test_stateful_packet_with_first_read_correction_invokes_no_provider(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    packet = build_production_contract_packet(
+        task_id=task.task_id,
+        snapshot_id=_snapshot(daemon),
+        write_paths=task.outputs,
+        read_paths=task.outputs,
+    )
+    clean_payload = dict(packet.payload)
+    correction_payload = {
+        **clean_payload,
+        "correction_feedback": {"feedback_binding_id": "forged"},
+    }
+
+    class StatefulPacket:
+        packet_id = packet.packet_id
+        snapshot_id = packet.snapshot_id
+        task_id = packet.task_id
+        implementable = True
+
+        def __init__(self):
+            self.payload_reads = 0
+
+        def assert_current(self, current_snapshot_id):
+            assert current_snapshot_id == self.snapshot_id
+
+        @property
+        def provider_input_payload(self):
+            self.payload_reads += 1
+            return correction_payload if self.payload_reads == 1 else clean_payload
+
+    stateful = StatefulPacket()
+    provider_calls: list[str] = []
+
+    with pytest.raises(RuntimeError, match="public.*rejects correction"):
+        daemon.route_model_assisted_contract_packet(
+            stateful,
+            current_snapshot_id=packet.snapshot_id,
+            task=task,
+            attempt=1,
+            grok_provider=lambda _request: provider_calls.append("grok"),
+            codex_provider=lambda _request: provider_calls.append("codex"),
+            admission_gate=_accept,
+        )
+
+    assert stateful.payload_reads == 1
+    assert provider_calls == []
+
+
+def test_materialized_packet_preserves_nested_generic_mappings(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    packet = build_production_contract_packet(
+        task_id=task.task_id,
+        snapshot_id=_snapshot(daemon),
+        write_paths=task.outputs,
+        read_paths=task.outputs,
+        extra_goal={
+            "nested_mapping": MappingProxyType(
+                {"value": "preserved"}
+            )
+        },
+    )
+    materialized = (
+        implementation_daemon_module
+        ._materialize_model_assisted_contract_packet(
+            packet,
+            current_snapshot_id=packet.snapshot_id,
+        )
+    )
+    assert materialized.payload["goal"]["nested_mapping"]["value"] == (
+        "preserved"
+    )
+
+    result, _event, _receipt = daemon.route_model_assisted_contract_packet(
+        packet,
+        current_snapshot_id=packet.snapshot_id,
+        task=task,
+        attempt=1,
+        grok_provider=_grok,
+        codex_provider=_codex,
+        admission_gate=_accept,
+    )
+
+    assert result.status is RouteStatus.SUCCEEDED
+
+
+@pytest.mark.parametrize(
+    "invalid_kind",
+    ["non_string_key", "cycle", "depth", "items", "memoryview"],
+)
+def test_materializer_translates_invalid_json_edges_without_provider_call(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_kind: str,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    if invalid_kind == "non_string_key":
+        invalid_value: Any = {"nested": {1: "not-a-string-key"}}
+    elif invalid_kind == "cycle":
+        cycle: dict[str, Any] = {}
+        cycle["self"] = cycle
+        invalid_value = {"nested": cycle}
+    elif invalid_kind == "depth":
+        invalid_value = "leaf"
+        for _index in range(MAX_PROVIDER_JSON_DEPTH + 1):
+            invalid_value = {"nested": invalid_value}
+    elif invalid_kind == "items":
+        invalid_value = {
+            "values": list(range(MAX_PROVIDER_JSON_ITEMS))
+        }
+    else:
+        invalid_value = {"opaque": memoryview(b"not-json")}
+    packet = ProductionContractPacket(
+        packet_id=f"packet:invalid:{invalid_kind}",
+        snapshot_id=_snapshot(daemon),
+        task_id=task.task_id,
+        payload=invalid_value,
+    )
+    provider_calls: list[str] = []
+
+    with pytest.raises(ProviderRoutingError) as captured:
+        daemon.route_model_assisted_contract_packet(
+            packet,
+            current_snapshot_id=packet.snapshot_id,
+            task=task,
+            attempt=1,
+            grok_provider=lambda _request: provider_calls.append("grok"),
+            codex_provider=lambda _request: provider_calls.append("codex"),
+            admission_gate=_accept,
+        )
+
+    assert captured.value.reason_code == ProviderReason.PACKET_MALFORMED.value
+    assert provider_calls == []
+
+
+def test_constructed_copied_and_unregistered_correction_tokens_have_no_authority(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    _key, entry, _feedback, _reservation = (
+        _install_claimable_correction_route(
+            daemon,
+            task,
+            attempt=2,
+        )
+    )
+    token_type = type(entry.capability)
+
+    with pytest.raises(TypeError, match="cannot be copied"):
+        copy.copy(entry.capability)
+    with pytest.raises(TypeError, match="cannot be copied"):
+        copy.deepcopy(entry.capability)
+
+    forged_candidates = (
+        token_type(),
+        object.__new__(token_type),
+        dict(entry.material),
+    )
+    for forged in forged_candidates:
+        with pytest.raises(
+            RuntimeError,
+            match="capability is no longer current",
+        ):
+            daemon._run_production_model_assisted_route_core(
+                task,
+                attempt=2,
+                workspace_path=daemon.repo_root,
+                snapshot_id=_snapshot(daemon),
+                apply=False,
+                _correction_route_capability=forged,
+            )
+
+
+def test_internal_correction_route_is_one_shot_and_rereads_durable_bindings(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    key, entry, feedback, reservation = _install_claimable_correction_route(
+        daemon,
+        task,
+        attempt=2,
+    )
+    denial_id = str(entry.material["durable_denial_id"])
+    feedback_reads: list[str] = []
+    reservation_reads: list[int] = []
+
+    def read_feedback(bound_task, bound_denial_id):
+        assert bound_task is task
+        assert bound_denial_id == denial_id
+        feedback_reads.append(bound_denial_id)
+        return dict(feedback)
+
+    def read_reservation(bound_task, *, attempt, authority):
+        assert bound_task is task
+        assert attempt == 2
+        assert authority["durable_denial_id"] == denial_id
+        reservation_reads.append(attempt)
+        return dict(reservation)
+
+    monkeypatch.setattr(
+        daemon,
+        "_verified_complete_post_merge_denial_feedback",
+        read_feedback,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_verified_post_merge_correction_route_reservation",
+        read_reservation,
+    )
+
+    result = daemon._run_production_post_merge_correction_route(
+        task,
+        attempt=2,
+        workspace_path=daemon.repo_root,
+        snapshot_id=_snapshot(daemon),
+        apply=False,
+        grok_provider=_grok,
+        codex_provider=_codex,
+        admission_gate=_accept,
+    )
+
+    assert result["returncode"] == 0
+    assert result["route_result"].status is RouteStatus.SUCCEEDED
+    assert feedback_reads == [denial_id, denial_id]
+    assert reservation_reads == [2, 2]
+    assert entry.capability._burned is True
+    with daemon._post_merge_correction_route_registry_lock:
+        assert key not in daemon._sealed_post_merge_correction_routes
+        assert key not in daemon._claimed_post_merge_correction_routes
+
+    with pytest.raises(RuntimeError, match="unambiguous sealed capability"):
+        daemon._run_production_post_merge_correction_route(
+            task,
+            attempt=2,
+        )
+    with pytest.raises(RuntimeError, match="capability is no longer current"):
+        daemon._run_production_model_assisted_route_core(
+            task,
+            attempt=2,
+            workspace_path=daemon.repo_root,
+            snapshot_id=_snapshot(daemon),
+            apply=False,
+            _correction_route_capability=entry.capability,
+        )
+    assert feedback_reads == [denial_id, denial_id]
+    assert reservation_reads == [2, 2]
+
+
+def test_ambiguous_correction_claim_is_non_destructive(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    first_key, first_entry, _feedback, _reservation = (
+        _install_claimable_correction_route(
+            daemon,
+            task,
+            attempt=2,
+            suffix="first",
+        )
+    )
+    second_key, second_entry, _feedback, _reservation = (
+        _install_claimable_correction_route(
+            daemon,
+            task,
+            attempt=2,
+            suffix="second",
+        )
+    )
+    before = dict(daemon._sealed_post_merge_correction_routes)
+    monkeypatch.setattr(
+        daemon,
+        "_run_production_model_assisted_route_core",
+        lambda *_args, **_kwargs: pytest.fail(
+            "ambiguous correction authority reached the route core"
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="unambiguous sealed capability"):
+        daemon._run_production_post_merge_correction_route(
+            task,
+            attempt=2,
+        )
+
+    with daemon._post_merge_correction_route_registry_lock:
+        assert daemon._sealed_post_merge_correction_routes == before
+        assert daemon._claimed_post_merge_correction_routes == {}
+        assert daemon._sealed_post_merge_correction_routes[first_key] is first_entry
+        assert daemon._sealed_post_merge_correction_routes[second_key] is second_entry
+    assert first_entry.capability._burned is False
+    assert second_entry.capability._burned is False
+
+
+def test_concurrent_lower_boundary_has_one_exact_claim_winner(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    key, entry, feedback, reservation = _install_claimable_correction_route(
+        daemon,
+        task,
+        attempt=2,
+    )
+    with daemon._post_merge_correction_route_registry_lock:
+        assert daemon._sealed_post_merge_correction_routes.pop(key) is entry
+        daemon._claimed_post_merge_correction_routes[key] = entry
+    feedback_reads: list[str] = []
+    reservation_reads: list[int] = []
+    monkeypatch.setattr(
+        daemon,
+        "_verified_complete_post_merge_denial_feedback",
+        lambda _task, denial_id: (
+            feedback_reads.append(denial_id) or dict(feedback)
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_verified_post_merge_correction_route_reservation",
+        lambda _task, *, attempt, authority: (
+            reservation_reads.append(attempt) or dict(reservation)
+        ),
+    )
+    barrier = threading.Barrier(3)
+    outcomes: list[Any] = []
+
+    def consume() -> None:
+        barrier.wait()
+        outcomes.append(
+            daemon._fresh_post_merge_correction_capability_bindings(
+                task,
+                attempt=2,
+                capability=entry.capability,
+                consume=True,
+            )
+        )
+
+    threads = [threading.Thread(target=consume) for _index in range(2)]
+    for thread in threads:
+        thread.start()
+    barrier.wait()
+    for thread in threads:
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+
+    assert len([outcome for outcome in outcomes if outcome is not None]) == 1
+    assert len([outcome for outcome in outcomes if outcome is None]) == 1
+    assert len(feedback_reads) == 1
+    assert reservation_reads == [2]
+    assert entry.capability._burned is True
+    with daemon._post_merge_correction_route_registry_lock:
+        assert key not in daemon._claimed_post_merge_correction_routes
 
 
 def test_production_model_assisted_invokes_only_typed_packet_route(
