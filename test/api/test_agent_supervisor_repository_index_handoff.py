@@ -658,6 +658,7 @@ def test_cli_rejects_analysis_only_handoff_publication(tmp_path: Path) -> None:
     assert completed.returncode == 2
     assert "authoritative handoff mode rejected" in completed.stderr
     assert "--require-healthy is mandatory" in completed.stderr
+    assert "--require-provider-authority is mandatory" in completed.stderr
     assert "--shadow is analysis-only" in completed.stderr
     assert "--skip-extraction cannot publish" in completed.stderr
     assert not (handoff_root / "baseline" / "current.json").exists()
