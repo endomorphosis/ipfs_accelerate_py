@@ -116,6 +116,80 @@ def test_directory_output_does_not_admit_prefix_siblings() -> None:
     )
 
 
+def test_unchanged_workspace_output_is_not_reported_missing(
+    tmp_path,
+) -> None:
+    lock_path = tmp_path / "config" / "formal_verification_toolchains.lock.json"
+    lock_path.parent.mkdir(parents=True)
+    lock_path.write_text('{"schema": "toolchains@1"}\n', encoding="utf-8")
+
+    review = review_implementation_failure(
+        task_id="FVT-086",
+        attempt=1,
+        expected_outputs=(
+            "config/formal_verification_toolchains.lock.json",
+            "tools/logic/certification/authorization_external.py",
+        ),
+        changed_paths=(
+            "tools/logic/certification/authorization_external.py",
+        ),
+        workspace_path=tmp_path,
+        validation_result={
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "validation_failed",
+            "failed_commands": ["python -m pytest test_secpal.py -q"],
+        },
+    )
+
+    assert review.decision is FailureReviewDecision.GUIDE_RESCUE
+    assert review.missing_expected_outputs == ()
+    assert (
+        FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value
+        not in review.reason_codes
+    )
+    assert (
+        FailureReviewReason.VALIDATION_COMMAND_FAILED.value
+        in review.reason_codes
+    )
+
+
+def test_missing_or_symlinked_unchanged_workspace_output_fails_closed(
+    tmp_path,
+) -> None:
+    outside = tmp_path.parent / f"{tmp_path.name}-outside-lock.json"
+    outside.write_text("{}\n", encoding="utf-8")
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "linked.lock.json").symlink_to(outside)
+
+    review = review_implementation_failure(
+        task_id="FVT-086",
+        attempt=1,
+        expected_outputs=(
+            "config/absent.lock.json",
+            "config/linked.lock.json",
+        ),
+        changed_paths=(),
+        workspace_path=tmp_path,
+        validation_result={
+            "attempted": False,
+            "passed": False,
+            "returncode": 78,
+            "reason": "proposal_gate_failed",
+        },
+    )
+
+    assert review.missing_expected_outputs == (
+        "config/absent.lock.json",
+        "config/linked.lock.json",
+    )
+    assert (
+        FailureReviewReason.EMPTY_OR_NO_CHANGE.value in review.reason_codes
+    )
+
+
 def test_guide_rescue_for_out_of_scope_refactor_paths() -> None:
     review = review_implementation_failure(
         task_id="EVAL-002",

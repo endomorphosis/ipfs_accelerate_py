@@ -27,7 +27,7 @@ from .validation.validation_commands import infer_validation_impact_paths
 FAILURE_REVIEW_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/implementation-failure-review@1"
 )
-FAILURE_REVIEW_POLICY_VERSION = "deterministic-failure-review-v2"
+FAILURE_REVIEW_POLICY_VERSION = "deterministic-failure-review-v3"
 
 # Failures that may never be accepted by the reviewer.
 _HARD_DENY_FINDING_CODES = frozenset(
@@ -362,12 +362,18 @@ def _expected_output_satisfied(
     changed: set[str],
     workspace_path: Path | None,
 ) -> bool:
-    """Return True when a declared file or directory output was produced.
+    """Return True when a declared file or directory output is present.
 
     Directory outputs (for example ``tests/fixtures/foo``) are satisfied when
     any changed path is that directory or a descendant. Exact file outputs
-    require an exact changed path. Workspace presence alone never counts as
-    producing the output — the attempt must still touch declared ownership.
+    require an exact changed path. An unchanged output may also satisfy this
+    diagnostic when it already exists inside the reviewed workspace. This is
+    intentionally not completion authority: command and proposal failures
+    remain failures, but rescue guidance must not call a baseline output
+    "missing" merely because the current attempt did not rewrite it.
+
+    Workspace fallback rejects missing paths and every symlink boundary. The
+    proposal gate remains responsible for content-bound change admission.
     """
 
     declared_norm = declared.rstrip("/")
@@ -379,10 +385,27 @@ def _expected_output_satisfied(
     prefix = declared_norm + "/"
     if any(path.startswith(prefix) for path in changed):
         return True
-    # Optional: if the declared path itself was listed with a trailing slash
-    # style only via descendants already handled above.
-    _ = workspace_path  # reserved for future hermetic workspace probes
-    return False
+    if workspace_path is None:
+        return False
+
+    try:
+        current = Path(workspace_path).resolve(strict=True)
+    except OSError:
+        return False
+    for part in PurePosixPath(declared_norm).parts:
+        current = current / part
+        try:
+            # ``is_symlink`` must precede ``exists``/type probes so dangling
+            # links and links through ancestors both fail closed.
+            if current.is_symlink():
+                return False
+            current.lstat()
+        except OSError:
+            return False
+    try:
+        return current.is_file() or current.is_dir()
+    except OSError:
+        return False
 
 
 def _missing_expected_outputs(
@@ -401,8 +424,6 @@ def _missing_expected_outputs(
             workspace_path=workspace_path,
         ):
             continue
-        # Unchanged expected outputs remain "missing work" so rescue guidance
-        # can say "create or update" rather than treating them as out of scope.
         missing.append(path)
     return tuple(missing)
 

@@ -9,6 +9,7 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
     DELTA_RETRY_EVIDENCE_ID,
+    ContextCompileResult,
     ContextCompiler,
     ContextDeltaBudgetError,
     ContextDeltaError,
@@ -30,6 +31,7 @@ from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
 )
 from ipfs_accelerate_py.agent_supervisor.context.context_contracts import (
     ContextBudget,
+    ContextBoundsError,
     ContextCapsule,
     ContextContractError,
     ContextDeltaCapsule,
@@ -917,6 +919,415 @@ def test_implementation_retry_compacts_oversized_diagnostic_projection(
     assert "denied-000-" in retry_prompt
     assert "denied-049-" not in retry_prompt
     assert restarted._last_implementation_retry is not None
+
+
+def test_implementation_retry_rebases_once_when_immutable_parent_is_full(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Context Test"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("fixture\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True)
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    task = PortalTask(
+        task_id="FVT-086",
+        title="Certify the SecPAL artifact intake",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="formal-verification",
+        outputs=["src/secpal.py"],
+        validation=["pytest tests/test_secpal.py"],
+        acceptance=(
+            "Preserve exact artifact authority and reject unsupported "
+            "execution."
+        ),
+    )
+    budget = ContextBudget(
+        max_input_tokens=4_096,
+        reserved_output_tokens=100,
+        reserved_tool_tokens=20,
+        max_items=64,
+    )
+
+    def tokenizer(text: str) -> int:
+        count = max(1, len(text.encode("utf-8")) // 12)
+        if "## Prior failure review (deterministic)" in text:
+            count += 1_000
+        return count
+
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implementation_log_dir=state_dir / "logs",
+        implementation_context_budget=budget,
+        implementation_context_tokenizer=tokenizer,
+        implementation_provider_context_window=4_500,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_render_todo_vector_context",
+        lambda _task: "optional vendor evidence " * 6_000,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_load_todo_vector_context",
+        lambda _task: {},
+    )
+
+    daemon._build_implementation_prompt(task, attempt=1)
+    parent_result = daemon._last_implementation_context
+    assert isinstance(parent_result, ContextCompileResult)
+    parent = parent_result.capsule
+    assert parent.input_tokens > 4_000
+    assert parent.expansion_references
+    diagnostic = daemon.record_implementation_failure_context(
+        task,
+        {
+            "kind": "validation_failure",
+            "returncode": 1,
+            "reason_codes": ["reason-" + ("r" * 250)] * 4,
+            "failed_commands": ["command-" + ("c" * 250)] * 4,
+            "failure_review": {
+                "accepted": False,
+                "reason_codes": ["review-" + ("v" * 250)] * 4,
+                "missing_expected_outputs": [
+                    "receipt-" + ("p" * 250)
+                ]
+                * 4,
+                "next_attempt_prompt_addendum": "guidance-" + ("g" * 500),
+            },
+        },
+        changed_files=("src/secpal.py",),
+        changed_symbols=("certify_secpal",),
+        unresolved_requirements=("requirement:secpal-certification",),
+    )
+    routes: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        daemon,
+        "_decision_runtime_route",
+        lambda route, payload: routes.append((route, dict(payload))),
+    )
+
+    prompt = daemon._build_implementation_prompt(task, attempt=2)
+    fresh_result = daemon._last_implementation_context
+
+    assert isinstance(fresh_result, ContextCompileResult)
+    assert daemon._last_implementation_retry is None
+    fresh = fresh_result.capsule
+    assert fresh.repository_id == parent.repository_id
+    assert fresh.tree_id == parent.tree_id
+    assert fresh.objective_id == parent.objective_id
+    assert fresh.objective_revision == parent.objective_revision
+    assert fresh.policy_id == parent.policy_id
+    assert fresh.policy_revision == parent.policy_revision
+    assert fresh.caller == parent.caller
+    assert fresh.stage == parent.stage
+    assert fresh.invariant_core_id == parent.invariant_core_id
+    assert fresh.invariant_core == parent.invariant_core
+    assert fresh.authority == parent.authority
+    assert fresh.scope == parent.scope
+    assert fresh.budget.max_input_tokens <= parent.budget.max_input_tokens
+    assert fresh.budget.max_items <= parent.budget.max_items
+    assert fresh.input_tokens <= fresh.budget.max_input_tokens
+    rescue_reference = next(
+        item
+        for item in fresh.evidence
+        if item.kind == "implementation-fresh-retry-context"
+    )
+    assert rescue_reference.required
+    rescue_binding = json.loads(rescue_reference.summary)
+    assert rescue_binding["mode"] == "bounded_fresh_context_rescue"
+    assert rescue_binding["parent_capsule_id"] == parent.capsule_id
+    assert rescue_binding["parent_invariant_core_id"] == parent.invariant_core_id
+    assert rescue_binding["prior_decision_id"] == diagnostic.prior_decision_id
+    assert rescue_binding["diagnostic_receipt_id"] == diagnostic.receipt_id
+    assert rescue_binding["diagnostic_failure_id"] == diagnostic.failure_id
+    assert rescue_binding["repair_round"] == 1
+    assert "guidance-" in rescue_reference.summary
+    assert "## Prior failure review (deterministic)" not in prompt
+    assert json.loads(prompt)["repository_id"] == parent.repository_id
+    prompt_tokens, prompt_token_limit = daemon._implementation_prompt_token_usage(
+        task,
+        prompt,
+    )
+    assert prompt_tokens <= prompt_token_limit
+    retry_route = next(
+        payload
+        for route, payload in routes
+        if route == "retry"
+        and payload.get("mode") == "bounded_fresh_context_rescue"
+    )
+    assert retry_route["diagnostic_projection_attempts"] == [
+        "full",
+        "compact",
+        "minimal",
+    ]
+    assert retry_route["reason"] == "delta_full_reconstruction_budget"
+    assert any(
+        route == "implementation_context"
+        and payload.get("mode") == "deterministic_addendum_omitted"
+        and payload.get("reason") == "receipt_bound_fresh_retry_context"
+        for route, payload in routes
+    )
+    rebound_diagnostic = daemon._implementation_diagnostics[
+        daemon._canonical_ref(task)
+    ]
+    assert rebound_diagnostic.failure_id == diagnostic.failure_id
+    assert rebound_diagnostic.receipt_id != diagnostic.receipt_id
+    assert (
+        rebound_diagnostic.prior_decision_id
+        == fresh_result.receipt.receipt_id
+    )
+
+    daemon._persist_implementation_context_receipt(task, attempt=2)
+    persisted_diagnostic = json.loads(
+        (
+            state_dir
+            / "logs"
+            / "fvt-086-diagnostic-receipt.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert (
+        persisted_diagnostic["prior_decision_id"]
+        == fresh_result.receipt.receipt_id
+    )
+    restarted = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "restarted-state.json",
+        strategy_path=state_dir / "restarted-strategy.json",
+        events_path=state_dir / "restarted-events.jsonl",
+        repo_root=repo,
+        implementation_log_dir=state_dir / "logs",
+        implementation_context_budget=budget,
+        implementation_context_tokenizer=tokenizer,
+        implementation_provider_context_window=4_500,
+    )
+    restart_routes: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        restarted,
+        "_decision_runtime_route",
+        lambda route, payload: restart_routes.append(
+            (route, dict(payload))
+        ),
+    )
+    restart_prompt = restarted._build_implementation_prompt(task, attempt=2)
+    assert restart_prompt == prompt
+    assert "guidance-" in restart_prompt
+    assert "## Prior failure review (deterministic)" not in restart_prompt
+    assert any(
+        route == "retry"
+        and payload.get("mode") == "bounded_fresh_context_reuse"
+        for route, payload in restart_routes
+    )
+    reloaded_diagnostic = restarted._implementation_diagnostics[
+        restarted._canonical_ref(task)
+    ]
+    assert reloaded_diagnostic.receipt_id == rebound_diagnostic.receipt_id
+    assert isinstance(
+        restarted._last_implementation_context,
+        ContextCompileResult,
+    )
+    assert restarted._implementation_parent(task) == (
+        fresh,
+        fresh_result.receipt.receipt_id,
+    )
+
+
+def test_implementation_fresh_retry_rescue_fails_closed_when_required_evidence_does_not_fit(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Context Test"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("fixture\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True)
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    task = PortalTask(
+        task_id="FVT-086",
+        title="Reject an over-budget retry rescue",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="formal-verification",
+        outputs=["src/secpal.py"],
+        validation=["pytest tests/test_secpal.py"],
+        acceptance="Never widen context authority.",
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implementation_log_dir=state_dir / "logs",
+        implementation_context_budget=ContextBudget(
+            max_input_tokens=4_096,
+            reserved_output_tokens=100,
+            reserved_tool_tokens=20,
+            max_items=64,
+        ),
+        implementation_context_tokenizer=lambda text: max(
+            1, len(text.encode("utf-8")) // 12
+        ),
+        implementation_provider_context_window=4_500,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_render_todo_vector_context",
+        lambda _task: "optional vendor evidence " * 6_000,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_load_todo_vector_context",
+        lambda _task: {},
+    )
+    daemon._build_implementation_prompt(task, attempt=1)
+    parent_result = daemon._last_implementation_context
+    assert isinstance(parent_result, ContextCompileResult)
+    parent = parent_result.capsule
+    daemon.record_implementation_failure_context(
+        task,
+        {"kind": "validation_failure", "returncode": 1},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_retry_diagnostic_projections",
+        lambda _diagnostic: (
+            ("mandatory-oversize", {"reason": "x" * 80_000}),
+        ),
+    )
+    routes: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        daemon,
+        "_decision_runtime_route",
+        lambda route, payload: routes.append((route, dict(payload))),
+    )
+
+    with pytest.raises(
+        ImplementationRetryDeferred,
+        match="implementation retry context budget exhausted",
+    ):
+        daemon._build_implementation_prompt(task, attempt=2)
+
+    assert daemon._last_implementation_context is parent_result
+    assert daemon._last_implementation_retry is None
+    assert daemon._implementation_parent(task) == (
+        parent,
+        parent_result.receipt.receipt_id,
+    )
+    assert routes == []
+
+
+def test_implementation_fresh_retry_rescue_translates_max_items_overflow(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Context Test"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("fixture\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True)
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    task = PortalTask(
+        task_id="FVT-086",
+        title="Bound retry reference count",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="formal-verification",
+        outputs=["src/secpal.py"],
+        validation=["pytest tests/test_secpal.py"],
+        acceptance="Never widen context item authority.",
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implementation_log_dir=state_dir / "logs",
+        implementation_context_budget=ContextBudget(
+            max_input_tokens=4_096,
+            reserved_output_tokens=100,
+            reserved_tool_tokens=20,
+            max_items=64,
+            max_serialized_bytes=1_048_576,
+        ),
+        implementation_context_tokenizer=lambda _text: 1,
+        implementation_provider_context_window=4_500,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_render_todo_vector_context",
+        lambda _task: (("x" * 6_100) + "\n") * 64,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_load_todo_vector_context",
+        lambda _task: {},
+    )
+    daemon._build_implementation_prompt(task, attempt=1)
+    parent_result = daemon._last_implementation_context
+    assert isinstance(parent_result, ContextCompileResult)
+    assert len(parent_result.capsule.evidence) == 64
+    assert not parent_result.capsule.expansion_references
+    daemon.record_implementation_failure_context(
+        task,
+        {"kind": "validation_failure", "returncode": 1},
+    )
+
+    with pytest.raises(
+        ImplementationRetryDeferred,
+        match="implementation retry context budget exhausted",
+    ) as caught:
+        daemon._build_implementation_prompt(task, attempt=2)
+
+    assert isinstance(caught.value.__cause__, ContextBoundsError)
+    assert daemon._last_implementation_context is parent_result
+    assert daemon._last_implementation_retry is None
 
 
 def test_delta_result_exposes_exact_invariant_core_preservation() -> None:
