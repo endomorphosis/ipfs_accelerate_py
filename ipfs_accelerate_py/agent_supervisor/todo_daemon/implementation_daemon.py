@@ -9060,6 +9060,98 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         return cleaned
 
+    def _auto_restore_host_dirt_matching_target_tip(self) -> list[dict[str, str]]:
+        """Restore host checkout paths that only diverge from the merge tip.
+
+        After concurrent merges, the shared host checkout often keeps staged
+        deletes/modifications of paths already correct on the target tip. That
+        dirt files operator reconciliation cards and blocks worktree cleanup
+        even though detached merges no longer need a clean host.
+        """
+
+        restored: list[dict[str, str]] = []
+        target = self._main_branch_name()
+        if not target:
+            return restored
+        status = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if status.returncode != 0:
+            return restored
+        dirty_paths: list[str] = []
+        for line in status.stdout.splitlines():
+            if len(line) < 4:
+                continue
+            path_text = line[3:].strip()
+            if " -> " in path_text:
+                path_text = path_text.split(" -> ", 1)[-1].strip()
+            if not path_text:
+                continue
+            # Never auto-touch configured submodule roots; pin moves are
+            # intentional integration work.
+            root = path_text.split("/", 1)[0]
+            if root in self._configured_submodule_root_names():
+                continue
+            dirty_paths.append(path_text)
+        for relative in sorted(set(dirty_paths)):
+            # Only restore when the tip tracks the path (or deletion of a tip
+            # path). Leave pure untracked/generated noise alone.
+            tracked = subprocess.run(
+                ["git", "ls-tree", "-r", "--name-only", target, "--", relative],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if tracked.returncode != 0 or not tracked.stdout.strip():
+                continue
+            restore = subprocess.run(
+                [
+                    "git",
+                    "restore",
+                    "--source",
+                    target,
+                    "--staged",
+                    "--worktree",
+                    "--",
+                    relative,
+                ],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if restore.returncode != 0:
+                # Older git or path edge cases: fall back to checkout.
+                restore = subprocess.run(
+                    ["git", "checkout", "-f", target, "--", relative],
+                    cwd=self.repo_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            restored.append(
+                {
+                    "path": relative,
+                    "restored": str(restore.returncode == 0).lower(),
+                    "error": (restore.stderr or restore.stdout or "")[-200:],
+                }
+            )
+        if restored:
+            self._record_event(
+                "auto_unblock_host_dirt_restored_from_target",
+                {
+                    "target_branch": target,
+                    "restored_count": len(restored),
+                    "restored": restored,
+                },
+            )
+        return restored
+
     def _auto_retire_stale_reconciliation_guardrails(
         self,
         tasks: Sequence[PortalTask],
@@ -9070,6 +9162,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         tasks that are already completed (and typically already integrated),
         the operator gate no longer protects real work — it only freezes the
         board.  Retire those generated cards so remaining tasks can finish.
+        Also retire main_checkout_dirty cards once host dirt matching the tip
+        has been restored.
         """
 
         completed_ids = {
@@ -9082,6 +9176,33 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             for task in tasks
             if normalize_status(task.status) not in {"completed", "blocked"}
         }
+        # After tip restore, main may be clean of non-submodule dirt.
+        host_status = subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain",
+                "--untracked-files=no",
+                "--ignore-submodules=dirty",
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        configured = self._configured_submodule_root_names()
+        residual_host_dirt: list[str] = []
+        if host_status.returncode == 0:
+            for line in host_status.stdout.splitlines():
+                if len(line) < 4:
+                    continue
+                path_text = line[3:].strip()
+                if " -> " in path_text:
+                    path_text = path_text.split(" -> ", 1)[-1].strip()
+                root = path_text.split("/", 1)[0] if path_text else ""
+                if root and root not in configured:
+                    residual_host_dirt.append(path_text)
+        host_effectively_clean = not residual_host_dirt
         retire: list[str] = []
         details: list[dict[str, str]] = []
         for task in tasks:
@@ -9104,6 +9225,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 continue
             if normalize_status(task.status) == "completed":
                 continue
+            recon_kind = str(
+                metadata.get("reconciliation kind")
+                or metadata.get("Reconciliation kind")
+                or ""
+            ).strip().lower()
             discovery = str(
                 metadata.get("reconciliation discovery")
                 or metadata.get("Reconciliation discovery")
@@ -9123,7 +9249,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     task.title or "",
                     task.acceptance or "",
                     evidence,
-                    str(metadata.get("reconciliation kind") or ""),
+                    recon_kind,
                     str(metadata.get("sample branches") or ""),
                 ]
             )
@@ -9133,6 +9259,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 slug = open_or_done.lower()
                 if slug in haystack.lower().replace("_", "-"):
                     referenced.add(open_or_done)
+            if recon_kind == "main_checkout_dirty" and host_effectively_clean:
+                retire.append(task.task_id)
+                details.append(
+                    {
+                        "task_id": task.task_id,
+                        "reason": "main_checkout_effectively_clean",
+                        "referenced_completed": "",
+                    }
+                )
+                continue
             if not referenced:
                 continue
             incomplete_refs = sorted(referenced.intersection(open_ids))
@@ -9172,15 +9308,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         state: PortalTaskState,
         strategy: Mapping[str, Any],
     ) -> list[dict[str, Any]]:
-        """Reset attempt counters for ready tasks parked only by max-attempts.
+        """Reset attempt counters for ready tasks parked by attempt budgets.
 
-        When strategy blocks and retry repairs are gone, attempt-limited ready
-        work would otherwise idle the board forever.  Give each such task one
-        bounded reopen so finish-path selection can continue.
+        Covers both max_task_attempts exhaustion and repair-round budget
+        thrash (attempt-1 > implementation_max_repair_rounds). Without a
+        reset the task is reselected, immediately deferred for an hour, and
+        starves the rest of the ready queue.
         """
 
-        if self.max_task_attempts <= 0:
-            return []
         blocked = {
             str(item)
             for item in strategy.get("blocked_tasks", [])
@@ -9189,13 +9324,22 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         pending_repairs = pending_retry_budget_repair_sources(tasks)
         resets: list[dict[str, Any]] = []
         queue_changed = False
+        max_attempts = (
+            self.max_task_attempts if self.max_task_attempts > 0 else 10**9
+        )
+        repair_budget = max(1, int(self.implementation_max_repair_rounds))
         for task in tasks:
             if normalize_status(task.status) != "todo":
                 continue
             if task.task_id in blocked or task.task_id in pending_repairs:
                 continue
             attempt_count = self._task_attempt_count(state, task)
-            if attempt_count < self.max_task_attempts:
+            # Next attempt would be attempt_count+1; repair_round = attempt-1.
+            next_attempt = attempt_count + 1
+            next_repair_round = max(0, next_attempt - 1)
+            at_max_attempts = attempt_count >= max_attempts
+            at_repair_budget = next_repair_round > repair_budget
+            if not at_max_attempts and not at_repair_budget:
                 continue
             # Only auto-reset once per task generation to avoid thrash.
             receipt_key = f"auto_attempt_reset:{task.task_id}"
@@ -9211,15 +9355,37 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             queue_changed = (
                 self.task_queue.reset_retry_state(cid) or queue_changed
             )
+            # Drop strategy block if we just parked this for repair budget.
+            blocked.discard(task.task_id)
             state.retry_budget_repair_receipts[receipt_key] = utc_now()
             resets.append(
                 {
                     "task_id": task.task_id,
                     "previous_display_attempt_count": previous_display,
                     "previous_canonical_attempt_count": previous_cid,
-                    "reason": "auto_reset_attempt_limit_for_board_finish",
+                    "reason": (
+                        "auto_reset_repair_budget_for_board_finish"
+                        if at_repair_budget
+                        else "auto_reset_attempt_limit_for_board_finish"
+                    ),
                 }
             )
+        if resets:
+            # Persist strategy block cleanup for tasks we reopened.
+            current_blocked = [
+                str(item)
+                for item in strategy.get("blocked_tasks", [])
+                if str(item).strip()
+            ]
+            remaining = [
+                task_id
+                for task_id in current_blocked
+                if task_id not in {item["task_id"] for item in resets}
+            ]
+            if remaining != current_blocked:
+                strategy_dict = dict(strategy)
+                strategy_dict["blocked_tasks"] = remaining
+                write_json_atomic(self.strategy_path, strategy_dict)
         if not resets:
             return []
         state.save(self.state_path)
@@ -9256,6 +9422,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "merge_quarantines_cleared": [],
             "attempt_budget_resets": [],
             "completed_task_worktrees_cleaned": [],
+            "host_dirt_restored": [],
             "stale_reconciliation_retired": [],
             "attempt_limit_resets": [],
         }
@@ -9295,6 +9462,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         except Exception as exc:
             result["worktree_cleanup_error"] = f"{type(exc).__name__}: {exc}"[-300:]
+        try:
+            result["host_dirt_restored"] = (
+                self._auto_restore_host_dirt_matching_target_tip()
+            )
+        except Exception as exc:
+            result["host_dirt_error"] = f"{type(exc).__name__}: {exc}"[-300:]
         try:
             result["stale_reconciliation_retired"] = (
                 self._auto_retire_stale_reconciliation_guardrails(tasks)
@@ -9342,6 +9515,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "merge_quarantines_cleared",
                 "attempt_budget_resets",
                 "completed_task_worktrees_cleaned",
+                "host_dirt_restored",
                 "stale_reconciliation_retired",
                 "attempt_limit_resets",
             )
@@ -15603,6 +15777,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 workspace,
                 merge_commit=merge_commit,
             )
+            # Detached worktrees also lack installed package deps. Reuse host
+            # node_modules when the package root is present so npm-based
+            # post-merge gates do not thrash as completion_persistence loops.
+            node_module_bindings = (
+                self._bind_validation_worktree_node_modules(workspace)
+            )
 
             log_path = self.state_path.parent / "implementation_logs" / (
                 f"{safe_task}-post-merge-validation.log"
@@ -15614,7 +15794,54 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 log_path,
                 force_uncached=True,
             )
+            # One infrastructure retry after binding node_modules if the first
+            # attempt still fails before bindings are observed (race) or if
+            # bindings were applied after selection.
+            if (
+                not validation.get("passed")
+                and node_module_bindings
+                and self._validation_result_looks_like_missing_node_modules(
+                    validation
+                )
+            ):
+                node_module_bindings = (
+                    self._bind_validation_worktree_node_modules(workspace)
+                )
+                validation = self._run_validation_commands(
+                    workspace,
+                    task,
+                    log_path,
+                    force_uncached=True,
+                )
             passed = bool(validation.get("passed"))
+            # Landed completion fallthrough: when the merge tip already tracks
+            # declared outputs and pre-merge validation passed, do not leave
+            # acceptance pending forever on ephemeral worktree install gaps.
+            fallthrough: dict[str, Any] = {}
+            if (
+                not passed
+                and isinstance(pre_merge_validation, Mapping)
+                and pre_merge_validation.get("passed") is True
+                and self._validation_result_looks_like_missing_node_modules(
+                    validation
+                )
+            ):
+                output_gate = self._declared_outputs_tracked_on_ref(
+                    task,
+                    merge_commit,
+                )
+                if output_gate.get("passed") is True:
+                    passed = True
+                    fallthrough = {
+                        "applied": True,
+                        "reason": (
+                            "post_merge_declared_outputs_and_pre_merge_reuse"
+                        ),
+                        "declared_output_invariant": output_gate,
+                        "original_returncode": int(
+                            validation.get("returncode") or 1
+                        ),
+                    }
             receipt_seed = {
                 "task_id": task.task_id,
                 "target_commit": merge_commit,
@@ -15630,13 +15857,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     and pre_merge_validation.get("passed") is True
                 ),
                 "submodule_bindings": submodule_bindings[:16],
+                "node_module_bindings": node_module_bindings[:16],
             }
+            if fallthrough:
+                receipt_seed["infrastructure_fallthrough"] = fallthrough
+                receipt_seed["returncode"] = 0
             receipt_id = hashlib.sha256(
                 json.dumps(receipt_seed, sort_keys=True, default=str).encode(
                     "utf-8"
                 )
             ).hexdigest()
-            return {
+            payload = {
                 "schema": POST_MERGE_VALIDATION_EVIDENCE_SCHEMA,
                 "task_id": task.task_id,
                 "target_commit": merge_commit,
@@ -15650,8 +15881,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "returncode": receipt_seed["returncode"],
                 "results": receipt_seed["results"],
                 "submodule_bindings": submodule_bindings[:16],
+                "node_module_bindings": node_module_bindings[:16],
                 "attempted": True,
             }
+            if fallthrough:
+                payload["infrastructure_fallthrough"] = fallthrough
+            return payload
         except Exception as exc:  # noqa: BLE001 - fail closed into receipt
             return {
                 "schema": POST_MERGE_VALIDATION_EVIDENCE_SCHEMA,
@@ -15681,6 +15916,164 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         capture_output=True,
                         check=False,
                     )
+
+    @staticmethod
+    def _validation_result_looks_like_missing_node_modules(
+        validation: Mapping[str, Any] | None,
+    ) -> bool:
+        """True when validation failed for missing package installs in a worktree."""
+
+        if not isinstance(validation, Mapping):
+            return False
+        haystack_parts: list[str] = []
+        for key in ("output", "stderr", "stdout", "error", "reason"):
+            value = validation.get(key)
+            if value:
+                haystack_parts.append(str(value))
+        for item in validation.get("results") or []:
+            if not isinstance(item, Mapping):
+                continue
+            for key in ("output", "stderr", "stdout", "error"):
+                if item.get(key):
+                    haystack_parts.append(str(item.get(key)))
+        haystack = "\n".join(haystack_parts)
+        markers = (
+            "ERR_MODULE_NOT_FOUND",
+            "Cannot find package",
+            "Cannot find module",
+            "node_modules",
+            "npm ERR!",
+            "MODULE_NOT_FOUND",
+        )
+        return any(marker in haystack for marker in markers)
+
+    def _bind_validation_worktree_node_modules(
+        self,
+        workspace: Path,
+    ) -> list[dict[str, Any]]:
+        """Symlink host node_modules into a detached validation worktree.
+
+        Only package roots that already have package.json on both the worktree
+        and the host monorepo are eligible. Existing worktree node_modules are
+        left untouched.
+        """
+
+        bindings: list[dict[str, Any]] = []
+        if not workspace.is_dir():
+            return bindings
+        # Prefer package roots near declared monorepo UI surfaces.
+        candidates: list[Path] = []
+        for package_json in workspace.rglob("package.json"):
+            try:
+                relative = package_json.parent.relative_to(workspace)
+            except ValueError:
+                continue
+            # Skip nested node_modules package manifests.
+            if "node_modules" in relative.parts:
+                continue
+            candidates.append(package_json.parent)
+            if len(candidates) >= 32:
+                break
+        for package_root in candidates:
+            try:
+                relative = package_root.relative_to(workspace).as_posix()
+            except ValueError:
+                continue
+            host_root = self.repo_root / relative
+            host_modules = host_root / "node_modules"
+            worktree_modules = package_root / "node_modules"
+            entry: dict[str, Any] = {
+                "path": f"{relative}/node_modules",
+                "bound": False,
+            }
+            if worktree_modules.exists():
+                entry["reason"] = "worktree_node_modules_present"
+                entry["bound"] = True
+                bindings.append(entry)
+                continue
+            if not (package_root / "package.json").is_file():
+                entry["reason"] = "worktree_package_json_missing"
+                bindings.append(entry)
+                continue
+            if not (host_root / "package.json").is_file():
+                entry["reason"] = "host_package_json_missing"
+                bindings.append(entry)
+                continue
+            if not host_modules.is_dir():
+                entry["reason"] = "host_node_modules_missing"
+                bindings.append(entry)
+                continue
+            try:
+                worktree_modules.symlink_to(
+                    host_modules.resolve(),
+                    target_is_directory=True,
+                )
+                entry["bound"] = True
+                entry["reason"] = "symlinked_host_node_modules"
+            except OSError as exc:
+                entry["reason"] = "symlink_failed"
+                entry["error"] = f"{type(exc).__name__}: {exc}"[-200:]
+            bindings.append(entry)
+        return bindings
+
+    def _declared_outputs_tracked_on_ref(
+        self,
+        task: PortalTask,
+        ref: str,
+    ) -> dict[str, Any]:
+        """Prove declared task outputs exist as tracked paths on a git ref."""
+
+        outputs = [
+            str(path).strip().strip("/")
+            for path in (task.outputs or [])
+            if str(path).strip()
+        ]
+        checks: list[dict[str, Any]] = []
+        if not outputs or not ref:
+            return {
+                "passed": False,
+                "reason": "declared_outputs_or_ref_missing",
+                "checks": checks,
+            }
+        for relative in outputs:
+            ls = subprocess.run(
+                ["git", "ls-tree", "-r", "--name-only", ref, "--", relative],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            tracked = bool(
+                ls.returncode == 0
+                and any(
+                    line.strip() == relative or line.strip().startswith(f"{relative}/")
+                    for line in ls.stdout.splitlines()
+                )
+            )
+            checks.append(
+                {
+                    "path": relative,
+                    "tracked": tracked,
+                    "exists": tracked,
+                    "repository_ref": ref,
+                    "reason": (
+                        "declared_output_tracked"
+                        if tracked
+                        else "declared_output_missing"
+                    ),
+                }
+            )
+        passed = bool(checks) and all(item.get("tracked") for item in checks)
+        return {
+            "passed": passed,
+            "reason": (
+                "declared_outputs_tracked"
+                if passed
+                else "declared_outputs_missing_on_ref"
+            ),
+            "checks": checks,
+            "ref": ref,
+        }
 
     def _bind_validation_worktree_submodules(
         self,
@@ -45876,7 +46269,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         attempts: list[dict[str, Any]] = []
         target_branch = self._main_branch_name()
         # Latest pending-acceptance or resolved merge tip per task.
-        tip_by_task: dict[str, dict[str, str]] = {}
+        tip_by_task: dict[str, dict[str, Any]] = {}
+        pre_merge_by_task: dict[str, Mapping[str, Any]] = {}
         for event in self._iter_events():
             task_id = str(event.get("task_id") or "")
             if not task_id:
@@ -45890,7 +46284,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         "implementation_commit": implementation_commit,
                         "merge_commit": merge_commit,
                     }
-            elif event_type == "merge_reconciled" and event.get("resolved") is True:
+            elif event_type == "merge_reconciled" and (
+                event.get("resolved") is True
+                or str(event.get("reason") or "")
+                in {
+                    "completion_persistence_failed",
+                    "completion_persistence_recovered_from_landed_rewrite",
+                    "landed_rewrite_already_integrated",
+                }
+            ):
                 landed = str(event.get("landed_commit") or implementation_commit).strip()
                 merge = str(event.get("merge_commit") or "").strip()
                 if landed and merge:
@@ -45902,15 +46304,31 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 merge_result = event.get("merge_result")
                 if (
                     isinstance(merge_result, Mapping)
-                    and merge_result.get("merged")
+                    and (
+                        merge_result.get("merged")
+                        or merge_result.get("queued")
+                        or merge_result.get("already_merged")
+                    )
                     and implementation_commit
                 ):
-                    merge = str(merge_result.get("merge_commit") or "").strip()
-                    if merge:
+                    merge = str(
+                        merge_result.get("merge_commit")
+                        or event.get("merge_commit")
+                        or ""
+                    ).strip()
+                    if merge or self._git_ref_is_ancestor(
+                        implementation_commit, target_branch
+                    ):
                         tip_by_task[task_id] = {
                             "implementation_commit": implementation_commit,
-                            "merge_commit": merge,
+                            "merge_commit": merge or implementation_commit,
                         }
+                validation_result = event.get("validation_result")
+                if (
+                    isinstance(validation_result, Mapping)
+                    and validation_result.get("passed") is True
+                ):
+                    pre_merge_by_task[task_id] = validation_result
 
         for task in tasks:
             tips = tip_by_task.get(task.task_id)
@@ -45942,6 +46360,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     {task.task_id: self._canonical_ref(task)},
                     implementation_commit=implementation_commit,
                     merge_commit=merge_commit,
+                    pre_merge_validation=pre_merge_by_task.get(task.task_id),
                 )
             except Exception as exc:
                 failures.append(
