@@ -25916,6 +25916,73 @@ def test_implementation_repair_round_is_relative_to_latest_verified_base(
         daemon._build_implementation_prompt(task, attempt=8)
 
 
+def test_same_lifetime_attempt_reentry_uses_verified_current_receipt_as_round_zero(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "todo.md", "feature.py")
+    _git(repo, "commit", "-m", "seed")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implementation_max_repair_rounds=3,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Resume a non-consuming setup failure",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["feature.py"],
+        acceptance="Reuse only the exact persisted current-attempt base.",
+    )
+
+    daemon._compile_implementation_context(task, attempt=3)
+    receipt_path = daemon._persist_implementation_context_receipt_unchecked(
+        task,
+        attempt=3,
+    )
+    exact_receipt = receipt_path.read_bytes()
+
+    assert daemon._implementation_repair_round(task, attempt=3) == 0
+    prompt = daemon._build_implementation_prompt(task, attempt=3)
+    assert prompt
+    assert daemon._last_implementation_retry is None
+
+    forged = json.loads(exact_receipt)
+    forged["tree_id"] = "forged-current-attempt-tree"
+    forged.pop("content_id", None)
+    forged.pop("receipt_id", None)
+    receipt_path.write_text(
+        json.dumps(forged, sort_keys=True),
+        encoding="utf-8",
+    )
+    assert daemon._implementation_repair_round(task, attempt=3) == 4
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="implementation repair round budget exhausted",
+    ):
+        daemon._build_implementation_prompt(task, attempt=3)
+
+    receipt_path.write_bytes(exact_receipt)
+    assert daemon._implementation_repair_round(task, attempt=3) == 0
+    receipt_path.unlink()
+    assert daemon._implementation_repair_round(task, attempt=3) == 4
+
+
 def test_retry_deferral_reconciles_idle_projection_for_supervisor_maintenance(
     tmp_path,
     monkeypatch,

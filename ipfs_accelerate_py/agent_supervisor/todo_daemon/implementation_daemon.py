@@ -21,6 +21,7 @@ import threading
 import time
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
+from enum import Enum
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -425,6 +426,32 @@ class _PostMergeCorrectionRouteRegistryEntry:
     capability: _LivePostMergeCorrectionRouteCapability
     material: Mapping[str, Any]
     canonical: bytes
+
+
+class _PostMergeCorrectionLandedRouteDisposition(str, Enum):
+    """Fail-closed result of the pre-start landed-route examination."""
+
+    VERIFIED = "verified"
+    TASK_LEAF_DIVERGED = "task_leaf_diverged"
+    REJECTED = "rejected"
+
+
+@dataclass(frozen=True, slots=True)
+class _PostMergeCorrectionLandedRoutePreflight:
+    """Separate an authorized leaf divergence from integrity failures."""
+
+    disposition: _PostMergeCorrectionLandedRouteDisposition
+    reason: str
+    candidate: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        candidate = MappingProxyType(dict(self.candidate))
+        if self.disposition is _PostMergeCorrectionLandedRouteDisposition.REJECTED:
+            if candidate:
+                raise ValueError("rejected correction preflight cannot carry a candidate")
+        elif not candidate:
+            raise ValueError("authorized correction preflight requires a candidate")
+        object.__setattr__(self, "candidate", candidate)
 
 
 def _correction_route_material_snapshot(
@@ -51932,31 +51959,47 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         parent_capsule, parent_receipt_id = parent
         stem = self._implementation_context_file_stem(task)
         maximum = int(self.implementation_max_repair_rounds)
+
+        def verified_parent_receipt(base_attempt: int) -> bool:
+            payload = load_json_dict(
+                self.implementation_log_dir
+                / f"{stem}-attempt-{base_attempt}-context-receipt.json"
+            )
+            if payload is None:
+                return False
+            try:
+                receipt = ContextCompilationReceipt.from_dict(payload)
+            except (TypeError, ValueError):
+                return False
+            return bool(
+                receipt.capsule_id == parent_capsule.capsule_id
+                and receipt.receipt_id == parent_receipt_id
+                and receipt.repository_id == parent_capsule.repository_id
+                and receipt.tree_id == parent_capsule.tree_id
+                and receipt.objective_id == parent_capsule.objective_id
+                and receipt.objective_id == task.task_id
+                and receipt.policy_id == parent_capsule.policy_id
+                and receipt.policy_revision
+                == parent_capsule.policy_revision
+                and receipt.stage == parent_capsule.stage
+                and parent_capsule.objective_revision
+                == self._canonical_ref(task)
+            )
+
+        # Prompt/context compilation is intentionally persisted before
+        # worktree setup. A non-consuming setup failure may therefore re-enter
+        # the same lifetime attempt with this exact base already durable. That
+        # is round zero, not an unbounded repair and not a new attempt.
+        if verified_parent_receipt(int(attempt)):
+            return 0
+
         # Only the bounded window can authorize another repair. Avoid an
         # unbounded directory scan even when a task has a long history.
         for repair_round in range(1, maximum + 1):
             base_attempt = int(attempt) - repair_round
             if base_attempt < 1:
                 break
-            payload = load_json_dict(
-                self.implementation_log_dir
-                / f"{stem}-attempt-{base_attempt}-context-receipt.json"
-            )
-            if payload is None:
-                continue
-            try:
-                receipt = ContextCompilationReceipt.from_dict(payload)
-            except (TypeError, ValueError):
-                continue
-            if (
-                receipt.capsule_id == parent_capsule.capsule_id
-                and receipt.receipt_id == parent_receipt_id
-                and receipt.repository_id == parent_capsule.repository_id
-                and receipt.tree_id == parent_capsule.tree_id
-                and receipt.objective_id == task.task_id
-                and parent_capsule.objective_revision
-                == self._canonical_ref(task)
-            ):
+            if verified_parent_receipt(base_attempt):
                 return repair_round
         # No receipt-bound base exists inside the allowed window. Return the
         # first forbidden round so callers fail closed.
