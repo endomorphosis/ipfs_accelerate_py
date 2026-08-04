@@ -10,6 +10,7 @@ from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
     DELTA_RETRY_EVIDENCE_ID,
     ChangedTreeContextError,
     ContentAddressedContextStore,
+    ContextCompileResult,
     ContextCompiler,
     ContextCompileResult,
     ContextDeltaBudgetError,
@@ -31,6 +32,7 @@ from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
 from ipfs_accelerate_py.agent_supervisor.context.context_contracts import (
     ContextBoundsError,
     ContextBudget,
+    ContextBoundsError,
     ContextCapsule,
     ContextContractError,
     ContextDeltaCapsule,
