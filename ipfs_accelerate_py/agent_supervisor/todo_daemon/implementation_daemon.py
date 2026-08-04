@@ -328,6 +328,13 @@ WORKTREE_LIFECYCLE_STARTUP_GRACE_ENV = (
 WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV = (
     "IPFS_ACCELERATE_AGENT_RECLAIM_DEAD_WORKTREE_LEASES_ON_STARTUP"
 )
+WORKTREE_LIFECYCLE_RECLAIM_EXPIRED_ON_PASS_ENV = (
+    "IPFS_ACCELERATE_AGENT_RECLAIM_EXPIRED_WORKTREE_LEASES_ON_PASS"
+)
+WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS_ENV = (
+    "IPFS_ACCELERATE_AGENT_WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS"
+)
+DEFAULT_WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS = 60.0
 WORKTREE_LIFECYCLE_RACE_BACKOFF_SECONDS = 30
 IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND = "implementation_resource_claim"
 IMPLEMENTATION_RESOURCE_CLAIM_LOCK_DIRNAME = "implementation-resource-claims"
@@ -3888,46 +3895,46 @@ class PortalImplementationDaemon:
             ),
         )
         self.worktree_lifecycle_restart_recovery = []
+        self._worktree_lifecycle_reclaim_on_pass = _env_bool(
+            WORKTREE_LIFECYCLE_RECLAIM_EXPIRED_ON_PASS_ENV,
+            True,
+        )
+        reclaim_interval = float(
+            os.environ.get(WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS_ENV, "")
+            or 0
+        )
+        self._worktree_lifecycle_reclaim_interval_seconds = (
+            reclaim_interval
+            if reclaim_interval > 0
+            else DEFAULT_WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS
+        )
+        self._last_worktree_lifecycle_reclaim_monotonic = 0.0
         # Always reclaim expired nonterminal claims on startup so abandoned
         # attempts (daemon PID still alive, lease not renewed) cannot stall
         # the board for hours.  Dead-owner controlled restart remains opt-in.
-        try:
-            expired_reclaimed = (
-                self.worktree_lifecycle.reclaim_expired_nonterminal(
-                    reason="daemon_startup_expired_lease_auto_reclaim",
-                )
+        startup_reclaim = self._reclaim_expired_worktree_lifecycle_claims(
+            reason="daemon_startup_expired_lease_auto_reclaim",
+            force=True,
+        )
+        if startup_reclaim.get("reclaimed_count", 0):
+            self.worktree_lifecycle_restart_recovery.extend(
+                list(startup_reclaim.get("records") or [])
             )
-        except Exception as exc:  # pragma: no cover - recovery best-effort
-            logger.warning(
-                "Failed expired worktree lifecycle reclaim on startup: %s",
-                exc,
-            )
-            expired_reclaimed = []
-        if expired_reclaimed:
-            logger.warning(
-                "Auto-reclaimed %d expired worktree lifecycle claim(s) on "
-                "daemon startup for state directory %s",
-                len(expired_reclaimed),
-                self.state_path.parent.resolve(),
-            )
-            self.worktree_lifecycle_restart_recovery.extend(expired_reclaimed)
         if _env_bool(
             WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV,
             True,
         ):
-            self.worktree_lifecycle_restart_recovery.extend(
+            dead_reclaimed = (
                 self.worktree_lifecycle.reclaim_dead_owners_for_controlled_restart(
                     expected_state_dir=self.state_path.parent.resolve(),
                 )
             )
-            dead_count = len(self.worktree_lifecycle_restart_recovery) - len(
-                expired_reclaimed
-            )
-            if dead_count > 0:
+            self.worktree_lifecycle_restart_recovery.extend(dead_reclaimed)
+            if dead_reclaimed:
                 logger.warning(
                     "Controlled restart fenced %d dead worktree lifecycle "
                     "owner(s) for state directory %s",
-                    dead_count,
+                    len(dead_reclaimed),
                     self.state_path.parent.resolve(),
                 )
         # Active attempt's fenced workspace claim (if any).  Cleanup paths
@@ -9382,6 +9389,13 @@ class PortalImplementationDaemon:
                     wake_kinds=wake_kinds,
                 )
         self._last_safety_reconciliation_monotonic = time.monotonic()
+        # Supervisor-native auto-unstick: reclaim abandoned worktree claims
+        # every pass interval so boards do not depend on external companions.
+        worktree_lifecycle_reclaim = (
+            self._reclaim_expired_worktree_lifecycle_claims(
+                reason="daemon_pass_expired_lease_auto_reclaim",
+            )
+        )
         event_log_repair = self.ensure_event_log_file()
         state_file_repair = self.ensure_state_file()
         protected_path_reconciliation = (
@@ -19258,15 +19272,11 @@ class PortalImplementationDaemon:
             # target checkout as already-merged while the owner is still mid
             # setup (ASI-171 / AICAT-025 prerequisite).
             try:
-                lifecycle_record = self.worktree_lifecycle.begin_preparing(
-                    task_id=task.task_id,
-                    canonical_task_cid=self._canonical_ref(task),
+                lifecycle_record = self._begin_worktree_lifecycle_preparing(
+                    task=task,
                     attempt=attempt,
-                    lane_id=self._worktree_lifecycle_lane_id(),
-                    workspace_path=worktree_path,
-                    branch=branch_name,
-                    merge_target=self._main_branch_name(),
-                    state_dir=str(self.state_path.parent.resolve()),
+                    worktree_path=worktree_path,
+                    branch_name=branch_name,
                 )
                 self._active_worktree_lifecycle = lifecycle_record
             except DuplicateAttemptError as exc:
@@ -36165,6 +36175,152 @@ class PortalImplementationDaemon:
         state_dir = str(self.state_path.parent.resolve())
         shard = f"{self.task_shard_index}/{self.task_shard_count}"
         return f"{state_dir}:{shard}:{os.getpid()}"
+
+    def _reclaim_expired_worktree_lifecycle_claims(
+        self,
+        *,
+        reason: str = "daemon_pass_expired_lease_auto_reclaim",
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """Terminalize abandoned worktree lifecycle claims (supervisor auto-unstick).
+
+        Integrated into the agent supervisor so boards do not require an
+        external companion to recover from expired nonterminal claims.  Safe
+        to call periodically: unexpired live claims are left alone.
+        """
+
+        if not force and not getattr(
+            self, "_worktree_lifecycle_reclaim_on_pass", True
+        ):
+            return {
+                "reclaimed_count": 0,
+                "skipped": True,
+                "reason": "reclaim_on_pass_disabled",
+                "records": [],
+            }
+        interval = float(
+            getattr(
+                self,
+                "_worktree_lifecycle_reclaim_interval_seconds",
+                DEFAULT_WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS,
+            )
+            or DEFAULT_WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS
+        )
+        now_mono = time.monotonic()
+        last = float(
+            getattr(self, "_last_worktree_lifecycle_reclaim_monotonic", 0.0) or 0.0
+        )
+        if not force and last > 0.0 and (now_mono - last) < interval:
+            return {
+                "reclaimed_count": 0,
+                "skipped": True,
+                "reason": "reclaim_interval_not_elapsed",
+                "records": [],
+                "interval_seconds": interval,
+            }
+        try:
+            recovered = self.worktree_lifecycle.reclaim_expired_nonterminal(
+                reason=reason,
+            )
+        except Exception as exc:  # pragma: no cover - recovery best-effort
+            logger.warning(
+                "Failed expired worktree lifecycle reclaim (%s): %s",
+                reason,
+                exc,
+            )
+            return {
+                "reclaimed_count": 0,
+                "skipped": False,
+                "reason": "reclaim_failed",
+                "error": str(exc)[-1000:],
+                "records": [],
+            }
+        self._last_worktree_lifecycle_reclaim_monotonic = now_mono
+        result: dict[str, Any] = {
+            "reclaimed_count": len(recovered),
+            "skipped": False,
+            "reason": reason,
+            "records": recovered,
+            "task_ids": sorted(
+                {
+                    str(getattr(record, "task_id", "") or "")
+                    for record in recovered
+                    if str(getattr(record, "task_id", "") or "")
+                }
+            ),
+        }
+        if recovered:
+            logger.warning(
+                "Auto-reclaimed %d expired worktree lifecycle claim(s) "
+                "(%s) for state directory %s",
+                len(recovered),
+                reason,
+                self.state_path.parent.resolve(),
+            )
+            try:
+                self._record_event(
+                    "worktree_lifecycle_expired_claims_reclaimed",
+                    {
+                        "reclaimed_count": len(recovered),
+                        "reason": reason,
+                        "task_ids": result["task_ids"],
+                        "requirement_id": FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID,
+                    },
+                )
+            except Exception:
+                # Event recording is best-effort during early init.
+                pass
+        return result
+
+    def _begin_worktree_lifecycle_preparing(
+        self,
+        *,
+        task: Any,
+        attempt: int,
+        worktree_path: Path,
+        branch_name: str,
+    ) -> Any:
+        """Acquire a preparing lifecycle claim, reclaiming expired blockers once."""
+
+        kwargs = {
+            "task_id": task.task_id,
+            "canonical_task_cid": self._canonical_ref(task),
+            "attempt": attempt,
+            "lane_id": self._worktree_lifecycle_lane_id(),
+            "workspace_path": worktree_path,
+            "branch": branch_name,
+            "merge_target": self._main_branch_name(),
+            "state_dir": str(self.state_path.parent.resolve()),
+        }
+        try:
+            return self.worktree_lifecycle.begin_preparing(**kwargs)
+        except DuplicateAttemptError:
+            # Integrated unstick: reclaim expired claims then retry once so a
+            # stale lease cannot burn the entire implement pass.
+            reclaim = self._reclaim_expired_worktree_lifecycle_claims(
+                reason="pre_acquire_expired_lease_reclaim",
+                force=True,
+            )
+            try:
+                self.worktree_lifecycle.reclaim_stale(
+                    worktree_path,
+                    reason="pre_acquire_workspace_expired_reclaim",
+                )
+            except Exception:
+                pass
+            try:
+                record = self.worktree_lifecycle.begin_preparing(**kwargs)
+            except DuplicateAttemptError as retry_exc:
+                raise retry_exc
+            if reclaim.get("reclaimed_count"):
+                logger.info(
+                    "Retrying worktree lifecycle acquire for %s attempt %s "
+                    "after reclaiming %s expired claim(s)",
+                    task.task_id,
+                    attempt,
+                    reclaim.get("reclaimed_count"),
+                )
+            return record
 
     def _active_worktree_lifecycle_lease_id(self) -> str:
         record = self._active_worktree_lifecycle

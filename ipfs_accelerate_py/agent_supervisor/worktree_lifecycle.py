@@ -667,6 +667,14 @@ class WorktreeLifecycleStore:
             # the board forever when a long-lived daemon PID is still up
             # but no longer implementing (common after lifecycle races).
             if now >= float(other.expires_at):
+                # Terminalize the abandoned claim before acquiring so orphan
+                # nonterminal workspace records do not accumulate.
+                self.reclaim_stale(
+                    other.workspace_path,
+                    reclaimer_lease_id=lease,
+                    reason="expired_task_attempt_replaced_on_acquire",
+                    now=now,
+                )
                 return
             other_live = owner_liveness(other.owner, proc_root=self.proc_root)
             if other_live in {OwnerLiveness.ALIVE, OwnerLiveness.UNKNOWN}:
