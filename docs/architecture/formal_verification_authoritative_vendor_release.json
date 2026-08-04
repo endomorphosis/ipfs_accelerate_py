@@ -1,8 +1,8 @@
 {
   "acceptance": {
     "authority_ceilings_bound": true,
-    "clean_wheel_evidence_bound": false,
-    "complete_specialized_semantic_cases_bound": false,
+    "clean_wheel_evidence_bound": true,
+    "complete_specialized_semantic_cases_bound": true,
     "current_task_future_merge_not_claimed": true,
     "dependencies_content_identity_bound": true,
     "dependencies_fresh": true,
@@ -10,14 +10,14 @@
     "disagreement_quarantines_bound": true,
     "durable_supervisor_completion_bound": false,
     "ergoai_managed_vendor_live_receipt_bound": true,
-    "every_readiness_axis_jointly_ready": false,
-    "exact_dependency_and_platform_identities_bound": false,
-    "lazy_install_receipts_bound": false,
+    "every_readiness_axis_jointly_ready": true,
+    "exact_dependency_and_platform_identities_bound": true,
+    "lazy_install_receipts_bound": true,
     "no_fixture_shim_unsupported_proposal_or_stale_lane": true,
     "origin_publication_bound": false,
     "post_merge_attestation_bound_and_ready": false,
     "public_safe_envelopes_bound": true,
-    "recursive_gitlinks_bound": false,
+    "recursive_gitlinks_bound": true,
     "release_candidate_bound_and_ready": true,
     "secpal_authoritative_live_receipt_bound": true,
     "secpal_production_use_permitted": true,
@@ -95,15 +95,9 @@
     "secpal:vendor_supported_platform"
   ],
   "blockers": [
-    "clean_wheel_evidence_bound",
-    "complete_specialized_semantic_cases_bound",
     "durable_supervisor_completion_bound",
-    "every_readiness_axis_jointly_ready",
-    "exact_dependency_and_platform_identities_bound",
-    "lazy_install_receipts_bound",
     "origin_publication_bound",
     "post_merge_attestation_bound_and_ready",
-    "recursive_gitlinks_bound",
     "source_and_merged_trees_bound"
   ],
   "claims": {
@@ -127,22 +121,22 @@
     "end_to_end_assurance_matrix": {
       "binding_failures": [],
       "binding_valid": true,
-      "declared_identity": "0e69bfa0271265b8ab776f81f9533eb8bac3da1abab855c795387aef353699d5",
+      "declared_identity": "b92c270a468bc911cc8c536a371bdcf584085118a9e67cd0a67db516be551dd0",
       "declared_identity_field": "matrix_digest_sha256",
       "fallback_used": false,
       "file_present": true,
-      "file_sha256": "sha256:eeaf6f6a9a1b03a29b8a02fea3be41f4429686ad622f5ad0849e478fd9a62e7e",
+      "file_sha256": "sha256:c2b972bd06437d0edf874a7f48597dd492930f2989644c07e5d202ee39a6b845",
       "fresh": true,
       "freshness": {
-        "age_seconds": 16633.0,
+        "age_seconds": 1.0,
         "clock_skew_seconds": 300,
         "failures": [],
         "max_age_seconds": 86400,
-        "release_wall_clock_age_seconds": 0.215886,
-        "timestamp": "2026-08-04T18:17:30Z",
+        "release_wall_clock_age_seconds": 0.644091,
+        "timestamp": "2026-08-04T23:01:02Z",
         "valid": true,
-        "wall_clock_age_seconds": 16633.215886,
-        "wall_clock_observed_at": "2026-08-04T22:54:43.215886Z"
+        "wall_clock_age_seconds": 1.644091,
+        "wall_clock_observed_at": "2026-08-04T23:01:03.644091Z"
       },
       "goal_id": "FVT-G220",
       "identity_valid": true,
@@ -151,7 +145,7 @@
       "interface_contract_valid": true,
       "interface_valid": true,
       "path": "docs/architecture/formal_verification_end_to_end_assurance_matrix.json",
-      "payload_content_identity": "sha256:b9fe12c89a10319a9dd892566d9b06e7c34475b1baefa881573560aef3d87114",
+      "payload_content_identity": "sha256:6dcede8b66eda31bd754b01c489dfd2822f50268635931b45fec71a795b2638f",
       "present": true,
       "public_evidence_audit": {
         "failure_count": 0,
@@ -163,8 +157,8 @@
       "repository_body_matches": true,
       "repository_content_bound": true,
       "repository_file_committed_at_head": true,
-      "repository_head_blob": "6e1fd5dda505b3b79e0eed294db825d1d9ea3f8f",
-      "repository_working_blob": "6e1fd5dda505b3b79e0eed294db825d1d9ea3f8f",
+      "repository_head_blob": "d4a1c35a1548a584d001c6ab07c7b3809f3d0067",
+      "repository_working_blob": "d4a1c35a1548a584d001c6ab07c7b3809f3d0067",
       "schema_version": "formal-verification-end-to-end-assurance-matrix/v1",
       "source_kind": "checked_file",
       "status": null,
@@ -180,15 +174,15 @@
       "file_sha256": "sha256:6517d6f52e7aa1305d6688372128dcd451302ed65b540d4355a0cd225d03a634",
       "fresh": true,
       "freshness": {
-        "age_seconds": 12886.0,
+        "age_seconds": 13266.0,
         "clock_skew_seconds": 300,
         "failures": [],
         "max_age_seconds": 86400,
-        "release_wall_clock_age_seconds": 0.215886,
+        "release_wall_clock_age_seconds": 0.644091,
         "timestamp": "2026-08-04T19:19:57Z",
         "valid": true,
-        "wall_clock_age_seconds": 12886.215886,
-        "wall_clock_observed_at": "2026-08-04T22:54:43.215886Z"
+        "wall_clock_age_seconds": 13266.644091,
+        "wall_clock_observed_at": "2026-08-04T23:01:03.644091Z"
       },
       "goal_id": "FVT-G218",
       "identity_valid": true,
@@ -226,15 +220,15 @@
       "file_sha256": "sha256:d9c22f220d324c7b06be6062d742f14e4882c948960c21d66f020a76903ab5e1",
       "fresh": true,
       "freshness": {
-        "age_seconds": 3916.0,
+        "age_seconds": 4296.0,
         "clock_skew_seconds": 300,
         "failures": [],
         "max_age_seconds": 86400,
-        "release_wall_clock_age_seconds": 0.215886,
+        "release_wall_clock_age_seconds": 0.644091,
         "timestamp": "2026-08-04T21:49:27Z",
         "valid": true,
-        "wall_clock_age_seconds": 3916.215886,
-        "wall_clock_observed_at": "2026-08-04T22:54:43.215886Z"
+        "wall_clock_age_seconds": 4296.644091,
+        "wall_clock_observed_at": "2026-08-04T23:01:03.644091Z"
       },
       "goal_id": "FVT-G214",
       "identity_valid": true,
@@ -272,15 +266,15 @@
       "file_sha256": "sha256:21a174efba2db036d923067227e60ea38aa84f73eee3e3b122b66e8d1a71a9da",
       "fresh": true,
       "freshness": {
-        "age_seconds": 5663.0,
+        "age_seconds": 6043.0,
         "clock_skew_seconds": 300,
         "failures": [],
         "max_age_seconds": 86400,
-        "release_wall_clock_age_seconds": 0.215886,
+        "release_wall_clock_age_seconds": 0.644091,
         "timestamp": "2026-08-04T21:20:20Z",
         "valid": true,
-        "wall_clock_age_seconds": 5663.215886,
-        "wall_clock_observed_at": "2026-08-04T22:54:43.215886Z"
+        "wall_clock_age_seconds": 6043.644091,
+        "wall_clock_observed_at": "2026-08-04T23:01:03.644091Z"
       },
       "goal_id": "FVT-G213",
       "identity_valid": true,
@@ -318,15 +312,15 @@
       "file_sha256": "sha256:6ce269f01904084ce10378a7e00f073e8b0916a5636302309ab7d8e17af939c7",
       "fresh": true,
       "freshness": {
-        "age_seconds": 21087.0,
+        "age_seconds": 21467.0,
         "clock_skew_seconds": 300,
         "failures": [],
         "max_age_seconds": 86400,
-        "release_wall_clock_age_seconds": 0.215886,
+        "release_wall_clock_age_seconds": 0.644091,
         "timestamp": "2026-08-04T17:03:16Z",
         "valid": true,
-        "wall_clock_age_seconds": 21087.215886,
-        "wall_clock_observed_at": "2026-08-04T22:54:43.215886Z"
+        "wall_clock_age_seconds": 21467.644091,
+        "wall_clock_observed_at": "2026-08-04T23:01:03.644091Z"
       },
       "goal_id": "FVT-G219",
       "identity_valid": true,
@@ -357,22 +351,22 @@
     "tactician_completion": {
       "binding_failures": [],
       "binding_valid": true,
-      "declared_identity": "sha256:ee1487751125758ab679aad38e9d11ae800fb9188873afb36d9835cbb6a7134f",
+      "declared_identity": "sha256:87e089a7127847eedcbc543736bd10af6c02e488a129333d38537e1459400519",
       "declared_identity_field": "receipt_identity",
       "fallback_used": false,
       "file_present": true,
-      "file_sha256": "sha256:86560311c7e9655ee51c028399316f92b6903556fa139af1d8d7f7da0f4afadf",
+      "file_sha256": "sha256:5807cf3f1f38460edb7bb6131f413d042e97c2d272a63d9335475b7f1137c0f1",
       "fresh": true,
       "freshness": {
-        "age_seconds": 14.0,
+        "age_seconds": 41.0,
         "clock_skew_seconds": 300,
         "failures": [],
         "max_age_seconds": 86400,
-        "release_wall_clock_age_seconds": 0.215886,
-        "timestamp": "2026-08-04T22:54:29Z",
+        "release_wall_clock_age_seconds": 0.644091,
+        "timestamp": "2026-08-04T23:00:22Z",
         "valid": true,
-        "wall_clock_age_seconds": 14.215886,
-        "wall_clock_observed_at": "2026-08-04T22:54:43.215886Z"
+        "wall_clock_age_seconds": 41.644091,
+        "wall_clock_observed_at": "2026-08-04T23:01:03.644091Z"
       },
       "goal_id": null,
       "identity_valid": true,
@@ -381,7 +375,7 @@
       "interface_contract_valid": true,
       "interface_valid": true,
       "path": "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
-      "payload_content_identity": "sha256:813cb0418ef79c184589224ec5743486c126e7f42c94c0cceced1cb6863a7e38",
+      "payload_content_identity": "sha256:096808f3f6066d52cd6918e33436132bce47b0948c935d8765900f9cc4ec1511",
       "present": true,
       "public_evidence_audit": {
         "failure_count": 0,
@@ -393,8 +387,8 @@
       "repository_body_matches": true,
       "repository_content_bound": true,
       "repository_file_committed_at_head": true,
-      "repository_head_blob": "e7e2719d542c7afcc78c4c612671dee6a69992d4",
-      "repository_working_blob": "e7e2719d542c7afcc78c4c612671dee6a69992d4",
+      "repository_head_blob": "6ff39389ff50b63184b2eb5f06f8849d6ff1f854",
+      "repository_working_blob": "6ff39389ff50b63184b2eb5f06f8849d6ff1f854",
       "schema_version": "formal-verification-tactician-completion-receipt/v1",
       "source_kind": "checked_file",
       "status": null,
@@ -546,98 +540,12 @@
     "external_secpal_excluded_from_required_readiness": true,
     "hardened_validation": {
       "axes_validated": 252,
-      "failures": [
-        "apalache@linux-aarch64:axes_not_canonically_derived",
-        "apalache@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "apalache@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "autohyper@linux-aarch64:axes_not_canonically_derived",
-        "autohyper@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "autohyper@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "coq@linux-aarch64:axes_not_canonically_derived",
-        "coq@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "coq@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "cvc5@linux-aarch64:axes_not_canonically_derived",
-        "cvc5@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "cvc5@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "datalog-authorization@linux-aarch64:axes_not_canonically_derived",
-        "datalog-authorization@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "datalog-authorization@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "eprover@linux-aarch64:axes_not_canonically_derived",
-        "eprover@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "eprover@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "ergoai@linux-aarch64:axes_not_canonically_derived",
-        "ergoai@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "ergoai@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "hyperltl@linux-aarch64:axes_not_canonically_derived",
-        "hyperltl@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "hyperltl@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "inputs_not_canonically_derived",
-        "isabelle@linux-aarch64:axes_not_canonically_derived",
-        "isabelle@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "isabelle@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "java@linux-aarch64:axes_not_canonically_derived",
-        "java@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "java@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "lean@linux-aarch64:axes_not_canonically_derived",
-        "lean@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "lean@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "maude@linux-aarch64:axes_not_canonically_derived",
-        "maude@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "maude@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "mchyper@linux-aarch64:axes_not_canonically_derived",
-        "mchyper@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "mchyper@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "opam@linux-aarch64:axes_not_canonically_derived",
-        "opam@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "opam@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "proverif@linux-aarch64:axes_not_canonically_derived",
-        "proverif@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "proverif@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "runtime-mtl-external@linux-aarch64:axes_not_canonically_derived",
-        "runtime-mtl-external@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "runtime-mtl-external@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "runtime-mtl@linux-aarch64:axes_not_canonically_derived",
-        "runtime-mtl@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "runtime-mtl@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "secpal-authorization@linux-aarch64:axes_not_canonically_derived",
-        "secpal-authorization@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "secpal-authorization@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "secpal@linux-aarch64:axes_not_canonically_derived",
-        "secpal@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "secpal@linux-aarch64:packaging:evidence_ref_2_digest_stale",
-        "souffle@linux-aarch64:axes_not_canonically_derived",
-        "souffle@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "souffle@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "stack@linux-aarch64:axes_not_canonically_derived",
-        "stack@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "stack@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "symbolicai@linux-aarch64:axes_not_canonically_derived",
-        "symbolicai@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "symbolicai@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "tamarin@linux-aarch64:axes_not_canonically_derived",
-        "tamarin@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "tamarin@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "temurin-jdk@linux-aarch64:axes_not_canonically_derived",
-        "temurin-jdk@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "temurin-jdk@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "tlc@linux-aarch64:axes_not_canonically_derived",
-        "tlc@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "tlc@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "vampire@linux-aarch64:axes_not_canonically_derived",
-        "vampire@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "vampire@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "z3@linux-aarch64:axes_not_canonically_derived",
-        "z3@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "z3@linux-aarch64:packaging:evidence_ref_1_digest_stale",
-        "zkp-circuit@linux-aarch64:axes_not_canonically_derived",
-        "zkp-circuit@linux-aarch64:packaging:evidence_ref_0_digest_stale",
-        "zkp-circuit@linux-aarch64:packaging:evidence_ref_1_digest_stale"
-      ],
+      "failures": [],
       "recomputed_deployment_ready": false,
       "rows_validated": 28,
-      "valid": false
+      "valid": true
     },
-    "hardened_validation_valid": false,
+    "hardened_validation_valid": true,
     "lazy_install_receipts_bound": true,
     "local_row_claims_ready": true,
     "required_axes": [
@@ -1393,7 +1301,7 @@
     ],
     "secpal_external_row_present": true,
     "secpal_reference_only_for_replacement_stack": true,
-    "valid": false
+    "valid": true
   },
   "evidence": {
     "builder": "tools/logic/build_formal_verification_tactician_receipt.py",
@@ -1434,7 +1342,7 @@
     "This receipt never attests FVT-089's own future merge or publication.",
     "assessment_complete records a finished fail-closed fan-in; it does not imply deployment_ready when blockers remain disclosed."
   ],
-  "observed_at": "2026-08-04T22:54:43Z",
+  "observed_at": "2026-08-04T23:01:03Z",
   "policy": {
     "advisor_proposal_only_does_not_block_replacement_fanin": true,
     "advisory_ergoai_never_grants_proof_authority": true,
@@ -1480,10 +1388,13 @@
     "satisfied": true
   },
   "recursive_gitlinks": {
-    "bound_count": 1,
+    "bound_count": 5,
     "fetch_attempted": false,
-    "gitlink_count": 20,
+    "gitlink_count": 31,
     "network_used": false,
+    "optional_gitlink_count": 26,
+    "required_bound_count": 5,
+    "required_gitlink_count": 5,
     "rows": [
       {
         "bound": false,
@@ -1496,6 +1407,7 @@
         "path": "docs/fastmcp",
         "pinned_commit": "1d932cc778a24cc0bf46fc4baad8306d4fed9c4b",
         "published_to_origin_main": false,
+        "required_for_release": false,
         "working_tree_clean": false
       },
       {
@@ -1509,6 +1421,7 @@
         "path": "docs/mcp-python-sdk",
         "pinned_commit": "0da9a074d09267a927d72faa58c26d828f0f8edb",
         "published_to_origin_main": false,
+        "required_for_release": false,
         "working_tree_clean": false
       },
       {
@@ -1522,19 +1435,21 @@
         "path": "ipfs_accelerate_py/mcplusplus",
         "pinned_commit": "15c1816d6c63a2b11edd505704f6a04a9abc6167",
         "published_to_origin_main": true,
+        "required_for_release": true,
         "working_tree_clean": true
       },
       {
-        "bound": false,
-        "checkout_head": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
+        "bound": true,
+        "checkout_head": "4d20019a7289aed53e85d7b1f5718afd092190bf",
         "checkout_present": true,
         "matches_checkout": true,
         "mode": "160000",
-        "origin_main": "354631938920f89b9af62f02c904f41e70832ed0",
+        "origin_main": "4d20019a7289aed53e85d7b1f5718afd092190bf",
         "own_repository": true,
         "path": "ipfs_datasets_py",
-        "pinned_commit": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
-        "published_to_origin_main": false,
+        "pinned_commit": "4d20019a7289aed53e85d7b1f5718afd092190bf",
+        "published_to_origin_main": true,
+        "required_for_release": true,
         "working_tree_clean": true
       },
       {
@@ -1548,6 +1463,7 @@
         "path": "ipfs_datasets_py/.tools/ipfs_kit_py",
         "pinned_commit": "80afdad2fa6db5875f40e5f495f26b98b7f3c767",
         "published_to_origin_main": false,
+        "required_for_release": false,
         "working_tree_clean": false
       },
       {
@@ -1561,6 +1477,7 @@
         "path": "ipfs_datasets_py/ipfs_accelerate_py",
         "pinned_commit": "48f13ab632dec4c3575acaad6e309ef60420904b",
         "published_to_origin_main": false,
+        "required_for_release": false,
         "working_tree_clean": false
       },
       {
@@ -1574,6 +1491,7 @@
         "path": "ipfs_datasets_py/ipfs_datasets_py/logic/CEC/DCEC_Library",
         "pinned_commit": "a4beb5b3280595be6b9221cac3c91dd019e6d371",
         "published_to_origin_main": false,
+        "required_for_release": false,
         "working_tree_clean": false
       },
       {
@@ -1587,6 +1505,7 @@
         "path": "ipfs_datasets_py/ipfs_datasets_py/logic/CEC/Eng-DCEC",
         "pinned_commit": "df518c21ef81b8001e6db59f5fd70f10cc04ff6c",
         "published_to_origin_main": false,
+        "required_for_release": false,
         "working_tree_clean": false
       },
       {
@@ -1600,6 +1519,7 @@
         "path": "ipfs_datasets_py/ipfs_datasets_py/logic/CEC/ShadowProver",
         "pinned_commit": "3060ede1ac1ec3f8ef9f9c9e41386aed1dbbe7f9",
         "published_to_origin_main": false,
+        "required_for_release": false,
         "working_tree_clean": false
       },
       {
@@ -1613,6 +1533,7 @@
         "path": "ipfs_datasets_py/ipfs_datasets_py/logic/CEC/Talos",
         "pinned_commit": "e0b7650d3e3a403924773f8253e924c719748d36",
         "published_to_origin_main": false,
+        "required_for_release": false,
         "working_tree_clean": false
       },
       {
@@ -1626,6 +1547,7 @@
         "path": "ipfs_datasets_py/ipfs_datasets_py/multimedia/convert_to_txt_based_on_mime_type",
         "pinned_commit": "d58933631a5362b1e2fdc45254ef620fa231223a",
         "published_to_origin_main": false,
+        "required_for_release": false,
         "working_tree_clean": false
       },
       {
@@ -1639,6 +1561,7 @@
         "path": "ipfs_datasets_py/ipfs_datasets_py/multimedia/omni_converter_mk2",
         "pinned_commit": "c1d9b0d517cea022516aab5b5d8fa5e3bc9a65aa",
         "published_to_origin_main": false,
+        "required_for_release": false,
         "working_tree_clean": false
       },
       {
@@ -1652,6 +1575,7 @@
         "path": "ipfs_datasets_py/ipfs_datasets_py/processors/web_archiving/common_crawl_search_engine",
         "pinned_commit": "5c7c2ab8a509073f39359b2a35446183855f460a",
         "published_to_origin_main": false,
+        "required_for_release": false,
         "working_tree_clean": false
       },
       {
@@ -1665,19 +1589,35 @@
         "path": "ipfs_datasets_py/ipfs_kit_py",
         "pinned_commit": "80afdad2fa6db5875f40e5f495f26b98b7f3c767",
         "published_to_origin_main": false,
+        "required_for_release": false,
         "working_tree_clean": false
       },
       {
-        "bound": false,
-        "checkout_head": null,
+        "bound": true,
+        "checkout_head": "e164bb21c7a73b722a83aea7623e5677391bce54",
         "checkout_present": true,
-        "matches_checkout": false,
+        "matches_checkout": true,
         "mode": "160000",
-        "origin_main": null,
-        "own_repository": false,
+        "origin_main": "e164bb21c7a73b722a83aea7623e5677391bce54",
+        "own_repository": true,
         "path": "ipfs_kit_py",
-        "pinned_commit": "e4427c5433cf0fea87fcc78588cab5582bae5de4",
+        "pinned_commit": "e164bb21c7a73b722a83aea7623e5677391bce54",
+        "published_to_origin_main": true,
+        "required_for_release": true,
+        "working_tree_clean": true
+      },
+      {
+        "bound": false,
+        "checkout_head": null,
+        "checkout_present": true,
+        "matches_checkout": false,
+        "mode": "160000",
+        "origin_main": null,
+        "own_repository": false,
+        "path": "ipfs_kit_py/docs/filesystem_spec",
+        "pinned_commit": "fec09b04ad626df44a03bc605cb2e526b752b042",
         "published_to_origin_main": false,
+        "required_for_release": false,
         "working_tree_clean": false
       },
       {
@@ -1688,23 +1628,165 @@
         "mode": "160000",
         "origin_main": null,
         "own_repository": false,
+        "path": "ipfs_kit_py/docs/ipfs-docs",
+        "pinned_commit": "4cf83720b59738d93db4068976f9c2a11f023e45",
+        "published_to_origin_main": false,
+        "required_for_release": false,
+        "working_tree_clean": false
+      },
+      {
+        "bound": false,
+        "checkout_head": null,
+        "checkout_present": true,
+        "matches_checkout": false,
+        "mode": "160000",
+        "origin_main": null,
+        "own_repository": false,
+        "path": "ipfs_kit_py/docs/ipfs_cluster",
+        "pinned_commit": "c7ca8b5f87b41fcc795297ca65b0bb41c10234bf",
+        "published_to_origin_main": false,
+        "required_for_release": false,
+        "working_tree_clean": false
+      },
+      {
+        "bound": false,
+        "checkout_head": null,
+        "checkout_present": true,
+        "matches_checkout": false,
+        "mode": "160000",
+        "origin_main": null,
+        "own_repository": false,
+        "path": "ipfs_kit_py/docs/ipfsspec",
+        "pinned_commit": "03f5199b9bf5a96c7ebf5e2e6f5dce8cf58b655f",
+        "published_to_origin_main": false,
+        "required_for_release": false,
+        "working_tree_clean": false
+      },
+      {
+        "bound": false,
+        "checkout_head": null,
+        "checkout_present": true,
+        "matches_checkout": false,
+        "mode": "160000",
+        "origin_main": null,
+        "own_repository": false,
+        "path": "ipfs_kit_py/docs/lassie",
+        "pinned_commit": "c6ba777810d03fed23aea11b5969b7d8a97f1edf",
+        "published_to_origin_main": false,
+        "required_for_release": false,
+        "working_tree_clean": false
+      },
+      {
+        "bound": false,
+        "checkout_head": null,
+        "checkout_present": true,
+        "matches_checkout": false,
+        "mode": "160000",
+        "origin_main": null,
+        "own_repository": false,
+        "path": "ipfs_kit_py/docs/libp2p-universal-connectivity",
+        "pinned_commit": "e18a6de9c020c5e406d9f61b638f5d276054798d",
+        "published_to_origin_main": false,
+        "required_for_release": false,
+        "working_tree_clean": false
+      },
+      {
+        "bound": false,
+        "checkout_head": null,
+        "checkout_present": true,
+        "matches_checkout": false,
+        "mode": "160000",
+        "origin_main": null,
+        "own_repository": false,
+        "path": "ipfs_kit_py/docs/libp2p_docs",
+        "pinned_commit": "17cee4a438797313d1e878b103abc1dbefdf423e",
+        "published_to_origin_main": false,
+        "required_for_release": false,
+        "working_tree_clean": false
+      },
+      {
+        "bound": false,
+        "checkout_head": null,
+        "checkout_present": true,
+        "matches_checkout": false,
+        "mode": "160000",
+        "origin_main": null,
+        "own_repository": false,
+        "path": "ipfs_kit_py/docs/lighthouse-python-sdk",
+        "pinned_commit": "6b2c86693090c770d2c9a4d82ba315000a77068b",
+        "published_to_origin_main": false,
+        "required_for_release": false,
+        "working_tree_clean": false
+      },
+      {
+        "bound": false,
+        "checkout_head": null,
+        "checkout_present": true,
+        "matches_checkout": false,
+        "mode": "160000",
+        "origin_main": null,
+        "own_repository": false,
+        "path": "ipfs_kit_py/docs/mcp-python-sdk",
+        "pinned_commit": "d3133ae6ce7333a501e38046aff4275c44326f90",
+        "published_to_origin_main": false,
+        "required_for_release": false,
+        "working_tree_clean": false
+      },
+      {
+        "bound": false,
+        "checkout_head": null,
+        "checkout_present": true,
+        "matches_checkout": false,
+        "mode": "160000",
+        "origin_main": null,
+        "own_repository": false,
+        "path": "ipfs_kit_py/docs/storacha_specs",
+        "pinned_commit": "3b6791869635735ddb1a54aed7450ad6ef687c06",
+        "published_to_origin_main": false,
+        "required_for_release": false,
+        "working_tree_clean": false
+      },
+      {
+        "bound": false,
+        "checkout_head": null,
+        "checkout_present": true,
+        "matches_checkout": false,
+        "mode": "160000",
+        "origin_main": null,
+        "own_repository": false,
+        "path": "ipfs_kit_py/ipfs_accelerate_py",
+        "pinned_commit": "48f13ab632dec4c3575acaad6e309ef60420904b",
+        "published_to_origin_main": false,
+        "required_for_release": false,
+        "working_tree_clean": false
+      },
+      {
+        "bound": true,
+        "checkout_head": "f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
+        "checkout_present": true,
+        "matches_checkout": true,
+        "mode": "160000",
+        "origin_main": "f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
+        "own_repository": true,
         "path": "ipfs_model_manager_py",
         "pinned_commit": "f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
-        "published_to_origin_main": false,
-        "working_tree_clean": false
+        "published_to_origin_main": true,
+        "required_for_release": true,
+        "working_tree_clean": true
       },
       {
-        "bound": false,
-        "checkout_head": null,
+        "bound": true,
+        "checkout_head": "b397988ed9e3e656475c1cf4417b84efdb95daf3",
         "checkout_present": true,
-        "matches_checkout": false,
+        "matches_checkout": true,
         "mode": "160000",
-        "origin_main": null,
-        "own_repository": false,
+        "origin_main": "b397988ed9e3e656475c1cf4417b84efdb95daf3",
+        "own_repository": true,
         "path": "ipfs_transformers_py",
         "pinned_commit": "b397988ed9e3e656475c1cf4417b84efdb95daf3",
-        "published_to_origin_main": false,
-        "working_tree_clean": false
+        "published_to_origin_main": true,
+        "required_for_release": true,
+        "working_tree_clean": true
       },
       {
         "bound": false,
@@ -1717,6 +1799,7 @@
         "path": "test/doc-builder",
         "pinned_commit": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
         "published_to_origin_main": false,
+        "required_for_release": false,
         "working_tree_clean": false
       },
       {
@@ -1730,6 +1813,7 @@
         "path": "test/huggingface_doc_builder",
         "pinned_commit": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
         "published_to_origin_main": false,
+        "required_for_release": false,
         "working_tree_clean": false
       },
       {
@@ -1743,10 +1827,11 @@
         "path": "test/huggingface_transformers",
         "pinned_commit": "44752c8dd99f3fb0da23006dc4fde4a07d9c417f",
         "published_to_origin_main": false,
+        "required_for_release": false,
         "working_tree_clean": false
       }
     ],
-    "valid": false
+    "valid": true
   },
   "release_chain": {
     "candidate_ready": true,
@@ -1757,7 +1842,7 @@
     "post_merge_ready": false,
     "source_and_merged_trees_bound": false
   },
-  "release_identity": "sha256:7cc7bfeca54d22a48dfbbdb2996bcf6c61d0be272956aa38de05734e51e5f643",
+  "release_identity": "sha256:345bbd787ba4ba3c09dce5569c7f4b454ca74c3a909c813fe5b3d9b6616b8bec",
   "schema_version": "formal-verification-authoritative-vendor-release/v1",
   "status": "authoritative_vendor_release_blocked",
   "task_id": "FVT-089",
@@ -1823,7 +1908,7 @@
       "raw_checks_digest_bound": true,
       "rederived_interface": "ErgoAILiveToolchainContract@1",
       "rederived_raw_checks_digest_sha256": "6b92793bf2f20581322a5ba11db246a0a2e39c9689f627cffb2aa34048ba509c",
-      "rederived_receipt_digest_sha256": "4a4fdc561f0e29cb9ac39f740b51b359b1eee5570b239ccc98795bd3e2d4ed55",
+      "rederived_receipt_digest_sha256": "6855c2b803fbb373f8af5207799a33d84f2f7b7a672772782d8fe84b51400772",
       "release_artifact_identity_bound": true,
       "repository_receipt_bound": true,
       "semantic_cases": {

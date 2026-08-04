@@ -52,7 +52,7 @@
     "certificate_lock_digest_matches": true,
     "matrix_audit_complete": true,
     "matrix_deployment_ready": false,
-    "matrix_digest_sha256": "08ff6efb5cbc0bd02a68a90fb7a86678fcc27ab0fdfe4186b3f699a29e441534",
+    "matrix_digest_sha256": "b92c270a468bc911cc8c536a371bdcf584085118a9e67cd0a67db516be551dd0",
     "ready_count": 27,
     "ready_provider_ids": [
       "apalache",
@@ -85,7 +85,7 @@
     ],
     "total_count": 28
   },
-  "delta_digest_sha256": "1fbfe881a2a3eafc0aca29fa560b285bdc2e9af7afa264ad1a218ec3677da16b",
+  "delta_digest_sha256": "7e12f6b87d8e67c374483a406f909b12ed049a4ad1db4a5b7fb742d0511f67de",
   "deployment_readiness_inputs": {
     "audit_complete": true,
     "certificate_lock_fresh": true,
@@ -118,7 +118,7 @@
       "kind": "repository_file",
       "path": "docs/architecture/formal_verification_authoritative_vendor_release.json",
       "present": true,
-      "sha256": "sha256:01f2cfb8864c5378349b1249a3ee35af3db8d2976974387e1a888d39e86ce304"
+      "sha256": "sha256:3351c8b55f128c3bb0e0a5fbe20bafad83b2d02cca238eb1f8aa21bb63a662fb"
     },
     "end_to_end_assurance_matrix": {
       "evidence_id": "end_to_end_assurance_matrix",
@@ -126,7 +126,7 @@
       "kind": "repository_file",
       "path": "docs/architecture/formal_verification_end_to_end_assurance_matrix.json",
       "present": true,
-      "sha256": "sha256:eeaf6f6a9a1b03a29b8a02fea3be41f4429686ad622f5ad0849e478fd9a62e7e"
+      "sha256": "sha256:c2b972bd06437d0edf874a7f48597dd492930f2989644c07e5d202ee39a6b845"
     },
     "trusted_certificate": {
       "evidence_id": "current_toolchain_certificate",
@@ -181,7 +181,7 @@
     }
   },
   "interface": "FormalVerificationPostRemediationAssurance@1",
-  "observed_at": "2026-08-04T22:54:30+00:00",
+  "observed_at": "2026-08-04T23:01:02Z",
   "production_authorization_replacement_row": {
     "axes": {
       "authority": {
@@ -354,7 +354,7 @@
             "kind": "repository_file",
             "path": "ipfs_datasets_py/requirements-lazy.txt",
             "present": true,
-            "sha256": "sha256:dafa075bfa4dfe175f36b6eaad72ddc567e5aac3daa1b4ca94c51cdd1aa50bd3"
+            "sha256": "sha256:bb592e8fa64dddeb39797967758b9fdc22696ad8382de6f038bca89eaa6484cc"
           },
           {
             "evidence_id": "packaging:ipfs_datasets_py/requirements-theorem-provers.txt",
