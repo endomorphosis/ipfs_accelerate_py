@@ -102,7 +102,14 @@
         "souffle",
         "secpal"
       ],
-      "status": "replaced_by_deployment_contract"
+      "status": "replaced_by_deployment_contract",
+      "goal_id": "FVT-G217",
+      "task_id": "FVT-086",
+      "repair_task_id": "FVT-101",
+      "objective_validation_evidence": "objective validation repair",
+      "objective_validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_secpal_live_toolchain_contract.py test/integration/toolchains/test_external_authorization_vendor_certification.py test/integration/toolchains/test_external_authorization_toolchain_certification.py -q",
+      "interface": "SecPALLiveToolchainContract@1",
+      "notes": "FVT-101 is the objective validation repair that re-proves FVT-G217 and binds the synthetic discovery term objective validation repair. Genuine SecPAL artifact intake is transactional and non-executable; the live platform matrix remains empty and cannot promote operator compatibility or fixtures to a vendor engine."
     },
     "runtime_mtl_external": {
       "tool_ids": [
