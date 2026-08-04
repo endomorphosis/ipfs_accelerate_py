@@ -888,7 +888,10 @@ def _source_record(
         # package checkouts.  Expose only a bounded prefix as visible context
         # and keep residual byte ranges content-addressed so patch coverage
         # remains exact without inventing a full JSON/XML AST slicer.
-        prefix_end = min(len(source), whole_file_bytes)
+        # Keep non-Python prefixes small so multi-file effect scopes fit the
+        # production prompt budget while residual CIDs still cover the tail.
+        prefix_budget = min(int(whole_file_bytes), 1_024)
+        prefix_end = min(len(source), prefix_budget)
         if prefix_end < len(source):
             newline = source.rfind(b"\n", 0, prefix_end)
             if newline > 0:
