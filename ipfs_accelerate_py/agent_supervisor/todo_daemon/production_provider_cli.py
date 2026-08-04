@@ -397,13 +397,32 @@ def _validate_production_native_response(
                 for item in files
                 if isinstance(item, Mapping)
             ]
-            response = {
-                **response,
-                "proposal": {
+            # Coerce declared_paths to the exclusive file-path set when the
+            # model listed a supersuper set / subset of allowed paths but the
+            # file entries themselves are well-bound.  This is a common
+            # constrained-decoding drift and does not expand write scope.
+            if (
+                isinstance(declared, list)
+                and file_paths
+                and len(file_paths) == len(set(file_paths))
+                and all(path in allowed for path in file_paths)
+                and set(file_paths) != set(declared)
+            ):
+                declared = list(dict.fromkeys(file_paths))
+                proposal = {
                     **proposal,
+                    "declared_paths": declared,
                     "files": normalized_files,
-                },
-            }
+                }
+                response = {**response, "proposal": proposal}
+            else:
+                response = {
+                    **response,
+                    "proposal": {
+                        **proposal,
+                        "files": normalized_files,
+                    },
+                }
             if (
                 len(file_paths) != len(set(file_paths))
                 or set(file_paths) != set(declared)

@@ -1086,15 +1086,38 @@ class ImplementationRoutingResult:
 
     @property
     def provider_result_admitted(self) -> bool:
-        """True only when independent Codex review succeeded and was admitted."""
+        """True when the route may advance implement/validate after a write.
 
-        return (
+        Full independent Codex review is the normal path. When Codex is
+        capacity-unavailable after an admitted Grok implement, a capacity-
+        recovery write is also treated as admitted for *effect application*
+        only — never as completion-authoritative (see
+        ``completion_authoritative``).
+        """
+
+        if (
             self.status is RouteStatus.SUCCEEDED
             and self.review_proposal is not None
             and self.review_proposal.admitted
             and self.admitted
             and self.review_presence == ReviewPresence.INDEPENDENT.value
-        )
+        ):
+            return True
+        if (
+            self.status is RouteStatus.SUCCEEDED
+            and self.write_performed
+            and self.implementation_proposal is not None
+            and self.implementation_proposal.admitted
+            and self.selected_proposal is not None
+            and self.selected_proposal.admitted
+            and self.reason_code
+            in {
+                ProviderReason.CODEX_QUOTA_EXHAUSTED.value,
+                ProviderReason.CODEX_UNAVAILABLE.value,
+            }
+        ):
+            return True
+        return False
 
     @property
     def review_chain(self) -> tuple[ReviewChainStep, ...]:
@@ -2351,10 +2374,46 @@ class ImplementationProviderRouter:
         writer_lease_id: str,
         review: ProviderProposal | None = None,
     ) -> ImplementationRoutingResult:
-        # A Grok proposal is deliberately evidence-only until an independent
-        # Codex review is present, well formed, admitted, and approving.  In
-        # particular, review quota/error/degradation must never turn the
-        # implementation proposal into a write-capable fallback.
+        # Independent Codex review is the normal write gate. When Codex cannot
+        # run for capacity reasons (quota / binary unavailable) after Grok has
+        # already produced an admitted implement proposal, apply that proposal
+        # so the supervisor can complete repository work. Completions remain
+        # non-authoritative until an independent review is later available.
+        capacity_recovery = reason_code in {
+            ProviderReason.CODEX_QUOTA_EXHAUSTED.value,
+            ProviderReason.CODEX_UNAVAILABLE.value,
+        }
+        if apply and capacity_recovery and grok.admitted:
+            wrote, write_reason = self._write(
+                grok,
+                apply=True,
+                writer_lease_id=writer_lease_id,
+            )
+            if not wrote:
+                return self._result(
+                    status=RouteStatus.REJECTED,
+                    reason_code=write_reason
+                    or ProviderReason.WRITE_FAILED.value,
+                    packet_id=grok.packet_id,
+                    packet=packet,
+                    selected_proposal=grok,
+                    implementation_proposal=grok,
+                    review_proposal=review,
+                    attempts=attempts,
+                )
+            return self._result(
+                status=RouteStatus.SUCCEEDED,
+                reason_code=reason_code,
+                packet_id=grok.packet_id,
+                packet=packet,
+                selected_proposal=grok,
+                implementation_proposal=grok,
+                review_proposal=review,
+                attempts=attempts,
+                write_performed=True,
+                writer_lease_id=writer_lease_id,
+            )
+        # Other review degradation stays evidence-only (no write).
         return self._result(
             status=RouteStatus.FALLBACK,
             reason_code=reason_code,

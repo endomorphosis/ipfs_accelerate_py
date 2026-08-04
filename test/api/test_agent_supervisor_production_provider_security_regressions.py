@@ -152,6 +152,52 @@ def test_codex_authored_repair_requires_another_independent_review_before_write(
     assert bind_applied_patch_to_review_chain(result) is None
 
 
+def test_codex_quota_exhaustion_applies_admitted_grok_proposal() -> None:
+    """When independent Codex review cannot run for capacity, apply Grok.
+
+    Completions remain non-authoritative; independent review is still required
+    for formal merge admission. Repository effects may still land so the
+    supervisor can complete implement/validate work while Codex is offline.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router import (
+        ProviderQuotaError,
+    )
+
+    writes: list[Any] = []
+
+    def codex(_request: ProviderRequest) -> dict[str, Any]:
+        raise ProviderQuotaError(
+            "legacy_codex_usage_capacity_exhausted",
+            reason_code=ProviderReason.CODEX_QUOTA_EXHAUSTED.value,
+        )
+
+    result = ImplementationProviderRouter(
+        grok_provider=lambda _request: _grok_proposal(
+            content="VALUE = 'capacity-recovery'\n"
+        ),
+        codex_provider=codex,
+        admission_gate=_admit,
+        writer=lambda proposal, lease: writes.append((proposal, lease)),
+    ).route(
+        _packet(),
+        current_snapshot_id=SNAPSHOT,
+        apply=True,
+        writer_lease_id="lease:security:codex-quota",
+    )
+
+    assert result.status is RouteStatus.SUCCEEDED
+    assert (
+        result.reason_code == ProviderReason.CODEX_QUOTA_EXHAUSTED.value
+    )
+    assert result.write_performed is True
+    assert result.provider_result_admitted is True
+    assert result.completion_authoritative is False
+    assert len(writes) == 1
+    # Formal merge binding still requires independent review.
+    assert bind_applied_patch_to_review_chain(result) is None
+
+
 def _provider_request(role: ProviderRole) -> ProviderRequest:
     prompt = json.dumps(
         {"role": role.value, "task_id": "SEC-001", "provider_input": {}},

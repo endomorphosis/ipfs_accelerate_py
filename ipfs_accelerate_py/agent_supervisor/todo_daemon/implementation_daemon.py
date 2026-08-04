@@ -20484,20 +20484,24 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 },
             )
 
-        deferred_infra = route_result.status is RouteStatus.DEFERRED or (
-            pending
-            and str(route_result.reason_code or "")
-            in {
-                ProviderReason.PROVIDER_TIMEOUT.value,
-                ProviderReason.PROVIDER_QUOTA_EXHAUSTED.value,
-                ProviderReason.GROK_QUOTA_EXHAUSTED.value,
-                ProviderReason.GROK_UNAVAILABLE.value,
-                # Independent-review Codex outage must not burn Grok implement
-                # attempts: pause the production route until Codex capacity
-                # returns.  Grok remains the default implementer.
-                ProviderReason.CODEX_QUOTA_EXHAUSTED.value,
-                ProviderReason.CODEX_UNAVAILABLE.value,
-            }
+        # Codex capacity recovery may SUCCEED with a Grok-applied write while
+        # disposition stays pending for independent review. Only defer when the
+        # route did not land repository effects.
+        deferred_infra = (
+            route_result.status is RouteStatus.DEFERRED
+            or (
+                pending
+                and not route_result.write_performed
+                and str(route_result.reason_code or "")
+                in {
+                    ProviderReason.PROVIDER_TIMEOUT.value,
+                    ProviderReason.PROVIDER_QUOTA_EXHAUSTED.value,
+                    ProviderReason.GROK_QUOTA_EXHAUSTED.value,
+                    ProviderReason.GROK_UNAVAILABLE.value,
+                    ProviderReason.CODEX_QUOTA_EXHAUSTED.value,
+                    ProviderReason.CODEX_UNAVAILABLE.value,
+                }
+            )
         )
         return {
             "route_result": route_result,
