@@ -1,0 +1,39 @@
+{
+  "schema_version": "formal-verification-secpal-reference-only-policy/v1",
+  "interface": "SecPALReferenceOnlyPolicy@1",
+  "goal_ids": ["FVT-G219", "FVT-G221", "FVT-G231", "FVT-G232", "FVT-G233"],
+  "program": "formal-verification-tactician/authorization-architecture",
+  "status": "active",
+  "policy": {
+    "do_not_port_or_depend_on_microsoft_secpal": true,
+    "external_secpal_is_reference_semantics_only": true,
+    "external_secpal_not_required_for_replacement_stack": true,
+    "preserve_says_delegation_revocation_as_own_ir_modules": true,
+    "research_eula_not_intended_for_live_environment": true,
+    "redistribution_prohibited_obtain_from_microsoft": true,
+    "operator_mono_compatibility_is_not_vendor_support": true,
+    "empty_live_execution_platform_matrix_is_unsupported": true,
+    "pe32_clr_research_msi_is_not_native_linux_aarch64_engine": true
+  },
+  "replacement_stack": {
+    "authorization_ir": "project-owned AuthorizationIR + production-authorization-replacement",
+    "reference_in_process": "secpal-authorization",
+    "general_verification_foundation": ["z3", "cvc5", "datalog", "typed-chc-smtlib-lowering"],
+    "relational_analysis": ["souffle-where-practical", "source-level-provenance"],
+    "system_and_protocol": ["apalache", "tlc", "tamarin", "proverif"],
+    "metaverification": ["lean", "coq", "isabelle"],
+    "planned_not_yet_matrix_first_class": [
+      "cedar-symcc",
+      "viper-boogie",
+      "nagini-crosshair",
+      "kani-verus",
+      "seahorn-cbmc"
+    ]
+  },
+  "disclosures": {
+    "does_not_complete_fvt_g219": true,
+    "does_not_claim_microsoft_secpal_authority": true,
+    "does_not_greenwash_research_eula_into_production": true,
+    "deployment_of_replacement_stack_uses_fvt_g232_not_secpal_eula_checkbox": true
+  }
+}

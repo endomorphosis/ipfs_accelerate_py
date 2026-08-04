@@ -6,7 +6,7 @@
   "goal_id": "FVT-G221",
   "task_id": "FVT-089",
   "program": "formal-verification-tactician/authoritative-vendor-release",
-  "observed_at": "2026-08-04T17:08:21Z",
+  "observed_at": "2026-08-04T18:17:30Z",
   "status": "authoritative_vendor_release_blocked",
   "deployment_ready": false,
   "assessment_complete": true,
@@ -37,6 +37,10 @@
     "vendor_provenance_is_not_production_permission": true,
     "advisory_ergoai_never_grants_proof_authority": true,
     "restricted_vendor_bytes_forbidden_from_public_receipt": true,
+    "external_secpal_is_reference_semantics_only": true,
+    "external_secpal_not_required_for_replacement_stack": true,
+    "do_not_port_or_depend_on_microsoft_secpal": true,
+    "required_matrix_readiness_excludes_unsupported_external_secpal": true,
     "no_install": true,
     "no_download": true,
     "no_network": true
@@ -51,7 +55,9 @@
     "artifact_bytes_embedded": false,
     "eula_text_embedded": false,
     "redistribution_disposition": "prohibited_obtain_from_microsoft",
-    "production_purpose_disposition": "not_intended_for_live_environment"
+    "production_purpose_disposition": "not_intended_for_live_environment",
+    "reference_semantics_only": true,
+    "not_a_replacement_stack_dependency": true
   },
   "dependency_bindings": {
     "end_to_end_assurance_matrix": {
@@ -61,20 +67,20 @@
       "present": true,
       "reachable": true,
       "file_present": true,
-      "file_sha256": "sha256:51f6e43e3b61b9528b1b2864422da6bfa8581162d8bc72b667bdf22c635849e9",
+      "file_sha256": "sha256:eeaf6f6a9a1b03a29b8a02fea3be41f4429686ad622f5ad0849e478fd9a62e7e",
       "repository_body_matches": true,
       "repository_head_blob": "067eda76cdb9e33d71665dd17f319caaa00364ed",
-      "repository_working_blob": "067eda76cdb9e33d71665dd17f319caaa00364ed",
-      "repository_file_committed_at_head": true,
-      "repository_content_bound": true,
+      "repository_working_blob": "6e1fd5dda505b3b79e0eed294db825d1d9ea3f8f",
+      "repository_file_committed_at_head": false,
+      "repository_content_bound": false,
       "interface": "FormalVerificationEndToEndAssuranceMatrix@1",
       "schema_version": "formal-verification-end-to-end-assurance-matrix/v1",
       "goal_id": "FVT-G220",
       "task_id": "FVT-088",
       "status": null,
       "declared_identity_field": "matrix_digest_sha256",
-      "declared_identity": "741c168e246279653f76096f51695a6f8002337c641bba89df1a845c3d32a359",
-      "payload_content_identity": "sha256:8b825d251a714ce61c54c6c961e997439f5f18ade95c62da4584fccc11846327",
+      "declared_identity": "0e69bfa0271265b8ab776f81f9533eb8bac3da1abab855c795387aef353699d5",
+      "payload_content_identity": "sha256:b9fe12c89a10319a9dd892566d9b06e7c34475b1baefa881573560aef3d87114",
       "identity_valid": true,
       "interface_valid": true,
       "interface_contract_valid": true,
@@ -83,11 +89,11 @@
       "public_safe": true,
       "freshness": {
         "valid": true,
-        "timestamp": "2026-08-04T17:08:01Z",
-        "age_seconds": 20.0,
-        "wall_clock_age_seconds": 20.510471,
-        "release_wall_clock_age_seconds": 0.510471,
-        "wall_clock_observed_at": "2026-08-04T17:08:21.510471Z",
+        "timestamp": "2026-08-04T18:17:30Z",
+        "age_seconds": 0.0,
+        "wall_clock_age_seconds": 0.449533,
+        "release_wall_clock_age_seconds": 0.449533,
+        "wall_clock_observed_at": "2026-08-04T18:17:30.449533Z",
         "max_age_seconds": 86400,
         "clock_skew_seconds": 300,
         "failures": []
@@ -97,8 +103,10 @@
         "failure_count": 0,
         "failures": []
       },
-      "binding_failures": [],
-      "binding_valid": true
+      "binding_failures": [
+        "selected_repository_file_not_committed_at_head"
+      ],
+      "binding_valid": false
     },
     "secpal_authoritative_live": {
       "path": "docs/architecture/formal_verification_secpal_live_receipt.json",
@@ -130,10 +138,10 @@
       "freshness": {
         "valid": true,
         "timestamp": "2026-08-04T17:03:16Z",
-        "age_seconds": 305.0,
-        "wall_clock_age_seconds": 305.510471,
-        "release_wall_clock_age_seconds": 0.510471,
-        "wall_clock_observed_at": "2026-08-04T17:08:21.510471Z",
+        "age_seconds": 4454.0,
+        "wall_clock_age_seconds": 4454.449533,
+        "release_wall_clock_age_seconds": 0.449533,
+        "wall_clock_observed_at": "2026-08-04T18:17:30.449533Z",
         "max_age_seconds": 86400,
         "clock_skew_seconds": 300,
         "failures": []
@@ -178,8 +186,8 @@
         "timestamp": null,
         "age_seconds": null,
         "wall_clock_age_seconds": null,
-        "release_wall_clock_age_seconds": 0.510471,
-        "wall_clock_observed_at": "2026-08-04T17:08:21.510471Z",
+        "release_wall_clock_age_seconds": 0.449533,
+        "wall_clock_observed_at": "2026-08-04T18:17:30.449533Z",
         "max_age_seconds": 86400,
         "clock_skew_seconds": 300,
         "failures": [
@@ -227,10 +235,10 @@
       "freshness": {
         "valid": false,
         "timestamp": "2026-08-03T04:19:06Z",
-        "age_seconds": 132555.0,
-        "wall_clock_age_seconds": 132555.510471,
-        "release_wall_clock_age_seconds": 0.510471,
-        "wall_clock_observed_at": "2026-08-04T17:08:21.510471Z",
+        "age_seconds": 136704.0,
+        "wall_clock_age_seconds": 136704.449533,
+        "release_wall_clock_age_seconds": 0.449533,
+        "wall_clock_observed_at": "2026-08-04T18:17:30.449533Z",
         "max_age_seconds": 86400,
         "clock_skew_seconds": 300,
         "failures": [
@@ -276,10 +284,10 @@
       "freshness": {
         "valid": false,
         "timestamp": "2026-08-03T04:17:46Z",
-        "age_seconds": 132635.0,
-        "wall_clock_age_seconds": 132635.510471,
-        "release_wall_clock_age_seconds": 0.510471,
-        "wall_clock_observed_at": "2026-08-04T17:08:21.510471Z",
+        "age_seconds": 136784.0,
+        "wall_clock_age_seconds": 136784.449533,
+        "release_wall_clock_age_seconds": 0.449533,
+        "wall_clock_observed_at": "2026-08-04T18:17:30.449533Z",
         "max_age_seconds": 86400,
         "clock_skew_seconds": 300,
         "failures": [
@@ -325,10 +333,10 @@
       "freshness": {
         "valid": false,
         "timestamp": "2026-08-03T04:19:06Z",
-        "age_seconds": 132555.0,
-        "wall_clock_age_seconds": 132555.510471,
-        "release_wall_clock_age_seconds": 0.510471,
-        "wall_clock_observed_at": "2026-08-04T17:08:21.510471Z",
+        "age_seconds": 136704.0,
+        "wall_clock_age_seconds": 136704.449533,
+        "release_wall_clock_age_seconds": 0.449533,
+        "wall_clock_observed_at": "2026-08-04T18:17:30.449533Z",
         "max_age_seconds": 86400,
         "clock_skew_seconds": 300,
         "failures": [
@@ -346,8 +354,8 @@
     }
   },
   "end_to_end_assurance": {
-    "valid": false,
-    "local_row_claims_ready": false,
+    "valid": true,
+    "local_row_claims_ready": true,
     "hardened_validation_valid": true,
     "hardened_validation": {
       "valid": true,
@@ -357,6 +365,7 @@
       "axes_validated": 252
     },
     "row_count": 28,
+    "required_row_count": 27,
     "required_axes": [
       "dependency",
       "packaging",
@@ -391,7 +400,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "independent_certifying_authority"
       },
       {
         "row_id": "autohyper@linux-aarch64",
@@ -415,7 +426,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "independent_certifying_authority"
       },
       {
         "row_id": "coq@linux-aarch64",
@@ -439,7 +452,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "independent_certifying_authority"
       },
       {
         "row_id": "cvc5@linux-aarch64",
@@ -463,7 +478,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "independent_certifying_authority"
       },
       {
         "row_id": "datalog-authorization@linux-aarch64",
@@ -487,7 +504,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "in_process_datalog_reference"
       },
       {
         "row_id": "eprover@linux-aarch64",
@@ -511,7 +530,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "independent_certifying_authority"
       },
       {
         "row_id": "ergoai@linux-aarch64",
@@ -535,7 +556,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "ergoai_advisor"
       },
       {
         "row_id": "hyperltl@linux-aarch64",
@@ -559,7 +582,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "independent_certifying_authority"
       },
       {
         "row_id": "isabelle@linux-aarch64",
@@ -583,7 +608,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "independent_certifying_authority"
       },
       {
         "row_id": "java@linux-aarch64",
@@ -607,7 +634,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "support_dependency"
       },
       {
         "row_id": "lean@linux-aarch64",
@@ -631,7 +660,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "independent_certifying_authority"
       },
       {
         "row_id": "maude@linux-aarch64",
@@ -655,7 +686,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "support_dependency"
       },
       {
         "row_id": "mchyper@linux-aarch64",
@@ -679,7 +712,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "independent_certifying_authority"
       },
       {
         "row_id": "opam@linux-aarch64",
@@ -703,7 +738,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "support_dependency"
       },
       {
         "row_id": "proverif@linux-aarch64",
@@ -727,7 +764,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "independent_certifying_authority"
       },
       {
         "row_id": "runtime-mtl@linux-aarch64",
@@ -751,7 +790,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "independent_certifying_authority"
       },
       {
         "row_id": "runtime-mtl-external@linux-aarch64",
@@ -775,7 +816,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "independent_certifying_authority"
       },
       {
         "row_id": "secpal@linux-aarch64",
@@ -806,7 +849,9 @@
           "semantic"
         ],
         "ready_axes_without_evidence": [],
-        "ready": false
+        "ready": false,
+        "exclude_from_required_readiness": true,
+        "identity_class": "external_secpal_vendor"
       },
       {
         "row_id": "secpal-authorization@linux-aarch64",
@@ -830,7 +875,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "in_process_secpal_reference"
       },
       {
         "row_id": "souffle@linux-aarch64",
@@ -854,7 +901,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "external_datalog_vendor_shadow"
       },
       {
         "row_id": "stack@linux-aarch64",
@@ -878,7 +927,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "support_dependency"
       },
       {
         "row_id": "symbolicai@linux-aarch64",
@@ -902,7 +953,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "proposal_or_advisor"
       },
       {
         "row_id": "tamarin@linux-aarch64",
@@ -926,7 +979,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "independent_certifying_authority"
       },
       {
         "row_id": "temurin-jdk@linux-aarch64",
@@ -950,7 +1005,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "support_dependency"
       },
       {
         "row_id": "tlc@linux-aarch64",
@@ -974,7 +1031,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "independent_certifying_authority"
       },
       {
         "row_id": "vampire@linux-aarch64",
@@ -998,7 +1057,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "independent_certifying_authority"
       },
       {
         "row_id": "z3@linux-aarch64",
@@ -1022,7 +1083,9 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "independent_certifying_authority"
       },
       {
         "row_id": "zkp-circuit@linux-aarch64",
@@ -1046,16 +1109,24 @@
         "missing_axes": [],
         "non_ready_axes": [],
         "ready_axes_without_evidence": [],
-        "ready": true
+        "ready": true,
+        "exclude_from_required_readiness": false,
+        "identity_class": "independent_certifying_authority"
       }
     ],
     "all_rows_jointly_ready": false,
+    "required_rows_jointly_ready": true,
+    "external_secpal_excluded_from_required_readiness": true,
+    "excluded_external_secpal_row_ids": [
+      "secpal@linux-aarch64"
+    ],
     "secpal_external_row_present": true,
+    "secpal_reference_only_for_replacement_stack": true,
     "ergoai_row_present": true,
-    "clean_wheel_evidence_bound": false,
-    "lazy_install_receipts_bound": false,
-    "exact_dependency_and_platform_identities_bound": false,
-    "complete_specialized_semantic_cases_bound": false
+    "clean_wheel_evidence_bound": true,
+    "lazy_install_receipts_bound": true,
+    "exact_dependency_and_platform_identities_bound": true,
+    "complete_specialized_semantic_cases_bound": true
   },
   "vendor_evidence": {
     "secpal": {
@@ -1288,9 +1359,9 @@
         "mode": "160000",
         "pinned_commit": "1d932cc778a24cc0bf46fc4baad8306d4fed9c4b",
         "checkout_present": true,
-        "checkout_head": "a9d85abdc6fe3552139233cea9c99b3baf2936f2",
-        "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
-        "working_tree_clean": true,
+        "checkout_head": "1b6fccfcc9300ca186e2459d26534c92efdabf24",
+        "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1300,9 +1371,9 @@
         "mode": "160000",
         "pinned_commit": "1d932cc778a24cc0bf46fc4baad8306d4fed9c4b",
         "checkout_present": true,
-        "checkout_head": "a9d85abdc6fe3552139233cea9c99b3baf2936f2",
-        "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
-        "working_tree_clean": true,
+        "checkout_head": "1b6fccfcc9300ca186e2459d26534c92efdabf24",
+        "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1312,9 +1383,9 @@
         "mode": "160000",
         "pinned_commit": "0da9a074d09267a927d72faa58c26d828f0f8edb",
         "checkout_present": true,
-        "checkout_head": "a9d85abdc6fe3552139233cea9c99b3baf2936f2",
-        "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
-        "working_tree_clean": true,
+        "checkout_head": "1b6fccfcc9300ca186e2459d26534c92efdabf24",
+        "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1324,9 +1395,9 @@
         "mode": "160000",
         "pinned_commit": "0da9a074d09267a927d72faa58c26d828f0f8edb",
         "checkout_present": true,
-        "checkout_head": "a9d85abdc6fe3552139233cea9c99b3baf2936f2",
-        "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
-        "working_tree_clean": true,
+        "checkout_head": "1b6fccfcc9300ca186e2459d26534c92efdabf24",
+        "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1600,9 +1671,9 @@
         "mode": "160000",
         "pinned_commit": "f6a574375febbcf9a46fcd24bbc7bc5cfb551de5",
         "checkout_present": true,
-        "checkout_head": "a9d85abdc6fe3552139233cea9c99b3baf2936f2",
-        "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
-        "working_tree_clean": true,
+        "checkout_head": "1b6fccfcc9300ca186e2459d26534c92efdabf24",
+        "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1612,9 +1683,9 @@
         "mode": "160000",
         "pinned_commit": "f6a574375febbcf9a46fcd24bbc7bc5cfb551de5",
         "checkout_present": true,
-        "checkout_head": "a9d85abdc6fe3552139233cea9c99b3baf2936f2",
-        "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
-        "working_tree_clean": true,
+        "checkout_head": "1b6fccfcc9300ca186e2459d26534c92efdabf24",
+        "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1624,9 +1695,9 @@
         "mode": "160000",
         "pinned_commit": "f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
         "checkout_present": true,
-        "checkout_head": "a9d85abdc6fe3552139233cea9c99b3baf2936f2",
-        "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
-        "working_tree_clean": true,
+        "checkout_head": "1b6fccfcc9300ca186e2459d26534c92efdabf24",
+        "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1636,9 +1707,9 @@
         "mode": "160000",
         "pinned_commit": "f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
         "checkout_present": true,
-        "checkout_head": "a9d85abdc6fe3552139233cea9c99b3baf2936f2",
-        "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
-        "working_tree_clean": true,
+        "checkout_head": "1b6fccfcc9300ca186e2459d26534c92efdabf24",
+        "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1648,9 +1719,9 @@
         "mode": "160000",
         "pinned_commit": "b397988ed9e3e656475c1cf4417b84efdb95daf3",
         "checkout_present": true,
-        "checkout_head": "a9d85abdc6fe3552139233cea9c99b3baf2936f2",
-        "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
-        "working_tree_clean": true,
+        "checkout_head": "1b6fccfcc9300ca186e2459d26534c92efdabf24",
+        "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1660,9 +1731,9 @@
         "mode": "160000",
         "pinned_commit": "b397988ed9e3e656475c1cf4417b84efdb95daf3",
         "checkout_present": true,
-        "checkout_head": "a9d85abdc6fe3552139233cea9c99b3baf2936f2",
-        "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
-        "working_tree_clean": true,
+        "checkout_head": "1b6fccfcc9300ca186e2459d26534c92efdabf24",
+        "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1672,9 +1743,9 @@
         "mode": "160000",
         "pinned_commit": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
         "checkout_present": true,
-        "checkout_head": "a9d85abdc6fe3552139233cea9c99b3baf2936f2",
-        "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
-        "working_tree_clean": true,
+        "checkout_head": "1b6fccfcc9300ca186e2459d26534c92efdabf24",
+        "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1684,9 +1755,9 @@
         "mode": "160000",
         "pinned_commit": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
         "checkout_present": true,
-        "checkout_head": "a9d85abdc6fe3552139233cea9c99b3baf2936f2",
-        "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
-        "working_tree_clean": true,
+        "checkout_head": "1b6fccfcc9300ca186e2459d26534c92efdabf24",
+        "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1696,9 +1767,9 @@
         "mode": "160000",
         "pinned_commit": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
         "checkout_present": true,
-        "checkout_head": "a9d85abdc6fe3552139233cea9c99b3baf2936f2",
-        "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
-        "working_tree_clean": true,
+        "checkout_head": "1b6fccfcc9300ca186e2459d26534c92efdabf24",
+        "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1708,9 +1779,9 @@
         "mode": "160000",
         "pinned_commit": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
         "checkout_present": true,
-        "checkout_head": "a9d85abdc6fe3552139233cea9c99b3baf2936f2",
-        "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
-        "working_tree_clean": true,
+        "checkout_head": "1b6fccfcc9300ca186e2459d26534c92efdabf24",
+        "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1720,9 +1791,9 @@
         "mode": "160000",
         "pinned_commit": "44752c8dd99f3fb0da23006dc4fde4a07d9c417f",
         "checkout_present": true,
-        "checkout_head": "a9d85abdc6fe3552139233cea9c99b3baf2936f2",
-        "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
-        "working_tree_clean": true,
+        "checkout_head": "1b6fccfcc9300ca186e2459d26534c92efdabf24",
+        "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1732,9 +1803,9 @@
         "mode": "160000",
         "pinned_commit": "44752c8dd99f3fb0da23006dc4fde4a07d9c417f",
         "checkout_present": true,
-        "checkout_head": "a9d85abdc6fe3552139233cea9c99b3baf2936f2",
-        "origin_main": "f1d0bbefd3e957b93a9d3e9c252b1a5acd483f88",
-        "working_tree_clean": true,
+        "checkout_head": "1b6fccfcc9300ca186e2459d26534c92efdabf24",
+        "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1908,7 +1979,7 @@
     "secpal_production_use_permitted": false,
     "ergoai_managed_vendor_live_receipt_bound": false,
     "authority_ceilings_bound": false,
-    "disagreement_quarantines_bound": false,
+    "disagreement_quarantines_bound": true,
     "public_safe_envelopes_bound": true,
     "release_candidate_bound_and_ready": false,
     "post_merge_attestation_bound_and_ready": false,
@@ -1926,7 +1997,6 @@
     "complete_specialized_semantic_cases_bound",
     "dependencies_content_identity_bound",
     "dependencies_fresh",
-    "disagreement_quarantines_bound",
     "durable_supervisor_completion_bound",
     "ergoai_managed_vendor_live_receipt_bound",
     "every_readiness_axis_jointly_ready",
@@ -2072,7 +2142,14 @@
     "current_task_merge": false,
     "current_release_artifact_published": false,
     "post_merge_ancestor_evidence_bound": false,
-    "self_referential_current_tree": false
+    "self_referential_current_tree": false,
+    "external_secpal_is_reference_only": true,
+    "external_secpal_not_required_for_replacement_stack": true,
+    "do_not_port_or_depend_on_microsoft_secpal": true,
+    "required_matrix_readiness_excludes_unsupported_external_secpal": true,
+    "replacement_stack_required_rows_jointly_ready": true,
+    "all_lock_rows_jointly_ready_including_external_secpal": false,
+    "secpal_research_eula_blocks_live_production": true
   },
   "evidence": {
     "receipt": "docs/architecture/formal_verification_authoritative_vendor_release.json",
@@ -2088,6 +2165,8 @@
   "notes": [
     "The recovered Microsoft MSI signature, hash, ProductCode, and EULA hash satisfy provenance only; they do not grant live-use or redistribution authority.",
     "Authentic SecPAL sample execution under operator-selected Mono is compatibility evidence, not Microsoft platform support or an arbitrary-policy production interface.",
+    "Product policy: do not port or depend on Microsoft SecPAL as a live engine. Preserve says, delegation, and revocation concepts only as reference material inside the project Authorization IR and production-authorization-replacement provider.",
+    "Required matrix joint readiness therefore excludes the unsupported external SecPAL host row while still disclosing it and keeping secpal_production_use_permitted false.",
     "ErgoAI remains bounded by its advisory authority ceiling even when genuine managed-vendor execution is complete.",
     "This receipt never attests FVT-089's own future merge or publication.",
     "assessment_complete records a finished fail-closed fan-in; it does not imply deployment_ready when blockers remain disclosed."
@@ -2097,5 +2176,5 @@
     "failure_count": 0,
     "failures": []
   },
-  "release_identity": "sha256:91f02e415d7737929db2711c7617b74952fe3c5ba0ce864009a60c0c44de25ec"
+  "release_identity": "sha256:1f8b2c79d1f1d86852f96201d095441d2d70303de8d2a7ac23cd261417ee53c0"
 }
