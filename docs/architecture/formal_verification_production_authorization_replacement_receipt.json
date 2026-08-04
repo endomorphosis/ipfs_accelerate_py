@@ -1,0 +1,575 @@
+{
+  "acceptance": {
+    "authority_ceiling_authorization_only": true,
+    "cannot_claim_microsoft_secpal_authority": true,
+    "cannot_satisfy_fvt_g219": true,
+    "deployment_ready": false,
+    "goal_id": "FVT-G231",
+    "new_provider_id": true,
+    "no_restricted_microsoft_bytes": true,
+    "project_owned_clean_room": true,
+    "public_api_bound": true,
+    "required_case_kinds_passed": true,
+    "task_id": "FVT-099",
+    "typed_language_complete": true
+  },
+  "authority": {
+    "authorization_decision_only": true,
+    "ceiling": "authorization",
+    "forbids_deployment_authority": true,
+    "forbids_fvt_g219_completion": true,
+    "forbids_legal_self_approval": true,
+    "forbids_microsoft_secpal_authority": true,
+    "forbids_theorem_authority": true,
+    "forbids_translation_authority": true,
+    "forbids_vendor_secpal_authority": true
+  },
+  "bindings": {
+    "integration_test": "test/integration/toolchains/test_production_authorization_replacement.py",
+    "integration_test_sha256": "84325771a19b8c571ae9e2606545cfddacd1b65e508d2c98ae759dfd4b4e83e5",
+    "provider_module": "ipfs_datasets_py/ipfs_datasets_py/logic/backends/secpal_style_authorization.py",
+    "provider_module_sha256": "398b69ebec0f947dd31c236a4f6728fb0458107d31fc502b0328ebdb31be806c",
+    "receipt": "docs/architecture/formal_verification_production_authorization_replacement_receipt.json",
+    "validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_production_authorization_replacement.py -q",
+    "verification_api": "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py",
+    "verification_api_sha256": "254728bfae3465e96b39be8628c67a63273ec3577fb39f17f2cfb12d93519075"
+  },
+  "block_reasons": [],
+  "cases": {
+    "all_passed": true,
+    "all_required_kinds_passed": true,
+    "cases_digest": "bc9ffa5bb137f46a4cc1d587d1dbb38f725e330b4037c020644af8d0509675aa",
+    "kind_coverage": {
+      "cycle_resource_bound": true,
+      "denial_safety": true,
+      "differential": true,
+      "fuzz_property": true,
+      "malformed": true,
+      "mutation": true,
+      "negative": true,
+      "positive": true,
+      "replay": true
+    },
+    "required_kinds": [
+      "positive",
+      "negative",
+      "mutation",
+      "replay",
+      "malformed",
+      "cycle_resource_bound",
+      "differential",
+      "fuzz_property",
+      "denial_safety"
+    ],
+    "results": [
+      {
+        "case_id": "case:positive-allow",
+        "diagnostics": [],
+        "expected_outcome": "allow",
+        "explanation_step_kinds": [
+          "precedence",
+          "rule",
+          "trust_root"
+        ],
+        "kind": "positive",
+        "metadata": {
+          "bounds_exhausted": false,
+          "mutation_of": "",
+          "notes": "principal identity + role + scoped allow"
+        },
+        "outcome": "allow",
+        "passed": true,
+        "policy_digest": "61130e4d4ef243865a60a7e1bd51c846ec54a1b3da36214405bd5334ed5da2f5",
+        "query_id": "query:positive-alice-allow",
+        "witness_digest": "5835d6016d64eb120344a6f87ba7a1e0ac163a41c21d75e07439626c198ea146"
+      },
+      {
+        "case_id": "case:positive-can-say",
+        "diagnostics": [],
+        "expected_outcome": "allow",
+        "explanation_step_kinds": [
+          "precedence",
+          "rule",
+          "trust_root"
+        ],
+        "kind": "positive",
+        "metadata": {
+          "bounds_exhausted": false,
+          "mutation_of": "",
+          "notes": "can-say (SECPAL_SAYS) under trust root"
+        },
+        "outcome": "allow",
+        "passed": true,
+        "policy_digest": "94aab5fe0560130c100a421553592fe1833d586da4ea0227f72bd242e6cd8589",
+        "query_id": "query:positive-can-say",
+        "witness_digest": "3670108afa3ecfb9ce4432f48d3bc0f7bcf7d7ef72219b5ab07b905363a12600"
+      },
+      {
+        "case_id": "case:positive-can-act-as-delegation",
+        "diagnostics": [],
+        "expected_outcome": "allow",
+        "explanation_step_kinds": [
+          "delegation",
+          "precedence",
+          "trust_root"
+        ],
+        "kind": "positive",
+        "metadata": {
+          "bounds_exhausted": false,
+          "mutation_of": "",
+          "notes": "can-act-as (speaks-for) with scoped delegation depth"
+        },
+        "outcome": "allow",
+        "passed": true,
+        "policy_digest": "8548fe861600b7ae8bd08a0a2e3331bcbaa39b8949469c03cba31bbceb2d8eb1",
+        "query_id": "query:positive-can-act-as",
+        "witness_digest": "ec050bfce74fe784f44c4fa92463d8bee6f0fcbe2f303433936513c6df56770b"
+      },
+      {
+        "case_id": "case:negative-deny",
+        "diagnostics": [],
+        "expected_outcome": "deny",
+        "explanation_step_kinds": [
+          "precedence",
+          "rule",
+          "trust_root"
+        ],
+        "kind": "negative",
+        "metadata": {
+          "bounds_exhausted": false,
+          "mutation_of": "",
+          "notes": "negative deny for non-admin on sensitive resource"
+        },
+        "outcome": "deny",
+        "passed": true,
+        "policy_digest": "95cb45a892889ee1b201d2c5c0121a039478d54a35741c53124224318686a3dc",
+        "query_id": "query:negative-bob-deny",
+        "witness_digest": "ad3cff2a26abafc0115f95da19b816553a9fd202408227d20a130f6134ea70d8"
+      },
+      {
+        "case_id": "case:negative-exclusion",
+        "diagnostics": [],
+        "expected_outcome": "deny",
+        "explanation_step_kinds": [
+          "precedence",
+          "rule",
+          "trust_root"
+        ],
+        "kind": "negative",
+        "metadata": {
+          "bounds_exhausted": false,
+          "mutation_of": "",
+          "notes": "role exclusion deny"
+        },
+        "outcome": "deny",
+        "passed": true,
+        "policy_digest": "284d6df70c8165e54d7f1d902b32fe1d81f9283f859cd971d827c8c1f2232e34",
+        "query_id": "query:negative-exclusion",
+        "witness_digest": "d0d4ef07b3512d0d9d0f5ab638c5125d261715e9fe36bb47e4d3f6620467ef2b"
+      },
+      {
+        "case_id": "case:negative-revocation",
+        "diagnostics": [],
+        "expected_outcome": "deny",
+        "explanation_step_kinds": [
+          "precedence",
+          "rule",
+          "trust_root"
+        ],
+        "kind": "negative",
+        "metadata": {
+          "bounds_exhausted": false,
+          "mutation_of": "",
+          "notes": "revocation + deny_overrides beats prior allow evidence"
+        },
+        "outcome": "deny",
+        "passed": true,
+        "policy_digest": "7af0ebb96ecd4389389e407a8f35468ddc35d80c17d2f19f3bb587bcb616902e",
+        "query_id": "query:negative-revocation",
+        "witness_digest": "ca259b80b9ccbadf31007400b5d29c4176d45c4250029e328c7577ae592fc78c"
+      },
+      {
+        "case_id": "case:negative-time-validity",
+        "diagnostics": [],
+        "expected_outcome": "unknown",
+        "explanation_step_kinds": [
+          "bound",
+          "trust_root"
+        ],
+        "kind": "negative",
+        "metadata": {
+          "bounds_exhausted": false,
+          "mutation_of": "",
+          "notes": "time validity: expired temporal window yields unknown/no-proof"
+        },
+        "outcome": "unknown",
+        "passed": true,
+        "policy_digest": "882642b360f6b579788c4b317bdfdf8b532791b2c074c27f9f4b46d56436b8d8",
+        "query_id": "query:negative-time-expired",
+        "witness_digest": "0443f4dec6a967340b3eb8c9fb8dffaf231f972fec84a745693dc248e81e419c"
+      },
+      {
+        "case_id": "case:unknown-no-proof",
+        "diagnostics": [],
+        "expected_outcome": "unknown",
+        "explanation_step_kinds": [
+          "bound",
+          "trust_root"
+        ],
+        "kind": "negative",
+        "metadata": {
+          "bounds_exhausted": false,
+          "mutation_of": "",
+          "notes": "unknown when no allow or deny evidence exists"
+        },
+        "outcome": "unknown",
+        "passed": true,
+        "policy_digest": "8d19666dee990150fd372d721e350abdb9410c3e65375a3891e91da709221222",
+        "query_id": "query:unknown-no-proof",
+        "witness_digest": "db7a07f37088fd7ac082040a0fa88f3f4b6d52d641d1564b536d212489265a83"
+      },
+      {
+        "case_id": "case:conflict-explicit",
+        "diagnostics": [],
+        "expected_outcome": "conflict",
+        "explanation_step_kinds": [
+          "precedence",
+          "rule",
+          "trust_root"
+        ],
+        "kind": "positive",
+        "metadata": {
+          "bounds_exhausted": false,
+          "mutation_of": "",
+          "notes": "explicit conflict when allow and deny evidence co-exist"
+        },
+        "outcome": "conflict",
+        "passed": true,
+        "policy_digest": "d07aa00e3fc24b2e9acc6e3b8802fb9d4edd6852d38f6b95bf171bf7cead869c",
+        "query_id": "query:conflict",
+        "witness_digest": "08882e852da877f444b4fe5c2ff915e6f3624783402eb15b4743b70828b8641b"
+      },
+      {
+        "case_id": "case:mutation-role-membership",
+        "diagnostics": [],
+        "expected_outcome": "deny",
+        "explanation_step_kinds": [
+          "precedence",
+          "rule",
+          "trust_root"
+        ],
+        "kind": "mutation",
+        "metadata": {
+          "bounds_exhausted": false,
+          "mutation_of": "case:positive-allow",
+          "notes": "mutating admin membership and role fact changes the verdict"
+        },
+        "outcome": "deny",
+        "passed": true,
+        "policy_digest": "2ac3b39ee262533aff26f84bb375d1d9456b1b50c7f76ee3d826a2a1a8782675",
+        "query_id": "query:mutation-principal",
+        "witness_digest": "4ebde1c11852c8e496cddec1b857ff5be5f60a92ad74d91ac4169fd9479e0cbf"
+      },
+      {
+        "case_id": "case:mutation-delegation-scope",
+        "diagnostics": [],
+        "expected_outcome": "unknown",
+        "explanation_step_kinds": [
+          "bound",
+          "trust_root"
+        ],
+        "kind": "mutation",
+        "metadata": {
+          "bounds_exhausted": false,
+          "mutation_of": "case:positive-can-act-as-delegation",
+          "notes": "delegation scope mutation yields no proof"
+        },
+        "outcome": "unknown",
+        "passed": true,
+        "policy_digest": "364b63428f4c29cdd2fb0ea7b361d8e32d25c84dc08bbd74a962010b6703f1e9",
+        "query_id": "query:mutation-scope",
+        "witness_digest": "3f734ebf5b13ccce2e4686673271a4f06bb38c06728f73e29f7f5473b08b1ad0"
+      },
+      {
+        "case_id": "case:replay-positive-allow",
+        "diagnostics": [],
+        "expected_outcome": "allow",
+        "explanation_step_kinds": [
+          "precedence",
+          "rule",
+          "trust_root"
+        ],
+        "kind": "replay",
+        "metadata": {
+          "notes": "deterministic replay of positive allow",
+          "replay_pairs": 2
+        },
+        "outcome": "allow",
+        "passed": true,
+        "policy_digest": "61130e4d4ef243865a60a7e1bd51c846ec54a1b3da36214405bd5334ed5da2f5",
+        "query_id": "query:positive-alice-allow",
+        "witness_digest": "5835d6016d64eb120344a6f87ba7a1e0ac163a41c21d75e07439626c198ea146"
+      },
+      {
+        "case_id": "case:malformed-payload",
+        "diagnostics": [
+          "AuthorizationValidationError"
+        ],
+        "expected_outcome": "malformed_rejected",
+        "explanation_step_kinds": [],
+        "kind": "malformed",
+        "metadata": {
+          "notes": "malformed AuthorizationIR fails closed"
+        },
+        "outcome": "malformed_rejected",
+        "passed": true,
+        "policy_digest": "25b7f50e6835603bba3fca9d036d66cfa1b955b0491bcf4ac19c469ba344441d",
+        "query_id": "",
+        "witness_digest": "25b7f50e6835603bba3fca9d036d66cfa1b955b0491bcf4ac19c469ba344441d"
+      },
+      {
+        "case_id": "case:cycle-resource-bound",
+        "diagnostics": [],
+        "expected_outcome": "unknown",
+        "explanation_step_kinds": [
+          "bound",
+          "trust_root"
+        ],
+        "kind": "cycle_resource_bound",
+        "metadata": {
+          "bounds_exhausted": true,
+          "mutation_of": "",
+          "notes": "untrusted deep delegation chain fails closed under depth/resource bounds"
+        },
+        "outcome": "unknown",
+        "passed": true,
+        "policy_digest": "fd9b7fc81321399efa59d7f893abd7014a62b4bcab7dd96c2903291f067f80ae",
+        "query_id": "query:cycle-bound",
+        "witness_digest": "c0fda2cd40f03bd541090ba4eb7f6380ecbd3cc31458a7f5fc557cbe5acbdd48"
+      },
+      {
+        "case_id": "case:differential-vs-reference-identity",
+        "diagnostics": [],
+        "expected_outcome": "allow",
+        "explanation_step_kinds": [
+          "precedence",
+          "rule",
+          "trust_root"
+        ],
+        "kind": "differential",
+        "metadata": {
+          "external_provider_id": "secpal",
+          "notes": "production and reference agree on outcome but differ in identity",
+          "production_provider_id": "production-authorization-replacement",
+          "reference_explanation_digest": "092cb760855f14c2f5852f9926308e65f7ff5fd83dd52fefb795484f74a122ac",
+          "reference_provider_id": "secpal-authorization"
+        },
+        "outcome": "allow",
+        "passed": true,
+        "policy_digest": "61130e4d4ef243865a60a7e1bd51c846ec54a1b3da36214405bd5334ed5da2f5",
+        "query_id": "query:positive-alice-allow",
+        "witness_digest": "5835d6016d64eb120344a6f87ba7a1e0ac163a41c21d75e07439626c198ea146"
+      },
+      {
+        "case_id": "case:fuzz-property-deny-overrides",
+        "diagnostics": [],
+        "expected_outcome": "conflict",
+        "explanation_step_kinds": [
+          "precedence",
+          "rule",
+          "trust_root"
+        ],
+        "kind": "fuzz_property",
+        "metadata": {
+          "notes": "property: under deny_overrides, simultaneous deny blocks allow",
+          "property_name": "deny_overrides_never_emits_allow_when_deny_present",
+          "samples": 24,
+          "violations": 0
+        },
+        "outcome": "conflict",
+        "passed": true,
+        "policy_digest": "d07aa00e3fc24b2e9acc6e3b8802fb9d4edd6852d38f6b95bf171bf7cead869c",
+        "query_id": "query:conflict",
+        "witness_digest": "08882e852da877f444b4fe5c2ff915e6f3624783402eb15b4743b70828b8641b"
+      },
+      {
+        "case_id": "case:denial-safety",
+        "diagnostics": [],
+        "expected_outcome": "deny",
+        "explanation_step_kinds": [
+          "precedence",
+          "rule",
+          "trust_root"
+        ],
+        "kind": "denial_safety",
+        "metadata": {
+          "bounds_exhausted": false,
+          "mutation_of": "",
+          "notes": "denial-safety: deny_overrides wins over co-existing allow"
+        },
+        "outcome": "deny",
+        "passed": true,
+        "policy_digest": "1741f8310311b9fc046ce8d4ac696e28db27a7dcc57d777b1b11f721d04358b5",
+        "query_id": "query:conflict",
+        "witness_digest": "46e6ca5d0d53e062340b61430b19be7548189461885c6756d47995713db565d5"
+      }
+    ]
+  },
+  "certified": true,
+  "clean_room": {
+    "decompiled_code_used": false,
+    "design_basis": "public formal specifications for typed authorization logics with can-say / can-act-as delegation (Becker\u2013Fournet\u2013Gordon style SecPAL papers and subsequent open academic expositions)",
+    "implementation_origin": "project-owned clean-room",
+    "independent_review_status": "design-record-bound; legal/IP approval is FVT-G232",
+    "microsoft_msi_used": false,
+    "microsoft_vendor_compatibility_claim": false,
+    "notes": "Executable semantics reuse the project AuthorizationIR and stratified reference evaluator under a separately named production-candidate identity.  No Microsoft Research SecPAL bytes or identifiers are imported, vendored, or claimed as authority.",
+    "restricted_bytes_used": false,
+    "sample_source_used": false,
+    "trademark_implication": false
+  },
+  "deployment_ready": false,
+  "description": "Project-owned production-candidate SecPAL-style authorization provider with typed delegation semantics under a license-clear identity.  Distinct from the in-process reference engine and the retired Microsoft SecPAL external provider.",
+  "goal_id": "FVT-G231",
+  "identity_boundary": {
+    "cannot_claim_microsoft_secpal_authority": true,
+    "cannot_satisfy_fvt_g219": true,
+    "external_provider_id": "secpal",
+    "forbidden_provider_ids": [
+      "Microsoft.Research.SecPal",
+      "microsoft-secpal",
+      "microsoft_secpal",
+      "ms-secpal",
+      "secpal"
+    ],
+    "ids_are_pairwise_distinct": true,
+    "no_decompiled_code": true,
+    "no_restricted_msi": true,
+    "no_sample_source": true,
+    "no_trademark_implication": true,
+    "provider_id": "production-authorization-replacement",
+    "reference_provider_id": "secpal-authorization"
+  },
+  "interface": "ProductionAuthorizationReplacement@1",
+  "legal_approval_complete": false,
+  "policy": {
+    "denial_safety_required": true,
+    "deterministic_replay_required": true,
+    "in_process_only": true,
+    "mutations_fail_closed": true,
+    "no_external_secpal_sample_reuse": true,
+    "no_microsoft_msi_intake": true,
+    "receipts_bind_provider_bytes_and_identity": true
+  },
+  "program": "formal-verification-tactician/production-authorization-replacement",
+  "provider": {
+    "adapter_interface": "SecPALStyleAuthorizationBackend@1",
+    "aliases": [
+      "production-authorization",
+      "production_authorization_replacement",
+      "project-authorization-prover",
+      "secpal-style-authorization",
+      "secpal_style_authorization"
+    ],
+    "authority_ceiling": "authorization",
+    "backend_id": "production-authorization-replacement",
+    "backend_version": "production-authorization-replacement/v1",
+    "clean_room": {
+      "decompiled_code_used": false,
+      "design_basis": "public formal specifications for typed authorization logics with can-say / can-act-as delegation (Becker\u2013Fournet\u2013Gordon style SecPAL papers and subsequent open academic expositions)",
+      "implementation_origin": "project-owned clean-room",
+      "independent_review_status": "design-record-bound; legal/IP approval is FVT-G232",
+      "microsoft_msi_used": false,
+      "microsoft_vendor_compatibility_claim": false,
+      "notes": "Executable semantics reuse the project AuthorizationIR and stratified reference evaluator under a separately named production-candidate identity.  No Microsoft Research SecPAL bytes or identifiers are imported, vendored, or claimed as authority.",
+      "restricted_bytes_used": false,
+      "sample_source_used": false,
+      "trademark_implication": false
+    },
+    "deployment_ready": false,
+    "deterministic": true,
+    "display_name": "Project-owned production-candidate SecPAL-style authorization provider",
+    "distinct_from_external_id": "secpal",
+    "distinct_from_reference_id": "secpal-authorization",
+    "forbidden_provider_ids": [
+      "Microsoft.Research.SecPal",
+      "microsoft-secpal",
+      "microsoft_secpal",
+      "ms-secpal",
+      "secpal"
+    ],
+    "forbids_deployment_authority": true,
+    "forbids_fvt_g219_completion": true,
+    "forbids_microsoft_secpal_authority": true,
+    "in_process": true,
+    "interface": "ProductionAuthorizationReplacement@1",
+    "lazy_dependencies": [],
+    "legal_approval_complete": false,
+    "provider_id": "production-authorization-replacement",
+    "requires_external_install": false,
+    "typed_language_features": [
+      "principal_identity",
+      "delegation_depth",
+      "delegation_scope",
+      "can_say",
+      "can_act_as",
+      "roles",
+      "exclusions",
+      "revocation",
+      "time_validity",
+      "conflict",
+      "unknown_no_proof",
+      "constraints",
+      "deterministic_proof_witness",
+      "counterexample_witness"
+    ]
+  },
+  "public_surface": {
+    "cache_safe": true,
+    "hammer_advisor_authority": false,
+    "lazy_dependencies": [],
+    "packaging": "in-process Python module; no external binary",
+    "proof_tactician_compatible": true,
+    "provider_id": "production-authorization-replacement",
+    "requires_install": false,
+    "verification_api_bound": true
+  },
+  "receipt_digest": "debd1b82a6bd0c44ec81817ac81ca18ffebf48706fa6e5f1d1e5bef48a06ce0b",
+  "schema_version": "production-authorization-replacement/v1",
+  "task_id": "FVT-099",
+  "typed_language": {
+    "all_required_features_covered": true,
+    "coverage": {
+      "can_act_as": true,
+      "can_say": true,
+      "conflict": true,
+      "constraints": true,
+      "counterexample_witness": true,
+      "delegation_depth": true,
+      "delegation_scope": true,
+      "deterministic_proof_witness": true,
+      "exclusions": true,
+      "principal_identity": true,
+      "revocation": true,
+      "roles": true,
+      "time_validity": true,
+      "unknown_no_proof": true
+    },
+    "features": [
+      "principal_identity",
+      "delegation_depth",
+      "delegation_scope",
+      "can_say",
+      "can_act_as",
+      "roles",
+      "exclusions",
+      "revocation",
+      "time_validity",
+      "conflict",
+      "unknown_no_proof",
+      "constraints",
+      "deterministic_proof_witness",
+      "counterexample_witness"
+    ]
+  }
+}
