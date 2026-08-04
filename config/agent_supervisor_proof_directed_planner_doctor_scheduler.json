@@ -124,7 +124,7 @@
       "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.attestation_seal@1",
       "interface": "PlannerDoctorAttestationSeal@1",
       "policy_revision": "1",
-      "expected_receipt_id": "sha256:fd36f5d4ef999aa329fa4e5e5aff13362d7f0246a6b9b618e3632094837b1f47",
+      "expected_receipt_id": "sha256:f912b4f608d00745f6e6d2a5d8a946c1dba512fdc91767e6bef7b59e80a89c8d",
       "artifact_paths": {
         "attestation_module": "ipfs_accelerate_py/agent_supervisor/proof/planner_doctor_attestation.py",
         "zkp_threat_model": "docs/architecture/agent_supervisor_planner_doctor_zkp_threat_model.md",
@@ -140,7 +140,7 @@
       "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.quality_oracle_seal@1",
       "interface": "PlannerDoctorQualityOracleSeal@1",
       "policy_revision": "1",
-      "expected_receipt_id": "sha256:574423fe49894875317062b720cadd76f8b944c592756ef68579801f408ce392",
+      "expected_receipt_id": "sha256:fc1661f3dac033231be2827f5edf65d9d335b600204e953bc8a775125dbb9901",
       "artifact_paths": {
         "quality_oracle": "ipfs_accelerate_py/agent_supervisor/validation/planner_doctor_quality_oracle.py",
         "oracle_manifest": "test/fixtures/agent_supervisor/planner_doctor_holdout/oracle.manifest.json",
