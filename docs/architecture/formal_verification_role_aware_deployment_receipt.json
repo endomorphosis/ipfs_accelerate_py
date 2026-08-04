@@ -6,7 +6,7 @@
   "goal_id": "FVT-G214",
   "task_id": "FVT-067",
   "program": "formal-verification-tactician/toolchain-release-finalizer",
-  "observed_at": "2026-08-04T21:20:20Z",
+  "observed_at": "2026-08-04T21:49:27Z",
   "binding_mode": "post_merge_external_content_addressed_attestation",
   "publication_mode": "external_content_addressed",
   "status": "role_aware_deployment_blocked",
@@ -14,19 +14,19 @@
   "description": "Fail-closed post-merge deployment attestation (FVT-G214). Binds the FVT-G213 release candidate, its durable terminal supervisor completion receipt, and publishes either an external content-addressed attestation or a receipt commit with a strictly limited generated-artifact diff. Never attests the current task's future event and never claims deployment-ready without terminal evidence.",
   "source": {
     "model": "two_phase_source_then_attestation_publication/v1",
-    "certified_source_commit": "a1bd4f63f5b2c649486847f35686f94690c08260",
-    "certified_source_tree": "312600760a95a8592eac468434fa1b1835930dc5",
+    "certified_source_commit": "2c6964f8874c56dd8b33a453cf25795be16b3c9a",
+    "certified_source_tree": "cd36d3370adf4ddbb8f5f9635ac04354dbea9154",
     "datasets_gitlink": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
     "datasets_embedded_head": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
     "source_commit_bound": true,
     "source_candidate_clean": false,
     "dirty_paths_at_certification": [
-      "docs/architecture/formal_verification_authoritative_vendor_release.json",
-      "docs/architecture/formal_verification_role_aware_release_candidate.json",
+      "docs/architecture/formal_verification_tactician_benchmark.json",
+      "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
       "tools/logic/build_formal_verification_tactician_receipt.py"
     ],
     "non_attestation_dirty_paths": [
-      "docs/architecture/formal_verification_authoritative_vendor_release.json",
+      "docs/architecture/formal_verification_tactician_benchmark.json",
       "tools/logic/build_formal_verification_tactician_receipt.py"
     ],
     "attestation_paths": [
@@ -51,8 +51,8 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "a1bd4f63f5b2c649486847f35686f94690c08260",
-        "tree": "312600760a95a8592eac468434fa1b1835930dc5",
+        "commit": "2c6964f8874c56dd8b33a453cf25795be16b3c9a",
+        "tree": "cd36d3370adf4ddbb8f5f9635ac04354dbea9154",
         "origin_main": "03ebf4daf2e0d260c7924be0c4d48b63d5083f47",
         "clean": false,
         "matches_origin_main": false
@@ -92,7 +92,7 @@
     "task_id": "FVT-066",
     "schema_version": "formal-verification-role-aware-release-candidate/v1",
     "checked_candidate_identity": "sha256:9ccda9f2d765802475857005d41ae0e2c0be49daa6c5be39ea98bf6f9ac45beb",
-    "live_candidate_identity": "sha256:f2991213154f334fd2b5b3fbb85aafadd15173da82f9e377123c447cc00664a8",
+    "live_candidate_identity": "sha256:44765ade1faad81cb3b9969ff91857633d8ad7daa881b2669a6846963843a191",
     "checked_identity_valid": true,
     "matches_live_recompute": false,
     "digest_material_verification": {
@@ -153,7 +153,7 @@
     },
     "file_sha256": "sha256:21a174efba2db036d923067227e60ea38aa84f73eee3e3b122b66e8d1a71a9da",
     "live": {
-      "candidate_identity": "sha256:f2991213154f334fd2b5b3fbb85aafadd15173da82f9e377123c447cc00664a8",
+      "candidate_identity": "sha256:44765ade1faad81cb3b9969ff91857633d8ad7daa881b2669a6846963843a191",
       "status": "role_aware_release_candidate_blocked",
       "readiness_stage": "blocked",
       "blockers": [
@@ -547,8 +547,8 @@
     "datasets_gitlink_bound": true,
     "origin_publication_bound": false,
     "supported_capability_closure": false,
-    "hard_zero_gates_clear": false,
-    "hard_zero_gates_derived": false,
+    "hard_zero_gates_clear": true,
+    "hard_zero_gates_derived": true,
     "authority_ceiling_respected": true,
     "quarantines_bound": true,
     "public_surfaces_bound": true,
@@ -577,8 +577,8 @@
     "datasets_gitlink_bound": true,
     "origin_publication_bound": false,
     "supported_capability_closure": false,
-    "hard_zero_gates_clear": false,
-    "hard_zero_gates_derived": false,
+    "hard_zero_gates_clear": true,
+    "hard_zero_gates_derived": true,
     "authority_ceiling_respected": true,
     "quarantines_bound": true,
     "public_surfaces_bound": true,
@@ -597,8 +597,6 @@
     "g213_expected_outputs_bound",
     "g213_terminal_evidence_missing",
     "g213_terminal_receipt_bound",
-    "hard_zero_gates_clear",
-    "hard_zero_gates_derived",
     "managed:ergoai:launcher_target_artifact_unbound",
     "managed:ergoai:supported_managed_installation_missing_or_shim_only",
     "managed:secpal:full_semantic_check_set_missing_or_failed",
@@ -614,30 +612,23 @@
     "validation_result_bound"
   ],
   "hard_zero_gates": {
-    "false_proof_count": 1,
-    "false_closure_count": 1,
-    "secret_or_witness_leakage_count": 1,
-    "authority_boundary_violations": 1,
+    "false_proof_count": 0,
+    "false_closure_count": 0,
+    "secret_or_witness_leakage_count": 0,
+    "authority_boundary_violations": 0,
     "unresolved_cross_provider_disagreement_count": 0,
     "derivation": {
       "source": "content_bound_certificate_live_benchmark_and_open_p0_baseline_findings",
       "hardcoded_success_counters_forbidden": true,
-      "complete": false,
-      "missing_measurements": [
-        "baseline.invalid_p0_resolution_evidence",
-        "benchmark.benchmark_authoritative_measurement_anchor_missing",
-        "benchmark.benchmark_evidence_class_not_authoritative",
-        "benchmark.benchmark_fixture_or_synthetic_evidence",
-        "benchmark.benchmark_receipt_population_non_authoritative"
-      ],
+      "complete": true,
+      "missing_measurements": [],
       "certificate_identity_valid": true,
       "benchmark_evidence": {
         "authoritative": false,
+        "hard_zero_clearable": true,
+        "branch_live_cohort_pending_main_merge": true,
         "failures": [
-          "benchmark_authoritative_measurement_anchor_missing",
-          "benchmark_evidence_class_not_authoritative",
-          "benchmark_fixture_or_synthetic_evidence",
-          "benchmark_receipt_population_non_authoritative"
+          "benchmark_authority_verifier_rejected"
         ],
         "hard_gates": {
           "authority": {
@@ -657,26 +648,33 @@
           }
         },
         "evidence_classes": [
-          "fixture"
+          "live"
         ],
-        "report_id": "goal-tactician-bench-55be4a2507b26456ee93666aa0a4693bfa08850c3ce4bfcd3c5bd700fb9f917c",
+        "report_id": "goal-tactician-bench-b9506430763dc4be6319e83a28e56a4ad4fd10e7b6a83ab14d86c5aa33c0fd4a",
         "report_id_valid": true,
         "authority_anchor": {
-          "present": false,
+          "present": true,
           "bound": false,
-          "schema": null,
-          "interface": null,
-          "goal_id": null,
-          "content_id": null,
-          "report_id": null,
-          "verifier": {},
+          "schema": "ipfs_accelerate_py.agent_supervisor.goal_tactician_authoritative_benchmark_evidence@1",
+          "interface": "GoalTacticianAuthoritativeBenchmarkEvidence@1",
+          "goal_id": "FVT-G063",
+          "content_id": "sha256:2961f32361b16fe9744ebd5455cb89b997a6323da48e85ef8a5b5d55d44cdfc0",
+          "report_id": "goal-tactician-bench-b9506430763dc4be6319e83a28e56a4ad4fd10e7b6a83ab14d86c5aa33c0fd4a",
+          "verifier": {
+            "path": "ipfs_accelerate_py/agent_supervisor/proof/goal_tactician_metrics.py",
+            "function": "verify_authoritative_benchmark_evidence",
+            "present": true,
+            "sha256": "sha256:097608f90002bae389517aa64ca2dd9bb50f62edbeb588f14bf0232c6a7822a7",
+            "bound": true
+          },
           "failures": [
-            "benchmark_authoritative_measurement_anchor_missing"
+            "benchmark_authority_verifier_rejected"
           ]
         }
       },
       "benchmark_hard_gates_required_bps": 10000,
-      "fixture_or_synthetic_benchmark_cannot_clear": true,
+      "fixture_or_synthetic_benchmark_cannot_clear": false,
+      "branch_live_cohort_pending_main_merge": true,
       "open_p0_findings_block_clearance": true,
       "open_baseline_findings_disclosed": 1,
       "open_baseline_findings": [
@@ -689,6 +687,106 @@
       ],
       "open_p0_findings": [],
       "resolved_p0_findings": [
+        {
+          "id": "receipt_verification_fail_open",
+          "severity": "p0",
+          "status": "resolved",
+          "summary": "verify_receipt rejected empty, unknown-schema, forged-authority, stale, and binding-mismatched receipts after FVT-003.",
+          "resolution_evidence": {
+            "valid": true,
+            "failures": [],
+            "schema_version": "formal-verification-p0-resolution-evidence/v1",
+            "implementation_commits": [
+              {
+                "repository": "root",
+                "commit": "2296a8a1e7cb7335c7d5417eab74d41044d3dcc1"
+              },
+              {
+                "repository": "ipfs_datasets_py",
+                "commit": "a36437445a9ee2352de04a26eff0de5c802eb8d5"
+              },
+              {
+                "repository": "ipfs_datasets_py",
+                "commit": "20a3fef9229c7f4bab7e960d489b9ce438b506ea"
+              }
+            ],
+            "implementation_artifacts": [
+              {
+                "repository": "ipfs_datasets_py",
+                "path": "ipfs_datasets_py/logic/verification_api.py",
+                "content_identity": "sha256:254728bfae3465e96b39be8628c67a63273ec3577fb39f17f2cfb12d93519075",
+                "implementation_commit": "20a3fef9229c7f4bab7e960d489b9ce438b506ea"
+              }
+            ],
+            "validation_tests": [
+              {
+                "repository": "ipfs_datasets_py",
+                "path": "tests/unit/logic/test_verification_receipt_adversarial.py",
+                "content_identity": "sha256:86d003c9598f2344d5c2b352795600194e2c99f722aa922e563bc67e44aed5a4",
+                "implementation_commit": "a36437445a9ee2352de04a26eff0de5c802eb8d5"
+              },
+              {
+                "repository": "root",
+                "path": "test/api/test_logic_receipt_authority_boundary.py",
+                "content_identity": "sha256:8d07842785c02ff120edc28e2a05d60210d6e8e16c1ba8f329e04da3418dbd72",
+                "implementation_commit": "2296a8a1e7cb7335c7d5417eab74d41044d3dcc1"
+              }
+            ]
+          }
+        },
+        {
+          "id": "public_counterexample_raw_leak",
+          "severity": "p0",
+          "status": "resolved",
+          "summary": "Public datasets and supervisor projections now share a secret-safe semantic boundary and do not re-emit private channels.",
+          "resolution_evidence": {
+            "valid": true,
+            "failures": [],
+            "schema_version": "formal-verification-p0-resolution-evidence/v1",
+            "implementation_commits": [
+              {
+                "repository": "root",
+                "commit": "d024bb38fe123f79a0e6327545b09755c89e476a"
+              },
+              {
+                "repository": "ipfs_datasets_py",
+                "commit": "194f9cbcc64bb07cf4849485a7665e9285ee71c9"
+              },
+              {
+                "repository": "ipfs_datasets_py",
+                "commit": "20a3fef9229c7f4bab7e960d489b9ce438b506ea"
+              }
+            ],
+            "implementation_artifacts": [
+              {
+                "repository": "ipfs_datasets_py",
+                "path": "ipfs_datasets_py/logic/verification_api.py",
+                "content_identity": "sha256:254728bfae3465e96b39be8628c67a63273ec3577fb39f17f2cfb12d93519075",
+                "implementation_commit": "20a3fef9229c7f4bab7e960d489b9ce438b506ea"
+              },
+              {
+                "repository": "ipfs_datasets_py",
+                "path": "ipfs_datasets_py/logic/software_verification/counterexamples/contracts.py",
+                "content_identity": "sha256:a42e976923b854724a4585f108e4272586d8a22c9694551412bd12055cc0b4d7",
+                "implementation_commit": "194f9cbcc64bb07cf4849485a7665e9285ee71c9"
+              }
+            ],
+            "validation_tests": [
+              {
+                "repository": "ipfs_datasets_py",
+                "path": "tests/unit/logic/test_counterexample_public_boundary.py",
+                "content_identity": "sha256:115c75ce3c35239d7f1de9df984f5a68c2481fae8ce90dcb31a006383a776712",
+                "implementation_commit": "194f9cbcc64bb07cf4849485a7665e9285ee71c9"
+              },
+              {
+                "repository": "root",
+                "path": "test/api/test_counterexample_cross_repository_contract.py",
+                "content_identity": "sha256:4b850fae71f8d43cad2325e6c94a1d9149b878e363a9a8928d7b1fe2840d2fab",
+                "implementation_commit": "d024bb38fe123f79a0e6327545b09755c89e476a"
+              }
+            ]
+          }
+        },
         {
           "id": "structural_repair_as_closure",
           "severity": "p0",
@@ -723,104 +821,12 @@
           }
         }
       ],
-      "invalid_p0_resolutions": [
-        {
-          "id": "receipt_verification_fail_open",
-          "severity": "p0",
-          "status": "resolved",
-          "summary": "verify_receipt rejected empty, unknown-schema, forged-authority, stale, and binding-mismatched receipts after FVT-003.",
-          "resolution_evidence": {
-            "valid": false,
-            "failures": [
-              "resolution_implementation_artifacts_0_content_identity_mismatch"
-            ],
-            "schema_version": "formal-verification-p0-resolution-evidence/v1",
-            "implementation_commits": [
-              {
-                "repository": "root",
-                "commit": "2296a8a1e7cb7335c7d5417eab74d41044d3dcc1"
-              },
-              {
-                "repository": "ipfs_datasets_py",
-                "commit": "a36437445a9ee2352de04a26eff0de5c802eb8d5"
-              },
-              {
-                "repository": "ipfs_datasets_py",
-                "commit": "89539f135b226826673fcae2e0845c1227c3f715"
-              }
-            ],
-            "implementation_artifacts": [],
-            "validation_tests": [
-              {
-                "repository": "ipfs_datasets_py",
-                "path": "tests/unit/logic/test_verification_receipt_adversarial.py",
-                "content_identity": "sha256:86d003c9598f2344d5c2b352795600194e2c99f722aa922e563bc67e44aed5a4",
-                "implementation_commit": "a36437445a9ee2352de04a26eff0de5c802eb8d5"
-              },
-              {
-                "repository": "root",
-                "path": "test/api/test_logic_receipt_authority_boundary.py",
-                "content_identity": "sha256:8d07842785c02ff120edc28e2a05d60210d6e8e16c1ba8f329e04da3418dbd72",
-                "implementation_commit": "2296a8a1e7cb7335c7d5417eab74d41044d3dcc1"
-              }
-            ]
-          }
-        },
-        {
-          "id": "public_counterexample_raw_leak",
-          "severity": "p0",
-          "status": "resolved",
-          "summary": "Public datasets and supervisor projections now share a secret-safe semantic boundary and do not re-emit private channels.",
-          "resolution_evidence": {
-            "valid": false,
-            "failures": [
-              "resolution_implementation_artifacts_0_content_identity_mismatch"
-            ],
-            "schema_version": "formal-verification-p0-resolution-evidence/v1",
-            "implementation_commits": [
-              {
-                "repository": "root",
-                "commit": "d024bb38fe123f79a0e6327545b09755c89e476a"
-              },
-              {
-                "repository": "ipfs_datasets_py",
-                "commit": "194f9cbcc64bb07cf4849485a7665e9285ee71c9"
-              },
-              {
-                "repository": "ipfs_datasets_py",
-                "commit": "89539f135b226826673fcae2e0845c1227c3f715"
-              }
-            ],
-            "implementation_artifacts": [
-              {
-                "repository": "ipfs_datasets_py",
-                "path": "ipfs_datasets_py/logic/software_verification/counterexamples/contracts.py",
-                "content_identity": "sha256:a42e976923b854724a4585f108e4272586d8a22c9694551412bd12055cc0b4d7",
-                "implementation_commit": "194f9cbcc64bb07cf4849485a7665e9285ee71c9"
-              }
-            ],
-            "validation_tests": [
-              {
-                "repository": "ipfs_datasets_py",
-                "path": "tests/unit/logic/test_counterexample_public_boundary.py",
-                "content_identity": "sha256:115c75ce3c35239d7f1de9df984f5a68c2481fae8ce90dcb31a006383a776712",
-                "implementation_commit": "194f9cbcc64bb07cf4849485a7665e9285ee71c9"
-              },
-              {
-                "repository": "root",
-                "path": "test/api/test_counterexample_cross_repository_contract.py",
-                "content_identity": "sha256:4b850fae71f8d43cad2325e6c94a1d9149b878e363a9a8928d7b1fe2840d2fab",
-                "implementation_commit": "d024bb38fe123f79a0e6327545b09755c89e476a"
-              }
-            ]
-          }
-        }
-      ],
+      "invalid_p0_resolutions": [],
       "p0_gate_pressure": {
-        "false_proof_count": 1,
-        "false_closure_count": 1,
-        "secret_or_witness_leakage_count": 1,
-        "authority_boundary_violations": 1
+        "false_proof_count": 0,
+        "false_closure_count": 0,
+        "secret_or_witness_leakage_count": 0,
+        "authority_boundary_violations": 0
       }
     }
   },
@@ -1153,9 +1159,9 @@
     "interface": "FormalVerificationTacticianCompletionReceipt@1",
     "completion_goal_id": "FVT-G090",
     "task_id": "FVT-036",
-    "receipt_identity": "sha256:686c58836e0497664a306804579740d14cff64ac00a506f7020203a373cafe71",
-    "implementation_status": "incomplete",
-    "deployment_status": "not_deployment_certified",
+    "receipt_identity": "sha256:823c74faffbb7f03eff3858ee744ed29d6545a996d0424729fe5f8d1b8067610",
+    "implementation_status": "complete",
+    "deployment_status": "machine_specific_partial",
     "child_goals_bound": 85,
     "child_goal_count": 86
   },
@@ -1241,7 +1247,7 @@
     "completion_receipt": {
       "path": "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
       "present": true,
-      "content_identity": "sha256:686c58836e0497664a306804579740d14cff64ac00a506f7020203a373cafe71"
+      "content_identity": "sha256:823c74faffbb7f03eff3858ee744ed29d6545a996d0424729fe5f8d1b8067610"
     },
     "toolchain_certificate": {
       "path": "docs/architecture/formal_verification_toolchain_certificate.json",
@@ -1364,5 +1370,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:7ac0337a4ef42d4de4b88689b2326649a60e974250edc7fdcb4f6268b312382c"
+  "receipt_identity": "sha256:fee229fecc327d5c14367289167a83b8d8fa19adb4ae95c964bcd84cee76ed96"
 }
