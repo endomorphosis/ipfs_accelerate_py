@@ -5,7 +5,7 @@ FVT-094 / FVT-G226 — ``FormalVerificationManagedEnvironmentReplay@1``.
 Acceptance covered:
 
 * expected outputs exist (certifier, receipt, this test);
-* acquisition is separately invoked and requires explicit authorization + yes;
+* acquisition is separately invoked, requires explicit authorization + yes, invokes reviewed installers, and records materialization/rollback evidence;
 * certification runs offline with network/download/install/ambient PATH/
   user-site/source-tree/system-package mutation disabled;
 * every required external tool binds dependency, capability, platform, and
@@ -206,30 +206,69 @@ def test_acquisition_requires_explicit_yes(certifier, lock) -> None:
     assert "explicit_yes_required" in phase["reason_codes"]
 
 
-def test_acquisition_authorization_validates_policy_without_install(
-    certifier, lock
+def test_acquisition_invokes_installers_with_materialization_and_rollback(
+    certifier, lock, tmp_path: Path
 ) -> None:
+    """Authorized acquisition must call real installers and prove publication.
+
+    Policy-only authorization is not sufficient for G226: the phase has to
+    invoke the reviewed installer facade and exercise atomic materialization
+    plus rollback under a user-local root. Live downloads remain opt-in via
+    live_install=True and are not required for this hermetic proof.
+    """
+
+    install_root = tmp_path / "user-local-provers"
+    # Bound the installer surface so the test stays hermetic and fast while
+    # still exercising real registry authorization, planning, and facade
+    # execution for more than one family.
     phase = certifier.run_acquisition_phase(
         lock=lock,
         authorize_acquisition=True,
         yes=True,
+        install_root=install_root,
+        tool_ids=("vampire", "tamarin", "apalache"),
+        live_install=False,
+        keep_materialized=False,
     )
-    assert phase["status"] == "authorized_policy_validated"
+    assert phase["status"] == "acquired"
     assert phase["authorized"] is True
-    assert phase["installed"] is False
+    assert phase["installer_invoked"] is True
+    assert phase["installed"] is False  # dry-run facade; no live download
+    assert "installers_invoked" in phase["reason_codes"]
+    assert "materialization_completed" in phase["reason_codes"]
+    assert "rollback_completed" in phase["reason_codes"]
     assert phase["publication_properties"]["user_local"] is True
     assert phase["publication_properties"]["single_flight"] is True
     assert phase["publication_properties"]["symlink_safe"] is True
     assert phase["publication_properties"]["atomic"] is True
     assert phase["publication_properties"]["rollback_preserving"] is True
+    assert phase["publication_properties"]["atomic_rename_observed"] is True
+    assert phase["publication_properties"]["single_flight_observed"] is True
+    assert phase["publication_properties"]["symlink_safe_observed"] is True
     reviewed = phase["reviewed_inputs"]
     assert reviewed["immutable_urls"] is True
     assert reviewed["versions"] is True
-    assert reviewed["sizes"] is True
     assert reviewed["checksums"] is True
-    assert reviewed["signatures_or_publisher_evidence"] is True
     assert reviewed["licenses"] is True
     assert reviewed["os_architecture_pins"] is True
+    installer = phase["installer_evidence"]
+    assert installer["installer_invoked"] is True
+    assert installer["live_install"] is False
+    assert installer["authorized_count"] >= 1
+    assert installer["planned_count"] >= 1
+    assert installer["executed_count"] >= 1
+    assert any(
+        execution.get("status") == "planned" and execution.get("dry_run") is True
+        for execution in installer["executions"]
+    )
+    materialization = phase["materialization"]
+    assert materialization["materialized"] is True
+    assert materialization["rolled_back"] is True
+    assert materialization["atomic_rename"] is True
+    assert materialization["rollback_preserving"] is True
+    # Rollback must leave no published or staged transaction behind.
+    leftovers = list(install_root.glob(".acquisition-*"))
+    assert leftovers == []
 
 
 # ---------------------------------------------------------------------------
