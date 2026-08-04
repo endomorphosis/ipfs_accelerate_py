@@ -22728,17 +22728,38 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         )
                     )
                     if not correction_landed_route_candidate:
-                        self.task_queue.defer(
-                            self._canonical_ref(task),
-                            300,
-                            reason=(
-                                "post_merge_correction_landed_route_unverified"
+                        # Landed route is only valid when the denied land is
+                        # still exactly present on the tip.  After a completed
+                        # repair (e.g. UIR-085) rewrites task-owned outputs,
+                        # preflight correctly fails; fall through to normal
+                        # production correction with bound feedback instead of
+                        # blocking the authorized attempt.
+                        self._record_event(
+                            "post_merge_correction_landed_route_inapplicable",
+                            {
+                                "task_id": task.task_id,
+                                "attempt": attempt,
+                                "reason": (
+                                    "landed_outputs_diverged_or_unverified"
+                                ),
+                                "provider_call_allowed": True,
+                                "durable_denial_id": str(
+                                    post_merge_correction_authority.get(
+                                        "durable_denial_id"
+                                    )
+                                    or ""
+                                ),
+                                "baseline_ref": str(baseline_ref or ""),
+                            },
+                        )
+                        production_landed_guard = {
+                            **dict(production_landed_guard),
+                            "guarded": False,
+                            "reason": (
+                                "landed_outputs_diverged_or_unverified"
                             ),
-                        )
-                        self.task_queue.save()
-                        raise WorktreeLifecycleError(
-                            "post_merge_correction_landed_route_unverified"
-                        )
+                            "landed_route_inapplicable": True,
+                        }
             task_identity = self._identity_for_task(task)
             started_payload = {
                 "task_id": task.task_id,
@@ -35135,7 +35156,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         workspace_path: Path,
         baseline_ref: str = "",
         expected_correction_feedback: Mapping[str, Any] | None = None,
-    ) -> tuple[Any, dict[str, Any], tuple[str, ...], tuple[str, ...], Any, str]:
+    ) -> tuple[
+        Any,
+        dict[str, Any],
+        tuple[str, ...],
+        tuple[str, ...],
+        Any,
+        str,
+        tuple[str, ...],
+    ]:
         """Reconstruct operator scope and reject stale/caller-widened packets."""
 
         snapshot_id = str(getattr(packet, "snapshot_id", "") or "").strip()
@@ -35161,14 +35190,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             write_paths=effect_paths,
         )
         symbol_hints = self._production_context_symbol_hints(task)
+        nested_roots = tuple(self.worktree_submodule_paths)
         try:
             read_paths = derive_production_context_read_paths(
                 repo_root=workspace_path,
                 baseline_ref=context_baseline,
                 effect_paths=effect_paths,
-                allowed_nested_repository_roots=tuple(
-                    self.worktree_submodule_paths
-                ),
+                allowed_nested_repository_roots=nested_roots,
             )
         except ProductionContextSliceError as exc:
             raise ProviderRoutingError(
@@ -35222,6 +35250,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 expected_effect_paths=effect_paths,
                 expected_symbol_hints=symbol_hints,
                 baseline_ref=context_baseline,
+                allowed_nested_repository_roots=nested_roots,
             )
         except ProductionContextSliceError as exc:
             raise ProviderRoutingError(
@@ -35244,6 +35273,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             effect_paths,
             symbol_hints,
             context_baseline,
+            nested_roots,
         )
 
     def _production_admission_gate(self, proposal: Any) -> dict[str, Any]:
@@ -36111,6 +36141,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     effect_paths,
                     symbol_hints,
                     context_baseline,
+                    allowed_nested_repository_roots,
                 ) = current_context
                 proposal_payload = getattr(proposal, "payload", None)
                 if not isinstance(proposal_payload, Mapping):
@@ -36126,6 +36157,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         expected_effect_paths=effect_paths,
                         expected_symbol_hints=symbol_hints,
                         baseline_ref=context_baseline,
+                        allowed_nested_repository_roots=(
+                            allowed_nested_repository_roots
+                        ),
                     )
                 except ProductionContextSliceError as exc:
                     raise RuntimeError(
