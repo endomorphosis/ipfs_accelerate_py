@@ -61,6 +61,28 @@ _GROK_BALANCE_EXHAUSTED_MESSAGE: Final = (
 )
 GROK_BUILD_BALANCE_EXHAUSTED_MARKER: Final = "grok_build_balance_exhausted"
 _MAX_GROK_STREAM_EVENT_BYTES: Final = 64 * 1024
+# Grok treats an empty ``--tools`` value as "no allowlist", which restores the
+# default tool set.  Production providers receive a complete bounded context
+# packet from an empty working directory, so any tool call is both unnecessary
+# and guaranteed to consume the single turn without producing a final schema
+# response.  Name both the documented and currently emitted terminal aliases;
+# the permission deny remains a fail-closed backstop for future tool names.
+_GROK_PROPOSAL_DISALLOWED_TOOLS: Final = (
+    "run_terminal_cmd",
+    "run_terminal_command",
+    "read_file",
+    "grep",
+    "search_replace",
+    "list_dir",
+    "web_search",
+    "web_fetch",
+    "todo_write",
+    "task",
+    "spawn_subagent",
+    "memory_search",
+    "get_command_or_subagent_output",
+    "Agent",
+)
 _NATIVE_CLI_SUBREAPER_PATH: Final = Path(__file__).with_name(
     "native_cli_subreaper.py"
 )
@@ -564,8 +586,10 @@ def _grok_native_structured_output(
         "1",
         "--permission-mode",
         "dontAsk",
-        "--tools",
-        "",
+        "--disallowed-tools",
+        ",".join(_GROK_PROPOSAL_DISALLOWED_TOOLS),
+        "--deny",
+        "*",
         "--output-format",
         "streaming-json",
         "--prompt-file",
