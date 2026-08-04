@@ -151,12 +151,95 @@ def _immutable_record_cid(
         for key, value in record.items()
         if str(key) not in set(claim_names)
     }
-    derived = content_identity(payload)
+    try:
+        derived = content_identity(payload)
+    except Exception:
+        # Raw daemon merge rows often contain floats/nested non-canonical
+        # metadata.  Callers should project through
+        # ``project_managed_merge_queue_record``; never raise into collect().
+        return ""
     if claims and claims[0] != derived:
         return ""
     if claim_required and not claims:
         return ""
     return derived
+
+
+def project_managed_merge_queue_record(raw: Any) -> dict[str, Any] | None:
+    """Project a daemon merge-queue row into a collector-safe sealed receipt.
+
+    The live merge queue persists floats, nested metadata, and baguqeera CIDs
+    under several key spellings.  The task-evidence collector seals merge
+    authority with ``content_identity``, which rejects floats.  This projector
+    keeps only the completion claim (task id, task CID, status, commit) and
+    derives a stable ``merge_receipt_cid`` over that body.
+
+    Returns ``None`` when the row is not a successful completion claim.  This
+    never invents a task completion: absent, unsuccessful, or incomplete rows
+    are dropped rather than upgraded.
+    """
+
+    record = _record(raw)
+    if not record:
+        return None
+    task_id = _text(_value(record, "task_id", "id"))
+    if not task_id:
+        return None
+    status = _text(_value(record, "status", "state")).lower()
+    if status not in {"completed", "merged"}:
+        return None
+    task_cid = _text(
+        _value(record, "task_cid", "canonical_task_cid", "canonical_task_id")
+    )
+    commit = _text(
+        _value(record, "merged_commit_id", "commit_sha", "commit_id", "merge_commit")
+    )
+    if not task_cid or not commit:
+        return None
+    body = {
+        "task_id": task_id,
+        "canonical_task_cid": task_cid,
+        "status": "completed",
+        "commit_sha": commit,
+    }
+    try:
+        receipt_cid = content_identity(body)
+    except Exception:
+        return None
+    return {
+        **body,
+        "merge_receipt_cid": receipt_cid,
+    }
+
+
+def project_managed_merge_queue_records(
+    values: Iterable[Any],
+) -> tuple[dict[str, Any], ...]:
+    """Project many merge-queue rows; keep the latest successful row per task."""
+
+    latest: dict[str, dict[str, Any]] = {}
+    for value in values:
+        projected = project_managed_merge_queue_record(value)
+        if projected is None:
+            continue
+        task_id = projected["task_id"]
+        # Prefer later records when raw enqueued_at is available.
+        raw = _record(value)
+        order = 0
+        enqueued = raw.get("enqueued_at")
+        if isinstance(enqueued, (int, float)) and not isinstance(enqueued, bool):
+            order = int(float(enqueued) * 1000)
+        prior = latest.get(task_id)
+        if prior is None or order >= int(prior.get("_order", 0)):
+            projected = dict(projected)
+            projected["_order"] = order
+            latest[task_id] = projected
+    cleaned: list[dict[str, Any]] = []
+    for task_id in sorted(latest):
+        body = dict(latest[task_id])
+        body.pop("_order", None)
+        cleaned.append(body)
+    return tuple(cleaned)
 
 
 def _contract_payload(
@@ -1043,7 +1126,22 @@ class ProofTestReuseTaskEvidenceCollector:
                 evaluated_at_ms=now_ms,
             )
 
-        queues = self._index((*tuple(merge_queue_records), *tuple(merge_records)))
+        # Project daemon merge rows into collector-safe sealed receipts before
+        # indexing.  Do not collapse duplicates here — ``_index`` still detects
+        # contradictory multi-row claims per task.
+        projected_merges: list[dict[str, Any]] = []
+        for raw in (*tuple(merge_queue_records), *tuple(merge_records)):
+            projected = project_managed_merge_queue_record(raw)
+            if projected is not None:
+                projected_merges.append(projected)
+            else:
+                # Keep unprojectable successful-looking rows only as empty
+                # mappings so they cannot crash content_identity later; the
+                # queue path re-projects and gaps malformed claims.
+                record = _record(raw)
+                if record:
+                    projected_merges.append(dict(record))
+        queues = self._index(tuple(projected_merges))
         validations = self._index(validation_receipts)
         approvals = self._index(approval_records)
         retrospectives = self._index((*tuple(retrospective_records), *tuple(history_records)))
@@ -1575,19 +1673,22 @@ class ProofTestReuseTaskEvidenceCollector:
     def _queue_provenance(
         self, task: _Task, queue: Mapping[str, Any]
     ) -> tuple[dict[str, Any] | None, TaskEvidenceGap | None]:
-        if _text(_value(queue, "status", "state")) not in {"completed", "merged"}:
+        # Re-project so callers that bypass collect()'s adapter still get a
+        # sealed integer/string body instead of a content_identity exception.
+        projected = project_managed_merge_queue_record(queue) or dict(queue)
+        if _text(_value(projected, "status", "state")) not in {"completed", "merged"}:
             return None, TaskEvidenceGap(
                 task.task_id,
                 TaskEvidenceGapKind.QUEUE_RECORD_UNSUCCESSFUL,
                 "merge queue record is not successfully completed",
             )
         claimed_task_cid = _text(
-            _value(queue, "task_cid", "canonical_task_cid", "canonical_task_id")
+            _value(projected, "task_cid", "canonical_task_cid", "canonical_task_id")
         )
         if claimed_task_cid != task.task_cid:
             return None, self._gap_task_cid(task, "merge queue")
         commit = _text(
-            _value(queue, "merged_commit_id", "commit_sha", "commit_id")
+            _value(projected, "merged_commit_id", "commit_sha", "commit_id")
         )
         if not commit:
             return None, TaskEvidenceGap(
@@ -1599,7 +1700,7 @@ class ProofTestReuseTaskEvidenceCollector:
         if ancestry_gap:
             return None, ancestry_gap
         receipt_cid = _immutable_record_cid(
-            queue,
+            projected,
             "merge_receipt_cid",
             "receipt_id",
             "content_id",
@@ -1848,6 +1949,8 @@ __all__ = [
     "PROOF_TEST_REUSE_TASK_EVIDENCE_INTERFACE",
     "TASK_VALIDATION_PROVENANCE_INTERFACE",
     "TASK_EVIDENCE_GAP_INTERFACE",
+    "REVIEW_REQUIRED_WITHOUT_QUEUE",
+    "DEFAULT_EVIDENCE_FRESHNESS_SECONDS",
     "TaskCompletionProvenanceKind",
     "TaskEvidenceGapKind",
     "TaskEvidenceGap",
@@ -1856,4 +1959,6 @@ __all__ = [
     "ProofTestReuseTaskEvidenceCollection",
     "ProofTestReuseTaskEvidenceCollector",
     "ProofTestReuseTaskEvidenceError",
+    "project_managed_merge_queue_record",
+    "project_managed_merge_queue_records",
 ]

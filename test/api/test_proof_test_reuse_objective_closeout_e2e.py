@@ -1,6 +1,6 @@
 """Hermetic objective closeout e2e and operator-handoff proof (PTR-130).
 
-Proves that a disposable exact 41-task / 12-goal population reaches:
+Proves that a disposable exact sealed-task / 12-goal population reaches:
 
 1. provisional goals only (phase one),
 2. verified ``PTR-G010`` … ``PTR-G100`` (phase two),
@@ -84,7 +84,10 @@ ALL_GOAL_IDS = (
 )
 CHILD_GOAL_IDS = tuple(sorted(REQUIRED_CHILD_GOAL_IDS))
 SEALED_TASK_IDS = tuple(sorted(REQUIRED_PTR_TASK_IDS))
-assert len(SEALED_TASK_IDS) == 41
+# Production sealed population is the live REQUIRED_PTR_TASK_IDS set (66 tasks
+# after the PTR-143…PTR-155 corrective wave).  Hermetic closeout e2e builds a
+# disposable board over that exact set rather than a stale intermediate count.
+assert len(SEALED_TASK_IDS) == len(REQUIRED_PTR_TASK_IDS)
 assert len(ALL_GOAL_IDS) == 12
 
 NOW_SECONDS = 1_800_000_000.0
@@ -183,7 +186,7 @@ def _objective_text() -> str:
 
 
 def _todo_text(*, open_task_ids: frozenset[str] | None = None) -> str:
-    """Exact sealed 41-task board; all closed unless listed as open."""
+    """Exact sealed production-task board; all closed unless listed as open."""
 
     open_task_ids = open_task_ids or frozenset()
     chunks = ["# Disposable sealed PTR board\n"]
@@ -687,7 +690,11 @@ def _valid_gate_packet(
 
 
 def test_sealed_population_is_exact_and_includes_closeout_tasks() -> None:
-    assert len(REQUIRED_PTR_TASK_IDS) == 41
+    from ipfs_accelerate_py.agent_supervisor.validation.proof_test_reuse_current_tree_gate import (
+        SEALED_PRODUCTION_TASK_COUNT,
+    )
+
+    assert len(REQUIRED_PTR_TASK_IDS) == SEALED_PRODUCTION_TASK_COUNT
     for task_id in (
         "PTR-108",
         "PTR-109",
@@ -698,6 +705,13 @@ def test_sealed_population_is_exact_and_includes_closeout_tasks() -> None:
         "PTR-121",
         "PTR-122",
         "PTR-130",
+        "PTR-149",
+        "PTR-150",
+        "PTR-151",
+        "PTR-152",
+        "PTR-153",
+        "PTR-154",
+        "PTR-155",
     ):
         assert task_id in REQUIRED_PTR_TASK_IDS
     assert FINAL_GATE_GOAL_ID not in REQUIRED_CHILD_GOAL_IDS
