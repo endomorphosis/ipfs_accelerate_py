@@ -3888,20 +3888,46 @@ class PortalImplementationDaemon:
             ),
         )
         self.worktree_lifecycle_restart_recovery = []
+        # Always reclaim expired nonterminal claims on startup so abandoned
+        # attempts (daemon PID still alive, lease not renewed) cannot stall
+        # the board for hours.  Dead-owner controlled restart remains opt-in.
+        try:
+            expired_reclaimed = (
+                self.worktree_lifecycle.reclaim_expired_nonterminal(
+                    reason="daemon_startup_expired_lease_auto_reclaim",
+                )
+            )
+        except Exception as exc:  # pragma: no cover - recovery best-effort
+            logger.warning(
+                "Failed expired worktree lifecycle reclaim on startup: %s",
+                exc,
+            )
+            expired_reclaimed = []
+        if expired_reclaimed:
+            logger.warning(
+                "Auto-reclaimed %d expired worktree lifecycle claim(s) on "
+                "daemon startup for state directory %s",
+                len(expired_reclaimed),
+                self.state_path.parent.resolve(),
+            )
+            self.worktree_lifecycle_restart_recovery.extend(expired_reclaimed)
         if _env_bool(
             WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV,
-            False,
+            True,
         ):
-            self.worktree_lifecycle_restart_recovery = (
+            self.worktree_lifecycle_restart_recovery.extend(
                 self.worktree_lifecycle.reclaim_dead_owners_for_controlled_restart(
                     expected_state_dir=self.state_path.parent.resolve(),
                 )
             )
-            if self.worktree_lifecycle_restart_recovery:
+            dead_count = len(self.worktree_lifecycle_restart_recovery) - len(
+                expired_reclaimed
+            )
+            if dead_count > 0:
                 logger.warning(
                     "Controlled restart fenced %d dead worktree lifecycle "
                     "owner(s) for state directory %s",
-                    len(self.worktree_lifecycle_restart_recovery),
+                    dead_count,
                     self.state_path.parent.resolve(),
                 )
         # Active attempt's fenced workspace claim (if any).  Cleanup paths
