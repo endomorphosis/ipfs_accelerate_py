@@ -1065,6 +1065,9 @@ class PortalSupervisorConfig:
     )
     manual_completion_authority_epoch_id: str = ""
     manual_completion_authority_revalidation_only: bool = False
+    # Optional sealed scheduler profile path.  When set, each supervisor
+    # pass may run delegated operator completion for seal-gated manuals.
+    scheduler_config_path: Path | None = None
     worktree_reconciliation_enabled: bool = True
     worktree_reconciliation_max_merges: int = 1
     worktree_reconciliation_dry_run: bool = False
@@ -1615,6 +1618,119 @@ class PortalImplementationSupervisor:
         finally:
             if not failed:
                 finish_maintenance("completed")
+
+    def _maybe_run_delegated_operator_completion(self) -> dict[str, Any]:
+        """Complete seal-gated manuals when the scheduler policy allows it.
+
+        Fail-closed and no-op when the scheduler profile is absent, the policy
+        is disabled, or no seal-configured pending tasks are eligible.
+        """
+
+        scheduler_path = self.config.scheduler_config_path
+        if scheduler_path is None:
+            return {"attempted": False, "reason": "scheduler_config_path_unset"}
+        try:
+            from ..control.delegated_operator_completion import (
+                DelegatedOperatorCompletionPolicy,
+                complete_ready_sealed_manual_tasks,
+            )
+
+            profile = load_supervisor_scheduler_config(
+                scheduler_path,
+                repo_root=REPO_ROOT,
+            )
+            policy = DelegatedOperatorCompletionPolicy.from_mapping(
+                profile.get("delegated_operator_completion")
+            )
+            if not policy.enabled:
+                return {"attempted": False, "reason": "policy_disabled"}
+
+            todo_path = self.config.todo_path
+            text = todo_path.read_text(encoding="utf-8")
+            import re as _re
+
+            seal_configs = profile.get("manual_completion_seals") or {}
+            seal_task_ids = set(seal_configs)
+            board_tasks: list[dict[str, Any]] = []
+            for block in _re.split(r"(?=^## )", text, flags=_re.M):
+                header = _re.match(r"^## (\S+)", block)
+                if header is None:
+                    continue
+                task_id = header.group(1)
+                # Track seal-gated manuals plus their dependency status.
+                status_m = _re.search(r"(?m)^- Status:\s*(\S+)", block)
+                depends_m = _re.search(r"(?m)^- Depends on:\s*(.+)$", block)
+                validation_m = _re.search(r"(?m)^- Validation:\s*(.+)$", block)
+                depends = []
+                if depends_m is not None:
+                    depends = [
+                        part.strip()
+                        for part in depends_m.group(1).split(",")
+                        if part.strip()
+                    ]
+                board_tasks.append(
+                    {
+                        "task_id": task_id,
+                        "status": (
+                            status_m.group(1) if status_m is not None else "pending"
+                        ),
+                        "depends_on": depends,
+                        "validation": (
+                            validation_m.group(1).strip()
+                            if validation_m is not None
+                            else ""
+                        ),
+                    }
+                )
+
+            completed = [
+                task["task_id"]
+                for task in board_tasks
+                if task["status"] == "completed"
+            ]
+            pending = [
+                task["task_id"]
+                for task in board_tasks
+                if task["status"] != "completed" and task["task_id"] in seal_task_ids
+            ]
+            if not pending:
+                return {
+                    "attempted": False,
+                    "reason": "no_pending_sealed_manual_tasks",
+                    "completed_task_ids": completed,
+                }
+            result = complete_ready_sealed_manual_tasks(
+                repo_root=REPO_ROOT,
+                todo_path=todo_path,
+                scheduler_path=Path(scheduler_path),
+                board_namespace=str(profile.get("board_namespace") or ""),
+                seal_configs=seal_configs,
+                validation_commands={
+                    task["task_id"]: task["validation"] for task in board_tasks
+                },
+                completed_task_ids=completed,
+                pending_task_ids=pending,
+                depends_on={
+                    task["task_id"]: task["depends_on"] for task in board_tasks
+                },
+                policy=policy,
+            )
+            self._record_event(
+                "delegated_operator_completion_pass",
+                {
+                    "completed_count": len(result.get("completed") or []),
+                    "attempted": list(result.get("attempted") or []),
+                    "error_count": len(result.get("errors") or []),
+                },
+            )
+            return result
+        except Exception as exc:
+            payload = {
+                "attempted": True,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+            self._record_event("delegated_operator_completion_failed", payload)
+            return payload
 
     def _implementation_protected_maintenance_guard(self) -> dict[str, Any]:
         """Block supervisor mutations while an agent fence is active/latched."""
@@ -2908,6 +3024,10 @@ class PortalImplementationSupervisor:
                 ),
             },
         )
+        update_maintenance_phase("delegated_operator_completion")
+        delegated_operator_completion = (
+            self._maybe_run_delegated_operator_completion()
+        )
         return {
             "stuck": False,
             "active_task_id": state.active_task_id,
@@ -2928,6 +3048,7 @@ class PortalImplementationSupervisor:
             "codebase_deferred_reason": codebase_deferred_reason,
             "objective_scan": objective_scan,
             "codebase_scan": codebase_scan,
+            "delegated_operator_completion": delegated_operator_completion,
             "event_log_repair": event_log_repair,
             "strategy_file_repair": strategy_file_repair,
             "state_file_repair": state_file_repair,
@@ -14150,6 +14271,11 @@ def supervisor_config_from_args(
                 "manual_completion_authority_revalidation_only",
                 False,
             )
+        ),
+        scheduler_config_path=(
+            Path(args.scheduler_config).resolve()
+            if getattr(args, "scheduler_config", None)
+            else None
         ),
         worktree_reconciliation_enabled=args.worktree_reconciliation_enabled,
         worktree_reconciliation_max_merges=args.worktree_reconciliation_max_merges,
