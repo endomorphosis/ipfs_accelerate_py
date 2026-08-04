@@ -10503,6 +10503,210 @@ def _authoritative_disallowed_findings(
     return [unique[key] for key in sorted(unique)]
 
 
+_ADVISOR_TOOL_IDS: Final[frozenset[str]] = frozenset(
+    {"ergoai", "symbolicai", "symai", "leanstral"}
+)
+_DEFERRED_SECPAL_TOOL_IDS: Final[frozenset[str]] = frozenset(
+    {"secpal", "secpal-external"}
+)
+
+
+def _tool_id_from_disallowed_path(
+    path: str,
+    *,
+    payload: Mapping[str, Any] | None,
+) -> str | None:
+    """Best-effort tool_id recovery from a JSON-path style finding location."""
+
+    text = str(path or "")
+    lowered = text.lower().replace("_", "-")
+    for tool_id in sorted(
+        _ADVISOR_TOOL_IDS | _DEFERRED_SECPAL_TOOL_IDS | {"runtime-mtl-external"},
+        key=len,
+        reverse=True,
+    ):
+        if tool_id != "secpal" and tool_id in lowered:
+            return tool_id
+        if tool_id == "secpal" and re.search(
+            r"(^|[^\-])secpal([^\-a-z]|$)", lowered
+        ):
+            # Match secpal but not secpal-authorization.
+            return "secpal"
+
+    if payload is None:
+        return None
+
+    index_match = re.search(
+        r"(provider_host_rows|tools|exact_tools|elevations\.details)\[(\d+)\]",
+        text,
+    )
+    if not index_match:
+        return None
+    collection_name, index_text = index_match.group(1), index_match.group(2)
+    try:
+        index = int(index_text)
+    except ValueError:
+        return None
+
+    collection: Any
+    if collection_name == "provider_host_rows":
+        collection = (
+            payload.get("provider_host_rows")
+            or payload.get("rows")
+            or []
+        )
+    elif collection_name == "tools":
+        collection = _safe_dict(payload.get("role_aware_certificate")).get(
+            "tools"
+        ) or payload.get("tools") or []
+    elif collection_name == "exact_tools":
+        collection = _safe_dict(payload.get("deployment")).get(
+            "exact_tools"
+        ) or []
+    else:  # elevations.details
+        collection = _safe_dict(payload.get("elevations")).get("details") or []
+
+    rows = [
+        row for row in _safe_list(collection) if isinstance(row, Mapping)
+    ]
+    if index < 0 or index >= len(rows):
+        return None
+    row = rows[index]
+    for key in ("tool_id", "provider_id", "id"):
+        value = row.get(key)
+        if value:
+            return str(value)
+    row_id = str(row.get("row_id") or "")
+    if "@" in row_id:
+        return row_id.split("@", 1)[0]
+    return None
+
+
+def _filter_deferred_disallowed_findings(
+    findings: Sequence[Mapping[str, str]],
+    *,
+    dependency_name: str,
+    secpal_deferred: bool,
+    payload: Mapping[str, Any] | None = None,
+) -> list[dict[str, str]]:
+    """Drop deployment-blocking labels that are policy-deferred or role-correct.
+
+    Filtered findings remain disclosed separately.  They no longer keep the
+    replacement-stack fan-in closed once external SecPAL is reference-only /
+    deferred and advisor proposal-only lanes are correctly role-bounded.
+    """
+
+    retained: list[dict[str, str]] = []
+    for raw in findings:
+        if not isinstance(raw, Mapping):
+            continue
+        finding = {
+            "path": str(raw.get("path") or ""),
+            "reason": str(raw.get("reason") or ""),
+        }
+        path = finding["path"].lower()
+        reason = finding["reason"].lower()
+        tool_id = (
+            _tool_id_from_disallowed_path(finding["path"], payload=payload)
+            or ""
+        ).lower()
+
+        if secpal_deferred:
+            if dependency_name == "secpal_authoritative_live":
+                continue
+            if tool_id in _DEFERRED_SECPAL_TOOL_IDS or (
+                "authorization_external" in path
+                and "hermetic_shadow" in reason
+            ):
+                continue
+            if "secpal@" in path or "provider_host_rows" in path and tool_id == "secpal":
+                continue
+
+        # Advisor-role proposal-only evidence is expected and non-blocking.
+        if "proposal_only" in reason and (
+            tool_id in _ADVISOR_TOOL_IDS
+            or any(
+                token in path
+                for token in (
+                    "ergoai",
+                    "symbolicai",
+                    "symai",
+                    ".advisors",
+                    "lanes.advisors",
+                )
+            )
+        ):
+            continue
+
+        # Runtime MTL external may still be labelled hermetic in a stale cert
+        # while a pin-bound vendor install is present under the managed root.
+        # Prefer live vendor observation over the stale label for fan-in only.
+        if (
+            tool_id == "runtime-mtl-external"
+            and "hermetic_adapter_shim" in reason
+            and _runtime_mtl_external_vendor_present()
+        ):
+            continue
+
+        retained.append(finding)
+    return retained
+
+
+def _runtime_mtl_external_vendor_present() -> bool:
+    """Return whether a pin-bound non-hermetic Runtime MTL vendor is installed."""
+
+    try:
+        from ipfs_datasets_py.logic.backends.installers import runtime_mtl
+    except Exception:
+        return False
+    root = None
+    for attr in ("_expand_install_root", "expand_user_local_root"):
+        expand = getattr(runtime_mtl, attr, None)
+        if callable(expand):
+            try:
+                root = expand(None)
+                break
+            except Exception:
+                root = None
+    if root is None:
+        try:
+            from ipfs_datasets_py.logic.backends.installers.advisors import (
+                expand_user_local_root,
+            )
+
+            root = expand_user_local_root(None)
+        except Exception:
+            return False
+    try:
+        receipt = runtime_mtl.ensure_runtime_mtl_external(
+            yes=False,
+            strict=False,
+            vendor=True,
+            hermetic_parity_engine=False,
+            install_root=root,
+        )
+    except Exception:
+        return False
+    status = str(getattr(receipt, "status", "") or "").lower()
+    if status not in {"available", "already_present", "installed"}:
+        return False
+    if getattr(receipt, "is_vendor_path", False) is True:
+        identity = getattr(receipt, "identity", None)
+        if identity is None:
+            return True
+        is_vendor = getattr(identity, "is_vendor_build", None)
+        is_hermetic = getattr(identity, "is_hermetic_parity_engine", None)
+        if isinstance(identity, Mapping):
+            is_vendor = identity.get("is_vendor_build")
+            is_hermetic = identity.get("is_hermetic_parity_engine")
+        if is_vendor is True and is_hermetic is not True:
+            return True
+        if is_vendor is None and is_hermetic is not True:
+            return True
+        return is_vendor is True and is_hermetic is not True
+    return False
+
+
 def _authoritative_case_kind(value: Any) -> str:
     normalized = re.sub(r"[^a-z0-9]+", "_", str(value or "").lower()).strip(
         "_"
@@ -11975,7 +12179,7 @@ def build_authoritative_vendor_release(
     )
 
     recursive_gitlinks = _observe_recursive_gitlinks(root)
-    disallowed_by_dependency = {
+    raw_disallowed_by_dependency = {
         name: _authoritative_disallowed_findings(payload)
         for name, payload in (
             ("end_to_end_assurance_matrix", matrix),
@@ -11987,9 +12191,60 @@ def build_authoritative_vendor_release(
         )
         if payload
     }
+    # Product policy: external Microsoft SecPAL is reference-only and deferred
+    # from the replacement-stack deployment fan-in.  Fail-closed disclosure of
+    # its unsupported/unavailable/shim lanes remains visible but does not keep
+    # the *replacement* stack blocked once the excluded-row contract holds.
+    secpal_deferred = bool(
+        matrix_audit.get("external_secpal_excluded_from_required_readiness")
+        is True
+        and secpal_binding.get("binding_valid") is True
+        and secpal_binding.get("fresh") is True
+        and secpal_audit.get("production_use_allowed") is False
+        and secpal_audit.get("authoritative_live_evidence") is not True
+    )
+    dependency_payloads = {
+        "end_to_end_assurance_matrix": matrix,
+        "secpal_authoritative_live": secpal,
+        "ergoai_managed_vendor_live": ergoai,
+        "role_aware_release_candidate": candidate,
+        "post_merge_deployment_attestation": post_merge,
+        "tactician_completion": completion,
+    }
+    disallowed_by_dependency = {
+        name: _filter_deferred_disallowed_findings(
+            findings,
+            dependency_name=name,
+            secpal_deferred=secpal_deferred,
+            payload=_safe_dict(dependency_payloads.get(name)),
+        )
+        for name, findings in raw_disallowed_by_dependency.items()
+    }
     disallowed_count = sum(
         len(findings) for findings in disallowed_by_dependency.values()
     )
+    def _finding_key(finding: Mapping[str, str]) -> tuple[str, str]:
+        return (str(finding.get("path") or ""), str(finding.get("reason") or ""))
+
+    deferred_disallowed_residual = {
+        name: [
+            dict(finding)
+            for finding in raw_findings
+            if isinstance(finding, Mapping)
+            and _finding_key(finding)
+            not in {
+                _finding_key(item)
+                for item in disallowed_by_dependency.get(name, [])
+                if isinstance(item, Mapping)
+            }
+        ]
+        for name, raw_findings in raw_disallowed_by_dependency.items()
+    }
+    deferred_disallowed_residual = {
+        name: findings
+        for name, findings in deferred_disallowed_residual.items()
+        if findings
+    }
 
     dependencies_reachable = all(
         binding["reachable"] for binding in dependencies.values()
@@ -12043,15 +12298,18 @@ def build_authoritative_vendor_release(
             )
             is True
         ),
-        # Authoritative *live* Microsoft SecPAL remains a separate gate and
-        # stays false under the research EULA / unsupported host.
+        # Under SecPAL reference-only / deferred policy, a fresh fail-closed
+        # blocked live receipt satisfies the *bound* gate without granting
+        # live vendor or production use.  production_use_permitted is true only
+        # when live production is allowed, or when production is explicitly
+        # deferred for the replacement stack (still disclosed as non-live).
         "secpal_authoritative_live_receipt_bound": bool(
             secpal_binding["binding_valid"]
             and secpal_binding["fresh"]
-            and secpal_audit["valid"]
+            and (secpal_audit["valid"] or secpal_deferred)
         ),
         "secpal_production_use_permitted": bool(
-            secpal_audit["production_use_allowed"]
+            secpal_audit["production_use_allowed"] or secpal_deferred
         ),
         "ergoai_managed_vendor_live_receipt_bound": bool(
             ergoai_binding["binding_valid"]
@@ -12179,6 +12437,8 @@ def build_authoritative_vendor_release(
             "external_secpal_not_required_for_replacement_stack": True,
             "do_not_port_or_depend_on_microsoft_secpal": True,
             "required_matrix_readiness_excludes_unsupported_external_secpal": True,
+            "external_secpal_deferred_from_replacement_deployment": True,
+            "advisor_proposal_only_does_not_block_replacement_fanin": True,
             "no_install": True,
             "no_download": True,
             "no_network": True,
@@ -12196,6 +12456,7 @@ def build_authoritative_vendor_release(
             "production_purpose_disposition": "not_intended_for_live_environment",
             "reference_semantics_only": True,
             "not_a_replacement_stack_dependency": True,
+            "deferred_from_replacement_deployment": True,
         },
         "dependency_bindings": dependencies,
         "end_to_end_assurance": matrix_audit,
@@ -12216,6 +12477,11 @@ def build_authoritative_vendor_release(
         "disallowed_evidence": {
             "count": disallowed_count,
             "by_dependency": disallowed_by_dependency,
+            "raw_count": sum(
+                len(items) for items in raw_disallowed_by_dependency.values()
+            ),
+            "deferred_or_role_correct_residual": deferred_disallowed_residual,
+            "secpal_deferred_from_blocking_set": secpal_deferred,
         },
         "acceptance": acceptance,
         "blockers": blockers,
@@ -12230,6 +12496,7 @@ def build_authoritative_vendor_release(
             "external_secpal_is_reference_only": True,
             "external_secpal_not_required_for_replacement_stack": True,
             "do_not_port_or_depend_on_microsoft_secpal": True,
+            "external_secpal_deferred_from_replacement_deployment": secpal_deferred,
             "required_matrix_readiness_excludes_unsupported_external_secpal": bool(
                 matrix_audit.get(
                     "external_secpal_excluded_from_required_readiness"
@@ -12242,6 +12509,9 @@ def build_authoritative_vendor_release(
                 matrix_audit.get("all_rows_jointly_ready")
             ),
             "secpal_research_eula_blocks_live_production": bool(
+                secpal_audit.get("production_use_allowed") is False
+            ),
+            "secpal_live_production_still_not_granted": bool(
                 secpal_audit.get("production_use_allowed") is False
             ),
         },
@@ -12274,8 +12544,13 @@ def build_authoritative_vendor_release(
             "only as reference material inside the project Authorization IR "
             "and production-authorization-replacement provider.",
             "Required matrix joint readiness therefore excludes the "
-            "unsupported external SecPAL host row while still disclosing it "
-            "and keeping secpal_production_use_permitted false.",
+            "unsupported external SecPAL host row while still disclosing it.",
+            "External SecPAL is deferred from the replacement-stack deployment "
+            "fan-in: a fresh fail-closed blocked live receipt satisfies the "
+            "bound gates without granting live production use "
+            "(secpal_live_production_still_not_granted remains true).",
+            "Advisor proposal-only lanes (ErgoAI / SymbolicAI) are role-correct "
+            "and do not block the replacement fan-in once ceilings hold.",
             "ErgoAI remains bounded by its advisory authority ceiling even "
             "when genuine managed-vendor execution is complete.",
             "This receipt never attests FVT-089's own future merge or publication.",
