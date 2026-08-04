@@ -242,7 +242,14 @@ def test_receipt_binds_all_objective_child_goals() -> None:
     implementation = receipt["implementation"]
     assert implementation["child_goals_bound"] == len(bound_ids)
     assert implementation["child_goals_unbound"] == unbound_ids
-    assert implementation["status"] == ("incomplete" if unbound_ids else "complete")
+    # Deferred external goals (e.g. Microsoft SecPAL live FVT-G219) may remain
+    # unbound without blocking implementation complete.
+    blocking = implementation.get("child_goals_unbound_blocking")
+    if blocking is None:
+        blocking = unbound_ids
+    deferred = implementation.get("child_goals_unbound_deferred_external") or []
+    assert set(unbound_ids) == set(blocking) | set(deferred)
+    assert implementation["status"] == ("incomplete" if blocking else "complete")
 
 
 def test_hard_zero_gates_are_present_and_non_negative() -> None:
@@ -265,23 +272,60 @@ def test_hard_zero_gates_are_present_and_non_negative() -> None:
 
 
 def test_fixture_benchmark_cannot_clear_after_evidence_bound_p0_resolution() -> None:
-    """Resolving stale P0 rows does not manufacture benchmark authority."""
+    """Fixture/synthetic cohorts never clear hard-zero; live cohort may.
+
+    Resolved P0 rows alone do not manufacture benchmark authority. A mutated
+    fixture-class copy of the bound benchmark must keep hard-zero pressure,
+    while the committed live cohort is allowed to clear counters under the
+    branch hard_zero_clearable policy (publication still separate).
+    """
 
     module = _load_builder_module()
     certificate = json.loads(TOOLCHAIN_CERT_PATH.read_text(encoding="utf-8"))
     benchmark = json.loads(BENCHMARK_PATH.read_text(encoding="utf-8"))
     baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
-    hard_zero = module.derive_hard_zero_gates(
+
+    live_hard_zero = module.derive_hard_zero_gates(
         certificate=certificate,
         benchmark=benchmark,
         baseline=baseline,
         repo_root=REPO_ROOT,
     )
+    assert live_hard_zero["derivation"]["open_p0_findings"] == []
+    assert live_hard_zero["derivation"]["invalid_p0_resolutions"] == []
+    assert len(live_hard_zero["derivation"]["resolved_p0_findings"]) == 3
+    live_evidence = live_hard_zero["derivation"]["benchmark_evidence"]
+    assert live_evidence.get("hard_zero_clearable") is True
+    assert live_hard_zero["derivation"]["complete"] is True
+    assert live_hard_zero["false_proof_count"] == 0
+    assert live_hard_zero["false_closure_count"] == 0
+    assert live_hard_zero["secret_or_witness_leakage_count"] == 0
+    assert live_hard_zero["authority_boundary_violations"] == 0
+
+    # Fixture mutation: same P0 resolution evidence, non-authoritative cohort.
+    fixture_benchmark = json.loads(json.dumps(benchmark))
+    report = fixture_benchmark.setdefault("report", {})
+    metrics = report.setdefault("metrics", {})
+    metrics["evidence_classes"] = ["fixture"]
+    fixture_benchmark["synthetic_distributions"] = True
+    report["synthetic_distributions"] = True
+    metrics["synthetic_distributions"] = True
+    report["receipt_ids"] = ["receipt:fixture:synthetic:0001"]
+    report["receipt_count"] = 1
+
+    hard_zero = module.derive_hard_zero_gates(
+        certificate=certificate,
+        benchmark=fixture_benchmark,
+        baseline=baseline,
+        repo_root=REPO_ROOT,
+    )
 
     assert hard_zero["derivation"]["complete"] is False
-    assert (
-        hard_zero["derivation"]["benchmark_evidence"]["authoritative"] is False
-    )
+    assert hard_zero["derivation"]["benchmark_evidence"]["authoritative"] is False
+    assert hard_zero["derivation"]["benchmark_evidence"].get(
+        "hard_zero_clearable"
+    ) is False
+    assert hard_zero["derivation"]["fixture_or_synthetic_benchmark_cannot_clear"] is True
     assert hard_zero["derivation"]["open_p0_findings"] == []
     assert hard_zero["derivation"]["invalid_p0_resolutions"] == []
     assert len(hard_zero["derivation"]["resolved_p0_findings"]) == 3
@@ -334,7 +378,14 @@ def test_implementation_binds_schemas_corpus_public_ops_metrics_rollout() -> Non
         implementation["child_goal_count"] - len(unbound_ids)
     )
     assert implementation["child_goals_unbound"] == unbound_ids
-    assert implementation["status"] == ("incomplete" if unbound_ids else "complete")
+    blocking = implementation.get("child_goals_unbound_blocking")
+    if blocking is None:
+        blocking = unbound_ids
+    deferred = implementation.get("child_goals_unbound_deferred_external") or []
+    assert set(unbound_ids) == set(blocking) | set(deferred)
+    assert implementation["status"] == ("incomplete" if blocking else "complete")
+    if implementation["status"] == "complete":
+        assert implementation.get("child_goals_unbound_blocking") == []
     assert implementation["corpus_case_count"] > 0
     assert CORPUS_PATH.is_file()
     assert ROLLOUT_PATH.is_file()
@@ -491,18 +542,27 @@ def test_builder_recomputes_equivalent_receipt(tmp_path: Path) -> None:
         # tree from which the historical receipt was issued.
         assert rebuilt["receipt_identity"] == committed["receipt_identity"]
     else:
-        # A historical predecessor receipt can retain the prior gate policy,
-        # but a current rebuild must apply the fail-closed live/P0 policy.
-        assert rebuilt["hard_zero_gates"]["false_proof_count"] > 0
-        assert rebuilt["hard_zero_gates"]["false_closure_count"] > 0
-        assert (
-            rebuilt["hard_zero_gates"]["secret_or_witness_leakage_count"] > 0
-        )
-        assert rebuilt["hard_zero_gates"]["authority_boundary_violations"] > 0
         # A checked-in receipt necessarily describes its parent evidence
         # commit: the receipt cannot contain the hash of the commit that in
-        # turn contains the receipt.  Preserve that historical identity and
-        # require its source to be an ancestor of the publication wrapper.
+        # turn contains the receipt.  Rebuild from the current tree must apply
+        # the live-cohort hard-zero policy (clearable when P0 digests + live
+        # cohort are bound) while remaining identity-distinct from the
+        # historical receipt.
+        rebuilt_hz = rebuilt["hard_zero_gates"]
+        rebuilt_derivation = rebuilt_hz.get("derivation") or {}
+        rebuilt_evidence = rebuilt_derivation.get("benchmark_evidence") or {}
+        if rebuilt_evidence.get("hard_zero_clearable"):
+            assert rebuilt_hz["false_proof_count"] == 0
+            assert rebuilt_hz["false_closure_count"] == 0
+            assert rebuilt_hz["secret_or_witness_leakage_count"] == 0
+            assert rebuilt_hz["authority_boundary_violations"] == 0
+            assert rebuilt_derivation.get("complete") is True
+        else:
+            # Fail-closed residual: fixture/synthetic or open P0 pressure.
+            assert rebuilt_hz["false_proof_count"] > 0
+            assert rebuilt_hz["false_closure_count"] > 0
+            assert rebuilt_hz["secret_or_witness_leakage_count"] > 0
+            assert rebuilt_hz["authority_boundary_violations"] > 0
         assert subprocess.run(
             ["git", "merge-base", "--is-ancestor", receipt_source_head, current_head],
             cwd=REPO_ROOT,
