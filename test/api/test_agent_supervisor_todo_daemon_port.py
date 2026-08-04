@@ -27740,6 +27740,117 @@ def test_reconciled_candidate_reuses_only_environmentally_retryable_proposal(
     assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
 
 
+def test_reconciliation_exact_accepted_proposal_is_idempotent(tmp_path):
+    """Exact accepted proposal replay reuses the receipt; changed body fails closed."""
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        _reconciled_candidate_task_board(
+            task_id="ACCEL-011D",
+            validation="python -m py_compile feature.py",
+        ),
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(
+        "__pycache__/\n*.pyc\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".gitignore", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/accel-011d-idempotent-proposal"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "feature")
+    _git(repo, "checkout", "main")
+    worktree_path = tmp_path / "candidate"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    identity = daemon._identity_for_task(task)
+    daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": task.task_id,
+            "branch": branch_name,
+            "baseline_ref": baseline,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "board_namespace": identity.board_namespace,
+        },
+    )
+
+    first = daemon._validate_implementation_patch(
+        worktree_path,
+        task,
+        baseline_ref=baseline,
+        reconciliation_branch_name=branch_name,
+    )
+    assert first.accepted is True
+    proposal_id = first.proposal.proposal_id
+    policy_id = first.policy.policy_id
+    receipt_id = first.receipt.receipt_id
+
+    # Exact body + tree + branch: idempotent reuse of the accepted receipt.
+    second = daemon._validate_implementation_patch(
+        worktree_path,
+        task,
+        baseline_ref=baseline,
+        reconciliation_branch_name=branch_name,
+    )
+    assert second.accepted is True
+    assert second.proposal.proposal_id == proposal_id
+    assert second.policy.policy_id == policy_id
+    assert second.receipt.receipt_id == receipt_id
+
+    events = list(daemon._iter_events())
+    reused = [
+        event
+        for event in events
+        if event.get("type") == "implementation_proposal_receipt_reused"
+    ]
+    assert reused, "expected idempotent receipt-reuse event"
+    assert reused[-1]["proposal_id"] == proposal_id
+    assert reused[-1]["idempotent_reconciliation_replay"] is True
+    assert reused[-1]["original_receipt_id"] == receipt_id
+
+    # Changed body must not reuse the accepted receipt even on the same branch.
+    (worktree_path / "feature.py").write_text("VALUE = 2\n", encoding="utf-8")
+    _git(worktree_path, "add", "feature.py")
+    _git(worktree_path, "commit", "-m", "changed-feature")
+    changed = daemon._validate_implementation_patch(
+        worktree_path,
+        task,
+        baseline_ref=baseline,
+        reconciliation_branch_name=branch_name,
+    )
+    assert changed.accepted is False
+    assert "stale_proposal_replay" in {
+        finding.code.value for finding in changed.findings
+    }
+
+
+
+
 def test_implementation_supervisor_run_once_replays_historical_merge_under_maintenance_lease(
     tmp_path,
     monkeypatch,

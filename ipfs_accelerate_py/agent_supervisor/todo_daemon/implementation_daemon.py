@@ -18845,6 +18845,7 @@ class PortalImplementationDaemon:
                         recovery_key=recovery_key,
                     )
                 ),
+                reconciliation_branch_name=branch_name,
             )
             validation_result = self._run_validation_commands(
                 worktree_path,
@@ -26396,9 +26397,16 @@ class PortalImplementationDaemon:
             "allow_binary": allow_binary,
         }
 
-    def _consumed_proposal_ids(self, *, limit: int = 256) -> tuple[str, ...]:
+    @staticmethod
+    def _consumed_proposal_ids_from_events(
+        events: Sequence[Mapping[str, Any]],
+        *,
+        limit: int = 256,
+    ) -> tuple[str, ...]:
+        """Project the bounded proposal population consumed by ``events``."""
+
         consumed: list[str] = []
-        for event in reversed(list(self._iter_events())):
+        for event in reversed(events):
             if event.get("type") != "implementation_proposal_validated":
                 continue
             proposal_id = str(event.get("proposal_id") or "").strip()
@@ -26407,6 +26415,163 @@ class PortalImplementationDaemon:
                 if len(consumed) >= limit:
                     break
         return tuple(sorted(consumed))
+
+    def _consumed_proposal_ids(self, *, limit: int = 256) -> tuple[str, ...]:
+        return self._consumed_proposal_ids_from_events(
+            list(self._iter_events()),
+            limit=limit,
+        )
+
+    def _reconciliation_accepted_proposal_context(
+        self,
+        *,
+        task: PortalTask,
+        branch_name: str,
+        baseline_ref: str,
+    ) -> dict[str, Any]:
+        """Recover accepted receipts owned by one implementation branch.
+
+        Proposal events intentionally persist only compact, content-addressed
+        bindings.  The surrounding ``implementation_started`` event supplies
+        the branch and canonical task identity needed to associate those
+        receipts with a crash-recovery candidate.  Callers still rederive the
+        complete proposal, policy, and receipt and must match these bindings
+        exactly before an accepted receipt can be reused.
+        """
+
+        normalized_branch = str(branch_name or "").strip().removeprefix(
+            "refs/heads/"
+        )
+        normalized_baseline = str(baseline_ref or "").strip()
+        if not normalized_branch or not normalized_baseline:
+            return {
+                "segment_found": False,
+                "segment_mismatches": ("reconciliation_context",),
+                "accepted_receipts": (),
+            }
+
+        events = list(self._iter_events())
+        start_index = -1
+        for index, event in enumerate(events):
+            if event.get("type") != "implementation_started":
+                continue
+            event_branch = str(event.get("branch") or "").strip().removeprefix(
+                "refs/heads/"
+            )
+            if (
+                str(event.get("task_id") or "").strip() == task.task_id
+                and event_branch == normalized_branch
+            ):
+                # Branch names are attempt-unique.  Prefer the latest exact
+                # start if an imported event stream contains a duplicate.
+                start_index = index
+        if start_index < 0:
+            return {
+                "segment_found": False,
+                "segment_mismatches": (),
+                "accepted_receipts": (),
+            }
+
+        end_index = len(events)
+        for index in range(start_index + 1, len(events)):
+            if events[index].get("type") == "implementation_started":
+                end_index = index
+                break
+
+        identity = self._identity_for_task(task)
+        start = events[start_index]
+        expected_identity = {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "board_namespace": identity.board_namespace,
+        }
+        # Prefer identity bindings from the implementation_started event when
+        # they are present; proposal events historically omit them when the
+        # in-memory identity map was not yet registered.
+        start_identity = {
+            name: (
+                str(start.get(name) or "").strip()
+                or expected
+            )
+            for name, expected in expected_identity.items()
+        }
+        segment_mismatches = {
+            name
+            for name, expected in expected_identity.items()
+            if start_identity[name] != expected
+        }
+        if str(start.get("baseline_ref") or "").strip() != normalized_baseline:
+            segment_mismatches.add("repository_tree_id")
+
+        accepted_receipts: list[dict[str, Any]] = []
+        for index in range(start_index + 1, end_index):
+            event = events[index]
+            if (
+                event.get("type") != "implementation_proposal_validated"
+                or event.get("accepted") is not True
+                or str(event.get("task_id") or "").strip() != task.task_id
+            ):
+                continue
+            # Proposal events bind task_id always; other identity fields may be
+            # absent on older or map-less writers.  Inherit the segment start
+            # identity so exact receipt replay remains possible.
+            event_identity = {
+                name: (
+                    str(event.get(name) or "").strip()
+                    or start_identity[name]
+                )
+                for name in expected_identity
+            }
+            event_mismatches = {
+                name
+                for name, expected in expected_identity.items()
+                if event_identity[name] != expected
+            }
+            required_bindings = (
+                "proposal_id",
+                "policy_id",
+                "receipt_id",
+                "repository_tree_id",
+            )
+            event_mismatches.update(
+                name
+                for name in required_bindings
+                if not str(event.get(name) or "").strip()
+            )
+            raw_changed_paths = event.get("changed_paths")
+            if not isinstance(raw_changed_paths, list) or any(
+                not isinstance(path, str) or not path.strip()
+                for path in raw_changed_paths
+            ):
+                event_mismatches.add("changed_paths")
+                changed_paths: tuple[str, ...] = ()
+            else:
+                changed_paths = tuple(sorted(set(raw_changed_paths)))
+                if tuple(raw_changed_paths) != changed_paths:
+                    event_mismatches.add("changed_paths")
+            accepted_receipts.append(
+                {
+                    "event_id": str(event.get("event_id") or "").strip(),
+                    "proposal_id": str(event.get("proposal_id") or "").strip(),
+                    "policy_id": str(event.get("policy_id") or "").strip(),
+                    "receipt_id": str(event.get("receipt_id") or "").strip(),
+                    "repository_tree_id": str(
+                        event.get("repository_tree_id") or ""
+                    ).strip(),
+                    "changed_paths": changed_paths,
+                    "consumed_proposal_ids": (
+                        self._consumed_proposal_ids_from_events(events[:index])
+                    ),
+                    "mismatches": tuple(sorted(event_mismatches)),
+                }
+            )
+
+        return {
+            "segment_found": True,
+            "segment_mismatches": tuple(sorted(segment_mismatches)),
+            "accepted_receipts": tuple(accepted_receipts),
+        }
 
     @staticmethod
     def _terminal_reconciliation_security_failure(
@@ -27360,6 +27525,7 @@ class PortalImplementationDaemon:
         *,
         baseline_ref: str,
         replayable_consumed_proposal_ids: Sequence[str] = (),
+        reconciliation_branch_name: str = "",
         record_event: bool = True,
         allow_scope_adjudication: bool = True,
     ) -> Any:
@@ -27645,6 +27811,96 @@ class PortalImplementationDaemon:
             for proposal_id in replayable_consumed_proposal_ids
             if str(proposal_id).strip()
         }
+        accepted_replay_binding: Mapping[str, Any] | None = None
+        accepted_replay_receipts: tuple[Mapping[str, Any], ...] = ()
+        reconciliation_replay_mismatch_fields: set[str] = set()
+        if str(reconciliation_branch_name or "").strip():
+            replay_context = self._reconciliation_accepted_proposal_context(
+                task=task,
+                branch_name=reconciliation_branch_name,
+                baseline_ref=authority["repository_tree_id"],
+            )
+            raw_receipts = replay_context.get("accepted_receipts") or ()
+            if isinstance(raw_receipts, Sequence) and not isinstance(
+                raw_receipts,
+                (str, bytes, bytearray),
+            ):
+                accepted_replay_receipts = tuple(
+                    receipt
+                    for receipt in raw_receipts
+                    if isinstance(receipt, Mapping)
+                )
+            segment_mismatches = {
+                str(name).strip()
+                for name in (
+                    replay_context.get("segment_mismatches") or ()
+                )
+                if str(name).strip()
+            }
+            for binding in accepted_replay_receipts:
+                binding_mismatches = {
+                    *segment_mismatches,
+                    *(
+                        str(name).strip()
+                        for name in (binding.get("mismatches") or ())
+                        if str(name).strip()
+                    ),
+                }
+                if (
+                    str(binding.get("proposal_id") or "")
+                    != proposal.proposal_id
+                ):
+                    binding_mismatches.add("proposal_id")
+                if (
+                    str(binding.get("repository_tree_id") or "")
+                    != proposal.repository_tree_id
+                ):
+                    binding_mismatches.add("repository_tree_id")
+                if tuple(binding.get("changed_paths") or ()) != (
+                    proposal.changed_paths
+                ):
+                    binding_mismatches.add("changed_paths")
+                if not binding_mismatches and accepted_replay_binding is None:
+                    # Iteration order is durable event order, so this binds the
+                    # first accepted receipt for the exact proposal body.
+                    accepted_replay_binding = binding
+                reconciliation_replay_mismatch_fields.update(
+                    binding_mismatches
+                )
+
+        current_consumed_proposal_ids = self._consumed_proposal_ids()
+        if accepted_replay_binding is not None:
+            policy_consumed_proposal_ids = tuple(
+                str(proposal_id).strip()
+                for proposal_id in (
+                    accepted_replay_binding.get("consumed_proposal_ids") or ()
+                )
+                if str(proposal_id).strip()
+            )
+        elif accepted_replay_receipts:
+            # The implementation branch has an accepted receipt, but the
+            # current body/tree/task projection does not bind it exactly.  Add
+            # the current proposal identity to the consumed set so the normal
+            # validator emits the existing fail-closed replay finding rather
+            # than silently admitting a different proposal.
+            policy_consumed_proposal_ids = tuple(
+                sorted(
+                    {
+                        *current_consumed_proposal_ids,
+                        proposal.proposal_id,
+                    }
+                )
+            )
+            if not reconciliation_replay_mismatch_fields:
+                reconciliation_replay_mismatch_fields.add(
+                    "accepted_receipt_binding"
+                )
+        else:
+            policy_consumed_proposal_ids = tuple(
+                proposal_id
+                for proposal_id in current_consumed_proposal_ids
+                if proposal_id not in replayable_proposal_ids
+            )
         policy = ProposalValidationPolicy(
             allowed_paths=policy_allowed_paths,
             task_owned_paths=allowed_paths,
@@ -27656,11 +27912,7 @@ class PortalImplementationDaemon:
             expected_context_id=authority["context_id"],
             expected_baseline_id=authority["baseline_id"],
             expected_replay_nonce=replay_nonce,
-            consumed_proposal_ids=tuple(
-                proposal_id
-                for proposal_id in self._consumed_proposal_ids()
-                if proposal_id not in replayable_proposal_ids
-            ),
+            consumed_proposal_ids=policy_consumed_proposal_ids,
             symlink_paths=symlink_paths,
             submodule_paths=submodule_paths,
             protected_paths=tuple(self.implementation_protected_paths),
@@ -27675,6 +27927,51 @@ class PortalImplementationDaemon:
             result,
             expected_output_issues,
         )
+        accepted_receipt_reused = False
+        if accepted_replay_binding is not None:
+            original_policy_id = str(
+                accepted_replay_binding.get("policy_id") or ""
+            )
+            original_receipt_id = str(
+                accepted_replay_binding.get("receipt_id") or ""
+            )
+            accepted_receipt_reused = bool(
+                result.accepted
+                and result.policy.policy_id == original_policy_id
+                and result.receipt.receipt_id == original_receipt_id
+            )
+            if not accepted_receipt_reused:
+                if result.policy.policy_id != original_policy_id:
+                    reconciliation_replay_mismatch_fields.add("policy_id")
+                if result.receipt.receipt_id != original_receipt_id:
+                    reconciliation_replay_mismatch_fields.add("receipt_id")
+                if not result.accepted:
+                    reconciliation_replay_mismatch_fields.add("accepted")
+                denial_policy_payload = policy.to_dict()
+                denial_policy_payload.update(
+                    {
+                        "consumed_proposal_ids": tuple(
+                            sorted(
+                                {
+                                    *current_consumed_proposal_ids,
+                                    proposal.proposal_id,
+                                }
+                            )
+                        ),
+                        "policy_id": "",
+                    }
+                )
+                policy = ProposalValidationPolicy.from_dict(
+                    denial_policy_payload
+                )
+                result = validate_implementation_proposal(
+                    proposal,
+                    policy=policy,
+                )
+                result = self._reject_proposal_for_expected_output_issues(
+                    result,
+                    expected_output_issues,
+                )
         finding_codes = tuple(
             sorted(
                 {
@@ -27807,14 +28104,41 @@ class PortalImplementationDaemon:
                     "completion_authoritative": False,
                 },
             )
+            proposal_event_payload = {
+                "task_id": task.task_id,
+                **compact,
+            }
+            if accepted_receipt_reused:
+                proposal_event_payload.update(
+                    {
+                        "original_event_id": str(
+                            accepted_replay_binding.get("event_id") or ""
+                        ),
+                        "original_policy_id": str(
+                            accepted_replay_binding.get("policy_id") or ""
+                        ),
+                        "original_receipt_id": str(
+                            accepted_replay_binding.get("receipt_id") or ""
+                        ),
+                        "idempotent_reconciliation_replay": True,
+                    }
+                )
+                proposal_event_type = (
+                    "implementation_proposal_receipt_reused"
+                )
+            else:
+                if accepted_replay_receipts:
+                    proposal_event_payload[
+                        "reconciliation_replay_mismatch_fields"
+                    ] = sorted(reconciliation_replay_mismatch_fields)
+                proposal_event_type = (
+                    "implementation_proposal_validated"
+                    if result.accepted
+                    else "implementation_proposal_rejected"
+                )
             self._record_event(
-                "implementation_proposal_validated"
-                if result.accepted
-                else "implementation_proposal_rejected",
-                {
-                    "task_id": task.task_id,
-                    **compact,
-                },
+                proposal_event_type,
+                proposal_event_payload,
             )
         return result
 
