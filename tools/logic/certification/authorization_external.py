@@ -26,8 +26,8 @@ distribution and missing artifact/checksum/provenance/license/runtime/
 executable/installer contracts remain explicit prerequisites for any future
 end-to-end SecPAL task.
 
-Objective validation repair (FVT-073)
--------------------------------------
+Objective validation repair (FVT-073 / FVT-101)
+-----------------------------------------------
 Path evidence for this certifier, the vendor installer, the lock pins, the
 focused tests, and the checked-in vendor receipt may already exist while the
 supervisor validation gate still needs an explicit re-proof of the full
@@ -36,6 +36,15 @@ FVT-G209 acceptance matrix.  The synthetic evidence term
 the checked-in install receipt, and
 ``test_external_authorization_vendor_certification.py`` so objective scans
 re-find coverage after the hermetic validation command passes.
+
+FVT-101 is the objective validation repair for FVT-G217 (SecPAL live
+toolchain / artifact intake).  Path evidence for
+``test_secpal_live_toolchain_contract.py`` may already exist while the
+supervisor still needs an explicit re-proof that the recovered Microsoft MSI
+binds official provenance, license-aware transactional local intake, an empty
+live platform matrix, and non-promotable operator compatibility.  The same
+synthetic evidence term is bound on ``SecPALLiveToolchainContract@1``, the
+installer prerequisite report, the lock, and the focused SecPAL live tests.
 
 External engines remain role=shadow: authorization authority stays with the
 in-process Datalog/SecPAL references (FVT-G102 / FVT-038).
@@ -141,6 +150,8 @@ SECPAL_LIVE_INTERFACE: Final = "SecPALLiveToolchainContract@1"
 SECPAL_LIVE_SCHEMA_VERSION: Final = "secpal-live-toolchain-contract/v1"
 SECPAL_LIVE_GOAL_ID: Final = "FVT-G217"
 SECPAL_LIVE_TASK_ID: Final = "FVT-086"
+# Validation-gate task that re-proves FVT-G217 when path evidence already exists.
+SECPAL_LIVE_REPAIR_TASK_ID: Final = "FVT-101"
 # Synthetic evidence term required by objective-scan validation gates.
 OBJECTIVE_VALIDATION_EVIDENCE: Final = "objective validation repair"
 VENDOR_PROGRAM: Final = (
@@ -156,7 +167,7 @@ SOUFFLE_REQUIRED_SOURCE_SHA256: Final = (
     authz_installer.SOUFFLE_SOURCE_ARCHIVE_SHA256
 )
 
-# Hermetic validation command bound by FVT-G209 / FVT-073.
+# Hermetic validation command bound by FVT-G209 / FVT-073 and FVT-G217 / FVT-101.
 OBJECTIVE_VALIDATION_COMMAND: Final = (
     "PYTHONPATH=ipfs_datasets_py python -m pytest "
     "test/integration/toolchains/test_secpal_live_toolchain_contract.py "
@@ -2241,6 +2252,11 @@ def certify_external_authorization_vendor(
             "interface": SECPAL_LIVE_INTERFACE,
             "goal_id": SECPAL_LIVE_GOAL_ID,
             "task_id": SECPAL_LIVE_TASK_ID,
+            # FVT-101 objective validation repair: re-prove FVT-G217 acceptance.
+            "repair_task_id": SECPAL_LIVE_REPAIR_TASK_ID,
+            "objective_validation_evidence": OBJECTIVE_VALIDATION_EVIDENCE,
+            "objective_validation_repair": True,
+            "objective_validation_command": OBJECTIVE_VALIDATION_COMMAND,
             "contract_complete": False,
             "artifact_intake_only": True,
             "operator_compatibility_only": True,
@@ -2256,6 +2272,7 @@ def certify_external_authorization_vendor(
             ),
         },
         # FVT-073 objective validation repair: re-prove FVT-G209 acceptance.
+        # FVT-101 re-proves FVT-G217 via secpal_live_toolchain_contract above.
         "objective_validation_evidence": OBJECTIVE_VALIDATION_EVIDENCE,
         "objective_validation_repair": bool(certified),
         "objective_validation_command": OBJECTIVE_VALIDATION_COMMAND,
@@ -2780,6 +2797,7 @@ __all__ = [
     "SECPAL_LIVE_SCHEMA_VERSION",
     "SECPAL_LIVE_GOAL_ID",
     "SECPAL_LIVE_TASK_ID",
+    "SECPAL_LIVE_REPAIR_TASK_ID",
     "OBJECTIVE_VALIDATION_EVIDENCE",
     "OBJECTIVE_VALIDATION_COMMAND",
     "VENDOR_PROGRAM",
