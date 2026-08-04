@@ -21,6 +21,7 @@ import hashlib
 import inspect
 import json
 import marshal
+import math
 import os
 import shutil
 import subprocess
@@ -44,9 +45,19 @@ from ..proof.formal_verification_policy import (
     RiskLevel,
     default_formal_verification_policy,
 )
-from .checkout_lock import checkout_repository_id
-from .merge_queue import MergeQueue, MergeQueueFenceError, MergeRequest
-
+from .checkout_lock import (
+    checkout_lock_owner_is_active,
+    checkout_mutation_lock_path,
+    checkout_repository_id,
+    read_checkout_mutation_lease,
+)
+from .merge_queue import (
+    MAX_MERGE_QUEUE_DEFERRAL_SECONDS,
+    MAX_MERGE_QUEUE_RECORDED_DEFERRALS,
+    MergeQueue,
+    MergeQueueFenceError,
+    MergeRequest,
+)
 
 MergeCallback = Callable[[MergeRequest], Mapping[str, Any]]
 PreflightCallback = Callable[..., Mapping[str, Any] | bool]
@@ -102,6 +113,20 @@ DISTRIBUTED_LANE_ADMISSION_SCHEMA: Final = (
 )
 _DISTRIBUTED_PUBLICATION_METADATA_KEY: Final = "distributed_publication"
 _PARALLEL_ACCEPTANCE_RECEIPT_SEAL: Final = object()
+DEFAULT_MERGE_LOCK_DEFERRAL_SECONDS: Final = 30.0
+DEFAULT_MAX_MERGE_LOCK_DEFERRALS: Final = (
+    MAX_MERGE_QUEUE_RECORDED_DEFERRALS
+)
+MERGE_LOCK_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        # The implementation daemon wraps checkout-mutation acquisition
+        # reasons before returning them across the merge-callback boundary.
+        "checkout_mutation_lock_exists",
+        # Retain compatibility with specialised/direct callbacks that expose
+        # the underlying checkout-lock reason without the daemon prefix.
+        "lock_exists",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -981,6 +1006,10 @@ class MergeTrain:
             may expose ``resolve`` and, independently, ``acquire``/``release``
             methods compatible with :class:`MergeResolverRegistry`.
         max_attempts: Last failure count at which a request is quarantined.
+        merge_lock_deferral_seconds: Durable cooldown applied when a live
+            repository merge lock prevents the callback from attempting work.
+        max_merge_lock_deferrals: Maximum verified lock-contention cooldowns
+            before contention begins consuming the bounded failure budget.
         merge_callback: Optional specialised merger.  It receives the claimed
             request and returns a merge-result mapping.
         state_dir: Train receipts/lease/worktrees directory.  Defaults beneath
@@ -1004,6 +1033,8 @@ class MergeTrain:
         target_branch: str = "main",
         resolver: Any = None,
         max_attempts: int = 3,
+        merge_lock_deferral_seconds: float = DEFAULT_MERGE_LOCK_DEFERRAL_SECONDS,
+        max_merge_lock_deferrals: int = DEFAULT_MAX_MERGE_LOCK_DEFERRALS,
         merge_callback: MergeCallback | None = None,
         state_dir: Path | str | None = None,
         git_timeout_seconds: float = 600.0,
@@ -1056,6 +1087,26 @@ class MergeTrain:
                 )
         self.resolver = resolver
         self.max_attempts = max(1, int(max_attempts))
+        merge_lock_deferral_seconds = float(merge_lock_deferral_seconds)
+        if not math.isfinite(merge_lock_deferral_seconds):
+            raise ValueError("merge lock deferral cooldown must be finite")
+        if merge_lock_deferral_seconds > MAX_MERGE_QUEUE_DEFERRAL_SECONDS:
+            raise ValueError(
+                "merge lock deferral cooldown exceeds the durable queue limit"
+            )
+        self.merge_lock_deferral_seconds = max(
+            1.0,
+            merge_lock_deferral_seconds,
+        )
+        self.max_merge_lock_deferrals = int(max_merge_lock_deferrals)
+        if not (
+            1
+            <= self.max_merge_lock_deferrals
+            <= MAX_MERGE_QUEUE_RECORDED_DEFERRALS
+        ):
+            raise ValueError(
+                "max merge lock deferrals must fit the durable deferral history"
+            )
         self.merge_callback = merge_callback
         self.decision_runtime = decision_runtime
         self.decision_runtime_cancellation = decision_runtime_cancellation
@@ -3422,6 +3473,50 @@ class MergeTrain:
                     preflight_receipt=preflight_receipt,
                 )
             callback_reason = str(callback_result.get("reason") or "merge_callback_failed")
+            try:
+                lock_owner_pid = int(callback_result.get("lock_owner_pid") or 0)
+            except (TypeError, ValueError):
+                lock_owner_pid = 0
+            contention_evidence = self._verified_merge_lock_contention(
+                callback_result,
+                reason=callback_reason,
+                lock_owner_pid=lock_owner_pid,
+            )
+            if contention_evidence:
+                prior_deferrals = self._merge_lock_deferral_count(request)
+                if prior_deferrals >= self.max_merge_lock_deferrals:
+                    return self._finish_failure(
+                        request,
+                        reason="merge_lock_deferral_limit_exceeded",
+                        details={
+                            "merge_result": callback_result,
+                            "merge_lock_contention": contention_evidence,
+                            "prior_lock_deferrals": prior_deferrals,
+                            "max_merge_lock_deferrals": (
+                                self.max_merge_lock_deferrals
+                            ),
+                        },
+                        started_at=started_at,
+                        retryable=True,
+                    )
+                return self._finish_deferral(
+                    request,
+                    reason=callback_reason,
+                    details={
+                        "merge_result": callback_result,
+                        "merge_lock_contention": contention_evidence,
+                        "lock_deferral_count": prior_deferrals + 1,
+                        **(
+                            {
+                                "proof_gate": proof_gate_receipt,
+                                "repository_tree_id": proof_tree_id,
+                            }
+                            if proof_gate_receipt
+                            else {}
+                        ),
+                    },
+                    started_at=started_at,
+                )
             retryable = callback_reason not in {
                 "invalid_merge_request",
                 "candidate_commit_missing",
@@ -4585,6 +4680,185 @@ class MergeTrain:
             self._write_receipt(
                 f"fenced-{request.request_id}", result
             )
+        return result
+
+    def _verified_merge_lock_contention(
+        self,
+        callback_result: Mapping[str, Any],
+        *,
+        reason: str,
+        lock_owner_pid: int,
+    ) -> dict[str, Any]:
+        """Bind callback contention to the exact live repository lease."""
+
+        if (
+            callback_result.get("attempted") is not False
+            or reason not in MERGE_LOCK_CONTENTION_REASONS
+            or lock_owner_pid <= 0
+        ):
+            return {}
+        expected_path = checkout_mutation_lock_path(self.repo_root).resolve(
+            strict=False
+        )
+        callback_path_text = str(callback_result.get("lock_path") or "")
+        if not callback_path_text:
+            return {}
+        try:
+            callback_path = Path(callback_path_text).resolve(strict=False)
+        except (OSError, RuntimeError):
+            return {}
+        if callback_path != expected_path:
+            return {}
+        lease = read_checkout_mutation_lease(expected_path)
+        if lease is None:
+            return {}
+        metadata = dict(lease.metadata)
+        try:
+            metadata_pid = int(metadata.get("pid") or 0)
+            metadata_repo_root = Path(
+                str(metadata.get("repo_root") or "")
+            ).resolve(strict=False)
+        except (OSError, RuntimeError, TypeError, ValueError):
+            return {}
+        if (
+            str(metadata.get("kind") or "") != "merge"
+            or metadata_pid != lock_owner_pid
+            or metadata_repo_root != self.repo_root
+        ):
+            return {}
+        callback_bindings = (
+            ("lock_owner_lease_id", "lease_id"),
+            ("lock_owner_task_id", "task_id"),
+            ("lock_owner_branch", "branch"),
+        )
+        for callback_key, metadata_key in callback_bindings:
+            callback_value = str(callback_result.get(callback_key) or "")
+            if callback_value and callback_value != str(
+                metadata.get(metadata_key) or ""
+            ):
+                return {}
+        # Use the shared daemon liveness semantics without importing the full
+        # implementation daemon (which consumes MergeTrain lazily).
+        from ..todo_daemon.core import pid_alive, process_args
+
+        if not checkout_lock_owner_is_active(
+            metadata,
+            expected_kind="merge",
+            expected_repo_root=self.repo_root,
+            process_command_line=process_args,
+            process_is_running=pid_alive,
+        ):
+            return {}
+        confirmed = read_checkout_mutation_lease(expected_path)
+        if (
+            confirmed is None
+            or confirmed.device != lease.device
+            or confirmed.inode != lease.inode
+            or confirmed.lease_id != lease.lease_id
+        ):
+            return {}
+        return {
+            "verified": True,
+            "lock_path": str(expected_path),
+            "lock_owner_pid": metadata_pid,
+            "lock_owner_lease_id": lease.lease_id,
+            "lock_owner_task_id": str(metadata.get("task_id") or ""),
+            "lock_owner_branch": str(metadata.get("branch") or ""),
+            "target_repository_id": checkout_repository_id(self.repo_root),
+        }
+
+    @staticmethod
+    def _merge_lock_deferral_count(request: MergeRequest) -> int:
+        raw_deferrals = request.metadata.get("deferrals")
+        if not isinstance(raw_deferrals, list):
+            return 0
+        return sum(
+            1
+            for entry in raw_deferrals
+            if isinstance(entry, Mapping)
+            and str(entry.get("reason") or "")
+            in MERGE_LOCK_CONTENTION_REASONS
+        )
+
+    def _finish_deferral(
+        self,
+        request: MergeRequest,
+        *,
+        reason: str,
+        details: Mapping[str, Any],
+        started_at: float,
+    ) -> dict[str, Any]:
+        """Persist non-attempted external contention without burning retries."""
+
+        result: dict[str, Any] = {
+            "status": "deferred",
+            "attempted": False,
+            "merged": False,
+            "integrated": False,
+            "accepted": False,
+            "acceptance_pending": False,
+            "request_id": request.request_id,
+            "task_id": _request_value(request, "task_id"),
+            "canonical_task_id": (
+                str(getattr(request, "canonical_identity", "") or "")
+                or _request_value(request, "canonical_task_id")
+                or _request_value(request, "task_id")
+            ),
+            "commit_sha": _request_value(
+                request,
+                "commit_sha",
+                "implementation_commit",
+                "commit",
+            ),
+            "target_branch": self.target_branch,
+            "reason": reason,
+            "failure_count": int(
+                getattr(request, "failure_count", 0) or 0
+            ),
+            "attempt": int(getattr(request, "attempt", 1) or 1),
+            "retryable": True,
+            "deferred": True,
+            "cooldown_seconds": self.merge_lock_deferral_seconds,
+            "started_at": started_at,
+            "finished_at": time.time(),
+            **dict(details),
+        }
+        merge_details = details.get("merge_result")
+        try:
+            deferred = self.queue.defer(
+                request,
+                reason=reason,
+                delay_seconds=self.merge_lock_deferral_seconds,
+                metadata={
+                    "merge_result": (
+                        dict(merge_details)
+                        if isinstance(merge_details, Mapping)
+                        else {}
+                    )
+                },
+            )
+        except MergeQueueFenceError as exc:
+            result.update(
+                {
+                    "status": "fenced_out",
+                    "deferred": False,
+                    "reason": "merge_queue_claim_fenced",
+                    "fence_error": f"{type(exc).__name__}: {exc}",
+                }
+            )
+        else:
+            if deferred is None:
+                result.update(
+                    {
+                        "status": "fenced_out",
+                        "deferred": False,
+                        "reason": "merge_queue_request_missing",
+                    }
+                )
+            else:
+                result["retry_not_before"] = deferred.retry_not_before
+                result["claim_generation"] = deferred.claim_generation
+        self._write_receipt(f"deferred-{request.request_id}", result)
         return result
 
     def _finish_failure(

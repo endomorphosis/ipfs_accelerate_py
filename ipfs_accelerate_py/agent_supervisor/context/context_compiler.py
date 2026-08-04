@@ -219,6 +219,10 @@ class ContextDeltaError(ContextCompilationError):
     """A retry delta is stale, lossy, unchanged, or not token efficient."""
 
 
+class ContextDeltaBudgetError(ContextDeltaError):
+    """A semantically valid retry delta cannot fit its effective budget."""
+
+
 class PrefixContextError(ContextCompilationError):
     """A prefix-stable provider input or cache claim is malformed."""
 
@@ -5102,7 +5106,7 @@ class ContextCompiler:
             parent.budget.max_input_tokens, self.effective_input_limit
         )
         if reconstructed_input_tokens > reconstructed_limit:
-            raise ContextDeltaError(
+            raise ContextDeltaBudgetError(
                 "reconstructed full context exceeds the effective input budget"
             )
         delta_capsule = ContextDeltaCapsule(
@@ -5115,7 +5119,7 @@ class ContextCompiler:
         if len(delta_capsule.canonical_bytes()) > (
             self.effective_budget.max_serialized_bytes
         ):
-            raise ContextDeltaError(
+            raise ContextDeltaBudgetError(
                 "retry delta exceeds the serialized-byte budget"
             )
         reconstructed = reconstruct_context(parent, delta_capsule)
@@ -5129,11 +5133,13 @@ class ContextCompiler:
             self.estimator.estimate(reconstructed.provider_input_payload),
         )
         if delta_tokens >= full_replay_tokens:
-            raise ContextDeltaError(
+            raise ContextDeltaBudgetError(
                 "retry delta does not use fewer tokens than full replay"
             )
         if delta_tokens > self.effective_input_limit:
-            raise ContextDeltaError("retry delta exceeds effective input budget")
+            raise ContextDeltaBudgetError(
+                "retry delta exceeds effective input budget"
+            )
         parent_required_coverage = {
             coverage
             for item in parent.evidence
@@ -7287,6 +7293,7 @@ __all__ = [
     "ContextCompiler",
     "DecisionContextCompiler",
     "DecisionContextRetryResult",
+    "ContextDeltaBudgetError",
     "ContextDeltaError",
     "ContextDeltaReceipt",
     "ContextDeltaResult",

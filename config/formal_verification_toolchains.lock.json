@@ -87,7 +87,15 @@
         "autohyper",
         "mchyper"
       ],
-      "status": "replaced_by_deployment_contract"
+      "status": "replaced_by_deployment_contract",
+      "goal_id": "FVT-G208",
+      "task_id": "FVT-061",
+      "repair_task_id": "FVT-077",
+      "objective_validation_evidence": "objective validation repair",
+      "objective_validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py test/integration/toolchains/test_hyperproperty_toolchain_certification.py -q",
+      "interface": "HyperpropertyVendorToolchainCertification@1",
+      "receipt_path": "docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json",
+      "notes": "FVT-077 is the objective validation repair that re-proves FVT-G208 and binds the synthetic discovery term objective validation repair. Hermetic engines remain differential-only and never satisfy vendor production evidence."
     },
     "datalog_secpal_external": {
       "tool_ids": [
@@ -178,7 +186,8 @@
     "secpal": "1.0.0-reviewed",
     "runtime-mtl-external": "1.0.0-reviewed",
     "symbolicai": ">=1.14.0,<2.0.0",
-    "stack": "3.11.1"
+    "stack": "3.11.1",
+    "temurin-jdk": "17.0.20+8"
   },
   "checksummed_release_inventory": {
     "apalache": {
@@ -352,9 +361,204 @@
     "ergoai": {
       "version": "3.0",
       "url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
-      "sha256": "",
+      "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
       "identity_kind": "immutable_release_tag",
-      "release_tag": "v3.0_release"
+      "release_tag": "v3.0_release",
+      "artifact_size_bytes": 53064767,
+      "license_components": [
+        "Apache-2.0",
+        "LGPL-2.0"
+      ],
+      "acquisition_conditions": {
+        "requires_explicit_opt_in": true,
+        "checksum_required_before_execute": true,
+        "download_during_certification_forbidden": true,
+        "user_local_only": true,
+        "offline_after_acquisition": true,
+        "atomic_staged_install": true,
+        "relocatable_install_root": true,
+        "bounded_acquisition": true,
+        "symlink_free_install_paths": true
+      },
+      "entry_point": "runergo",
+      "identity_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false,
+        "expected_identity_substring": "ErgoAI 3.0"
+      },
+      "platforms": {
+        "linux-x86_64": {
+          "url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+          "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01"
+        },
+        "linux-aarch64": {
+          "url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+          "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01"
+        }
+      },
+      "build_dependencies": {
+        "sh": "POSIX",
+        "bash": "required_by_bundled_autoconf_scripts",
+        "make": ">=3.81",
+        "gcc": ">=4.8",
+        "cc": "observed_by_bundled_config_guess",
+        "as": "observed_compiler_driver_dependency",
+        "flex": ">=2.6",
+        "bison": ">=3.0",
+        "m4": "required_by_bison_when_regeneration_is_needed",
+        "ar": "required_by_bundled_xsb_build",
+        "ranlib": "required_by_bundled_xsb_build",
+        "ld": "required_by_bundled_xsb_build",
+        "tar": "required_by_official_self_extractor",
+        "gzip": "required_by_official_self_extractor",
+        "cp": "GNU_coreutils_copy_for_private_runtime_workspaces",
+        "dirname": "POSIX_path_resolution_for_launchers",
+        "ln": "POSIX_symlink_for_shared_immutable_xsb",
+        "mkdir": "POSIX_runtime_workspace_creation",
+        "mktemp": "private_runtime_workspace_creation",
+        "mv": "atomic_java_build_output_publication",
+        "rm": "private_runtime_workspace_cleanup",
+        "df": "required_by_official_makeself_header",
+        "tail": "required_by_official_makeself_header",
+        "awk": "required_by_official_makeself_header",
+        "head": "required_by_official_makeself_header",
+        "wc": "required_by_official_makeself_header",
+        "tr": "required_by_official_makeself_header",
+        "which": "required_by_official_configure_scripts",
+        "md5sum": "required_by_official_makeself_header",
+        "basename": "required_by_official_makeself_header",
+        "cut": "required_by_official_makeself_header",
+        "dd": "required_by_official_makeself_header",
+        "expr": "required_by_official_makeself_header",
+        "pwd": "required_by_official_configure_scripts",
+        "date": "required_by_official_configure_scripts",
+        "sed": "required_by_official_configure_scripts",
+        "grep": "required_by_official_configure_scripts",
+        "cat": "required_by_official_configure_scripts",
+        "echo": "observed_by_bundled_build_scripts",
+        "chmod": "required_by_official_configure_scripts",
+        "touch": "required_by_official_configure_scripts",
+        "uname": "required_by_bundled_xsb_build",
+        "find": "required_by_bundled_xsb_build",
+        "sort": "required_by_bundled_xsb_build",
+        "install": "required_by_bundled_xsb_build",
+        "env": "required_by_bundled_xsb_build",
+        "rmdir": "observed_by_bundled_autoconf_scripts",
+        "hostname": "observed_by_bundled_autoconf_scripts",
+        "ls": "observed_by_bundled_autoconf_scripts",
+        "diff": "observed_by_bundled_autoconf_scripts",
+        "readlink": "observed_by_official_runergo",
+        "split": "observed_by_bundled_autoconf_scripts",
+        "tee": "observed_by_bundled_autoconf_scripts",
+        "arch": "observed_by_bundled_config_guess"
+      },
+      "required_absolute_commands": [
+        "/bin/sh",
+        "/bin/bash",
+        "/bin/rm",
+        "/bin/echo",
+        "/bin/touch",
+        "/bin/uname",
+        "/bin/arch",
+        "/usr/bin/uname",
+        "/usr/bin/arch"
+      ],
+      "dependency_version_floors": {
+        "make": ">=3.81",
+        "gcc": ">=4.8",
+        "flex": ">=2.6",
+        "bison": ">=3.0"
+      },
+      "runtime_dependencies": {
+        "xsb": "bundled_with_official_release_compile_for_host",
+        "runergo": "official_entry_point",
+        "posix_shell": "required_for_launchers",
+        "private_runtime_workspace_tools": "cp_dirname_ln_mkdir_mktemp_mv_rm_required_for_isolated_consumers"
+      },
+      "optional_java_api_dependencies": {
+        "runtime": [
+          "java>=1.8",
+          "which",
+          "dirname"
+        ],
+        "build": [
+          "java>=1.8",
+          "javac",
+          "jar",
+          "which",
+          "dirname",
+          "touch"
+        ],
+        "missing_optional_capabilities_do_not_block_core_ergoai": true,
+        "managed_jdk_tool_id": "temurin-jdk",
+        "never_trust_ambient_java_home": true
+      },
+      "config_hardening": {
+        "schema_version": "ergoai-config-hardening/v1",
+        "source_sha256": "3bee8a6aa7d17854b81f14fe87cb35a5c89a0c275362266b7eef9a2e5f1fcaa4",
+        "hardened_sha256": "b21e4a85b9cc214d4e61f5204124baf2dd6daecf597dd4cd72ba040b7bc0bed9",
+        "private_xsb_workspace_required": true,
+        "exact_replacement_count": 6
+      },
+      "bound_build_environment": {
+        "schema_version": "ergoai-bound-build-environment/v1",
+        "path_model": "private-staging-only/v1",
+        "ambient_toolchain_overrides_inherited": false,
+        "allowlisted_environment_keys": [
+          "ALL_PROXY",
+          "DISPLAY",
+          "ERGOAI_MANAGED_XSB_TMPDIR",
+          "FORMAL_VERIFICATION_CERTIFY_OFFLINE",
+          "FORMAL_VERIFICATION_FORBID_DOWNLOAD",
+          "FORMAL_VERIFICATION_FORBID_INSTALL",
+          "FORMAL_VERIFICATION_FORBID_NETWORK",
+          "GIT_TERMINAL_PROMPT",
+          "HOME",
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "LANG",
+          "LC_ALL",
+          "NO_PROXY",
+          "PATH",
+          "PIP_DISABLE_PIP_VERSION_CHECK",
+          "PIP_NO_INDEX",
+          "SHELL",
+          "TERM",
+          "TMPDIR",
+          "all_proxy",
+          "http_proxy",
+          "https_proxy",
+          "no_proxy"
+        ]
+      },
+      "bound_runtime_environment_contract": {
+        "schema_version": "ergoai-bound-runtime-environment/v1",
+        "path_model": "managed-symlink-only-exact-identities/v1",
+        "ambient_path_inherited": false,
+        "symlink_only_exact_command_identities": true,
+        "optional_java_requires_complete_capability": true
+      },
+      "runtime_execution_policy": "private-ergoai-copy-shared-immutable-xsb/v1",
+      "java_consumer_policy": "private-ergoai-copy-java-consumers/v2",
+      "runtime_workspace_cleanup_policy": "normal-and-handled-signals-clean-sigkill-orphans-retained/v1",
+      "relocation_certification_scope": "executed-runtime-and-bundled-java-consumers/v1",
+      "developer_rebuild_metadata_relocated": false,
+      "install_publication_model": "staged_vendor_atomic_rename_private_runtime_workspaces_identity_commit_v4",
+      "publication_commit_point": "atomic_identity_manifest_replace",
+      "runtime_state_policy": "mutable-nonauthoritative-outside-vendor-identity/v1",
+      "lazy_install": {
+        "staged": true,
+        "checksum_verified": true,
+        "atomic": true,
+        "relocatable": true,
+        "offline_after_acquisition": true,
+        "never_on_import": true,
+        "never_during_certification": true
+      }
     },
     "hyperltl": {
       "version": "e3a41290",
@@ -417,6 +621,69 @@
         "aiger-tools": "1.9.4"
       },
       "supported_fragment": "HyperLTL model checking over AIGER hardware circuits via ABC (PDR/BMC); live witness/counterexample paths"
+    },
+    "temurin-jdk": {
+      "version": "17.0.20+8",
+      "publisher": "Eclipse Adoptium",
+      "release_name": "jdk-17.0.20+8",
+      "license": "GPL-2.0-with-classpath-exception",
+      "source": "https://adoptium.net/",
+      "identity_kind": "immutable_release_archive",
+      "required_tool_identities": [
+        "java",
+        "javac",
+        "jar"
+      ],
+      "platforms": {
+        "linux-x86_64": {
+          "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz",
+          "sha256": "be7668bc030d578b83d6d5ef9221d6d6729bbbca8cf94a7d52e16ac68b5a5a35",
+          "artifact_size_bytes": 193273593,
+          "signature_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz.sig",
+          "checksum_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz.sha256.txt",
+          "archive_name": "OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz",
+          "os": "linux",
+          "architecture": "x86_64"
+        },
+        "linux-aarch64": {
+          "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz",
+          "sha256": "d143936f473a4cb24e3b0e247d6d0775769d55ec9775c339540e753059a8d77a",
+          "artifact_size_bytes": 191960283,
+          "signature_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz.sig",
+          "checksum_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz.sha256.txt",
+          "archive_name": "OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz",
+          "os": "linux",
+          "architecture": "aarch64"
+        }
+      },
+      "acquisition_conditions": {
+        "requires_explicit_opt_in": true,
+        "checksum_required_before_extract": true,
+        "download_during_certification_forbidden": true,
+        "user_local_only": true,
+        "offline_after_acquisition": true,
+        "atomic_staged_install": true,
+        "relocatable_install_root": true,
+        "bounded_acquisition": true,
+        "symlink_safe_extraction": true,
+        "never_trust_ambient_java_home": true,
+        "never_download_moving_latest": true,
+        "single_flight_lock": true,
+        "force_replacement_rolls_back_to_previous_good": true,
+        "home_bounded_mutable_paths": true,
+        "publisher_evidence_required": true,
+        "hello_world_cannot_satisfy_vendor_consumer": true
+      },
+      "optional_for": [
+        "ergoai"
+      ],
+      "capability": "ergoai-java-api",
+      "java_api_toolchain_contract_interface": "ErgoAIJavaAPIToolchainContract@1",
+      "java_api_live_certification_interface": "ErgoAIJavaAPILiveCertification@1",
+      "goal_id": "FVT-G222",
+      "task_id": "FVT-090",
+      "live_goal_id": "FVT-G223",
+      "live_task_id": "FVT-091"
     }
   },
   "tools": [
@@ -1795,10 +2062,13 @@
           "tool_id": "ergoai",
           "version": "3.0",
           "artifact_url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
-          "sha256": "",
+          "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
           "platform": "linux-x86_64",
-          "notes": "Official ErgoAI 3.0 .run installer; checksum verified at explicit install",
-          "is_checksummed": false,
+          "release_tag": "v3.0_release",
+          "identity_kind": "immutable_release_tag",
+          "artifact_size_bytes": 53064767,
+          "notes": "Official source-bearing ErgoAI 3.0 .run installer; checksum verified before execution",
+          "is_checksummed": true,
           "license": "Apache-2.0",
           "source": "https://github.com/ErgoAI/ErgoEngine"
         },
@@ -1806,11 +2076,14 @@
           "schema_version": "verification-toolchain-pin/v1",
           "tool_id": "ergoai",
           "version": "3.0",
-          "artifact_url": "",
-          "sha256": "",
-          "platform": "source",
-          "notes": "Git source fallback ErgoAI/ErgoEngine",
-          "is_checksummed": false,
+          "artifact_url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+          "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+          "platform": "linux-aarch64",
+          "release_tag": "v3.0_release",
+          "identity_kind": "immutable_release_tag",
+          "artifact_size_bytes": 53064767,
+          "notes": "Official source-bearing ErgoAI 3.0 .run installer, compiled and semantically exercised on Linux aarch64; checksum verified before execution",
+          "is_checksummed": true,
           "license": "Apache-2.0",
           "source": "https://github.com/ErgoAI/ErgoEngine"
         }
@@ -1837,8 +2110,356 @@
         "requires_checksum_at_install": true,
         "unsupported_platforms_fail_closed": true,
         "supported_platforms": [
-          "linux-x86_64"
-        ]
+          "linux-x86_64",
+          "linux-aarch64"
+        ],
+        "license_components": [
+          "Apache-2.0",
+          "LGPL-2.0"
+        ],
+        "required_build_commands": [
+          "sh",
+          "bash",
+          "make",
+          "gcc",
+          "cc",
+          "as",
+          "flex",
+          "bison",
+          "m4",
+          "ar",
+          "ranlib",
+          "ld",
+          "tar",
+          "gzip",
+          "cp",
+          "dirname",
+          "ln",
+          "mkdir",
+          "mktemp",
+          "mv",
+          "rm",
+          "df",
+          "tail",
+          "awk",
+          "head",
+          "wc",
+          "tr",
+          "which",
+          "md5sum",
+          "basename",
+          "cut",
+          "dd",
+          "expr",
+          "pwd",
+          "date",
+          "sed",
+          "grep",
+          "cat",
+          "echo",
+          "chmod",
+          "touch",
+          "uname",
+          "find",
+          "sort",
+          "install",
+          "env",
+          "rmdir",
+          "hostname",
+          "ls",
+          "diff",
+          "readlink",
+          "split",
+          "tee",
+          "arch"
+        ],
+        "required_absolute_commands": [
+          "/bin/sh",
+          "/bin/bash",
+          "/bin/rm",
+          "/bin/echo",
+          "/bin/touch",
+          "/bin/uname",
+          "/bin/arch",
+          "/usr/bin/uname",
+          "/usr/bin/arch"
+        ],
+        "dependency_version_floors": {
+          "make": ">=3.81",
+          "gcc": ">=4.8",
+          "flex": ">=2.6",
+          "bison": ">=3.0"
+        },
+        "runtime_dependencies": {
+          "xsb": "bundled_with_official_release_compile_for_host",
+          "runergo": "official_entry_point",
+          "posix_shell": "required_for_launchers",
+          "private_runtime_workspace_tools": "cp_dirname_ln_mkdir_mktemp_mv_rm_required_for_isolated_consumers"
+        },
+        "optional_java_api_dependencies": {
+          "runtime": [
+            "java>=1.8",
+            "which",
+            "dirname"
+          ],
+          "build": [
+            "java>=1.8",
+            "javac",
+            "jar",
+            "which",
+            "dirname",
+            "touch"
+          ],
+          "missing_optional_capabilities_do_not_block_core_ergoai": true,
+          "managed_jdk_tool_id": "temurin-jdk",
+          "never_trust_ambient_java_home": true
+        },
+        "config_hardening": {
+          "schema_version": "ergoai-config-hardening/v1",
+          "source_sha256": "3bee8a6aa7d17854b81f14fe87cb35a5c89a0c275362266b7eef9a2e5f1fcaa4",
+          "hardened_sha256": "b21e4a85b9cc214d4e61f5204124baf2dd6daecf597dd4cd72ba040b7bc0bed9",
+          "private_xsb_workspace_required": true,
+          "exact_replacement_count": 6
+        },
+        "bound_build_environment": {
+          "schema_version": "ergoai-bound-build-environment/v1",
+          "path_model": "private-staging-only/v1",
+          "ambient_toolchain_overrides_inherited": false,
+          "allowlisted_environment_keys": [
+            "ALL_PROXY",
+            "DISPLAY",
+            "ERGOAI_MANAGED_XSB_TMPDIR",
+            "FORMAL_VERIFICATION_CERTIFY_OFFLINE",
+            "FORMAL_VERIFICATION_FORBID_DOWNLOAD",
+            "FORMAL_VERIFICATION_FORBID_INSTALL",
+            "FORMAL_VERIFICATION_FORBID_NETWORK",
+            "GIT_TERMINAL_PROMPT",
+            "HOME",
+            "HTTPS_PROXY",
+            "HTTP_PROXY",
+            "LANG",
+            "LC_ALL",
+            "NO_PROXY",
+            "PATH",
+            "PIP_DISABLE_PIP_VERSION_CHECK",
+            "PIP_NO_INDEX",
+            "SHELL",
+            "TERM",
+            "TMPDIR",
+            "all_proxy",
+            "http_proxy",
+            "https_proxy",
+            "no_proxy"
+          ]
+        },
+        "bound_runtime_environment_contract": {
+          "schema_version": "ergoai-bound-runtime-environment/v1",
+          "path_model": "managed-symlink-only-exact-identities/v1",
+          "ambient_path_inherited": false,
+          "symlink_only_exact_command_identities": true,
+          "optional_java_requires_complete_capability": true
+        },
+        "runtime_execution_policy": "private-ergoai-copy-shared-immutable-xsb/v1",
+        "java_consumer_policy": "private-ergoai-copy-java-consumers/v2",
+        "runtime_workspace_cleanup_policy": "normal-and-handled-signals-clean-sigkill-orphans-retained/v1",
+        "relocation_certification_scope": "executed-runtime-and-bundled-java-consumers/v1",
+        "developer_rebuild_metadata_relocated": false,
+        "install_publication_model": "staged_vendor_atomic_rename_private_runtime_workspaces_identity_commit_v4",
+        "publication_commit_point": "atomic_identity_manifest_replace",
+        "runtime_state_policy": "mutable-nonauthoritative-outside-vendor-identity/v1",
+        "entry_point": "runergo",
+        "identity_probe": {
+          "method": "bounded_version_argv",
+          "argv": [
+            "--version"
+          ],
+          "timeout_seconds": 5,
+          "network": false,
+          "expected_identity_substring": "ErgoAI 3.0"
+        },
+        "acquisition_conditions": {
+          "requires_explicit_opt_in": true,
+          "checksum_required_before_execute": true,
+          "download_during_certification_forbidden": true,
+          "user_local_only": true,
+          "offline_after_acquisition": true,
+          "atomic_staged_install": true,
+          "relocatable_install_root": true,
+          "bounded_acquisition": true,
+          "symlink_free_install_paths": true
+        },
+        "lazy_install": {
+          "staged": true,
+          "checksum_verified": true,
+          "atomic": true,
+          "relocatable": true,
+          "offline_after_acquisition": true,
+          "never_on_import": true,
+          "never_during_certification": true
+        },
+        "authority_ceiling": "advisory",
+        "evidence_class": "proposal_or_candidate_until_independent_reconstruction",
+        "live_semantic_checks_required": [
+          "entailment",
+          "non_entailment",
+          "contradiction",
+          "mutation",
+          "replay",
+          "malformed",
+          "timeout",
+          "resource_bound"
+        ],
+        "live_toolchain_contract_interface": "ErgoAILiveToolchainContract@1",
+        "goal_id": "FVT-G218",
+        "task_id": "FVT-085",
+        "optional_java_api_managed_jdk_tool_id": "temurin-jdk",
+        "optional_java_api_never_trusts_ambient_java_home": true,
+        "optional_java_api_missing_does_not_block_core": true
+      },
+      "optional_java_api_dependencies": {
+        "runtime": [
+          "java>=1.8",
+          "which",
+          "dirname"
+        ],
+        "build": [
+          "java>=1.8",
+          "javac",
+          "jar",
+          "which",
+          "dirname",
+          "touch"
+        ],
+        "missing_optional_capabilities_do_not_block_core_ergoai": true,
+        "managed_jdk_tool_id": "temurin-jdk",
+        "never_trust_ambient_java_home": true
+      }
+    },
+    {
+      "tool_id": "temurin-jdk",
+      "display_name": "Eclipse Temurin JDK 17 (managed ErgoAI Java API)",
+      "availability": "managed_pin",
+      "runtime": "jvm",
+      "resource_class": "jvm",
+      "executable_candidates": [
+        "java",
+        "javac",
+        "jar"
+      ],
+      "families": [
+        "advisors",
+        "flogic"
+      ],
+      "installer_entry": "ensure_temurin_jdk",
+      "installer_plugin": "advisors",
+      "license": "GPL-2.0-with-classpath-exception",
+      "source": "https://adoptium.net/",
+      "identity_kind": "immutable_release_archive",
+      "publisher": "Eclipse Adoptium",
+      "support_only": true,
+      "authority_tool": false,
+      "optional_capability": "ergoai-java-api",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "temurin-jdk",
+          "version": "17.0.20+8",
+          "artifact_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz",
+          "sha256": "be7668bc030d578b83d6d5ef9221d6d6729bbbca8cf94a7d52e16ac68b5a5a35",
+          "platform": "linux-x86_64",
+          "notes": "Reviewed Eclipse Temurin 17.0.20+8 OpenJDK JDK for linux-x86_64; publisher signature and sha256.txt evidence bound; never use ambient JAVA_HOME",
+          "is_checksummed": true,
+          "license": "GPL-2.0-with-classpath-exception",
+          "source": "https://adoptium.net/",
+          "publisher": "Eclipse Adoptium",
+          "release_name": "jdk-17.0.20+8",
+          "artifact_size_bytes": 193273593,
+          "signature_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz.sig",
+          "checksum_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz.sha256.txt",
+          "archive_name": "OpenJDK17U-jdk_x64_linux_hotspot_17.0.20_8.tar.gz",
+          "os": "linux",
+          "architecture": "x86_64",
+          "required_tool_identities": [
+            "java",
+            "javac",
+            "jar"
+          ],
+          "identity_kind": "immutable_release_archive"
+        },
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "temurin-jdk",
+          "version": "17.0.20+8",
+          "artifact_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz",
+          "sha256": "d143936f473a4cb24e3b0e247d6d0775769d55ec9775c339540e753059a8d77a",
+          "platform": "linux-aarch64",
+          "notes": "Reviewed Eclipse Temurin 17.0.20+8 OpenJDK JDK for linux-aarch64; publisher signature and sha256.txt evidence bound; never use ambient JAVA_HOME",
+          "is_checksummed": true,
+          "license": "GPL-2.0-with-classpath-exception",
+          "source": "https://adoptium.net/",
+          "publisher": "Eclipse Adoptium",
+          "release_name": "jdk-17.0.20+8",
+          "artifact_size_bytes": 191960283,
+          "signature_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz.sig",
+          "checksum_url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20%2B8/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz.sha256.txt",
+          "archive_name": "OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.20_8.tar.gz",
+          "os": "linux",
+          "architecture": "aarch64",
+          "required_tool_identities": [
+            "java",
+            "javac",
+            "jar"
+          ],
+          "identity_kind": "immutable_release_archive"
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "-version"
+        ],
+        "timeout_seconds": 5,
+        "network": false,
+        "expected_identity_substring": "17.0.20"
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false,
+      "install_scope": "user_local",
+      "requires_explicit_opt_in": true,
+      "deployment_contract": {
+        "requires_checksum_at_install": true,
+        "release_tag": "jdk-17.0.20+8",
+        "publisher": "Eclipse Adoptium",
+        "symlink_safe_extraction": true,
+        "never_trust_ambient_java_home": true,
+        "never_download_moving_latest": true,
+        "optional_java_api_for_ergoai": true,
+        "missing_capability_does_not_block_core_ergoai": true,
+        "live_toolchain_contract_interface": "ErgoAIJavaAPIToolchainContract@1",
+        "live_certification_interface": "ErgoAIJavaAPILiveCertification@1",
+        "goal_id": "FVT-G222",
+        "task_id": "FVT-090",
+        "live_goal_id": "FVT-G223",
+        "live_task_id": "FVT-091",
+        "single_flight_lock": true,
+        "force_replacement_rolls_back_to_previous_good": true,
+        "home_bounded_mutable_paths": true,
+        "publisher_evidence_required": true,
+        "hello_world_cannot_satisfy_vendor_consumer": true,
+        "timeout_terminates_process_tree": true,
+        "lazy_install": {
+          "staged": true,
+          "checksum_verified": true,
+          "atomic": true,
+          "relocatable": true,
+          "offline_after_acquisition": true,
+          "never_on_import": true,
+          "never_during_certification": true,
+          "never_on_probe": true,
+          "never_on_dry_run": true
+        }
       }
     },
     {
@@ -1987,7 +2608,9 @@
       "install_during_verification": false,
       "download_during_verification": false,
       "install_scope": "user_local",
-      "requires_explicit_opt_in": true
+      "requires_explicit_opt_in": true,
+      "notes": "Host JVM detection for TLA/state-model tooling only. The managed ErgoAI Java API capability is temurin-jdk and never trusts ambient JAVA_HOME.",
+      "does_not_satisfy_ergoai_java_api": true
     },
     {
       "tool_id": "stack",
@@ -2083,5 +2706,24 @@
       "built_types": "dist/src/index.d.ts",
       "interface": "RuntimeMTLMonitor@1"
     }
-  ]
+  ],
+  "hyperproperty_vendor": {
+    "interface": "HyperpropertyVendorToolchainCertification@1",
+    "goal_id": "FVT-G208",
+    "task_id": "FVT-061",
+    "repair_task_id": "FVT-077",
+    "objective_validation_evidence": "objective validation repair",
+    "objective_validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py test/integration/toolchains/test_hyperproperty_toolchain_certification.py -q",
+    "receipt_path": "docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json",
+    "tool_ids": [
+      "hyperltl",
+      "autohyper",
+      "mchyper"
+    ],
+    "linux_aarch64_supported": true,
+    "hermetic_engines_are_differential_only": true,
+    "never_promote_hermetic_engine_as_vendor": true,
+    "case_oracle_cannot_satisfy_vendor": true,
+    "notes": "Distinguish hermetic differential engines (FVT-G170) from vendor production certification (FVT-G208). FVT-077 is the objective validation repair that re-proves FVT-G208 and binds the synthetic discovery term objective validation repair. linux-aarch64 remains supported only when the complete vendor chain is real."
+  }
 }

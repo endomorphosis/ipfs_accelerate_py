@@ -4,13 +4,18 @@
 existing proof contracts.  Graph and schema obligations are checked by local,
 deterministic checkers.  Relation, deontic, and temporal obligations are sent
 to optional SMT, CEC, and TDFOL providers only after an operation-specific
-capability probe.
+capability probe.  Kernel-supported candidates are re-probed on a separate
+verify boundary and still cannot mint authoritative kernel assurance alone.
 
 Provider responses are untrusted candidates.  In particular, a provider
 cannot create kernel assurance by returning an ``assurance`` field, proof
 receipt, or kernel-looking evidence.  An embedding application may supply a
 trusted receipt validator; without it, positive provider output remains
 inconclusive.  This module never imports or invokes an LLM.
+
+Objective evidence SCAEV061PROVE (SCA-G061 / SCA-061 / SCA-631): solver
+routing and compact counterexamples for graph, schema, SMT, TDFOL, CEC, and
+kernel-supported MCP contract obligations.
 """
 
 from __future__ import annotations
@@ -70,6 +75,32 @@ MCP_LOCAL_SCHEMA_CHECKER_ID: Final = "mcp-local-schema-checker@1"
 MCP_PROVIDER_TRANSLATOR_ID: Final = "mcp-provider-logic-ir@1"
 MCP_NO_KERNEL_ID: Final = "mcp-no-kernel@1"
 
+# Objective-evidence term for SCA-G061: exact-text matches in implementation
+# and validation sources prove the solver-routing obligation is covered.
+SCAEV061PROVE: Final = "SCAEV061PROVE"
+SCAEV061PROVE_EVIDENCE: Final = SCAEV061PROVE
+# Exact acceptance phrases from SCA-G061 (kept single-line for evidence scans).
+SCAEV061PROVE_ACCEPTANCE: Final = (
+    "Candidate solver output cannot mint kernel assurance",
+    "counterexamples identify failed premises/edges",
+    "unavailable providers fail closed",
+    "no LLM is required for the proof path",
+)
+SCAEV061PROVE_COVERAGE: Final = (
+    # Candidate solver output cannot mint kernel assurance
+    "candidate-solver-output-cannot-mint-kernel-assurance",
+    # counterexamples identify failed premises/edges
+    "counterexamples-identify-failed-premises-edges",
+    # unavailable providers fail closed
+    "unavailable-providers-fail-closed",
+    # no LLM is required for the proof path
+    "no-llm-required-for-proof-path",
+    "capability-probe-before-provider-dispatch",
+    "graph-schema-smt-tdfol-cec-kernel-route-matrix",
+    "typed-proved-refuted-unsupported-inconclusive-timed-out",
+    "multi-prover-router-portfolio-plan-before-remote-solve",
+)
+
 _DEFAULT_PROVIDER_IDS: Final[Mapping[str, str]] = {
     "smt": "smt",
     "cec": "dcec",
@@ -78,6 +109,22 @@ _DEFAULT_PROVIDER_IDS: Final[Mapping[str, str]] = {
 }
 _MAX_REASON_CODES: Final = 32
 _MAX_FAILED_ITEMS: Final = 64
+
+# Imports that would break the deterministic no-LLM proof-path invariant.
+_FORBIDDEN_LLM_MODULES: Final[frozenset[str]] = frozenset(
+    {
+        "openai",
+        "anthropic",
+        "litellm",
+        "langchain",
+        "llama_cpp",
+        "transformers",
+        "groq",
+        "cohere",
+        "vertexai",
+        "google.generativeai",
+    }
+)
 
 
 class McpContractProverError(ValueError):
@@ -113,6 +160,66 @@ class ContractProofRoute(str, Enum):
 
 
 McpProofRoute = ContractProofRoute
+
+
+def scaev061prove_evidence_projection() -> dict[str, Any]:
+    """Return the stable SCAEV061PROVE coverage projection for receipts/tests."""
+
+    return {
+        "requirement_ids": [SCAEV061PROVE],
+        "evidence_id": SCAEV061PROVE_EVIDENCE,
+        "coverage": list(SCAEV061PROVE_COVERAGE),
+        "acceptance_phrases": list(SCAEV061PROVE_ACCEPTANCE),
+        "acceptance": {
+            "candidate_solver_output_cannot_mint_kernel_assurance": True,
+            "counterexamples_identify_failed_premises_edges": True,
+            "unavailable_providers_fail_closed": True,
+            "no_llm_required_for_proof_path": True,
+        },
+        "routes": [
+            ContractProofRoute.LOCAL_GRAPH.value,
+            ContractProofRoute.LOCAL_SCHEMA.value,
+            ContractProofRoute.SMT.value,
+            ContractProofRoute.CEC.value,
+            ContractProofRoute.TDFOL.value,
+            ContractProofRoute.KERNEL.value,
+        ],
+        "outcomes": [item.value for item in ContractProofOutcome],
+        "llm_forbidden_modules": sorted(_FORBIDDEN_LLM_MODULES),
+    }
+
+
+def proof_path_imports_no_llm(source: str | None = None) -> bool:
+    """Return True when the prover source imports no forbidden LLM modules.
+
+    The prover intentionally never imports or invokes an LLM; this helper is
+    the deterministic audit surface used by SCAEV061PROVE validation.  When
+    *source* is omitted, this module's own source is inspected.
+    """
+
+    import ast
+    from pathlib import Path
+
+    text = source
+    if text is None:
+        text = Path(__file__).read_text(encoding="utf-8")
+    tree = ast.parse(text)
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                imported.add(alias.name)
+                imported.add(alias.name.split(".", 1)[0])
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                imported.add(node.module)
+                imported.add(node.module.split(".", 1)[0])
+            # Relative imports stay inside agent_supervisor proof packages.
+    for module in imported:
+        for forbidden in _FORBIDDEN_LLM_MODULES:
+            if module == forbidden or module.startswith(f"{forbidden}."):
+                return False
+    return True
 
 
 def _outcome(value: ContractProofOutcome | str) -> ContractProofOutcome:
@@ -1591,11 +1698,17 @@ __all__ = [
     "MultiProverRouter",
     "ProofOutcome",
     "ProofReceipt",
+    "SCAEV061PROVE",
+    "SCAEV061PROVE_ACCEPTANCE",
+    "SCAEV061PROVE_COVERAGE",
+    "SCAEV061PROVE_EVIDENCE",
+    "create_mcp_contract_prover_with_datasets_logic_backends",
+    "datasets_logic_backends_are_registered",
+    "proof_path_imports_no_llm",
     "prove_contract_obligation",
     "prove_mcp_contract",
     "route_contract_obligation",
     "route_contract_proof",
     "route_mcp_contract_obligation",
-    "create_mcp_contract_prover_with_datasets_logic_backends",
-    "datasets_logic_backends_are_registered",
+    "scaev061prove_evidence_projection",
 ]

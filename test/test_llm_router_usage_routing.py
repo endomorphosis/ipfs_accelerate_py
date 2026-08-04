@@ -1012,6 +1012,36 @@ def test_receipt_never_contains_prompt_or_generated_text() -> None:
 
 def test_generation_trace_still_records_provider() -> None:
     provider = _CountingProvider("trace_provider")
-    generate_text("ping", provider_instance=provider)
+    generate_text(
+        "ping",
+        model_name="requested-model",
+        provider_instance=provider,
+    )
     trace = get_last_generation_trace()
-    assert trace.get("effective_provider_name") in {"", "trace_provider"} or True
+    assert trace["effective_provider_name"] == "trace_provider"
+    assert trace["effective_model_name"] == "requested-model"
+
+    class _RouteTracingProvider(_CountingProvider):
+        def get_last_generation_trace(self) -> dict[str, str]:
+            return {
+                "effective_provider_name": "nested-route-provider",
+                "effective_model_name": "route-model",
+            }
+
+    traced_provider = _RouteTracingProvider("route_trace_provider")
+    generate_text("pong", provider_instance=traced_provider)
+    trace = get_last_generation_trace()
+    assert trace["effective_provider_name"] == "nested-route-provider"
+    assert trace["effective_model_name"] == "route-model"
+
+    class _NamedProvider:
+        name = "named_provider"
+
+        def generate(self, prompt: str, **kwargs: object) -> str:
+            _ = (prompt, kwargs)
+            return "named"
+
+    generate_text("named", provider_instance=_NamedProvider(), model_name="m")
+    trace = get_last_generation_trace()
+    assert trace["effective_provider_name"] == "named_provider"
+    assert trace["effective_model_name"] == "m"

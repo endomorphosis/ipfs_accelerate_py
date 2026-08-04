@@ -77,6 +77,9 @@ HANDOFF_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/sca-repository-index-handoff@1"
 )
 HANDOFF_EVIDENCE = "SCAEV022INDEX"
+# SCA-G071 / SCAEV071PROOFCACHE: sole authoritative proof-receipt cache root
+# published beside the baseline artifacts.
+PROOF_PIPELINE_EVIDENCE = "SCAEV071PROOFCACHE"
 _COMPILER_UNAVAILABLE_MARKERS = (
     "compiler_unavailable",
     "node_unavailable",
@@ -267,6 +270,23 @@ def build_arg_parser() -> argparse.ArgumentParser:
         dest="invalidate_compiler_unavailable",
         action="store_false",
         help="allow previous compiler-unavailable rows to be considered for reuse",
+    )
+    parser.add_argument(
+        "--proof-cache-dir",
+        default=None,
+        help=(
+            "durable TrustAwareProofCache directory for SCAEV071PROOFCACHE "
+            "end-to-end proof/cache orchestration; defaults to "
+            "<output-root>/proof-cache"
+        ),
+    )
+    parser.add_argument(
+        "--skip-proof-pipeline",
+        action="store_true",
+        help=(
+            "skip McpContractProver / TrustAwareProofCache orchestration and "
+            "retain parity-only baseline terminals"
+        ),
     )
     return parser
 
@@ -954,6 +974,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             if candidate.is_dir():
                 swissknife_root = str(candidate)
 
+        proof_cache_dir = (
+            Path(args.proof_cache_dir).expanduser().resolve()
+            if args.proof_cache_dir
+            else (output_root / "proof-cache")
+        )
+        run_proof_pipeline = not bool(args.skip_proof_pipeline)
+
         if args.skip_extraction:
             from ipfs_accelerate_py.agent_supervisor.analysis.contract_assurance_baseline import (
                 materialize_contract_assurance_baseline,
@@ -964,6 +991,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 extract_expected=False,
                 output_root=output_root,
                 max_file_bytes=args.max_artifact_bytes,
+                proof_cache_dir=proof_cache_dir,
+                run_proof_pipeline=run_proof_pipeline,
             )
         else:
             baseline = materialize_baseline_from_repository_index(
@@ -972,6 +1001,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 repo_root=args.repo_root,
                 swissknife_root=swissknife_root,
                 max_file_bytes=args.max_artifact_bytes,
+                proof_cache_dir=proof_cache_dir,
+                run_proof_pipeline=run_proof_pipeline,
             )
 
         handoff_root = resolve_handoff_root(
@@ -1047,6 +1078,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             ),
             "findings_root": baseline.findings.get("findings_root", ""),
             "graph_root": baseline.findings.get("graph_root", ""),
+            "proof_pipeline": {
+                "evidence_id": PROOF_PIPELINE_EVIDENCE,
+                "enabled": run_proof_pipeline,
+                "proof_cache_dir": str(proof_cache_dir),
+                "attempted": baseline.findings.get("proof_outcomes", {}).get(
+                    "attempted", 0
+                ),
+                "proved": baseline.findings.get("proof_outcomes", {}).get(
+                    "proved", 0
+                ),
+                "refuted": baseline.findings.get("proof_outcomes", {}).get(
+                    "refuted", 0
+                ),
+                "cache_hits": baseline.findings.get("proof_outcomes", {}).get(
+                    "cache_hits", 0
+                ),
+                "outcome_count": len(baseline.proof_pipeline_outcomes),
+            },
             "typescript_path": typescript_path or "",
             "typescript_version": typescript_version or "",
             "parser_identity": indexer.parser_identity,

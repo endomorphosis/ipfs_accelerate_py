@@ -12,8 +12,8 @@ E 3.2.5 provers. Certification:
 * exercises theorem, non-theorem, premise/conclusion mutation, proof-output
   binding, replay, malformed output, timeout, and version-mismatch cases;
 * classifies external output only by exact TPTP SZS status lines;
-* treats unreconstructed ATP proofs/models as **candidates** unless an
-  allowed independent kernel reconstruction validates them;
+* treats ATP proofs/models as **candidates** unless a separately validated
+  independent-kernel receipt binds the exact proof;
 * never edits the shared multi-prover certificate or CEC semantics.
 
 Semantic evaluation reuses the canonical ATP adapters so offline tests can
@@ -23,7 +23,8 @@ certification additionally requires the pinned binaries.
 ``ATPLiveSemanticCertification@1`` replaces SZS parser fixtures with real
 pinned Vampire/E runs while preserving reconstruction and kernel-checking
 ceilings. Live receipts bind binary digests, TPTP source, assumptions,
-conclusion, limits, raw SZS output, and reconstruction status.
+conclusion, limits, raw SZS output, and reconstruction status. A corpus
+boolean is only a reconstruction claim and cannot replace a kernel receipt.
 """
 
 from __future__ import annotations
@@ -66,6 +67,10 @@ from ipfs_datasets_py.logic.backends.toolchain_roles import (  # noqa: E402
     evaluate_role_aware_promotion,
     get_tool_role,
 )
+from tools.logic.certification.public_evidence import (  # noqa: E402
+    public_evidence_audit,
+    public_evidence_projection,
+)
 
 try:  # pragma: no cover - worktree packaging varies
     from tools.logic.certification.roles import (  # type: ignore
@@ -106,6 +111,18 @@ LOCKED_VAMPIRE_VERSION: Final = "5.0.1"
 LOCKED_EPROVER_VERSION: Final = "3.2.5"
 LOCKED_VAMPIRE_EXECUTABLE: Final = "vampire"
 LOCKED_EPROVER_EXECUTABLE: Final = "eprover"
+
+# Managed install root (matches installer DEFAULT_USER_LOCAL_INSTALL_ROOT).
+# Explicit approved deployment roots win over mutable user discovery so the
+# sealed private-HOME validation environment can bind digest-verified tools.
+DEFAULT_MANAGED_INSTALL_ROOT: Final = (
+    "~/.local/share/ipfs_datasets_py/theorem-provers"
+)
+MANAGED_INSTALL_ROOT_ENV_VARS: Final[tuple[str, ...]] = (
+    "IPFS_ACCELERATE_FORMAL_VERIFICATION_TOOLCHAINS_ROOT",
+    "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT",
+    "FORMAL_VERIFICATION_ATP_INSTALL_ROOT",
+)
 
 PROBE_TIMEOUT_SECONDS: Final = 5.0
 CHECK_TIMEOUT_SECONDS: Final = 30.0
@@ -262,25 +279,25 @@ _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
         "description": "Locked version mismatch blocks production certification",
     },
     {
-        "case_id": "kernel_reconstruction_elevates",
+        "case_id": "kernel_reconstruction_requires_receipt",
         "kind": "reconstruction",
-        "expect": "theorem_authority",
+        "expect": "theorem_candidate",
         "tool_id": "vampire",
         "tptp_source": (
             "fof(ax1, axiom, p).\n"
             "fof(goal, conjecture, p).\n"
         ),
         "stdout": (
-            "% SZS status Theorem for kernel_reconstruction_elevates\n"
-            "% SZS output start Proof for kernel_reconstruction_elevates\n"
+            "% SZS status Theorem for kernel_reconstruction_requires_receipt\n"
+            "% SZS output start Proof for kernel_reconstruction_requires_receipt\n"
             "fof(1, plain, p, inference(assumption, [], [])).\n"
-            "% SZS output end Proof for kernel_reconstruction_elevates\n"
+            "% SZS output end Proof for kernel_reconstruction_requires_receipt\n"
         ),
         "stderr": "",
-        "independent_kernel_reconstruction": True,
+        "independent_kernel_reconstruction_claimed": True,
         "description": (
-            "Only allowed independent kernel reconstruction elevates "
-            "ATP evidence beyond candidate"
+            "A reconstruction claim without a separately validated kernel "
+            "receipt leaves ATP evidence at candidate authority"
         ),
     },
 )
@@ -356,6 +373,58 @@ def offline_env(base: Mapping[str, str] | None = None) -> dict[str, str]:
     return env
 
 
+def managed_install_roots(
+    env: Mapping[str, str] | None = None,
+) -> list[Path]:
+    """Ordered managed theorem-prover roots (approved deployment first)."""
+
+    mapping = env if env is not None else os.environ
+    roots: list[Path] = []
+    seen: set[str] = set()
+
+    def _add(path: Path) -> None:
+        try:
+            resolved = path.expanduser().resolve()
+        except OSError:
+            resolved = path.expanduser()
+        key = str(resolved)
+        if key in seen:
+            return
+        seen.add(key)
+        roots.append(resolved)
+
+    for variable in MANAGED_INSTALL_ROOT_ENV_VARS:
+        raw = str(mapping.get(variable) or "").strip()
+        if raw:
+            _add(Path(raw))
+
+    xdg_data = str(mapping.get("XDG_DATA_HOME") or "").strip()
+    if xdg_data:
+        _add(Path(xdg_data) / "ipfs_datasets_py" / "theorem-provers")
+
+    _add(Path(DEFAULT_MANAGED_INSTALL_ROOT))
+    return roots
+
+
+def managed_execution_env(
+    base: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Offline env with managed ATP bin directories prepended to PATH."""
+
+    env = offline_env(base)
+    bin_dirs: list[str] = []
+    for root in managed_install_roots(env):
+        managed_bin = root / "bin"
+        if managed_bin.is_dir():
+            bin_dirs.append(str(managed_bin))
+    if bin_dirs:
+        existing = str(env.get("PATH") or "")
+        env["PATH"] = os.pathsep.join(
+            [*bin_dirs, existing] if existing else bin_dirs
+        )
+    return env
+
+
 def bounded_run(
     argv: Sequence[str],
     *,
@@ -380,14 +449,28 @@ def bounded_run(
         return None
 
 
-def resolve_executable(candidates: Sequence[str] | None = None) -> str | None:
+def resolve_executable(
+    candidates: Sequence[str] | None = None,
+    *,
+    env: Mapping[str, str] | None = None,
+) -> str | None:
+    """Locate Vampire/E preferring absolute paths and managed install bins."""
+
+    search_path = None if env is None else str(env.get("PATH") or "")
     for name in candidates or ():
         if not name:
             continue
         path = Path(name)
         if path.is_file() and os.access(path, os.X_OK):
             return str(path.resolve())
-        found = shutil.which(name)
+        if os.path.isabs(name) or os.sep in name:
+            # Explicit path that is not currently executable — do not fall through.
+            continue
+        for root in managed_install_roots(env):
+            managed = root / "bin" / name
+            if managed.is_file() and os.access(managed, os.X_OK):
+                return str(managed.resolve())
+        found = shutil.which(name, path=search_path)
         if found:
             return found
     return None
@@ -446,6 +529,7 @@ class CaseOutcome:
     stderr: str = ""
     detail: str = ""
     independent_kernel_reconstruction: bool = False
+    kernel_reconstruction_claimed: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -486,6 +570,8 @@ class ATPToolchainCertification:
     promotion_blocked: bool = True
     results_are_candidates_without_reconstruction: bool = True
     kernel_reconstruction_required_for_theorem_authority: bool = True
+    kernel_reconstruction_receipt_validated: bool = False
+    boolean_reconstruction_claim_cannot_elevate: bool = True
     block_reasons: list[str] = field(default_factory=list)
     checks: list[CheckResult] = field(default_factory=list)
     cases: list[CaseOutcome] = field(default_factory=list)
@@ -531,6 +617,8 @@ def default_corpus_manifest() -> dict[str, Any]:
             "exact_binary_binding_required": True,
             "results_are_candidates_without_reconstruction": True,
             "kernel_reconstruction_required_for_theorem_authority": True,
+            "kernel_reconstruction_receipt_validated": False,
+            "boolean_reconstruction_claim_cannot_elevate": True,
             "szs_status_only": True,
             "does_not_edit_central_certificate": True,
             "does_not_edit_cec_semantics": True,
@@ -589,7 +677,9 @@ def _probe_tool_identity(
         "download_attempted": False,
         "probe_error": None,
     }
-    binary = executable or resolve_executable(list(executable_names))
+    binary = executable or resolve_executable(
+        list(executable_names), env=probe_env
+    )
     if binary is None:
         result["probe_error"] = "executable_not_on_path"
         return result
@@ -665,7 +755,9 @@ def classify_szs_outcome(
     """Classify ATP tool output into candidate / authority / quarantine.
 
     Unreconstructed Theorem/Unsatisfiable and model statuses stay candidates.
-    Only ``independent_kernel_reconstruction=True`` elevates theorem evidence.
+    ``independent_kernel_reconstruction`` records an untrusted caller claim
+    for backward compatibility; it never elevates authority without a
+    separately validated, proof-bound kernel receipt.
     """
 
     combined = "\n".join(part for part in (stdout, stderr) if part)
@@ -707,17 +799,14 @@ def classify_szs_outcome(
                 "reason_codes": reason_codes + ["proof_body_missing"],
                 "detail": "Theorem SZS without proof body",
             }
-        if independent_kernel_reconstruction:
-            return {
-                "status": "theorem_authority",
-                "szs_status": szs.value,
-                "authority": ResultAuthority.THEOREM.value,
-                "result_status": ResultStatus.PROVED.value,
-                "proof_bound": proof_body,
-                "output_digest": output_digest,
-                "reason_codes": reason_codes + ["independent_kernel_reconstruction"],
-                "detail": "Elevated by independent kernel reconstruction",
-            }
+        reconstruction_reasons = (
+            [
+                "kernel_reconstruction_claim_unvalidated",
+                "kernel_reconstruction_receipt_required",
+            ]
+            if independent_kernel_reconstruction
+            else ["unreconstructed_atp_proof"]
+        )
         return {
             "status": "theorem_candidate",
             "szs_status": szs.value,
@@ -725,8 +814,13 @@ def classify_szs_outcome(
             "result_status": ResultStatus.CANDIDATE.value,
             "proof_bound": proof_body,
             "output_digest": output_digest,
-            "reason_codes": reason_codes + ["unreconstructed_atp_proof"],
-            "detail": "ATP theorem remains candidate without reconstruction",
+            "reason_codes": reason_codes + reconstruction_reasons,
+            "detail": (
+                "ATP theorem remains candidate: a reconstruction claim "
+                "requires a separately validated kernel receipt"
+                if independent_kernel_reconstruction
+                else "ATP theorem remains candidate without reconstruction"
+            ),
         }
 
     if szs in NON_THEOREM_SZS:
@@ -775,7 +869,10 @@ def evaluate_corpus_case(case: Mapping[str, Any]) -> CaseOutcome:
     stderr = str(case.get("stderr") or "")
     source = str(case.get("tptp_source") or "")
     source_digest = content_digest(source) if source else ""
-    reconstruction = bool(case.get("independent_kernel_reconstruction"))
+    reconstruction_claimed = bool(
+        case.get("independent_kernel_reconstruction")
+        or case.get("independent_kernel_reconstruction_claimed")
+    )
     require_proof = bool(case.get("require_proof_body"))
 
     if kind == "version_mismatch":
@@ -804,7 +901,7 @@ def evaluate_corpus_case(case: Mapping[str, Any]) -> CaseOutcome:
     classified = classify_szs_outcome(
         stdout,
         stderr,
-        independent_kernel_reconstruction=reconstruction,
+        independent_kernel_reconstruction=reconstruction_claimed,
         require_proof_body=require_proof,
     )
     observed = str(classified["status"])
@@ -838,7 +935,8 @@ def evaluate_corpus_case(case: Mapping[str, Any]) -> CaseOutcome:
         stdout=stdout,
         stderr=stderr,
         detail=str(case.get("description") or classified.get("detail") or ""),
-        independent_kernel_reconstruction=reconstruction,
+        independent_kernel_reconstruction=False,
+        kernel_reconstruction_claimed=reconstruction_claimed,
     )
 
 
@@ -876,6 +974,8 @@ def atp_results_remain_candidates_without_reconstruction() -> dict[str, Any]:
     report: dict[str, Any] = {
         "results_are_candidates_without_reconstruction": True,
         "kernel_reconstruction_required_for_theorem_authority": True,
+        "kernel_reconstruction_receipt_validated": False,
+        "boolean_reconstruction_claim_cannot_elevate": True,
         "authority_ceiling": AUTHORITY_CEILING,
         "authority_scope": AUTHORITY_SCOPE,
         "tools": {},
@@ -892,13 +992,13 @@ def atp_results_remain_candidates_without_reconstruction() -> dict[str, Any]:
             hermetic_certificate=True,
             independent_reconstruction=False,
         )
-        elevated = evaluate_role_aware_promotion(
+        claimed_without_receipt = evaluate_role_aware_promotion(
             tool_id,
             present=True,
             usable=True,
             production_certified=True,
             hermetic_certificate=True,
-            independent_reconstruction=True,
+            independent_reconstruction=False,
         )
         can_satisfy = can_satisfy_certified_authority_requirement(tool_id)
         report["tools"][tool_id] = {
@@ -907,7 +1007,12 @@ def atp_results_remain_candidates_without_reconstruction() -> dict[str, Any]:
             "can_satisfy_certified_authority": role.can_satisfy_certified_authority,
             "can_satisfy_requirement": can_satisfy,
             "without_reconstruction": decision.to_dict(),
-            "with_reconstruction": elevated.to_dict(),
+            # Compatibility key: this is now explicitly a claim without a
+            # validated receipt and therefore receives no elevation.
+            "with_reconstruction": claimed_without_receipt.to_dict(),
+            "with_unvalidated_reconstruction_claim": (
+                claimed_without_receipt.to_dict()
+            ),
             "ceiling_is_reconstruction": (
                 role.authority_ceiling is ToolchainAuthorityCeiling.RECONSTRUCTION
             ),
@@ -921,7 +1026,7 @@ def atp_results_remain_candidates_without_reconstruction() -> dict[str, Any]:
         "% SZS output end Proof for boundary\n",
         independent_kernel_reconstruction=False,
     )
-    elevated_sample = classify_szs_outcome(
+    claimed_sample = classify_szs_outcome(
         "% SZS status Theorem for boundary\n"
         "% SZS output start Proof for boundary\n"
         "fof(1, plain, p).\n"
@@ -929,12 +1034,15 @@ def atp_results_remain_candidates_without_reconstruction() -> dict[str, Any]:
         independent_kernel_reconstruction=True,
     )
     report["sample_without_reconstruction"] = sample
-    report["sample_with_reconstruction"] = elevated_sample
+    report["sample_with_reconstruction"] = claimed_sample
+    report["sample_with_unvalidated_reconstruction_claim"] = claimed_sample
     report["boundary_holds"] = (
         sample["status"] == "theorem_candidate"
         and sample["authority"] == ResultAuthority.CANDIDATE.value
-        and elevated_sample["status"] == "theorem_authority"
-        and elevated_sample["authority"] == ResultAuthority.THEOREM.value
+        and claimed_sample["status"] == "theorem_candidate"
+        and claimed_sample["authority"] == ResultAuthority.CANDIDATE.value
+        and "kernel_reconstruction_receipt_required"
+        in claimed_sample["reason_codes"]
     )
     return report
 
@@ -958,7 +1066,7 @@ def run_certification_suite(
     corpus = manifest if manifest is not None else load_corpus_manifest(repo_root=root)
     cases = corpus_cases(corpus)
     cert = ATPToolchainCertification()
-    probe_env = offline_env(env)
+    probe_env = managed_execution_env(env)
 
     cert.checks.append(
         CheckResult(
@@ -1077,6 +1185,9 @@ def run_certification_suite(
                     "independent_kernel_reconstruction": (
                         outcome.independent_kernel_reconstruction
                     ),
+                    "kernel_reconstruction_claimed": (
+                        outcome.kernel_reconstruction_claimed
+                    ),
                 },
             )
         )
@@ -1162,8 +1273,8 @@ def run_certification_suite(
                 f"with={boundary['sample_with_reconstruction']['status']}"
             ),
             detail=(
-                "ATP results remain candidates unless independent kernel "
-                "reconstruction elevates them"
+                "ATP results remain candidates; a reconstruction boolean "
+                "cannot replace a validated independent-kernel receipt"
             ),
             bindings=boundary,
         )
@@ -1200,6 +1311,8 @@ def run_certification_suite(
             "scope": AUTHORITY_SCOPE,
             "results_are_candidates_without_reconstruction": True,
             "kernel_reconstruction_required_for_theorem_authority": True,
+            "kernel_reconstruction_receipt_validated": False,
+            "boolean_reconstruction_claim_cannot_elevate": True,
             "not_kernel": True,
             "not_advisor": True,
         },
@@ -1284,8 +1397,8 @@ def run_certification_suite(
     )
 
     # Production certification requires live locked binaries + semantic suite.
-    # Even when production-certified, results remain candidates without
-    # independent kernel reconstruction (authority ceiling is reconstruction).
+    # Even when production-certified, results remain candidates until a
+    # separately validated kernel receipt exists (ceiling is reconstruction).
     cert.production_certified = bool(
         cert.vampire_usable
         and cert.eprover_usable
@@ -1309,7 +1422,7 @@ def run_certification_suite(
         cert.notes = (
             "Pinned Vampire 5.0.1 + E 3.2.5 certified for ATP premise/proof "
             "search; unreconstructed results remain candidates until "
-            "independent kernel reconstruction."
+            "a proof-bound independent-kernel receipt is validated."
         )
     else:
         cert.promotion_blocked = True
@@ -1351,6 +1464,8 @@ def build_certification_receipt(
         "exact_binary_binding_required": True,
         "results_are_candidates_without_reconstruction": True,
         "kernel_reconstruction_required_for_theorem_authority": True,
+        "kernel_reconstruction_receipt_validated": False,
+        "boolean_reconstruction_claim_cannot_elevate": True,
         "szs_status_only": True,
         "authority_is_reconstruction_ceiling": True,
         "does_not_edit_central_certificate": True,
@@ -1361,6 +1476,8 @@ def build_certification_receipt(
     payload["authority_scope"] = AUTHORITY_SCOPE
     payload["results_are_candidates_without_reconstruction"] = True
     payload["kernel_reconstruction_required_for_theorem_authority"] = True
+    payload["kernel_reconstruction_receipt_validated"] = False
+    payload["boolean_reconstruction_claim_cannot_elevate"] = True
     payload["receipt_digest_sha256"] = content_digest(
         {
             key: value
@@ -1392,6 +1509,13 @@ def certify_atp_toolchain(*args: Any, **kwargs: Any) -> dict[str, Any]:
     )
     receipt["certified"] = bool(receipt.get("production_certified"))
     receipt["args_received"] = bool(args) or bool(kwargs)
+    receipt["receipt_digest_sha256"] = content_digest(
+        {
+            key: value
+            for key, value in receipt.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
     return receipt
 
 
@@ -1527,15 +1651,15 @@ _LIVE_DEFAULT_CASES: Final[tuple[dict[str, Any], ...]] = (
     {
         "case_id": "reconstruction",
         "kind": "reconstruction",
-        "expect": "theorem_authority",
+        "expect": "theorem_candidate",
         "assumptions": ("fof(ax1, axiom, p).",),
         "conclusion": "fof(goal, conjecture, p).",
         "tptp_source": _LIVE_TPTP_THEOREM,
         "require_proof_body": True,
-        "independent_kernel_reconstruction": True,
+        "independent_kernel_reconstruction_claimed": True,
         "description": (
-            "Independent kernel reconstruction elevates theorem authority; "
-            "without it ATP remains candidate"
+            "A reconstruction claim without a validated independent-kernel "
+            "receipt remains an ATP candidate"
         ),
     },
     {
@@ -1579,6 +1703,7 @@ class LiveCaseOutcome:
     proof_object_present: bool = False
     reconstruction_status: str = "unreconstructed"
     independent_kernel_reconstruction: bool = False
+    kernel_reconstruction_claimed: bool = False
     output_digest: str = ""
     source_digest: str = ""
     binary_digest: str = ""
@@ -1637,6 +1762,8 @@ class ATPLiveSemanticCertification:
     promotion_blocked: bool = True
     results_are_candidates_without_reconstruction: bool = True
     kernel_reconstruction_required_for_theorem_authority: bool = True
+    kernel_reconstruction_receipt_validated: bool = False
+    boolean_reconstruction_claim_cannot_elevate: bool = True
     disagreement_quarantined: bool = False
     block_reasons: list[str] = field(default_factory=list)
     checks: list[CheckResult] = field(default_factory=list)
@@ -1695,6 +1822,8 @@ def default_live_corpus_manifest() -> dict[str, Any]:
             "fixture_or_parser_cannot_satisfy_live_goal": True,
             "results_are_candidates_without_reconstruction": True,
             "kernel_reconstruction_required_for_theorem_authority": True,
+            "kernel_reconstruction_receipt_validated": False,
+            "boolean_reconstruction_claim_cannot_elevate": True,
             "szs_status_only": True,
             "disagreement_quarantines": True,
             "does_not_edit_central_certificate": True,
@@ -1874,7 +2003,10 @@ def evaluate_live_case(
     source_digest = content_digest(source) if source else ""
     assumptions = [str(item) for item in (case.get("assumptions") or ())]
     conclusion = str(case.get("conclusion") or "")
-    reconstruction = bool(case.get("independent_kernel_reconstruction"))
+    reconstruction_claimed = bool(
+        case.get("independent_kernel_reconstruction")
+        or case.get("independent_kernel_reconstruction_claimed")
+    )
     require_proof = bool(case.get("require_proof_body"))
     timeout_seconds = float(
         case.get("timeout_seconds") or LIVE_CASE_TIMEOUT_SECONDS
@@ -1980,7 +2112,7 @@ def evaluate_live_case(
         classified = classify_szs_outcome(
             stdout,
             stderr,
-            independent_kernel_reconstruction=reconstruction,
+            independent_kernel_reconstruction=reconstruction_claimed,
             require_proof_body=require_proof,
         )
 
@@ -2012,14 +2144,23 @@ def evaluate_live_case(
         matched = _expect_matches(expect, observed)
 
     reconstruction_status = (
-        "kernel_reconstructed"
-        if reconstruction and observed == "theorem_authority"
+        "kernel_receipt_missing"
+        if reconstruction_claimed and observed == "theorem_candidate"
         else "unreconstructed"
     )
-    if observed == "theorem_authority" and not reconstruction:
-        # Fail closed: never allow elevated authority without reconstruction flag.
+    if observed == "theorem_authority":
+        # Defensive fail-closed guard: no live corpus flag can validate an
+        # independent kernel execution or proof-bound receipt.
+        observed = "quarantined"
+        classified["authority"] = ResultAuthority.CANDIDATE.value
+        classified["result_status"] = ResultStatus.MALFORMED.value
         matched = False
-        reason_codes.append("authority_exceeded_without_reconstruction")
+        reason_codes.extend(
+            [
+                "authority_exceeded_without_validated_kernel_receipt",
+                "kernel_reconstruction_receipt_required",
+            ]
+        )
         reconstruction_status = "invalid_elevation"
 
     artifact = content_digest(
@@ -2052,7 +2193,8 @@ def evaluate_live_case(
         proof_bound=proof_bound,
         proof_object_present=proof_object_present,
         reconstruction_status=reconstruction_status,
-        independent_kernel_reconstruction=reconstruction,
+        independent_kernel_reconstruction=False,
+        kernel_reconstruction_claimed=reconstruction_claimed,
         output_digest=str(classified.get("output_digest") or ""),
         source_digest=source_digest,
         binary_digest=bin_digest,
@@ -2087,7 +2229,8 @@ def run_live_semantic_suite(
     )
     cases = live_corpus_cases(corpus)
     cert = ATPLiveSemanticCertification()
-    probe_env = offline_env(env)
+    # Prefer managed install bins (and approved deployment roots) without install.
+    probe_env = managed_execution_env(env)
     _ = root
 
     cert.checks.append(
@@ -2261,6 +2404,12 @@ def run_live_semantic_suite(
                         "szs_status": outcome.szs_status,
                         "authority": outcome.authority,
                         "reconstruction_status": outcome.reconstruction_status,
+                        "independent_kernel_reconstruction": (
+                            outcome.independent_kernel_reconstruction
+                        ),
+                        "kernel_reconstruction_claimed": (
+                            outcome.kernel_reconstruction_claimed
+                        ),
                         "assumptions": outcome.assumptions,
                         "conclusion": outcome.conclusion,
                         "limits": outcome.limits,
@@ -2376,10 +2525,7 @@ def run_live_semantic_suite(
     boundary = atp_results_remain_candidates_without_reconstruction()
     boundary_ok = bool(boundary.get("boundary_holds"))
     live_authority_ok = all(
-        not (
-            outcome.authority == ResultAuthority.THEOREM.value
-            and not outcome.independent_kernel_reconstruction
-        )
+        outcome.authority != ResultAuthority.THEOREM.value
         for outcome in cert.cases
         if outcome.execution_mode != "skipped"
     )
@@ -2395,8 +2541,8 @@ def run_live_semantic_suite(
                 f"boundary={boundary_ok},live_authority_ok={live_authority_ok}"
             ),
             detail=(
-                "ATP results remain candidates unless independent kernel "
-                "reconstruction elevates them"
+                "ATP results remain candidates; a reconstruction boolean "
+                "cannot replace a validated independent-kernel receipt"
             ),
             bindings=boundary,
         )
@@ -2435,6 +2581,8 @@ def run_live_semantic_suite(
             "scope": AUTHORITY_SCOPE,
             "results_are_candidates_without_reconstruction": True,
             "kernel_reconstruction_required_for_theorem_authority": True,
+            "kernel_reconstruction_receipt_validated": False,
+            "boolean_reconstruction_claim_cannot_elevate": True,
             "not_kernel": True,
             "not_advisor": True,
         },
@@ -2454,6 +2602,12 @@ def run_live_semantic_suite(
                 "conclusion": outcome.conclusion,
                 "limits": outcome.limits,
                 "reconstruction_status": outcome.reconstruction_status,
+                "independent_kernel_reconstruction": (
+                    outcome.independent_kernel_reconstruction
+                ),
+                "kernel_reconstruction_claimed": (
+                    outcome.kernel_reconstruction_claimed
+                ),
                 "raw_szs_output_digest": content_digest(outcome.raw_szs_output),
                 "execution_mode": outcome.execution_mode,
             }
@@ -2590,7 +2744,7 @@ def run_live_semantic_suite(
         cert.notes = (
             "Pinned Vampire 5.0.1 + E 3.2.5 live semantic certification "
             "passed; unreconstructed ATP results remain candidates until "
-            "independent kernel reconstruction."
+            "a proof-bound independent-kernel receipt is validated."
         )
     else:
         cert.promotion_blocked = True
@@ -2625,8 +2779,9 @@ def build_live_semantic_receipt(
     vampire_executable: str | None = None,
     eprover_executable: str | None = None,
 ) -> dict[str, Any]:
+    root = repo_root or repo_root_from()
     cert = run_live_semantic_suite(
-        repo_root=repo_root,
+        repo_root=root,
         manifest=manifest,
         env=env,
         vampire_executable=vampire_executable,
@@ -2642,12 +2797,16 @@ def build_live_semantic_receipt(
         "fixture_or_parser_cannot_satisfy_live_goal": True,
         "results_are_candidates_without_reconstruction": True,
         "kernel_reconstruction_required_for_theorem_authority": True,
+        "kernel_reconstruction_receipt_validated": False,
+        "boolean_reconstruction_claim_cannot_elevate": True,
         "szs_status_only": True,
         "disagreement_quarantines": True,
         "authority_is_reconstruction_ceiling": True,
         "does_not_edit_central_certificate": True,
         "does_not_edit_cec_semantics": True,
         "does_not_edit_shared_lock": True,
+        "objective_validation_repair": True,
+        "preserve_production_certificate_without_live_tools": True,
     }
     payload["live_semantic_corpus_passed"] = all(
         case.matched for case in cert.cases if case.execution_mode != "skipped"
@@ -2655,7 +2814,37 @@ def build_live_semantic_receipt(
     payload["authority_scope"] = AUTHORITY_SCOPE
     payload["results_are_candidates_without_reconstruction"] = True
     payload["kernel_reconstruction_required_for_theorem_authority"] = True
+    payload["kernel_reconstruction_receipt_validated"] = False
+    payload["boolean_reconstruction_claim_cannot_elevate"] = True
     payload["certificate_path"] = str(DEFAULT_LIVE_CERTIFICATE_RELATIVE)
+    # Objective validation repair evidence (FVT-G207 / FVT-071).
+    payload["objective_validation_repair"] = {
+        "schema_version": "objective-validation-repair/v1",
+        "goal_id": LIVE_GOAL_ID,
+        "task_id": LIVE_TASK_ID,
+        "interface": LIVE_INTERFACE,
+        "status": (
+            "satisfied"
+            if cert.production_certified
+            else (
+                "withheld_live_tools_unavailable"
+                if not cert.live_execution
+                else "failed"
+            )
+        ),
+        "live_execution": bool(cert.live_execution),
+        "production_certified": bool(cert.production_certified),
+        "validation_command": (
+            "python -m pytest "
+            "test/integration/toolchains/test_atp_live_semantic_certification.py "
+            "test/integration/toolchains/test_atp_toolchain_certification.py -q"
+        ),
+        "evidence_terms": [
+            "objective validation repair",
+            "ATPLiveSemanticCertification@1",
+            "live Vampire and E prover semantics",
+        ],
+    }
     # Compact cases for durable certificate: drop full raw stdout bodies.
     compact_cases = []
     for case in payload.get("cases") or []:
@@ -2664,9 +2853,27 @@ def build_live_semantic_receipt(
         compact.pop("stdout", None)
         compact.pop("stderr", None)
         compact["raw_szs_output_digest"] = content_digest(raw)
-        compact["raw_szs_output_preview"] = raw[:400]
+        compact["raw_szs_output_preview"] = public_evidence_projection(
+            raw[:400],
+            repo_root=root,
+        )
+        # Durable cert binds digests; absolute host paths are not authoritative.
+        if compact.get("executable_path") and compact.get("binary_digest"):
+            compact["executable_path_binding"] = "digest_bound"
         compact_cases.append(compact)
     payload["cases"] = compact_cases
+    payload.pop("receipt_digest_sha256", None)
+    projected = public_evidence_projection(payload, repo_root=root)
+    if not isinstance(projected, dict):  # defensive: receipt roots are mappings
+        raise ValueError("ATP public evidence projection returned a non-mapping")
+    payload = projected
+    audit = public_evidence_audit(payload, repo_root=root)
+    if not audit["satisfied"]:
+        raise ValueError(
+            "ATP public evidence projection is unsafe: "
+            + ", ".join(audit["failures"])
+        )
+    payload["public_evidence_policy"] = audit
     payload["receipt_digest_sha256"] = content_digest(
         {
             key: value
@@ -2677,6 +2884,16 @@ def build_live_semantic_receipt(
     return payload
 
 
+def _is_production_live_certificate(payload: Mapping[str, Any]) -> bool:
+    return bool(
+        payload.get("production_certified")
+        and payload.get("live_execution")
+        and payload.get("vampire_usable")
+        and payload.get("eprover_usable")
+        and payload.get("interface") == LIVE_INTERFACE
+    )
+
+
 def write_live_certificate(
     receipt: Mapping[str, Any] | None = None,
     *,
@@ -2685,8 +2902,15 @@ def write_live_certificate(
     env: Mapping[str, str] | None = None,
     vampire_executable: str | None = None,
     eprover_executable: str | None = None,
+    force: bool = False,
 ) -> Path:
-    """Write the durable ATP live semantic certificate under docs/architecture."""
+    """Write the durable ATP live semantic certificate under docs/architecture.
+
+    Fail-closed demotion protection (objective validation repair): a tool-less
+    or failed re-run must not overwrite a production live certificate that
+    already binds real Vampire/E digests and case evidence. Pass ``force=True``
+    only for deliberate replacement.
+    """
 
     root = repo_root or repo_root_from()
     target = path or (root / DEFAULT_LIVE_CERTIFICATE_RELATIVE)
@@ -2700,7 +2924,27 @@ def write_live_certificate(
             eprover_executable=eprover_executable,
         )
     )
+    audit = public_evidence_audit(payload, repo_root=root)
+    if not audit["satisfied"]:
+        raise ValueError(
+            "refusing to write unsafe ATP public evidence: "
+            + ", ".join(audit["failures"])
+        )
     target.parent.mkdir(parents=True, exist_ok=True)
+
+    if (
+        not force
+        and target.is_file()
+        and not _is_production_live_certificate(payload)
+    ):
+        try:
+            existing = json.loads(target.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            existing = None
+        if isinstance(existing, dict) and _is_production_live_certificate(existing):
+            # Preserve prior live production evidence; surface demotion block.
+            return target
+
     text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     target.write_text(text, encoding="utf-8")
     return target
@@ -2842,6 +3086,8 @@ __all__ = [
     "content_digest",
     "binary_digest",
     "offline_env",
+    "managed_install_roots",
+    "managed_execution_env",
     "bounded_run",
     "resolve_executable",
     "default_corpus_manifest",

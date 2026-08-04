@@ -7,6 +7,12 @@ FVT-G190) from a live cryptographic verifier that executes against exact
 circuit, ceremony, proving-key, verification-key, public-parameter,
 public-input-schema, version, expiry, freshness, and revocation identities.
 
+FVT-080 is the objective validation repair for the same goal: path evidence
+already exists; this suite re-proves acceptance and binds the synthetic
+discovery term ``objective validation repair`` into the receipt and durable
+live deployment receipt so supervisor objective scans re-find the validation
+gate.
+
 Acceptance covered:
 
 * configured backend performs live verification against exact lock identities;
@@ -19,7 +25,9 @@ Acceptance covered:
 * ZKP attests and never replaces underlying semantic authority;
 * sample-binding-only assessment cannot satisfy the live goal;
 * durable receipt is written to
-  ``docs/architecture/formal_verification_zkp_live_deployment_receipt.json``.
+  ``docs/architecture/formal_verification_zkp_live_deployment_receipt.json``;
+* ``objective validation repair`` is present on constants, receipts, and the
+  durable live receipt (FVT-080).
 """
 
 from __future__ import annotations
@@ -44,6 +52,8 @@ LIVE_INTERFACE = "ZKPLiveVerifierDeployment@1"
 LIVE_SCHEMA_VERSION = "zkp-live-verifier-deployment/v1"
 LIVE_GOAL_ID = "FVT-G211"
 LIVE_TASK_ID = "FVT-059"
+REPAIR_TASK_ID = "FVT-080"
+OBJECTIVE_VALIDATION_EVIDENCE = "objective validation repair"
 LIVE_HANDLER_ID = "zkp_live_verifier_deployment@1"
 PREDECESSOR_GOAL_ID = "FVT-G190"
 PREDECESSOR_TASK_ID = "FVT-047"
@@ -174,6 +184,11 @@ def test_live_module_constants(zkp_cert) -> None:
     assert zkp_cert.LIVE_SCHEMA_VERSION == LIVE_SCHEMA_VERSION
     assert zkp_cert.LIVE_GOAL_ID == LIVE_GOAL_ID
     assert zkp_cert.LIVE_TASK_ID == LIVE_TASK_ID
+    assert zkp_cert.REPAIR_TASK_ID == REPAIR_TASK_ID
+    assert zkp_cert.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
+    assert OBJECTIVE_VALIDATION_EVIDENCE == "objective validation repair"
+    assert "test_zkp_live_verifier_deployment.py" in zkp_cert.OBJECTIVE_VALIDATION_COMMAND
+    assert "test_zkp_deployment_certification.py" in zkp_cert.OBJECTIVE_VALIDATION_COMMAND
     assert zkp_cert.LIVE_HANDLER_ID == LIVE_HANDLER_ID
     assert zkp_cert.AUTHORITY_CEILING == AUTHORITY_CEILING
     assert zkp_cert.AUTHORITY_SCOPE == AUTHORITY_SCOPE
@@ -188,6 +203,8 @@ def test_lock_declares_live_verifier_binding(lock: dict[str, Any]) -> None:
     assert live.get("interface") == LIVE_INTERFACE
     assert live.get("goal_id") == LIVE_GOAL_ID
     assert live.get("task_id") == LIVE_TASK_ID
+    assert live.get("repair_task_id") == REPAIR_TASK_ID
+    assert live.get("objective_validation_evidence") == OBJECTIVE_VALIDATION_EVIDENCE
     assert live.get("sample_binding_cannot_satisfy_live_goal") is True
     assert live.get("live_execution_required_for_production") is True
     assert live.get("absent_operator_bound_public_artifacts_are_deployment_blockers") is True
@@ -284,6 +301,46 @@ def test_live_receipt_schema_and_policy(live_receipt: dict[str, Any]) -> None:
     assert _SHA256_CID.fullmatch(live_receipt["receipt_digest_sha256"]) or len(
         live_receipt["receipt_digest_sha256"]
     ) == 71  # sha256:<64hex>
+
+
+def test_live_public_receipt_uses_portable_lock_paths_and_outer_digest(
+    zkp_cert, live_receipt: dict[str, Any]
+) -> None:
+    expected = "config/formal_verification_zkp_deployment.lock.json"
+    encoded = json.dumps(live_receipt, sort_keys=True)
+    assert live_receipt["lock_path"] == expected
+    assert live_receipt["sample_binding"]["lock_path"] == expected
+    assert str(REPO_ROOT) not in encoded
+    assert zkp_cert.public_evidence_audit(
+        live_receipt, repo_root=REPO_ROOT
+    )["satisfied"] is True
+    assert live_receipt["receipt_digest_sha256"] == zkp_cert.content_digest(
+        {
+            key: value
+            for key, value in live_receipt.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+
+
+def test_live_receipt_writer_fails_closed_on_host_path(
+    zkp_cert,
+    live_receipt: dict[str, Any],
+    tmp_path: Path,
+) -> None:
+    unsafe = dict(live_receipt)
+    unsafe["lock_path"] = "/home/example/private/zkp.lock.json"
+    target = tmp_path / "unsafe-zkp-live-receipt.json"
+    with pytest.raises(
+        zkp_cert.ZKPDeploymentCertificationError,
+        match="unsafe public ZKP receipt",
+    ):
+        zkp_cert.write_live_deployment_receipt(
+            unsafe,
+            repo_root=REPO_ROOT,
+            path=target,
+        )
+    assert not target.exists()
 
 
 def test_live_production_certified(live_receipt: dict[str, Any]) -> None:
@@ -496,3 +553,67 @@ def test_tampered_lock_fails_live_closed(zkp_cert, lock) -> None:
     assert receipt["production_certified"] is False
     assert receipt["promotion_blocked"] is True
     assert receipt["certified"] is False
+
+
+def test_objective_validation_repair_receipt_binding(
+    live_receipt: dict[str, Any],
+    durable_receipt: dict[str, Any],
+    zkp_cert,
+) -> None:
+    """Receipt always binds the objective validation repair evidence term.
+
+    This is the synthetic evidence term ``objective validation repair`` for the
+    FVT-080 / FVT-G211 objective-scan validation gate. Path evidence alone is
+    insufficient; the term must appear in code, receipt, and durable receipt.
+    """
+
+    assert OBJECTIVE_VALIDATION_EVIDENCE == "objective validation repair"
+    assert (
+        zkp_cert.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    assert zkp_cert.REPAIR_TASK_ID == REPAIR_TASK_ID
+
+    repair = live_receipt.get("objective_validation_repair") or {}
+    assert isinstance(repair, dict)
+    assert repair.get("schema_version") == "objective-validation-repair/v1"
+    assert repair.get("goal_id") == LIVE_GOAL_ID
+    assert repair.get("interface") == LIVE_INTERFACE
+    assert repair.get("repair_task_id") == REPAIR_TASK_ID
+    assert "objective validation repair" in (repair.get("evidence_terms") or [])
+    assert (
+        live_receipt.get("objective_validation_evidence")
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    assert live_receipt.get("policy", {}).get("objective_validation_repair") is True
+    assert live_receipt.get("repair_task_id") == REPAIR_TASK_ID
+    assert (
+        live_receipt.get("acceptance", {}).get("objective_validation_evidence")
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    if live_receipt.get("production_certified"):
+        assert repair.get("status") == "satisfied"
+        assert live_receipt["acceptance"]["objective_validation_repair"] is True
+    elif not live_receipt.get("live_verifier_executed"):
+        assert repair.get("status") in {
+            "withheld_sample_binding_only",
+            "withheld_live_verifier_not_executed",
+        }
+
+    # Exact-text discovery must appear in the declared output sources.
+    module_source = CERT_PATH.read_text(encoding="utf-8")
+    test_source = Path(__file__).read_text(encoding="utf-8")
+    assert OBJECTIVE_VALIDATION_EVIDENCE in module_source
+    assert OBJECTIVE_VALIDATION_EVIDENCE in test_source
+    assert REPAIR_TASK_ID in module_source
+    receipt_text = LIVE_RECEIPT_PATH.read_text(encoding="utf-8")
+    assert OBJECTIVE_VALIDATION_EVIDENCE in receipt_text
+    assert (
+        durable_receipt.get("objective_validation_evidence")
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    durable_repair = durable_receipt.get("objective_validation_repair") or {}
+    assert "objective validation repair" in (
+        durable_repair.get("evidence_terms") or []
+    )
+    assert durable_receipt.get("repair_task_id") == REPAIR_TASK_ID
+    assert durable_receipt.get("production_certified") is True

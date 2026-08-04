@@ -598,11 +598,14 @@
       },
       "evidence_class": "offline",
       "evidence": {
-        "fixture_tests": [],
+        "fixture_tests": [
+          "ipfs_datasets_py/tests/unit/logic/test_verification_receipt_adversarial.py",
+          "test/api/test_logic_receipt_authority_boundary.py"
+        ],
         "live_probes": [],
         "synthetic": false
       },
-      "notes": "Audit found permissive structural acceptance of empty/forged receipts. Not usable or production-certified until fail-closed dispatch (FVT-003)."
+      "notes": "FVT-003 replaced permissive structural acceptance with typed fail-closed dispatch and adversarial binding tests. This offline baseline does not itself claim live or production certification."
     },
     {
       "id": "capability.counterexample.public_boundary",
@@ -624,11 +627,14 @@
       },
       "evidence_class": "offline",
       "evidence": {
-        "fixture_tests": [],
+        "fixture_tests": [
+          "ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py",
+          "test/api/test_counterexample_cross_repository_contract.py"
+        ],
         "live_probes": [],
         "synthetic": false
       },
-      "notes": "Supervisor normalizer is safer than datasets public projection, which still leaked raw/hidden_witness material in audit. Unification required (FVT-002)."
+      "notes": "FVT-002 unified datasets projections with the supervisor semantic boundary and strips raw, hidden-witness, credential, and private channels. This offline baseline does not itself claim live or production certification."
     },
     {
       "id": "capability.replanner.verifier_backed_closure",
@@ -649,11 +655,13 @@
       },
       "evidence_class": "offline",
       "evidence": {
-        "fixture_tests": [],
+        "fixture_tests": [
+          "test/api/test_agent_supervisor_formal_replanner_verifier_closure.py"
+        ],
         "live_probes": [],
         "synthetic": false
       },
-      "notes": "Structural repair currently treated as counterexample closure without fresh verifier receipt (FVT-009)."
+      "notes": "FVT-009 keeps structural repair distinct from closure and requires a fresh verifier receipt bound to the repaired tree, property, assumptions, bounds, tool, policy, and plan. This offline baseline does not itself claim live or production certification."
     },
     {
       "id": "capability.examples.software_verification",
@@ -767,23 +775,132 @@
     {
       "id": "receipt_verification_fail_open",
       "severity": "p0",
-      "status": "open",
-      "summary": "verify_receipt accepts empty/forged structural mappings as success.",
-      "capability_id": "capability.receipt.verify_and_attest"
+      "status": "resolved",
+      "summary": "verify_receipt rejected empty, unknown-schema, forged-authority, stale, and binding-mismatched receipts after FVT-003.",
+      "capability_id": "capability.receipt.verify_and_attest",
+      "resolution_evidence": {
+        "schema_version": "formal-verification-p0-resolution-evidence/v1",
+        "implementation_commits": [
+          {
+            "repository": "root",
+            "commit": "2296a8a1e7cb7335c7d5417eab74d41044d3dcc1"
+          },
+          {
+            "repository": "ipfs_datasets_py",
+            "commit": "a36437445a9ee2352de04a26eff0de5c802eb8d5"
+          },
+          {
+            "repository": "ipfs_datasets_py",
+            "commit": "89539f135b226826673fcae2e0845c1227c3f715"
+          }
+        ],
+        "implementation_artifacts": [
+          {
+            "repository": "ipfs_datasets_py",
+            "path": "ipfs_datasets_py/logic/verification_api.py",
+            "commit": "89539f135b226826673fcae2e0845c1227c3f715",
+            "content_identity": "sha256:5e1c931c3ff4eaecdb255eaacd0e0f5bed444fe31f7ac77039a83dc02ee91d3b"
+          }
+        ],
+        "validation_tests": [
+          {
+            "repository": "ipfs_datasets_py",
+            "path": "tests/unit/logic/test_verification_receipt_adversarial.py",
+            "commit": "a36437445a9ee2352de04a26eff0de5c802eb8d5",
+            "content_identity": "sha256:86d003c9598f2344d5c2b352795600194e2c99f722aa922e563bc67e44aed5a4"
+          },
+          {
+            "repository": "root",
+            "path": "test/api/test_logic_receipt_authority_boundary.py",
+            "commit": "2296a8a1e7cb7335c7d5417eab74d41044d3dcc1",
+            "content_identity": "sha256:8d07842785c02ff120edc28e2a05d60210d6e8e16c1ba8f329e04da3418dbd72"
+          }
+        ]
+      }
     },
     {
       "id": "public_counterexample_raw_leak",
       "severity": "p0",
-      "status": "open",
-      "summary": "Public datasets counterexample projection can expose raw/hidden_witness material.",
-      "capability_id": "capability.counterexample.public_boundary"
+      "status": "resolved",
+      "summary": "Public datasets and supervisor projections now share a secret-safe semantic boundary and do not re-emit private channels.",
+      "capability_id": "capability.counterexample.public_boundary",
+      "resolution_evidence": {
+        "schema_version": "formal-verification-p0-resolution-evidence/v1",
+        "implementation_commits": [
+          {
+            "repository": "root",
+            "commit": "d024bb38fe123f79a0e6327545b09755c89e476a"
+          },
+          {
+            "repository": "ipfs_datasets_py",
+            "commit": "194f9cbcc64bb07cf4849485a7665e9285ee71c9"
+          },
+          {
+            "repository": "ipfs_datasets_py",
+            "commit": "89539f135b226826673fcae2e0845c1227c3f715"
+          }
+        ],
+        "implementation_artifacts": [
+          {
+            "repository": "ipfs_datasets_py",
+            "path": "ipfs_datasets_py/logic/verification_api.py",
+            "commit": "89539f135b226826673fcae2e0845c1227c3f715",
+            "content_identity": "sha256:5e1c931c3ff4eaecdb255eaacd0e0f5bed444fe31f7ac77039a83dc02ee91d3b"
+          },
+          {
+            "repository": "ipfs_datasets_py",
+            "path": "ipfs_datasets_py/logic/software_verification/counterexamples/contracts.py",
+            "commit": "194f9cbcc64bb07cf4849485a7665e9285ee71c9",
+            "content_identity": "sha256:a42e976923b854724a4585f108e4272586d8a22c9694551412bd12055cc0b4d7"
+          }
+        ],
+        "validation_tests": [
+          {
+            "repository": "ipfs_datasets_py",
+            "path": "tests/unit/logic/test_counterexample_public_boundary.py",
+            "commit": "194f9cbcc64bb07cf4849485a7665e9285ee71c9",
+            "content_identity": "sha256:115c75ce3c35239d7f1de9df984f5a68c2481fae8ce90dcb31a006383a776712"
+          },
+          {
+            "repository": "root",
+            "path": "test/api/test_counterexample_cross_repository_contract.py",
+            "commit": "d024bb38fe123f79a0e6327545b09755c89e476a",
+            "content_identity": "sha256:4b850fae71f8d43cad2325e6c94a1d9149b878e363a9a8928d7b1fe2840d2fab"
+          }
+        ]
+      }
     },
     {
       "id": "structural_repair_as_closure",
       "severity": "p0",
-      "status": "open",
-      "summary": "Formal replanner closes counterexamples without fresh verifier receipts.",
-      "capability_id": "capability.replanner.verifier_backed_closure"
+      "status": "resolved",
+      "summary": "Formal replanning now requires a fresh, fully bound verifier receipt before counterexample closure.",
+      "capability_id": "capability.replanner.verifier_backed_closure",
+      "resolution_evidence": {
+        "schema_version": "formal-verification-p0-resolution-evidence/v1",
+        "implementation_commits": [
+          {
+            "repository": "root",
+            "commit": "a98029cfd178f814ce23c2a0027ba425ee8b0719"
+          }
+        ],
+        "implementation_artifacts": [
+          {
+            "repository": "root",
+            "path": "ipfs_accelerate_py/agent_supervisor/planning/formal_replanner.py",
+            "commit": "a98029cfd178f814ce23c2a0027ba425ee8b0719",
+            "content_identity": "sha256:e2dc95be602210b2afd6f2c80a45f42f097342d5222b613f4afb61cf3a16ba89"
+          }
+        ],
+        "validation_tests": [
+          {
+            "repository": "root",
+            "path": "test/api/test_agent_supervisor_formal_replanner_verifier_closure.py",
+            "commit": "a98029cfd178f814ce23c2a0027ba425ee8b0719",
+            "content_identity": "sha256:666580020f916ce3b6503d9ca2f75adb4a1cdf426ac078f2cbb9ce1ca1941653"
+          }
+        ]
+      }
     },
     {
       "id": "synthetic_examples_and_metrics",

@@ -264,8 +264,8 @@ def test_hard_zero_gates_are_present_and_non_negative() -> None:
     assert acceptance["deployment_section_present"] is True
 
 
-def test_fixture_benchmark_and_open_p0s_do_not_clear_hard_zero_gates() -> None:
-    """Passing fixture metrics cannot overrule unresolved P0 findings."""
+def test_fixture_benchmark_cannot_clear_after_evidence_bound_p0_resolution() -> None:
+    """Resolving stale P0 rows does not manufacture benchmark authority."""
 
     module = _load_builder_module()
     certificate = json.loads(TOOLCHAIN_CERT_PATH.read_text(encoding="utf-8"))
@@ -275,13 +275,16 @@ def test_fixture_benchmark_and_open_p0s_do_not_clear_hard_zero_gates() -> None:
         certificate=certificate,
         benchmark=benchmark,
         baseline=baseline,
+        repo_root=REPO_ROOT,
     )
 
     assert hard_zero["derivation"]["complete"] is False
     assert (
         hard_zero["derivation"]["benchmark_evidence"]["authoritative"] is False
     )
-    assert hard_zero["derivation"]["open_p0_findings"]
+    assert hard_zero["derivation"]["open_p0_findings"] == []
+    assert hard_zero["derivation"]["invalid_p0_resolutions"] == []
+    assert len(hard_zero["derivation"]["resolved_p0_findings"]) == 3
     assert hard_zero["false_proof_count"] > 0
     assert hard_zero["false_closure_count"] > 0
     assert hard_zero["secret_or_witness_leakage_count"] > 0

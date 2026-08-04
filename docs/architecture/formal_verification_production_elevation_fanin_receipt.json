@@ -1,0 +1,572 @@
+{
+  "schema_version": "formal-verification-production-semantic-elevation-fanin/v1",
+  "interface": "ProductionSemanticElevationFanIn@1",
+  "program_interface": "FormalVerificationTacticianRelease@1",
+  "program_goal_id": "FVT-G000",
+  "goal_id": "FVT-G213",
+  "task_id": "FVT-081",
+  "program": "formal-verification-tactician/toolchain-release-candidate",
+  "observed_at": "2026-08-03T04:19:06Z",
+  "description": "Fail-closed production-semantic elevation fan-in. Each required tool is independently reconstructed from its canonical PNMR receipt and exact compact binding before production elevation.",
+  "policy": {
+    "required_check_kinds": [
+      "positive",
+      "negative",
+      "mutation",
+      "replay"
+    ],
+    "independent_reconstruction_required_before_production_elevation": true,
+    "production_elevation_allowed_gate_required": true,
+    "hardcoded_success_forbidden": true,
+    "no_install": true,
+    "no_download": true,
+    "no_network": true,
+    "self_referential_current_tree_claim_forbidden": true,
+    "merge_claim_forbidden": true,
+    "deployment_claim_forbidden": true,
+    "raw_checks_bound_by_digest_only": true
+  },
+  "required_tools": [
+    "lean",
+    "runtime-mtl",
+    "datalog-authorization",
+    "secpal-authorization",
+    "coq",
+    "isabelle"
+  ],
+  "tools": {
+    "lean": {
+      "tool_id": "lean",
+      "lane_id": "kernel",
+      "interface": "LeanSemanticCertification@1",
+      "evidence_class": "live_specialized_semantic_receipt",
+      "production_elevation_allowed": true,
+      "lane_status": "ran",
+      "lane_digest_sha256": "397faf8e1e8ea3e1e5b87dc3a4514d2736175ecf20fb5e1b3d8b9db10e697cb5",
+      "compact_tool_certified": true,
+      "independent_reconstruction": {
+        "valid": true,
+        "recompute_valid": true,
+        "recompute_failure": null,
+        "check_kinds_present": [
+          "binding",
+          "fail_closed",
+          "malformed",
+          "mutation",
+          "negative",
+          "positive",
+          "replay",
+          "timeout"
+        ],
+        "required_check_kinds": [
+          "positive",
+          "negative",
+          "mutation",
+          "replay"
+        ],
+        "required_kinds_present": true,
+        "required_kinds_all_passed": true,
+        "required_kinds_failed": [],
+        "required_kinds_missing": [],
+        "check_set_digest_sha256": "68ed7cbbb5dd2d9f1fe22039c360ea82c8bf1c0218e43da208d9a123e0fd8c66",
+        "compact_check_set_digest_sha256": "68ed7cbbb5dd2d9f1fe22039c360ea82c8bf1c0218e43da208d9a123e0fd8c66",
+        "compact_binding_valid": true,
+        "checks_total": 14,
+        "checks_passed": 14,
+        "check_status_counts": {
+          "passed": 14,
+          "failed": 0,
+          "skipped": 0,
+          "unavailable": 0
+        },
+        "raw_checks_embedded": false
+      },
+      "semantic_authority_valid": true,
+      "surfaces": {
+        "role_aware": true,
+        "promotion": true,
+        "tool": true,
+        "lane": true,
+        "decision": true
+      },
+      "surfaces_consistent": true,
+      "production_elevation_present": true,
+      "eligible_for_production_elevation": true,
+      "required_elevation_audit_present": true,
+      "block_reasons": []
+    },
+    "runtime-mtl": {
+      "tool_id": "runtime-mtl",
+      "lane_id": "runtime_mtl",
+      "interface": "RuntimeMTLSemanticCertification@1",
+      "evidence_class": "reference_plus_checked_runtime_mtl_vendor",
+      "production_elevation_allowed": true,
+      "lane_status": "ran",
+      "lane_digest_sha256": "de605de37fb80557ecfa0f9157641e4dea082b358c2b41a63f4d7def5180e641",
+      "compact_tool_certified": true,
+      "independent_reconstruction": {
+        "valid": true,
+        "recompute_valid": true,
+        "recompute_failure": null,
+        "check_kinds_present": [
+          "authority",
+          "malformed",
+          "mutation",
+          "negative",
+          "parity",
+          "positive",
+          "replay"
+        ],
+        "required_check_kinds": [
+          "positive",
+          "negative",
+          "mutation",
+          "replay"
+        ],
+        "required_kinds_present": true,
+        "required_kinds_all_passed": true,
+        "required_kinds_failed": [],
+        "required_kinds_missing": [],
+        "check_set_digest_sha256": "d0d3e74a078116cda28017fd3c81fb128cf2299fecf54fb119d09e4f376cdc6a",
+        "compact_check_set_digest_sha256": "d0d3e74a078116cda28017fd3c81fb128cf2299fecf54fb119d09e4f376cdc6a",
+        "compact_binding_valid": true,
+        "checks_total": 12,
+        "checks_passed": 12,
+        "check_status_counts": {
+          "passed": 12,
+          "failed": 0,
+          "skipped": 0,
+          "unavailable": 0
+        },
+        "raw_checks_embedded": false
+      },
+      "semantic_authority_valid": true,
+      "surfaces": {
+        "role_aware": true,
+        "promotion": true,
+        "tool": true,
+        "lane": true,
+        "decision": true
+      },
+      "surfaces_consistent": true,
+      "production_elevation_present": true,
+      "eligible_for_production_elevation": true,
+      "required_elevation_audit_present": true,
+      "block_reasons": []
+    },
+    "datalog-authorization": {
+      "tool_id": "datalog-authorization",
+      "lane_id": "datalog_secpal",
+      "interface": "AuthorizationSemanticCertification@1",
+      "evidence_class": "reference_plus_checked_souffle_vendor",
+      "production_elevation_allowed": true,
+      "lane_status": "ran",
+      "lane_digest_sha256": "5acd28576f3d5422b5106af9b07f86269f6ba0f2b09c4d2cf3639ee3f9f87218",
+      "compact_tool_certified": true,
+      "independent_reconstruction": {
+        "valid": true,
+        "recompute_valid": true,
+        "recompute_failure": null,
+        "check_kinds_present": [
+          "authority",
+          "malformed",
+          "mutation",
+          "negative",
+          "positive",
+          "replay"
+        ],
+        "required_check_kinds": [
+          "positive",
+          "negative",
+          "mutation",
+          "replay"
+        ],
+        "required_kinds_present": true,
+        "required_kinds_all_passed": true,
+        "required_kinds_failed": [],
+        "required_kinds_missing": [],
+        "check_set_digest_sha256": "017b17fd14348ed4cb9a4fac7f263be1ae02b5823378c50e6a4c24a8effbc296",
+        "compact_check_set_digest_sha256": "017b17fd14348ed4cb9a4fac7f263be1ae02b5823378c50e6a4c24a8effbc296",
+        "compact_binding_valid": true,
+        "checks_total": 24,
+        "checks_passed": 24,
+        "check_status_counts": {
+          "passed": 24,
+          "failed": 0,
+          "skipped": 0,
+          "unavailable": 0
+        },
+        "raw_checks_embedded": false
+      },
+      "semantic_authority_valid": true,
+      "surfaces": {
+        "role_aware": true,
+        "promotion": true,
+        "tool": true,
+        "lane": true,
+        "decision": true
+      },
+      "surfaces_consistent": true,
+      "production_elevation_present": true,
+      "eligible_for_production_elevation": true,
+      "required_elevation_audit_present": true,
+      "block_reasons": []
+    },
+    "secpal-authorization": {
+      "tool_id": "secpal-authorization",
+      "lane_id": "datalog_secpal",
+      "interface": "AuthorizationSemanticCertification@1",
+      "evidence_class": "reference_plus_checked_souffle_vendor",
+      "production_elevation_allowed": true,
+      "lane_status": "ran",
+      "lane_digest_sha256": "5acd28576f3d5422b5106af9b07f86269f6ba0f2b09c4d2cf3639ee3f9f87218",
+      "compact_tool_certified": true,
+      "independent_reconstruction": {
+        "valid": true,
+        "recompute_valid": true,
+        "recompute_failure": null,
+        "check_kinds_present": [
+          "authority",
+          "malformed",
+          "mutation",
+          "negative",
+          "positive",
+          "replay"
+        ],
+        "required_check_kinds": [
+          "positive",
+          "negative",
+          "mutation",
+          "replay"
+        ],
+        "required_kinds_present": true,
+        "required_kinds_all_passed": true,
+        "required_kinds_failed": [],
+        "required_kinds_missing": [],
+        "check_set_digest_sha256": "f81d07888f4e03b9fe7f70a7232fbf44de81d80049cd56f082fab6ca5e8023b8",
+        "compact_check_set_digest_sha256": "f81d07888f4e03b9fe7f70a7232fbf44de81d80049cd56f082fab6ca5e8023b8",
+        "compact_binding_valid": true,
+        "checks_total": 24,
+        "checks_passed": 24,
+        "check_status_counts": {
+          "passed": 24,
+          "failed": 0,
+          "skipped": 0,
+          "unavailable": 0
+        },
+        "raw_checks_embedded": false
+      },
+      "semantic_authority_valid": true,
+      "surfaces": {
+        "role_aware": true,
+        "promotion": true,
+        "tool": true,
+        "lane": true,
+        "decision": true
+      },
+      "surfaces_consistent": true,
+      "production_elevation_present": true,
+      "eligible_for_production_elevation": true,
+      "required_elevation_audit_present": true,
+      "block_reasons": []
+    },
+    "coq": {
+      "tool_id": "coq",
+      "lane_id": "kernel_rocq",
+      "interface": "RocqToolchainCertification@1",
+      "evidence_class": "live_specialized_semantic_receipt",
+      "production_elevation_allowed": true,
+      "lane_status": "ran",
+      "lane_digest_sha256": "ab4bb0ab30b820d7a33a28e879dbba34b090bb48adbd0efdc4bbcaa732f2f945",
+      "compact_tool_certified": true,
+      "independent_reconstruction": {
+        "valid": true,
+        "recompute_valid": true,
+        "recompute_failure": null,
+        "check_kinds_present": [
+          "binding",
+          "fail_closed",
+          "malformed",
+          "mutation",
+          "negative",
+          "positive",
+          "replay",
+          "timeout"
+        ],
+        "required_check_kinds": [
+          "positive",
+          "negative",
+          "mutation",
+          "replay"
+        ],
+        "required_kinds_present": true,
+        "required_kinds_all_passed": true,
+        "required_kinds_failed": [],
+        "required_kinds_missing": [],
+        "check_set_digest_sha256": "b950c24df7b7b114fbf506fb1767ad4783425abe1e71965aa4461fdc6cfde54e",
+        "compact_check_set_digest_sha256": "b950c24df7b7b114fbf506fb1767ad4783425abe1e71965aa4461fdc6cfde54e",
+        "compact_binding_valid": true,
+        "checks_total": 14,
+        "checks_passed": 14,
+        "check_status_counts": {
+          "passed": 14,
+          "failed": 0,
+          "skipped": 0,
+          "unavailable": 0
+        },
+        "raw_checks_embedded": false
+      },
+      "semantic_authority_valid": true,
+      "surfaces": {
+        "role_aware": true,
+        "promotion": true,
+        "tool": true,
+        "lane": true,
+        "decision": true
+      },
+      "surfaces_consistent": true,
+      "production_elevation_present": true,
+      "eligible_for_production_elevation": true,
+      "required_elevation_audit_present": true,
+      "block_reasons": []
+    },
+    "isabelle": {
+      "tool_id": "isabelle",
+      "lane_id": "kernel_isabelle",
+      "interface": "IsabelleToolchainCertification@1",
+      "evidence_class": "live_specialized_semantic_receipt",
+      "production_elevation_allowed": true,
+      "lane_status": "ran",
+      "lane_digest_sha256": "1016906acac8a991a7913e2cda5de2c2df8216483362859b66d36e3532c0bbe5",
+      "compact_tool_certified": true,
+      "independent_reconstruction": {
+        "valid": true,
+        "recompute_valid": true,
+        "recompute_failure": null,
+        "check_kinds_present": [
+          "binding",
+          "fail_closed",
+          "malformed",
+          "mutation",
+          "negative",
+          "positive",
+          "replay",
+          "timeout"
+        ],
+        "required_check_kinds": [
+          "positive",
+          "negative",
+          "mutation",
+          "replay"
+        ],
+        "required_kinds_present": true,
+        "required_kinds_all_passed": true,
+        "required_kinds_failed": [],
+        "required_kinds_missing": [],
+        "check_set_digest_sha256": "55e57f4f39c5dbffaa26b1feb430c373d905e28717b42082d1116098a3f3bb16",
+        "compact_check_set_digest_sha256": "55e57f4f39c5dbffaa26b1feb430c373d905e28717b42082d1116098a3f3bb16",
+        "compact_binding_valid": true,
+        "checks_total": 14,
+        "checks_passed": 14,
+        "check_status_counts": {
+          "passed": 14,
+          "failed": 0,
+          "skipped": 0,
+          "unavailable": 0
+        },
+        "raw_checks_embedded": false
+      },
+      "semantic_authority_valid": true,
+      "surfaces": {
+        "role_aware": true,
+        "promotion": true,
+        "tool": true,
+        "lane": true,
+        "decision": true
+      },
+      "surfaces_consistent": true,
+      "production_elevation_present": true,
+      "eligible_for_production_elevation": true,
+      "required_elevation_audit_present": true,
+      "block_reasons": []
+    }
+  },
+  "certificate_identity": {
+    "valid": true,
+    "digest_valid": true,
+    "stored_digest_sha256": "802635ddf9b0b2e4017e2ebc1f7ea3add70f026bb8de2e543400cbd595a0f9ed",
+    "computed_digest_sha256": "802635ddf9b0b2e4017e2ebc1f7ea3add70f026bb8de2e543400cbd595a0f9ed",
+    "interface_valid": true,
+    "role_aware_identity_valid": true,
+    "public_evidence_valid": true,
+    "recomputed_public_evidence_policy": {
+      "satisfied": true,
+      "safe": true,
+      "failures": [],
+      "violations": [],
+      "violation_count": 0,
+      "host_private_paths_forbidden": true,
+      "repo_root_paths_forbidden": true,
+      "raw_process_output_forbidden": true,
+      "raw_secret_or_witness_forbidden": true,
+      "max_public_string_bytes": 8192
+    }
+  },
+  "offline_derivation": {
+    "satisfied": true,
+    "certificate_policy_satisfied": true,
+    "required_lanes": {
+      "datalog_secpal": {
+        "satisfied": true,
+        "install_attempted": false,
+        "download_attempted": false,
+        "network_used": false
+      },
+      "kernel": {
+        "satisfied": true,
+        "install_attempted": false,
+        "download_attempted": false,
+        "network_used": false
+      },
+      "kernel_isabelle": {
+        "satisfied": true,
+        "install_attempted": false,
+        "download_attempted": false,
+        "network_used": false
+      },
+      "kernel_rocq": {
+        "satisfied": true,
+        "install_attempted": false,
+        "download_attempted": false,
+        "network_used": false
+      },
+      "runtime_mtl": {
+        "satisfied": true,
+        "install_attempted": false,
+        "download_attempted": false,
+        "network_used": false
+      }
+    }
+  },
+  "summary": {
+    "required_count": 6,
+    "independent_reconstruction_complete": [
+      "lean",
+      "runtime-mtl",
+      "datalog-authorization",
+      "secpal-authorization",
+      "coq",
+      "isabelle"
+    ],
+    "independent_reconstruction_incomplete": [],
+    "all_required_reconstructions_valid": true,
+    "production_elevation_present": [
+      "lean",
+      "runtime-mtl",
+      "datalog-authorization",
+      "secpal-authorization",
+      "coq",
+      "isabelle"
+    ],
+    "production_elevation_missing": [],
+    "elevation_without_reconstruction": [],
+    "elevation_with_disallowed_evidence_class": [],
+    "structurally_valid": true,
+    "fanin_closed": true,
+    "failures": []
+  },
+  "required_elevation_audit": {
+    "valid": true,
+    "required": [
+      "lean",
+      "runtime-mtl",
+      "datalog-authorization",
+      "secpal-authorization",
+      "coq",
+      "isabelle"
+    ],
+    "present": [
+      "lean",
+      "runtime-mtl",
+      "datalog-authorization",
+      "secpal-authorization",
+      "coq",
+      "isabelle"
+    ],
+    "missing": [],
+    "expected_global_production_certified_tool_ids": [
+      "apalache",
+      "autohyper",
+      "coq",
+      "cvc5",
+      "datalog-authorization",
+      "eprover",
+      "hyperltl",
+      "isabelle",
+      "lean",
+      "mchyper",
+      "proverif",
+      "runtime-mtl",
+      "secpal-authorization",
+      "tamarin",
+      "tlc",
+      "vampire",
+      "z3",
+      "zkp-circuit"
+    ],
+    "failures": []
+  },
+  "role_aware_certificate": {
+    "digest_sha256": "802635ddf9b0b2e4017e2ebc1f7ea3add70f026bb8de2e543400cbd595a0f9ed",
+    "interface": "FormalVerificationToolchainCertificate@1",
+    "projection_model": "digest_bound_compact_projection/v1",
+    "raw_certificate_embedded": false
+  },
+  "acceptance": {
+    "role_aware_certificate_identity_bound": true,
+    "required_tools_population_exact": true,
+    "each_required_tool_has_independent_reconstruction_surface": true,
+    "all_required_reconstructions_valid": true,
+    "production_elevation_requires_independent_pnmr": true,
+    "no_elevation_without_reconstruction": true,
+    "production_elevation_allowed_respected": true,
+    "checks_never_collapsed": true,
+    "raw_checks_not_reembedded": true,
+    "offline_only": true,
+    "structurally_valid": true,
+    "fanin_closed": true,
+    "merge_not_claimed": true,
+    "deployment_not_claimed": true,
+    "required_elevation_audit_bound": true
+  },
+  "evidence": {
+    "integration_test": "test/integration/toolchains/test_formal_verification_production_elevation_fanin.py",
+    "receipt": "docs/architecture/formal_verification_production_elevation_fanin_receipt.json",
+    "release_candidate": "docs/architecture/formal_verification_role_aware_release_candidate.json",
+    "release_candidate_integration_test": "test/integration/test_formal_verification_role_aware_release_candidate.py",
+    "certifier": "tools/logic/certify_formal_verification_toolchains.py",
+    "receipt_builder": "tools/logic/build_formal_verification_tactician_receipt.py",
+    "validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_production_elevation_fanin.py test/integration/test_formal_verification_role_aware_release_candidate.py test/integration/test_formal_verification_real_tool_matrix.py -q"
+  },
+  "claims": {
+    "merge": false,
+    "deployment": false,
+    "post_merge_attestation": false,
+    "self_referential_current_tree": false,
+    "max_stage": "release_candidate"
+  },
+  "status": "production_semantic_elevation_fanin_closed",
+  "public_evidence_policy": {
+    "satisfied": true,
+    "safe": true,
+    "failures": [],
+    "violations": [],
+    "violation_count": 0,
+    "host_private_paths_forbidden": true,
+    "repo_root_paths_forbidden": true,
+    "raw_process_output_forbidden": true,
+    "raw_secret_or_witness_forbidden": true,
+    "max_public_string_bytes": 8192
+  },
+  "receipt_digest_sha256": "sha256:2348ce1c4b92fb7b656c44812b5b1cd37181048459747c68802ca5899de22bd4"
+}

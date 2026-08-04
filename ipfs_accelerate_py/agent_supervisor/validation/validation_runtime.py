@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import resource
 import shlex
 import shutil
@@ -32,11 +33,27 @@ from typing import Any
 VALIDATION_PATH_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PATH"
 VALIDATION_PYTHON_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON"
 VALIDATION_PYTHONPATH_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHONPATH"
+VALIDATION_PYTHON_MODULES_ENV = (
+    "IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON_MODULES"
+)
 VALIDATION_NPM_CACHE_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_NPM_CACHE"
 VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV = (
     "IPFS_ACCELERATE_AGENT_VALIDATION_PLAYWRIGHT_BROWSERS_PATH"
 )
 VALIDATION_SUPERVISOR_STATE_ROOT_ENV = "LPR_STATE_ROOT"
+FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV = (
+    "IPFS_ACCELERATE_AGENT_FORMAL_TOOLCHAIN_CONTRACT_SHA256"
+)
+FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV = (
+    "IPFS_ACCELERATE_AGENT_REQUIRED_COMMANDS"
+)
+FORMAL_TOOLCHAIN_PATH_ENV = (
+    "IPFS_ACCELERATE_VALIDATION_FORMAL_TOOLCHAIN_PATH"
+)
+FORMAL_TOOLCHAIN_ROOT_ENV_NAMES = (
+    "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
+    "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT",
+)
 VALIDATION_PYTHON_LAUNCHER_SHA256_ENV = (
     "IPFS_ACCELERATE_VALIDATION_PYTHON_LAUNCHER_SHA256"
 )
@@ -61,6 +78,10 @@ HERMETIC_VALIDATION_RUNTIME_SCHEMA = (
 VALIDATION_ENVIRONMENT_CONTRACT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/validation-environment-contract@1"
 )
+FORMAL_TOOLCHAIN_DEPLOYMENT_MANIFEST_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "formal-toolchain-deployment-manifest@1"
+)
 _RUNTIME_ID_ENV = "IPFS_ACCELERATE_VALIDATION_RUNTIME_ID"
 _CANCELLATION_ID_ENV = "IPFS_ACCELERATE_VALIDATION_CANCELLATION_ID"
 _VALIDATION_PYTHON_LAUNCHER_POLICY_BASE = (
@@ -73,6 +94,23 @@ _VALIDATION_PYTHON_LAUNCHER_POLICY_BASE = (
 )
 _SEALED_VALIDATION_PYTHON_RUNNER_ATTRIBUTE = (
     "__ipfs_accelerate_sealed_validation_python__"
+)
+_FORMAL_TOOL_COMMAND_RE = re.compile(
+    r"[A-Za-z0-9][A-Za-z0-9._+-]{0,127}"
+)
+_PYTHON_MODULE_RE = re.compile(
+    r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*"
+)
+_MAX_FORMAL_TOOL_COMMANDS = 64
+_MAX_VALIDATION_PYTHON_MODULES = 64
+_MAX_VALIDATION_PYTHON_PROBE_OUTPUT_BYTES = 64 * 1024
+_VALIDATION_PYTHON_PROBE_MARKER = (
+    "__IPFS_ACCELERATE_VALIDATION_PYTHON_MODULE_PROBE__="
+)
+DEFAULT_VALIDATION_PYTHON_MODULES = ("pytest",)
+VALIDATION_PYTHON_MODULE_PREFLIGHT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "validation-python-module-preflight@1"
 )
 
 # These values affect deterministic/offline validation without carrying the
@@ -533,6 +571,129 @@ def validation_executable_path(
     return os.pathsep.join(entries)
 
 
+def _formal_toolchain_required_commands(
+    source: Mapping[str, object],
+) -> tuple[str, ...]:
+    raw = str(
+        source.get(FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV) or ""
+    ).strip()
+    if not raw:
+        return ()
+    commands: list[str] = []
+    for item in raw.split(","):
+        command = item.strip()
+        if not command or not _FORMAL_TOOL_COMMAND_RE.fullmatch(command):
+            raise ValidationRuntimeError(
+                f"{FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV} must contain "
+                "comma-separated bare executable names"
+            )
+        if command not in commands:
+            commands.append(command)
+        if len(commands) > _MAX_FORMAL_TOOL_COMMANDS:
+            raise ValidationRuntimeError(
+                f"{FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV} contains too "
+                "many commands"
+            )
+    return tuple(commands)
+
+
+def _formal_toolchain_root(
+    source: Mapping[str, object],
+    variable: str,
+) -> str | None:
+    raw = str(source.get(variable) or "").strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    if not path.is_absolute():
+        raise ValidationRuntimeError(
+            f"{variable} must be an absolute deployed toolchain root"
+        )
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as exc:
+        raise ValidationRuntimeError(
+            f"{variable} deployed toolchain root is unavailable"
+        ) from exc
+    if not resolved.is_dir():
+        raise ValidationRuntimeError(
+            f"{variable} deployed toolchain root is not a directory"
+        )
+    try:
+        _reject_writable_path(
+            resolved,
+            source=f"{variable} deployed toolchain root",
+        )
+    except ValidationRuntimeError as exc:
+        raise ValidationRuntimeError(
+            f"{variable} is not an immutable formal-toolchain deployment; "
+            "stage reviewed assets under a root-owned/read-only root before "
+            "supervisor dispatch"
+        ) from exc
+    return str(resolved)
+
+
+def formal_toolchain_deployment_manifest(
+    environment: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Build and verify the cross-boundary formal-toolchain manifest.
+
+    The manifest is derived only from the already fail-closed validation PATH,
+    explicitly allowlisted managed roots, and explicitly required bare command
+    names.  Every required executable is content hashed after writable-path
+    rejection.  A caller-supplied expected identity is a fence: mismatch fails
+    before provider dispatch or validation child creation.
+    """
+
+    source = os.environ if environment is None else environment
+    bound_path = str(source.get(FORMAL_TOOLCHAIN_PATH_ENV) or "").strip()
+    path = (
+        os.pathsep.join(
+            _validated_path_entries(
+                bound_path,
+                source=FORMAL_TOOLCHAIN_PATH_ENV,
+            )
+        )
+        if bound_path
+        else validation_executable_path(source)
+    )
+    roots = {
+        variable: resolved
+        for variable in FORMAL_TOOLCHAIN_ROOT_ENV_NAMES
+        if (resolved := _formal_toolchain_root(source, variable)) is not None
+    }
+    commands = _formal_toolchain_required_commands(source)
+    executable_identities: dict[str, dict[str, object]] = {}
+    for command in commands:
+        found = shutil.which(command, path=path)
+        if not found:
+            raise ValidationRuntimeError(
+                f"required formal toolchain command is unavailable: {command}"
+            )
+        executable_identities[command] = _file_identity(Path(found))
+    manifest: dict[str, object] = {
+        "schema": FORMAL_TOOLCHAIN_DEPLOYMENT_MANIFEST_SCHEMA,
+        "path_entries": path.split(os.pathsep),
+        "managed_roots": roots,
+        "required_executables": executable_identities,
+        "writable_sources_rejected": True,
+    }
+    identity = _sha256(_canonical_json(manifest).encode("utf-8"))
+    expected = str(
+        source.get(FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV) or ""
+    ).strip()
+    if expected:
+        if not re.fullmatch(r"[0-9a-f]{64}", expected):
+            raise ValidationRuntimeError(
+                f"{FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV} is malformed"
+            )
+        if expected != identity:
+            raise ValidationRuntimeError(
+                "formal toolchain deployment contract identity mismatch"
+            )
+    return {**manifest, "manifest_sha256": identity}
+
+
 def validation_python_executable(
     environment: Mapping[str, object] | None = None,
 ) -> str:
@@ -823,6 +984,7 @@ def build_validation_environment(
 
     source = os.environ if environment is None else environment
     python_executable = validation_python_executable(source)
+    formal_toolchain = formal_toolchain_deployment_manifest(source)
     result = {
         key: str(source[key])
         for key in sorted(VALIDATION_ENVIRONMENT_ALLOWLIST)
@@ -843,7 +1005,9 @@ def build_validation_environment(
             # to remain unavailable, so neither scope can import host settings.
             "NPM_CONFIG_USERCONFIG": _NPM_DISABLED_USER_CONFIG,
             "PAGER": "cat",
-            "PATH": validation_executable_path(source),
+            "PATH": os.pathsep.join(
+                str(item) for item in formal_toolchain["path_entries"]
+            ),
             "PIP_CONFIG_FILE": "/dev/null",
             "PIP_DISABLE_PIP_VERSION_CHECK": "1",
             "PIP_NO_INPUT": "1",
@@ -898,6 +1062,23 @@ def build_validation_environment(
     result.setdefault("LC_ALL", "C")
     result.setdefault("PYTHONHASHSEED", "0")
     result.setdefault("TZ", "UTC")
+    result[FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV] = str(
+        formal_toolchain["manifest_sha256"]
+    )
+    result[FORMAL_TOOLCHAIN_PATH_ENV] = os.pathsep.join(
+        str(item) for item in formal_toolchain["path_entries"]
+    )
+    required_commands = tuple(
+        dict(formal_toolchain["required_executables"])
+    )
+    if required_commands:
+        result[FORMAL_TOOLCHAIN_REQUIRED_COMMANDS_ENV] = ",".join(
+            required_commands
+        )
+    for variable, root in dict(
+        formal_toolchain["managed_roots"]
+    ).items():
+        result[str(variable)] = str(root)
     return result
 
 
@@ -922,6 +1103,7 @@ def canonical_validation_environment_contract(
     source = os.environ if environment is None else environment
     child = build_validation_environment(source)
     path = child["PATH"]
+    formal_toolchain = formal_toolchain_deployment_manifest(source)
     return {
         "schema": VALIDATION_ENVIRONMENT_CONTRACT_SCHEMA,
         "path": path,
@@ -938,6 +1120,21 @@ def canonical_validation_environment_contract(
         "inherited_path_ignored": True,
         "writable_toolchain_paths_rejected": True,
         "python_interpreter": child["PYTHON"],
+        "required_python_modules": required_validation_python_modules(
+            environment=source,
+        ),
+        "formal_toolchain_contract_sha256": formal_toolchain[
+            "manifest_sha256"
+        ],
+        "formal_toolchain_required_executables": {
+            command: identity["sha256"]
+            for command, identity in dict(
+                formal_toolchain["required_executables"]
+            ).items()
+        },
+        "formal_toolchain_managed_roots": dict(
+            formal_toolchain["managed_roots"]
+        ),
         "base_home": child["HOME"],
         "base_xdg": {
             key: child[key]
@@ -1173,6 +1370,347 @@ def validation_python_launcher_environment(
                 os.close(fd)
             except OSError:
                 pass
+
+
+def normalize_validation_python_modules(
+    modules: Sequence[str] | str,
+) -> tuple[str, ...]:
+    """Normalize a bounded list of import names used by validation.
+
+    Import names, rather than package-manager requirement strings, keep the
+    probe independent of pip and prevent task metadata from becoming code.
+    """
+
+    raw_modules = (modules,) if isinstance(modules, str) else modules
+    normalized: list[str] = []
+    for raw in raw_modules:
+        for item in str(raw).split(","):
+            module = item.strip()
+            if not module:
+                continue
+            if not _PYTHON_MODULE_RE.fullmatch(module):
+                raise ValidationRuntimeError(
+                    "required validation Python module must be a dotted "
+                    f"import name: {module!r}"
+                )
+            if module not in normalized:
+                normalized.append(module)
+            if len(normalized) > _MAX_VALIDATION_PYTHON_MODULES:
+                raise ValidationRuntimeError(
+                    "too many required validation Python modules"
+                )
+    return tuple(normalized)
+
+
+def required_validation_python_modules(
+    additional_modules: Sequence[str] | str = (),
+    *,
+    environment: Mapping[str, object] | None = None,
+) -> tuple[str, ...]:
+    """Return core, operator-configured, and task-configured import names."""
+
+    source = os.environ if environment is None else environment
+    configured = str(
+        source.get(VALIDATION_PYTHON_MODULES_ENV) or ""
+    ).strip()
+    configured_modules: tuple[str, ...] = (
+        (configured,) if configured else ()
+    )
+    additional: tuple[str, ...] = (
+        (additional_modules,)
+        if isinstance(additional_modules, str)
+        else tuple(additional_modules)
+    )
+    return normalize_validation_python_modules(
+        (
+            *DEFAULT_VALIDATION_PYTHON_MODULES,
+            *configured_modules,
+            *additional,
+        )
+    )
+
+
+@contextmanager
+def private_validation_environment(
+    environment: Mapping[str, str],
+) -> Iterator[dict[str, str]]:
+    """Yield the same fresh profile boundary used by validation commands."""
+
+    with tempfile.TemporaryDirectory(
+        prefix="ipfs-accelerate-validation-home-"
+    ) as temporary_home:
+        home_path = Path(temporary_home)
+        child_environment = {
+            str(key): str(value) for key, value in environment.items()
+        }
+        child_environment.update(
+            {
+                "HOME": str(home_path),
+                "PYTHONNOUSERSITE": "1",
+                "XDG_CACHE_HOME": str(home_path / ".cache"),
+                "XDG_CONFIG_HOME": str(home_path / ".config"),
+                "XDG_DATA_HOME": str(home_path / ".local" / "share"),
+                "XDG_STATE_HOME": str(home_path / ".local" / "state"),
+            }
+        )
+        for key in (
+            "XDG_CACHE_HOME",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+            "XDG_STATE_HOME",
+        ):
+            Path(child_environment[key]).mkdir(
+                mode=0o700,
+                parents=True,
+                exist_ok=True,
+            )
+        yield child_environment
+
+
+_VALIDATION_PYTHON_MODULE_PROBE_SOURCE = r"""
+import contextlib
+import importlib
+import io
+import json
+import os
+import site
+import sys
+
+required = json.loads(sys.argv[1])
+missing = []
+failures = {}
+for module in required:
+    captured_stdout = io.StringIO()
+    captured_stderr = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(captured_stdout):
+            with contextlib.redirect_stderr(captured_stderr):
+                importlib.import_module(module)
+    except ModuleNotFoundError as exc:
+        missing_name = str(getattr(exc, "name", "") or "")
+        if missing_name == module or module.startswith(missing_name + "."):
+            missing.append(module)
+        else:
+            failures[module] = {
+                "exception_type": type(exc).__name__,
+                "missing_dependency": missing_name,
+            }
+    except BaseException as exc:
+        failures[module] = {"exception_type": type(exc).__name__}
+
+payload = {
+    "missing_modules": missing,
+    "failed_modules": failures,
+    "environment": {
+        "home_is_private": os.path.basename(os.environ.get("HOME", "")).startswith(
+            "ipfs-accelerate-validation-home-"
+        ),
+        "python_no_user_site": os.environ.get("PYTHONNOUSERSITE") == "1",
+        "site_user_enabled": bool(site.ENABLE_USER_SITE),
+    },
+    "python_executable": sys.executable,
+}
+print(
+    "__IPFS_ACCELERATE_VALIDATION_PYTHON_MODULE_PROBE__="
+    + json.dumps(payload, sort_keys=True, separators=(",", ":"))
+)
+raise SystemExit(0 if not missing and not failures else 3)
+"""
+
+
+@sealed_validation_python_runner
+def preflight_validation_python_modules(
+    additional_modules: Sequence[str] | str = (),
+    *,
+    environment: Mapping[str, object] | None = None,
+    timeout_seconds: float = 15.0,
+) -> dict[str, object]:
+    """Probe required imports through the authoritative Python boundary.
+
+    This runs the exact configured interpreter behind the same sealed launcher,
+    approved ``PYTHONPATH``, private ``HOME``/XDG directories, and
+    ``PYTHONNOUSERSITE=1`` policy used by authoritative validation.  Missing or
+    broken imports are returned as infrastructure diagnostics so callers can
+    defer before a task attempt or model invocation is charged.
+    """
+
+    if isinstance(timeout_seconds, bool) or float(timeout_seconds) <= 0:
+        raise ValidationRuntimeError(
+            "validation Python module preflight timeout must be positive"
+        )
+    required_modules = required_validation_python_modules(
+        additional_modules,
+        environment=environment,
+    )
+    child_environment = validation_environment_for_runner(
+        build_validation_environment(environment),
+        preflight_validation_python_modules,
+    )
+    interpreter = str(child_environment.get(_CHILD_PYTHON_ENV) or "")
+    interpreter_sha256 = str(
+        child_environment.get(VALIDATION_PYTHON_INTERPRETER_SHA256_ENV) or ""
+    )
+    base_receipt: dict[str, object] = {
+        "schema": VALIDATION_PYTHON_MODULE_PREFLIGHT_SCHEMA,
+        "passed": False,
+        "reason": "validation_python_module_probe_not_run",
+        "required_modules": list(required_modules),
+        "missing_modules": [],
+        "failed_modules": {},
+        "python_executable": interpreter,
+        "python_interpreter_sha256": interpreter_sha256,
+        "private_home": True,
+        "python_no_user_site": True,
+    }
+    try:
+        with private_validation_environment(
+            child_environment
+        ) as private_environment:
+            with validation_python_launcher_environment(
+                private_environment
+            ) as (launcher_environment, launcher_receipt):
+                completed = subprocess.run(
+                    [
+                        launcher_environment["PYTHON"],
+                        "-c",
+                        _VALIDATION_PYTHON_MODULE_PROBE_SOURCE,
+                        json.dumps(list(required_modules)),
+                    ],
+                    cwd=private_environment["HOME"],
+                    text=True,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    timeout=float(timeout_seconds),
+                    check=False,
+                    env=launcher_environment,
+                )
+    except subprocess.TimeoutExpired:
+        return {
+            **base_receipt,
+            "reason": "validation_python_module_probe_timed_out",
+            "action": (
+                "verify the configured validation interpreter starts without "
+                "profile hooks and imports the required modules promptly"
+            ),
+        }
+    except (OSError, ValidationRuntimeError) as exc:
+        return {
+            **base_receipt,
+            "reason": "validation_python_module_probe_unavailable",
+            "exception_type": type(exc).__name__,
+            "error": str(exc)[-1000:],
+            "action": (
+                "repair IPFS_ACCELERATE_AGENT_VALIDATION_PYTHON and its "
+                "sealed package environment before restarting the supervisor"
+            ),
+        }
+
+    output = completed.stdout or ""
+    if len(output.encode("utf-8", errors="replace")) > (
+        _MAX_VALIDATION_PYTHON_PROBE_OUTPUT_BYTES
+    ):
+        return {
+            **base_receipt,
+            "reason": "validation_python_module_probe_output_too_large",
+            "returncode": int(completed.returncode),
+            "action": (
+                "repair a required module that emits excessive output during "
+                "import before restarting the supervisor"
+            ),
+        }
+    marker_index = output.rfind(_VALIDATION_PYTHON_PROBE_MARKER)
+    if marker_index < 0:
+        return {
+            **base_receipt,
+            "reason": "validation_python_module_probe_receipt_missing",
+            "returncode": int(completed.returncode),
+            "action": (
+                "verify the configured validation interpreter can execute the "
+                "sealed dependency probe"
+            ),
+        }
+    encoded_receipt = output[
+        marker_index + len(_VALIDATION_PYTHON_PROBE_MARKER) :
+    ].splitlines()[0]
+    try:
+        probe = json.loads(encoded_receipt)
+    except (json.JSONDecodeError, TypeError):
+        return {
+            **base_receipt,
+            "reason": "validation_python_module_probe_receipt_invalid",
+            "returncode": int(completed.returncode),
+            "action": (
+                "verify the configured validation interpreter can emit the "
+                "dependency probe receipt"
+            ),
+        }
+    if not isinstance(probe, Mapping):
+        return {
+            **base_receipt,
+            "reason": "validation_python_module_probe_receipt_invalid",
+            "returncode": int(completed.returncode),
+        }
+    missing = [
+        str(item)
+        for item in probe.get("missing_modules", [])
+        if str(item)
+    ]
+    failed_raw = probe.get("failed_modules")
+    failed = (
+        {
+            str(key): value
+            for key, value in failed_raw.items()
+            if str(key)
+        }
+        if isinstance(failed_raw, Mapping)
+        else {}
+    )
+    probe_environment = probe.get("environment")
+    environment_matches = (
+        isinstance(probe_environment, Mapping)
+        and probe_environment.get("home_is_private") is True
+        and probe_environment.get("python_no_user_site") is True
+        and probe_environment.get("site_user_enabled") is False
+    )
+    passed = (
+        completed.returncode == 0
+        and not missing
+        and not failed
+        and environment_matches
+        and str(probe.get("python_executable") or "") == interpreter
+    )
+    reason = (
+        "validation_python_modules_available"
+        if passed
+        else "validation_python_modules_unavailable"
+        if missing or failed
+        else "validation_python_module_probe_environment_mismatch"
+    )
+    result = {
+        **base_receipt,
+        "passed": passed,
+        "reason": reason,
+        "returncode": int(completed.returncode),
+        "missing_modules": missing,
+        "failed_modules": failed,
+        "environment": dict(probe_environment or {}),
+        "validation_python_launcher": {
+            "content_sha256": launcher_receipt.content_sha256,
+            "interpreter_sha256": launcher_receipt.interpreter_sha256,
+            "interpreter_stat": launcher_receipt.interpreter_stat,
+            "mode": launcher_receipt.mode,
+            "policy_sha256": launcher_receipt.policy_sha256,
+            "sealed": launcher_receipt.sealed,
+        },
+    }
+    if not passed:
+        result["action"] = (
+            "install or seal the required import modules into "
+            f"{interpreter!r}, then restart the supervisor; user-site "
+            "packages are intentionally unavailable"
+        )
+    return result
 
 
 def validation_shell_command(command: str) -> list[str]:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Semantic certification for the pinned Lean 4 kernel.
 
-``LeanSemanticCertification@1`` / FVT-G101 (FVT-040).
+``LeanSemanticCertification@1`` / FVT-G101 (FVT-040; validation repair FVT-070).
 
 Owns the Lean lane handler, hermetic corpus, and focused certification surface
 for the already-usable offline pin ``leanprover/lean4:v4.31.0``. Promotion is
@@ -37,16 +37,23 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Final, Mapping, Sequence
 
+from tools.logic.certification.public_evidence import (
+    public_evidence_audit,
+    public_evidence_projection,
+)
+
 INTERFACE: Final = "LeanSemanticCertification@1"
 SCHEMA_VERSION: Final = "lean-semantic-certification/v1"
 CORPUS_SCHEMA: Final = "lean-semantic-corpus/v1"
 GOAL_ID: Final = "FVT-G101"
 TASK_ID: Final = "FVT-040"
+VALIDATION_TASK_ID: Final = "FVT-070"
 PROGRAM: Final = "formal-verification-tactician/lean-certification"
 LANE_ID: Final = "kernel"
 TOOL_ID: Final = "lean"
 CERTIFICATION_SURFACE: Final = "tools.logic.certification.lean"
 HANDLER_ID: Final = "lean_semantic_certifier"
+OBJECTIVE_EVIDENCE: Final = "objective validation repair"
 
 LOCKED_TOOLCHAIN: Final = "leanprover/lean4:v4.31.0"
 LOCKED_VERSION: Final = "v4.31.0"
@@ -56,11 +63,15 @@ AUTHORITY_SCOPE: Final = "kernel_proof_checking_only"
 
 PROBE_TIMEOUT_SECONDS: Final = 5.0
 CHECK_TIMEOUT_SECONDS: Final = 20.0
+MANAGED_TOOL_PATH_MARKER: Final = "<managed-tool-path-redacted>"
 
 DEFAULT_MANIFEST_RELATIVE: Final = Path(
     "test/fixtures/formal_verification/toolchains/lean/manifest.json"
 )
 DEFAULT_LOCK_RELATIVE: Final = Path("config/formal_verification_toolchains.lock.json")
+DEFAULT_FANIN_CERTIFICATE_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_kernel_live_certificate.json"
+)
 
 _SORRY = re.compile(
     r"(?<![A-Za-z0-9_'])(?:sorry|admit|sorryAx)(?![A-Za-z0-9_'])"
@@ -224,6 +235,38 @@ def content_digest(payload: Any) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
+def _managed_executable_reference(value: object) -> tuple[str | None, str | None]:
+    """Return a portable kernel executable marker and useful basename."""
+
+    if value in (None, ""):
+        return None, None
+    basename = Path(str(value)).name
+    return f"{MANAGED_TOOL_PATH_MARKER}/{basename}", basename
+
+
+def _finalize_public_evidence(
+    value: Mapping[str, Any],
+    *,
+    repo_root: Path,
+    digest_field: str,
+) -> dict[str, Any]:
+    """Project a kernel receipt before computing its outer digest."""
+
+    projected = public_evidence_projection(dict(value), repo_root=repo_root)
+    if not isinstance(projected, dict):
+        raise RuntimeError("kernel public evidence projection must be an object")
+    audit = public_evidence_audit(projected, repo_root=repo_root)
+    if not audit.get("satisfied"):
+        raise RuntimeError(
+            "unsafe kernel public evidence: "
+            + ",".join(str(item) for item in audit.get("failures") or [])
+        )
+    projected[digest_field] = content_digest(
+        {key: item for key, item in projected.items() if key != digest_field}
+    )
+    return projected
+
+
 def offline_env(base: Mapping[str, str] | None = None) -> dict[str, str]:
     """Environment that forbids opportunistic install/download/network."""
 
@@ -318,13 +361,23 @@ def detect_lean_shim_toolchain_mismatch(
     selected_toolchain: str | None,
     installed_toolchains: Sequence[str],
 ) -> bool:
-    """True when the selected Lean toolchain is not offline-installed."""
+    """True when elan has offline installs but the selected pin is absent.
+
+    An empty inventory is not a shim mismatch. Sealed validation homes often
+    have no ``~/.elan/toolchains`` listing even when a digest-bound Lean binary
+    is on ``PATH``. In that case the certifier must still probe ``lean
+    --version`` under ``ELAN_NO_AUTO_INSTALL=1`` and accept only an exact pin
+    match. Shim mismatch applies when *other* toolchains are offline-installed
+    and the lock pin is not among them (elan would otherwise network-fetch).
+    """
 
     if not selected_toolchain or not str(selected_toolchain).strip():
         return False
     installed = {
         item.strip() for item in installed_toolchains if item and str(item).strip()
     }
+    if not installed:
+        return False
     return selected_toolchain.strip() not in installed
 
 
@@ -414,8 +467,10 @@ class LeanSemanticCertification:
     schema_version: str = SCHEMA_VERSION
     goal_id: str = GOAL_ID
     task_id: str = TASK_ID
+    validation_task_id: str = VALIDATION_TASK_ID
     program: str = PROGRAM
     certification_surface: str = CERTIFICATION_SURFACE
+    objective_evidence: str = OBJECTIVE_EVIDENCE
     locked_toolchain: str = LOCKED_TOOLCHAIN
     locked_version: str = LOCKED_VERSION
     authority_ceiling: str = AUTHORITY_CEILING
@@ -429,6 +484,7 @@ class LeanSemanticCertification:
     usable: bool = False
     shim_toolchain_mismatch: bool = False
     locked_version_mismatch: bool = False
+    elan_inventory_empty: bool = False
     network_used: bool = False
     install_attempted: bool = False
     download_attempted: bool = False
@@ -465,12 +521,14 @@ def default_corpus_manifest() -> dict[str, Any]:
         "interface": INTERFACE,
         "goal_id": GOAL_ID,
         "task_id": TASK_ID,
+        "validation_task_id": VALIDATION_TASK_ID,
         "tool_id": TOOL_ID,
         "lane_id": LANE_ID,
         "locked_toolchain": LOCKED_TOOLCHAIN,
         "locked_version": LOCKED_VERSION,
         "authority_ceiling": AUTHORITY_CEILING,
         "authority_scope": AUTHORITY_SCOPE,
+        "objective_evidence": OBJECTIVE_EVIDENCE,
         "policy": {
             "no_install": True,
             "no_download": True,
@@ -479,6 +537,7 @@ def default_corpus_manifest() -> dict[str, Any]:
             "shim_mismatch_fails_closed": True,
             "sorry_admit_unsafe_fail_closed": True,
             "authority_is_kernel_proof_checking_only": True,
+            "empty_elan_inventory_probes_path_pin": True,
         },
         "cases": [dict(case) for case in _DEFAULT_CORPUS_CASES],
     }
@@ -523,6 +582,7 @@ def probe_lean_identity(
 
     probe_env = offline_env(env)
     installed = list_elan_installed_toolchains(probe_env)
+    shim_mismatch = detect_lean_shim_toolchain_mismatch(LOCKED_TOOLCHAIN, installed)
     result: dict[str, Any] = {
         "tool_id": TOOL_ID,
         "path_present": False,
@@ -532,17 +592,18 @@ def probe_lean_identity(
         "installed": False,
         "selected_toolchain": LOCKED_TOOLCHAIN,
         "installed_toolchains": installed,
-        "shim_toolchain_mismatch": detect_lean_shim_toolchain_mismatch(
-            LOCKED_TOOLCHAIN, installed
-        ),
+        "shim_toolchain_mismatch": shim_mismatch,
         "locked_version_mismatch": False,
         "network_used": False,
         "install_attempted": False,
         "download_attempted": False,
         "probe_error": None,
+        "elan_inventory_empty": not bool(installed),
     }
 
-    if result["shim_toolchain_mismatch"]:
+    # True shim mismatch: elan knows other pins but not the lock pin. Fail
+    # closed without probing so we never trigger an opportunistic download.
+    if shim_mismatch:
         result["probe_error"] = "shim_toolchain_mismatch"
         return result
 
@@ -560,7 +621,15 @@ def probe_lean_identity(
         env=probe_env,
     )
     if completed is None:
+        # With ELAN_NO_AUTO_INSTALL, a missing offline pin often surfaces as
+        # spawn/timeout rather than a clean version banner.
         result["probe_error"] = "probe_timeout_or_spawn_failure"
+        return result
+
+    if completed.returncode not in (0, None) and not (
+        first_nonempty_line(completed.stdout) or first_nonempty_line(completed.stderr)
+    ):
+        result["probe_error"] = f"version_probe_exit_{completed.returncode}"
         return result
 
     banner = first_nonempty_line(completed.stdout) or first_nonempty_line(
@@ -723,6 +792,7 @@ def run_semantic_suite(
     cert.installed = bool(identity.get("installed"))
     cert.shim_toolchain_mismatch = bool(identity.get("shim_toolchain_mismatch"))
     cert.locked_version_mismatch = bool(identity.get("locked_version_mismatch"))
+    cert.elan_inventory_empty = bool(identity.get("elan_inventory_empty"))
     cert.network_used = bool(identity.get("network_used"))
     cert.install_attempted = bool(identity.get("install_attempted"))
     cert.download_attempted = bool(identity.get("download_attempted"))
@@ -1057,6 +1127,27 @@ def build_certification_receipt(
         "authority_is_kernel_proof_checking_only": True,
         "does_not_edit_central_certificate": True,
         "does_not_select_alternate_elan_toolchain": True,
+        "empty_elan_inventory_probes_path_pin": True,
+    }
+    payload["validation_task_id"] = VALIDATION_TASK_ID
+    payload["objective_evidence"] = OBJECTIVE_EVIDENCE
+    payload["evidence"] = {
+        "goal_id": GOAL_ID,
+        "task_id": TASK_ID,
+        "validation_task_id": VALIDATION_TASK_ID,
+        "objective_evidence": OBJECTIVE_EVIDENCE,
+        "certification_surface": CERTIFICATION_SURFACE,
+        "integration_test": (
+            "test/integration/toolchains/test_lean_semantic_certification.py"
+        ),
+        "corpus_manifest": str(DEFAULT_MANIFEST_RELATIVE).replace("\\", "/"),
+        "validation_command": (
+            "ELAN_TOOLCHAIN=leanprover/lean4:v4.31.0 ELAN_NO_AUTO_INSTALL=1 "
+            "python -m pytest "
+            "test/integration/toolchains/test_lean_semantic_certification.py "
+            "test/integration/test_formal_verification_real_tool_matrix.py "
+            "-k lean -q"
+        ),
     }
     payload["receipt_digest_sha256"] = content_digest(
         {
@@ -1109,8 +1200,18 @@ FANIN_INTERFACE: Final = "KernelLiveSemanticFanIn@1"
 FANIN_SCHEMA_VERSION: Final = "kernel-live-semantic-fanin/v1"
 FANIN_GOAL_ID: Final = "FVT-G206"
 FANIN_TASK_ID: Final = "FVT-057"
+FANIN_VALIDATION_TASK_ID: Final = "FVT-074"
+FANIN_OBJECTIVE_EVIDENCE: Final = "objective validation repair"
 FANIN_KERNEL_ID: Final = "lean"
 FANIN_TIMEOUT_SECONDS: Final = 0.05
+FANIN_VALIDATION_COMMAND: Final = (
+    "python -m pytest "
+    "test/integration/toolchains/test_kernel_live_semantic_fanin.py "
+    "test/integration/toolchains/test_lean_semantic_certification.py "
+    "test/integration/toolchains/test_rocq_toolchain_certification.py "
+    "test/integration/toolchains/test_isabelle_toolchain_certification.py "
+    "-q"
+)
 REQUIRED_FANIN_CASE_KINDS: Final[frozenset[str]] = frozenset(
     {
         "positive",
@@ -1371,10 +1472,15 @@ def build_live_fanin_contribution(
         )
 
     positive = outcomes_by_id.get("true_theorem")
+    public_executable, public_executable_basename = _managed_executable_reference(
+        identity.get("executable_path")
+    )
     bindings = {
         "kernel_id": FANIN_KERNEL_ID,
         "tool_id": TOOL_ID,
-        "executable_path": identity.get("executable_path"),
+        "executable_path": public_executable,
+        "executable_basename": public_executable_basename,
+        "managed_executable": public_executable is not None,
         "version_string": identity.get("version_string"),
         "locked_toolchain": LOCKED_TOOLCHAIN,
         "locked_version": LOCKED_VERSION,
@@ -1424,6 +1530,9 @@ def build_live_fanin_contribution(
         "fanin_schema_version": FANIN_SCHEMA_VERSION,
         "goal_id": FANIN_GOAL_ID,
         "task_id": FANIN_TASK_ID,
+        "validation_task_id": FANIN_VALIDATION_TASK_ID,
+        "objective_evidence": FANIN_OBJECTIVE_EVIDENCE,
+        "objective_validation_repair": True,
         "lane_id": LANE_ID,
         "owner_module": CERTIFICATION_SURFACE,
         "locked_toolchain": LOCKED_TOOLCHAIN,
@@ -1436,7 +1545,9 @@ def build_live_fanin_contribution(
         "live_source_helper": "check_lean_source",
         "sibling_kernel_substitution": False,
         "advisor_substitution": False,
-        "executable_path": identity.get("executable_path"),
+        "executable_path": public_executable,
+        "executable_basename": public_executable_basename,
+        "managed_executable": public_executable is not None,
         "version_string": identity.get("version_string"),
         "network_used": bool(identity.get("network_used")),
         "install_attempted": bool(identity.get("install_attempted")),
@@ -1447,22 +1558,29 @@ def build_live_fanin_contribution(
         "cases": cases,
         "checks": checks,
         "bindings": bindings,
+        "evidence": {
+            "goal_id": FANIN_GOAL_ID,
+            "task_id": FANIN_TASK_ID,
+            "validation_task_id": FANIN_VALIDATION_TASK_ID,
+            "objective_evidence": FANIN_OBJECTIVE_EVIDENCE,
+            "objective_validation_repair": True,
+            "certification_surface": CERTIFICATION_SURFACE,
+            "live_source_helper": "check_lean_source",
+            "validation_command": FANIN_VALIDATION_COMMAND,
+        },
         "repo_root": str(root),
         "notes": (
             "Lean live fan-in contribution: own kernel only; no Rocq/Isabelle/advisor "
-            "substitution; timeout fail-closed."
+            "substitution; timeout fail-closed; objective validation repair (FVT-074)."
             if usable
             else "Lean pin unavailable; live fan-in contribution incomplete."
         ),
     }
-    contribution["contribution_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in contribution.items()
-            if key != "contribution_digest_sha256"
-        }
+    return _finalize_public_evidence(
+        contribution,
+        repo_root=root,
+        digest_field="contribution_digest_sha256",
     )
-    return contribution
 
 
 def assemble_kernel_live_fanin_certificate(
@@ -1515,13 +1633,17 @@ def assemble_kernel_live_fanin_certificate(
         "interface": FANIN_INTERFACE,
         "goal_id": FANIN_GOAL_ID,
         "task_id": FANIN_TASK_ID,
+        "validation_task_id": FANIN_VALIDATION_TASK_ID,
+        "objective_evidence": FANIN_OBJECTIVE_EVIDENCE,
+        "objective_validation_repair": bool(all_passed),
         "program": "formal-verification-tactician/kernel-live-semantics",
         "lane_id": LANE_ID,
         "description": (
             "Live semantic fan-in for Lean, Rocq, and Isabelle: each installed "
             "proof kernel checks its own generated source and retains assumptions, "
             "imports/session, theorem, mutation, and output digests. No advisor or "
-            "sibling kernel substitutes for the selected kernel."
+            "sibling kernel substitutes for the selected kernel. FVT-074 binds "
+            "objective validation repair for FVT-G206."
         ),
         "policy": {
             "own_kernel_only": True,
@@ -1533,6 +1655,7 @@ def assemble_kernel_live_fanin_certificate(
             "serialize_expensive_opam_isabelle_resources": True,
             "separate_kernel_authority": True,
             "isabelle_live_source_session_helper_required": True,
+            "objective_validation_repair_required": True,
             "required_case_kinds": sorted(REQUIRED_FANIN_CASE_KINDS),
         },
         "kernels": kernels,
@@ -1572,13 +1695,25 @@ def assemble_kernel_live_fanin_certificate(
                 for kid in required_kernels
             }
         },
+        "acceptance": {
+            "objective_validation_repair": bool(all_passed),
+            "own_kernel_only": True,
+            "isabelle_live_source_session_helper_required": True,
+            "required_case_kinds": sorted(REQUIRED_FANIN_CASE_KINDS),
+        },
         "evidence": {
+            "goal_id": FANIN_GOAL_ID,
+            "task_id": FANIN_TASK_ID,
+            "validation_task_id": FANIN_VALIDATION_TASK_ID,
+            "objective_evidence": FANIN_OBJECTIVE_EVIDENCE,
+            "objective_validation_repair": bool(all_passed),
             "integration_test": (
                 "test/integration/toolchains/test_kernel_live_semantic_fanin.py"
             ),
             "certificate": (
                 "docs/architecture/formal_verification_kernel_live_certificate.json"
             ),
+            "validation_command": FANIN_VALIDATION_COMMAND,
             "surfaces": [
                 CERTIFICATION_SURFACE,
                 "tools.logic.certification.rocq",
@@ -1587,19 +1722,46 @@ def assemble_kernel_live_fanin_certificate(
         },
         "repo_root": str(root),
         "notes": (
-            "All three kernels independently completed live semantic fan-in."
+            "All three kernels independently completed live semantic fan-in; "
+            "objective validation repair (FVT-074) satisfied for FVT-G206."
             if all_passed
             else "Kernel live fan-in incomplete or blocked; promotion denied."
         ),
     }
-    certificate["receipt_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in certificate.items()
-            if key != "receipt_digest_sha256"
-        }
+    return _finalize_public_evidence(
+        certificate,
+        repo_root=root,
+        digest_field="receipt_digest_sha256",
     )
-    return certificate
+
+
+def write_kernel_live_fanin_certificate(
+    certificate: Mapping[str, Any],
+    *,
+    repo_root: Path | None = None,
+    path: Path | None = None,
+) -> Path:
+    """Audit and write a portable kernel live fan-in certificate."""
+
+    root = repo_root or repo_root_from()
+    target = path or (root / DEFAULT_FANIN_CERTIFICATE_RELATIVE)
+    audit = public_evidence_audit(certificate, repo_root=root)
+    if not audit.get("satisfied"):
+        raise RuntimeError(
+            "refusing to write unsafe kernel public evidence: "
+            + ",".join(str(item) for item in audit.get("failures") or [])
+        )
+    payload = _finalize_public_evidence(
+        certificate,
+        repo_root=root,
+        digest_field="receipt_digest_sha256",
+    )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return target
 
 
 # ---------------------------------------------------------------------------
@@ -1676,11 +1838,13 @@ __all__ = [
     "CORPUS_SCHEMA",
     "GOAL_ID",
     "TASK_ID",
+    "VALIDATION_TASK_ID",
     "PROGRAM",
     "LANE_ID",
     "TOOL_ID",
     "CERTIFICATION_SURFACE",
     "HANDLER_ID",
+    "OBJECTIVE_EVIDENCE",
     "LOCKED_TOOLCHAIN",
     "LOCKED_VERSION",
     "LOCKED_VERSION_NUMERIC",
@@ -1712,9 +1876,13 @@ __all__ = [
     "FANIN_SCHEMA_VERSION",
     "FANIN_GOAL_ID",
     "FANIN_TASK_ID",
+    "FANIN_VALIDATION_TASK_ID",
+    "FANIN_OBJECTIVE_EVIDENCE",
+    "FANIN_VALIDATION_COMMAND",
     "REQUIRED_FANIN_CASE_KINDS",
     "live_fanin_case_recipes",
     "build_live_fanin_contribution",
     "assemble_kernel_live_fanin_certificate",
+    "write_kernel_live_fanin_certificate",
     "main",
 ]

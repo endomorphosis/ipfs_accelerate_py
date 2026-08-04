@@ -355,8 +355,18 @@ _ARCHIVE_MAGIC = (
     b"Rar!\x1a\x07",
 )
 _GENERATED_MARKERS_RE = re.compile(
-    r"(?im)^\s*(?:[#/;*-]+\s*)?(?:@generated|generated (?:file|code)|"
-    r"do not edit|automatically generated)\b"
+    r"(?im)^\s*(?:[#/;*-]+\s*)?(?:"
+    r"@generated\b|"
+    r"generated\s+(?:file|code)\b|"
+    r"automatically\s+generated\b|"
+    r"do\s+not\s+edit"
+    r"(?:\s+(?:this|the)\s+(?:file|code))?\s*[.!]?\s*$|"
+    r"do\s+not\s+edit\s*[:;.!-]\s*[^\r\n]{0,80}"
+    r"\b(?:generated|auto-generated|automatically\s+generated)\b|"
+    r"do\s+not\s+edit\s+(?:(?:this|the)\s+)?"
+    r"(?:generated|auto-generated|automatically\s+generated)\s+"
+    r"(?:file|code)\b"
+    r")"
 )
 _VALIDATION_CONFIG_PATHS = (
     ".github/workflows/",
@@ -2897,7 +2907,7 @@ _SYNTHETIC_TEST_SECRET_REFERENCE_RE = re.compile(
     r"""vault://[A-Za-z0-9_.][A-Za-z0-9_./-]{0,255})$"""
 )
 _NEVER_EXPOSE_SENTINEL_RE = re.compile(
-    r"""(?ix)^(?:should|must)[_-]?never[_-]?"""
+    r"""(?ix)^(?:should|must)[_-]?(?:never|not)[_-]?"""
     r"""(?:appear|persist|log|store|commit)$"""
 )
 _TEST_ONLY_NON_SECRET_SENTINEL_RE = re.compile(

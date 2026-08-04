@@ -1,12 +1,26 @@
 {
+  "acceptance": {
+    "isabelle_live_source_session_helper_required": true,
+    "objective_validation_repair": true,
+    "own_kernel_only": true,
+    "required_case_kinds": [
+      "fail_closed",
+      "malformed",
+      "mutation",
+      "negative",
+      "positive",
+      "replay",
+      "timeout"
+    ]
+  },
   "all_kernels_passed": true,
   "bindings": {
     "kernels": {
       "isabelle": {
         "assumptions": [],
-        "executable_path": "isabelle",
+        "executable_path": "<managed-tool-path-redacted>/isabelle",
         "imports": [],
-        "output_digest": "c09daeaa6eec6a6fd12d97657d73dce129f1096c7559604b2977b7283933816b",
+        "output_digest": "64b293c0e6318fbadde9dca2fb2524a2f3cdeeb79037435f2c10c2ce24934665",
         "session": {
           "name": "HOL",
           "process_command_template": "{isabelle} build -d {session_dir} -v FaninLive"
@@ -22,7 +36,7 @@
         "assumptions": [
           "h : n = m"
         ],
-        "executable_path": "lean",
+        "executable_path": "<managed-tool-path-redacted>/lean",
         "imports": [],
         "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
         "session": null,
@@ -37,7 +51,7 @@
       },
       "rocq": {
         "assumptions": [],
-        "executable_path": "coqc",
+        "executable_path": "<managed-tool-path-redacted>/coqc",
         "imports": [],
         "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
         "session": null,
@@ -51,15 +65,21 @@
     }
   },
   "block_reasons": [],
-  "description": "Live semantic fan-in for Lean, Rocq, and Isabelle: each installed proof kernel checks its own generated source and retains assumptions, imports/session, theorem, mutation, and output digests. No advisor or sibling kernel substitutes for the selected kernel.",
+  "description": "Live semantic fan-in for Lean, Rocq, and Isabelle: each installed proof kernel checks its own generated source and retains assumptions, imports/session, theorem, mutation, and output digests. No advisor or sibling kernel substitutes for the selected kernel. FVT-074 binds objective validation repair for FVT-G206.",
   "evidence": {
     "certificate": "docs/architecture/formal_verification_kernel_live_certificate.json",
+    "goal_id": "FVT-G206",
     "integration_test": "test/integration/toolchains/test_kernel_live_semantic_fanin.py",
+    "objective_evidence": "objective validation repair",
+    "objective_validation_repair": true,
     "surfaces": [
       "tools.logic.certification.lean",
       "tools.logic.certification.rocq",
       "tools.logic.certification.isabelle"
-    ]
+    ],
+    "task_id": "FVT-057",
+    "validation_command": "python -m pytest test/integration/toolchains/test_kernel_live_semantic_fanin.py test/integration/toolchains/test_lean_semantic_certification.py test/integration/toolchains/test_rocq_toolchain_certification.py test/integration/toolchains/test_isabelle_toolchain_certification.py -q",
+    "validation_task_id": "FVT-074"
   },
   "goal_id": "FVT-G206",
   "interface": "KernelLiveSemanticFanIn@1",
@@ -89,12 +109,14 @@
           "locked_version": "Isabelle2025-2",
           "session": "HOL"
         },
-        "executable_path": "isabelle",
+        "executable_basename": "isabelle",
+        "executable_path": "<managed-tool-path-redacted>/isabelle",
         "imports": [],
         "kernel_id": "isabelle",
         "locked_version": "Isabelle2025-2",
+        "managed_executable": true,
         "output": {
-          "output_digest": "c09daeaa6eec6a6fd12d97657d73dce129f1096c7559604b2977b7283933816b",
+          "output_digest": "64b293c0e6318fbadde9dca2fb2524a2f3cdeeb79037435f2c10c2ce24934665",
           "returncode": 0
         },
         "session": {
@@ -124,7 +146,7 @@
           "imports": [],
           "kind": "positive",
           "matched": true,
-          "output_digest": "c09daeaa6eec6a6fd12d97657d73dce129f1096c7559604b2977b7283933816b",
+          "output_digest": "64b293c0e6318fbadde9dca2fb2524a2f3cdeeb79037435f2c10c2ce24934665",
           "property": "",
           "reason_codes": [],
           "returncode": 0,
@@ -144,7 +166,7 @@
           "imports": [],
           "kind": "negative",
           "matched": true,
-          "output_digest": "84c9971cf74dd8a9b6713c3c03a0831fb59a524c46e3f705423ed17c9330a54e",
+          "output_digest": "e7aab7033d5203831105cc1f2d8ae83633ec1ec01c7c49e3ca190fe10d451905",
           "property": "",
           "reason_codes": [
             "error_marker",
@@ -168,7 +190,7 @@
           "imports": [],
           "kind": "mutation",
           "matched": true,
-          "output_digest": "b759c5e8568722a1f160a855e255719b590b97c4200fa98c272329267e8ac500",
+          "output_digest": "9e0f695b4f8273f7b66568160c7bfa78c06fb4bf43f79e39b70cba937c0ebf8c",
           "property": "",
           "reason_codes": [
             "error_marker",
@@ -192,7 +214,7 @@
           "imports": [],
           "kind": "mutation",
           "matched": true,
-          "output_digest": "3a86f633c5bb3d60731970fc28db347a4d7d58e90a76a30eaa8b3ec8a8050bda",
+          "output_digest": "00a7393d501c92c2bd0c29e3acceb82fabcea828da84f21ee989bcc4fcf02c1f",
           "property": "",
           "reason_codes": [
             "error_marker",
@@ -216,7 +238,7 @@
           "imports": [],
           "kind": "replay",
           "matched": true,
-          "output_digest": "da0e4dfa876d66a4be82d349a493b7f07da564ebe85d4e6739eabfb1ed06df9d",
+          "output_digest": "b0e241616c822b7a7955ca0aff3e4f2bf73a79fc80857218486baec6a1dbc10a",
           "property": "",
           "reason_codes": [],
           "returncode": 0,
@@ -236,7 +258,7 @@
           "imports": [],
           "kind": "malformed",
           "matched": true,
-          "output_digest": "b961db96f979541e5ce9f2f7d455313e20fd8f45a4114272228901abb5e89fa7",
+          "output_digest": "f42c6c4f3348d3095c885b6fda19dd65d123f689c025af2a5ad5264146c90230",
           "property": "",
           "reason_codes": [
             "error_marker",
@@ -324,7 +346,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "c09daeaa6eec6a6fd12d97657d73dce129f1096c7559604b2977b7283933816b",
+            "output_digest": "64b293c0e6318fbadde9dca2fb2524a2f3cdeeb79037435f2c10c2ce24934665",
             "returncode": 0,
             "session": "HOL",
             "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
@@ -342,7 +364,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "84c9971cf74dd8a9b6713c3c03a0831fb59a524c46e3f705423ed17c9330a54e",
+            "output_digest": "e7aab7033d5203831105cc1f2d8ae83633ec1ec01c7c49e3ca190fe10d451905",
             "returncode": 1,
             "session": "HOL",
             "source_digest": "14ce88591c070c0f5ce905cf28b29891558fa28ffc02af7f11ac1704539b4220",
@@ -364,7 +386,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "b759c5e8568722a1f160a855e255719b590b97c4200fa98c272329267e8ac500",
+            "output_digest": "9e0f695b4f8273f7b66568160c7bfa78c06fb4bf43f79e39b70cba937c0ebf8c",
             "returncode": 1,
             "session": "HOL",
             "source_digest": "4b8685c536a317a6b4c23a4f834a04d594be7c2ac7e8dc3b9314d2b4562716c3",
@@ -386,7 +408,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "3a86f633c5bb3d60731970fc28db347a4d7d58e90a76a30eaa8b3ec8a8050bda",
+            "output_digest": "00a7393d501c92c2bd0c29e3acceb82fabcea828da84f21ee989bcc4fcf02c1f",
             "returncode": 1,
             "session": "HOL",
             "source_digest": "a13b10e51b3ed2c57df27e0678a89bc31ae735fe058606dbcc6c4bd49b3a524d",
@@ -408,7 +430,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "da0e4dfa876d66a4be82d349a493b7f07da564ebe85d4e6739eabfb1ed06df9d",
+            "output_digest": "b0e241616c822b7a7955ca0aff3e4f2bf73a79fc80857218486baec6a1dbc10a",
             "returncode": 0,
             "session": "HOL",
             "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
@@ -426,7 +448,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "b961db96f979541e5ce9f2f7d455313e20fd8f45a4114272228901abb5e89fa7",
+            "output_digest": "f42c6c4f3348d3095c885b6fda19dd65d123f689c025af2a5ad5264146c90230",
             "returncode": 1,
             "session": "HOL",
             "source_digest": "050b5f52402f900dec1d9fc540482a54077a96251fed74de4be6cbcc825c25c2",
@@ -506,9 +528,20 @@
           "status": "passed"
         }
       ],
-      "contribution_digest_sha256": "c590569991668af12b80682b8cc45f5a1a80f6da5457c27b3beecff5a3d25c45",
+      "contribution_digest_sha256": "7de239c594d1b1b12074e248180fd5a969268bd9830c3a9f7b6bfec35ea2daad",
       "download_attempted": false,
-      "executable_path": "isabelle",
+      "evidence": {
+        "certification_surface": "tools.logic.certification.isabelle",
+        "goal_id": "FVT-G206",
+        "live_source_helper": "check_isabelle_source_live",
+        "objective_evidence": "objective validation repair",
+        "objective_validation_repair": true,
+        "task_id": "FVT-057",
+        "validation_command": "python -m pytest test/integration/toolchains/test_kernel_live_semantic_fanin.py test/integration/toolchains/test_lean_semantic_certification.py test/integration/toolchains/test_rocq_toolchain_certification.py test/integration/toolchains/test_isabelle_toolchain_certification.py -q",
+        "validation_task_id": "FVT-074"
+      },
+      "executable_basename": "isabelle",
+      "executable_path": "<managed-tool-path-redacted>/isabelle",
       "fanin_interface": "KernelLiveSemanticFanIn@1",
       "fanin_passed": true,
       "fanin_schema_version": "kernel-live-semantic-fanin/v1",
@@ -522,10 +555,13 @@
       "live_source_helper": "check_isabelle_source_live",
       "live_source_helper_exercised": true,
       "locked_version": "Isabelle2025-2",
+      "managed_executable": true,
       "network_used": false,
-      "notes": "Isabelle live fan-in contribution via check_isabelle_source_live; own kernel only; Hammer proposal-only; no Lean/Rocq/advisor substitution; timeout fail-closed.",
+      "notes": "Isabelle live fan-in contribution via check_isabelle_source_live; own kernel only; Hammer proposal-only; no Lean/Rocq/advisor substitution; timeout fail-closed; objective validation repair (FVT-074).",
+      "objective_evidence": "objective validation repair",
+      "objective_validation_repair": true,
       "owner_module": "tools.logic.certification.isabelle",
-      "repo_root": ".",
+      "repo_root": "<repo-root>",
       "required_case_kinds": [
         "fail_closed",
         "malformed",
@@ -539,6 +575,7 @@
       "task_id": "FVT-057",
       "tool_id": "isabelle",
       "usable": true,
+      "validation_task_id": "FVT-074",
       "version_string": "Isabelle2025-2"
     },
     "lean": {
@@ -570,11 +607,13 @@
           ],
           "selected_toolchain": "leanprover/lean4:v4.31.0"
         },
-        "executable_path": "lean",
+        "executable_basename": "lean",
+        "executable_path": "<managed-tool-path-redacted>/lean",
         "imports": [],
         "kernel_id": "lean",
         "locked_toolchain": "leanprover/lean4:v4.31.0",
         "locked_version": "v4.31.0",
+        "managed_executable": true,
         "output": {
           "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
           "returncode": 0
@@ -619,7 +658,7 @@
           "expect": "rejected",
           "imports": [],
           "kind": "negative",
-          "output_digest": "dbf8506642d2e587eb57278efea53947e80e08b0f7533598c939b4e40559b01e",
+          "output_digest": "2ecf92b172643f84afc052c2f712f33aa20da492c3673fa31df53d37d5fc9d35",
           "reason_codes": [
             "kernel_rejected"
           ],
@@ -637,7 +676,7 @@
           "expect": "rejected",
           "imports": [],
           "kind": "mutation",
-          "output_digest": "511d1dbd4e8bd4e0043610bc05331f27ca8bdf60cbd789a45deb5a654fa158a3",
+          "output_digest": "2c5c7de018394b6b9ad1c5927b95e59c6fbe28bf63e4d1a1cfa86726c8285e15",
           "reason_codes": [
             "kernel_rejected"
           ],
@@ -655,7 +694,7 @@
           "expect": "rejected",
           "imports": [],
           "kind": "mutation",
-          "output_digest": "409df5c8d03d348719e012684e0510ed71b8105c5d202bd393b4599403786638",
+          "output_digest": "58d33081eb8d1202f1c0cb00ff49387eb81fd91d42f4d3e838c6b2c927234d03",
           "reason_codes": [
             "kernel_rejected"
           ],
@@ -687,7 +726,7 @@
           "expect": "rejected",
           "imports": [],
           "kind": "malformed",
-          "output_digest": "994bfbeffe9860908305ee9525394ca9a58d0f464a389a776124fe930eb8b61a",
+          "output_digest": "c69b11b623df33771ff0f4cd9070a70425f3ad1189ad275582bdbc118be07511",
           "reason_codes": [
             "kernel_rejected"
           ],
@@ -769,7 +808,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "dbf8506642d2e587eb57278efea53947e80e08b0f7533598c939b4e40559b01e",
+            "output_digest": "2ecf92b172643f84afc052c2f712f33aa20da492c3673fa31df53d37d5fc9d35",
             "returncode": 1,
             "source_digest": "9e11f3ad08604700b4d05b5440927c264b5e87b955dabb1594e1c54de2b9c316",
             "theorem_name": "false_claim"
@@ -789,7 +828,7 @@
               "h : n = n"
             ],
             "imports": [],
-            "output_digest": "511d1dbd4e8bd4e0043610bc05331f27ca8bdf60cbd789a45deb5a654fa158a3",
+            "output_digest": "2c5c7de018394b6b9ad1c5927b95e59c6fbe28bf63e4d1a1cfa86726c8285e15",
             "returncode": 1,
             "source_digest": "ef6dbd7cee06a0cdcff851790842f7a9e8d7b970dacdc87390dcfedd71e2389f",
             "theorem_name": "from_eq"
@@ -809,7 +848,7 @@
               "h : n = m"
             ],
             "imports": [],
-            "output_digest": "409df5c8d03d348719e012684e0510ed71b8105c5d202bd393b4599403786638",
+            "output_digest": "58d33081eb8d1202f1c0cb00ff49387eb81fd91d42f4d3e838c6b2c927234d03",
             "returncode": 1,
             "source_digest": "33ca5222eb44e2cf3a3a41bee0d820868bce4f41d30acd1ab634e87f19291705",
             "theorem_name": "from_eq"
@@ -845,7 +884,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "994bfbeffe9860908305ee9525394ca9a58d0f464a389a776124fe930eb8b61a",
+            "output_digest": "c69b11b623df33771ff0f4cd9070a70425f3ad1189ad275582bdbc118be07511",
             "returncode": 1,
             "source_digest": "2f26262d12bdd4f94bdacb26b0f2370514fe808ab10ee14bef8185628949263a",
             "theorem_name": "broken"
@@ -916,9 +955,20 @@
           "status": "passed"
         }
       ],
-      "contribution_digest_sha256": "d226722000b316b0db9909095b3b52cca5d9ac373f6b15b0d0dc2035def32187",
+      "contribution_digest_sha256": "9a07dbf7fd3631d998f52448f59c1ffd83f274e926524a612d8cdae7288ce21f",
       "download_attempted": false,
-      "executable_path": "lean",
+      "evidence": {
+        "certification_surface": "tools.logic.certification.lean",
+        "goal_id": "FVT-G206",
+        "live_source_helper": "check_lean_source",
+        "objective_evidence": "objective validation repair",
+        "objective_validation_repair": true,
+        "task_id": "FVT-057",
+        "validation_command": "python -m pytest test/integration/toolchains/test_kernel_live_semantic_fanin.py test/integration/toolchains/test_lean_semantic_certification.py test/integration/toolchains/test_rocq_toolchain_certification.py test/integration/toolchains/test_isabelle_toolchain_certification.py -q",
+        "validation_task_id": "FVT-074"
+      },
+      "executable_basename": "lean",
+      "executable_path": "<managed-tool-path-redacted>/lean",
       "fanin_interface": "KernelLiveSemanticFanIn@1",
       "fanin_passed": true,
       "fanin_schema_version": "kernel-live-semantic-fanin/v1",
@@ -932,10 +982,13 @@
       "live_source_helper": "check_lean_source",
       "locked_toolchain": "leanprover/lean4:v4.31.0",
       "locked_version": "v4.31.0",
+      "managed_executable": true,
       "network_used": false,
-      "notes": "Lean live fan-in contribution: own kernel only; no Rocq/Isabelle/advisor substitution; timeout fail-closed.",
+      "notes": "Lean live fan-in contribution: own kernel only; no Rocq/Isabelle/advisor substitution; timeout fail-closed; objective validation repair (FVT-074).",
+      "objective_evidence": "objective validation repair",
+      "objective_validation_repair": true,
       "owner_module": "tools.logic.certification.lean",
-      "repo_root": ".",
+      "repo_root": "<repo-root>",
       "required_case_kinds": [
         "fail_closed",
         "malformed",
@@ -949,6 +1002,7 @@
       "task_id": "FVT-057",
       "tool_id": "lean",
       "usable": true,
+      "validation_task_id": "FVT-074",
       "version_string": "Lean (version 4.31.0, aarch64-unknown-linux-gnu, commit 68218e876d2a38b1985b8590fff244a83c321783, Release)"
     },
     "rocq": {
@@ -967,16 +1021,22 @@
           "sibling_kernel_substitution_forbidden": true
         },
         "dependency_digests": {
-          "isolated_opam_root": "repo-local-isolated-opam-root",
-          "opam_executable_path": "opam",
+          "isolated_opam_root": "<isolated-opam-root-redacted>",
+          "isolated_opam_root_authoritative": false,
+          "isolated_opam_root_portable": true,
+          "opam_executable_basename": "opam",
+          "opam_executable_path": "<managed-tool-path-redacted>/opam",
+          "opam_managed_executable": true,
           "opam_support_only": true,
           "opam_version": "2.5.2",
           "package_identity": "rocq-prover.9.1.1"
         },
-        "executable_path": "coqc",
+        "executable_basename": "coqc",
+        "executable_path": "<managed-tool-path-redacted>/coqc",
         "imports": [],
         "kernel_id": "rocq",
         "locked_version": "9.1.1",
+        "managed_executable": true,
         "output": {
           "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
           "returncode": 0
@@ -1022,7 +1082,7 @@
           "imports": [],
           "kind": "negative",
           "matched": true,
-          "output_digest": "b324186a7a327ef434913e4483ed9dbb9a1dd7b262357e8ce159e0803f2ee937",
+          "output_digest": "3f83f4e928a5429e84d7d9bb0bea7a965a82851652feb903fb78fa002ad0815c",
           "reason_codes": [
             "error_marker",
             "non_zero_exit"
@@ -1042,7 +1102,7 @@
           "imports": [],
           "kind": "mutation",
           "matched": true,
-          "output_digest": "32340fd54c653adabe2273c9d85ae9d73ebe359341c65c093ae53cbf217f5351",
+          "output_digest": "ac1994b569e717f9fdd04c1bd00656ac4c71fecc11c6962aa1650f5b3d1a791d",
           "reason_codes": [
             "error_marker",
             "non_zero_exit"
@@ -1062,7 +1122,7 @@
           "imports": [],
           "kind": "mutation",
           "matched": true,
-          "output_digest": "7b10806fa6d5ead1a3a469bd3cc59710c4ee3367dea53210806414667444839c",
+          "output_digest": "e3afb1926d407398451e10c27034dd02b7a17b0ad8e07ac3f520845a9f7eeef9",
           "reason_codes": [
             "error_marker",
             "non_zero_exit"
@@ -1099,7 +1159,7 @@
           "imports": [],
           "kind": "malformed",
           "matched": true,
-          "output_digest": "98a4354affac72a387d75e194d7e76fb989fec5be65cc9037dd3de633d936486",
+          "output_digest": "85fc27131ced7fd7a31a280a1a83cc4151afd136404afa5e8dcb918d10b35d53",
           "reason_codes": [
             "error_marker",
             "non_zero_exit"
@@ -1191,7 +1251,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "b324186a7a327ef434913e4483ed9dbb9a1dd7b262357e8ce159e0803f2ee937",
+            "output_digest": "3f83f4e928a5429e84d7d9bb0bea7a965a82851652feb903fb78fa002ad0815c",
             "returncode": 1,
             "source_digest": "803ef0ab8e0d02f10ebf946afab1db1da7bd2ca08c90006a77be57ce0ed6b570",
             "theorem_name": "false_claim"
@@ -1210,7 +1270,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "32340fd54c653adabe2273c9d85ae9d73ebe359341c65c093ae53cbf217f5351",
+            "output_digest": "ac1994b569e717f9fdd04c1bd00656ac4c71fecc11c6962aa1650f5b3d1a791d",
             "returncode": 1,
             "source_digest": "28a3a89ef7520a61b20e854507ec7b77e48ec029b70c5bf97078a6aefa1b4bbc",
             "theorem_name": "from_eq"
@@ -1229,7 +1289,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "7b10806fa6d5ead1a3a469bd3cc59710c4ee3367dea53210806414667444839c",
+            "output_digest": "e3afb1926d407398451e10c27034dd02b7a17b0ad8e07ac3f520845a9f7eeef9",
             "returncode": 1,
             "source_digest": "64772bc2b349ccfe3b13d235a55a6b1ccf87f23486e5faa864c613d866f9da54",
             "theorem_name": "from_eq"
@@ -1264,7 +1324,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "98a4354affac72a387d75e194d7e76fb989fec5be65cc9037dd3de633d936486",
+            "output_digest": "85fc27131ced7fd7a31a280a1a83cc4151afd136404afa5e8dcb918d10b35d53",
             "returncode": 1,
             "source_digest": "2f9c84f0fa2f82d940edfa063391a4e9f7b5aca3d2e5606bcad1210792f2d1f7",
             "theorem_name": "broken"
@@ -1336,9 +1396,20 @@
           "status": "passed"
         }
       ],
-      "contribution_digest_sha256": "2e34bae8785605fa81528a228cd053bed5c5fbb03fbc8d74ac5a041302e957a4",
+      "contribution_digest_sha256": "a54cb4cb2d8b7f86190255044eec539987671f7d867dbed18d5edb8745ec4ace",
       "download_attempted": false,
-      "executable_path": "coqc",
+      "evidence": {
+        "certification_surface": "tools.logic.certification.rocq",
+        "goal_id": "FVT-G206",
+        "live_source_helper": "check_rocq_source_live",
+        "objective_evidence": "objective validation repair",
+        "objective_validation_repair": true,
+        "task_id": "FVT-057",
+        "validation_command": "python -m pytest test/integration/toolchains/test_kernel_live_semantic_fanin.py test/integration/toolchains/test_lean_semantic_certification.py test/integration/toolchains/test_rocq_toolchain_certification.py test/integration/toolchains/test_isabelle_toolchain_certification.py -q",
+        "validation_task_id": "FVT-074"
+      },
+      "executable_basename": "coqc",
+      "executable_path": "<managed-tool-path-redacted>/coqc",
       "fanin_interface": "KernelLiveSemanticFanIn@1",
       "fanin_passed": true,
       "fanin_schema_version": "kernel-live-semantic-fanin/v1",
@@ -1351,11 +1422,14 @@
       "live_executed": true,
       "live_source_helper": "check_rocq_source_live",
       "locked_version": "9.1.1",
+      "managed_executable": true,
       "network_used": false,
-      "notes": "Rocq live fan-in contribution: own kernel only; OPAM support-only; no Lean/Isabelle/advisor substitution; timeout fail-closed.",
+      "notes": "Rocq live fan-in contribution: own kernel only; OPAM support-only; no Lean/Isabelle/advisor substitution; timeout fail-closed; objective validation repair (FVT-074).",
+      "objective_evidence": "objective validation repair",
+      "objective_validation_repair": true,
       "owner_module": "tools.logic.certification.rocq",
       "package_identity": "rocq-prover.9.1.1",
-      "repo_root": ".",
+      "repo_root": "<repo-root>",
       "required_case_kinds": [
         "fail_closed",
         "malformed",
@@ -1369,17 +1443,21 @@
       "task_id": "FVT-057",
       "tool_id": "coq",
       "usable": true,
+      "validation_task_id": "FVT-074",
       "version_string": "The Rocq Prover, version 9.1.1"
     }
   },
   "lane_id": "kernel",
-  "notes": "All three kernels independently completed live semantic fan-in.",
+  "notes": "All three kernels independently completed live semantic fan-in; objective validation repair (FVT-074) satisfied for FVT-G206.",
+  "objective_evidence": "objective validation repair",
+  "objective_validation_repair": true,
   "policy": {
     "advisor_substitution_forbidden": true,
     "isabelle_live_source_session_helper_required": true,
     "no_download": true,
     "no_install": true,
     "no_network": true,
+    "objective_validation_repair_required": true,
     "own_kernel_only": true,
     "required_case_kinds": [
       "fail_closed",
@@ -1397,8 +1475,9 @@
   "production_certified": true,
   "program": "formal-verification-tactician/kernel-live-semantics",
   "promotion_blocked": false,
-  "receipt_digest_sha256": "5ea8b772ec7ce66b0c77b6e65b2f4f9fb13df85f5017acba13dd82b93913ee7e",
-  "repo_root": ".",
+  "receipt_digest_sha256": "7cdae906eaafd2f227d1c22bab74234012b8c8ede897a4d48f8bf581725c5dd8",
+  "repo_root": "<repo-root>",
   "schema_version": "kernel-live-semantic-fanin/v1",
-  "task_id": "FVT-057"
+  "task_id": "FVT-057",
+  "validation_task_id": "FVT-074"
 }

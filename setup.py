@@ -9,7 +9,6 @@ from pathlib import Path
 
 from setuptools import find_packages, setup
 
-
 CONTRACT_REPAIR_DISTRIBUTIONS = frozenset(
     {"z3-solver", "cvc5", "mypy", "ruff"}
 )
@@ -79,11 +78,15 @@ def _maybe_install_torch() -> None:
     """Optionally install CUDA-enabled torch into the current environment.
 
     IMPORTANT:
+      - This legacy compatibility hook is disabled by default and requires
+        IPFS_ACCELERATE_PY_SETUP_AUTO_TORCH=1 (or true/yes/on).
       - This only runs for legacy `setup.py install` / `setup.py develop` flows.
       - For normal `pip install .` (PEP517/wheel), setuptools install hooks are not reliable.
         Use the provided helper scripts in `scripts/` for deterministic installs.
     """
-    enabled = os.environ.get("IPFS_ACCELERATE_PY_SETUP_AUTO_TORCH", "1").strip() not in {"0", "false", "no"}
+    enabled = os.environ.get(
+        "IPFS_ACCELERATE_PY_SETUP_AUTO_TORCH", "0"
+    ).strip().lower() in {"1", "true", "yes", "on"}
     if not enabled:
         return
 
@@ -207,6 +210,8 @@ long_description = (this_directory / "README.md").read_text() if (this_directory
 # requirements.txt is the single source of truth for core dependency contracts.
 # In particular, the urllib3 range and Python-marked FastMCP pin must not be
 # duplicated independently in setup.py.
+# Optional ErgoAI Java API Eclipse Temurin JDK is a reviewed external lazy
+# dependency (tool_id=temurin-jdk) and is intentionally not a pip requirement.
 install_requires = _read_requirements(this_directory / "requirements.txt")
 _require_contract_repair_distributions(install_requires)
 extras_require = _read_optional_deps(this_directory / "pyproject.toml")

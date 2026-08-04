@@ -6,7 +6,6 @@ import json
 import subprocess
 
 import pytest
-
 from ipfs_accelerate_py import llm_router
 
 
@@ -27,6 +26,46 @@ def _successful_grok_result(cmd: list[str]) -> subprocess.CompletedProcess[str]:
         "usage": {"input_tokens": 3, "output_tokens": 2, "total_tokens": 5},
     }
     return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(payload), stderr="")
+
+
+def test_grok_cli_discovery_survives_systemd_minimal_path(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    fake_home = tmp_path / "home"
+    fake_grok = fake_home / ".local" / "bin" / "grok"
+    fake_grok.parent.mkdir(parents=True)
+    fake_grok.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    fake_grok.chmod(0o700)
+    auth_path = fake_home / ".grok" / "auth.json"
+    auth_path.parent.mkdir(parents=True)
+    auth_path.write_text("{}\n", encoding="utf-8")
+
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv(
+        "PATH",
+        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    )
+    for name in (
+        "ipfs_accelerate_py_GROK_CLI_CMD",
+        "IPFS_ACCELERATE_PY_GROK_CLI_CMD",
+        "IPFS_DATASETS_PY_GROK_CLI_CMD",
+        "IPFS_ACCELERATE_AGENT_GROK_BIN",
+        "GROK_CLI_CMD",
+        "GROK_BIN",
+        "GROK_HOME",
+        "XAI_API_KEY",
+        "ipfs_accelerate_py_XAI_API_KEY",
+        "IPFS_ACCELERATE_PY_XAI_API_KEY",
+        "IPFS_DATASETS_PY_XAI_API_KEY",
+        "GROK_AUTH_PROVIDER_COMMAND",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    assert llm_router.find_grok_cli() == str(fake_grok)
+    assert llm_router._grok_cli_command() == str(fake_grok)
+    assert llm_router._grok_cli_auth_available() is True
+    assert llm_router._get_grok_cli_provider() is not None
 
 
 def test_grok_cli_provider_uses_bounded_headless_json_mode(monkeypatch) -> None:
@@ -92,6 +131,149 @@ def test_grok_cli_agent_command_is_noninteractive(tmp_path) -> None:
     assert cmd[cmd.index("--prompt-file") + 1] == str(prompt_path)
     assert "--always-approve" in cmd
     assert "--tools" not in cmd
+
+
+def test_grok_cli_agent_command_supports_fail_closed_sandbox_and_denies(
+    tmp_path,
+) -> None:
+    prompt_path = tmp_path / "prompt.txt"
+    prompt_path.write_text("implement the task", encoding="utf-8")
+
+    cmd = llm_router.build_grok_cli_command(
+        mode="agent",
+        workspace=tmp_path,
+        model_name="grok-4.5",
+        grok_bin="grok",
+        prompt_file=prompt_path,
+        sandbox_profile="provider-isolated",
+        deny_rules=("Bash(codex *)", "Bash(copilot *)"),
+    )
+
+    assert cmd[cmd.index("--sandbox") + 1] == "provider-isolated"
+    assert cmd.count("--deny") == 2
+    assert "Bash(codex *)" in cmd
+    assert "Bash(copilot *)" in cmd
+
+
+def test_grok_cli_isolated_env_withholds_alternate_provider_authority() -> None:
+    source = {
+        "PATH": "/usr/local/bin:/usr/bin",
+        "HOME": "/home/runner",
+        "XAI_API_KEY": "grok-authority",
+        "CODEX_HOME": "/private/codex",
+        "OPENAI_API_KEY": "openai-authority",
+        "COPILOT_GITHUB_TOKEN": "copilot-authority",
+        "GH_TOKEN": "github-authority",
+        "GITHUB_TOKEN": "github-authority-2",
+        "ipfs_accelerate_py_CODEX_MODEL": "gpt-5.6-sol",
+        "IPFS_ACCELERATE_PY_OPENAI_API_KEY": "package-openai-authority",
+        "ipfs_accelerate_py_OPENAI_BASE_URL": "https://peer.invalid/v1",
+        "IPFS_DATASETS_PY_OPENAI_MODEL": "peer-model",
+        "AZURE_OPENAI_API_KEY": "azure-openai-authority",
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-sol",
+        "IPFS_ACCELERATE_AGENT_COPILOT_MODEL": "gpt-5.6-sol",
+        "IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI": "1",
+        "DOCKER_HOST": "unix:///run/docker.sock",
+        "DOCKER_AUTH_CONFIG": "container-registry-authority",
+        "CONTAINER_HOST": "unix:///run/podman/podman.sock",
+        "KUBECONFIG": "/private/kube-config",
+        "GOOSE_PROVIDER": "openai",
+        "META_AI_API_KEY": "meta-authority",
+        "MODEL_API_KEY": "meta-authority-2",
+        "ANTHROPIC_API_KEY": "anthropic-authority",
+        "IPFS_ACCELERATE_PY_GEMINI_CLI_CMD": "gemini",
+        "IPFS_DATASETS_PY_MISTRAL_API_KEY": "mistral-authority",
+        "OPENROUTER_API_KEY": "openrouter-authority",
+        "HF_TOKEN": "hugging-face-authority",
+        "IPFS_ACCELERATE_PY_HF_API_TOKEN": "hf-package-authority",
+        "ipfs_accelerate_py_HF_API_TOKEN": "hf-package-authority-2",
+        "IPFS_DATASETS_PY_HF_API_TOKEN": "hf-package-authority-3",
+        "HUGGINGFACEHUB_API_TOKEN": "hf-hub-authority",
+        "GOOGLE_API_KEY": "gemini-authority",
+        "DATABRICKS_TOKEN": "goose-backend-authority",
+        "GROQ_API_KEY": "goose-backend-authority-2",
+        "LLVM_API_KEY": "llvm-authority",
+        "OVMS_API_KEY": "ovms-authority",
+        "VLLM_API_KEY": "vllm-authority",
+        "S3_ACCESS_KEY": "s3-access-authority",
+        "S3_SECRET_KEY": "s3-secret-authority",
+        "GROK_AUTH_PROVIDER_COMMAND": "/workspace/steal-auth",
+        "GROK_CODE_BACKEND_URL": "https://redirect.invalid",
+        "GROK_MODELS_LIST_URL": "https://redirect.invalid/models",
+        "XAI_API_BASE_URL": "https://redirect.invalid/v1",
+        "CLI_CHAT_PROXY_BASE_URL": "https://redirect.invalid/proxy",
+        "GROK_MANAGED_CONFIG_URL": "https://redirect.invalid/config",
+        "GROK_WORKSPACE_BUNDLED_SKILLS_DIR": "/workspace/injected-skills",
+        "GROK_SANDBOX_AUTO_ALLOW_BASH": "1",
+        "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+        "SSH_AUTH_SOCK": "/run/user/1000/ssh-agent",
+        "UNRELATED_SETTING": "retained",
+    }
+
+    isolated = llm_router.build_grok_cli_env(
+        base_env=source,
+        isolate_alternate_providers=True,
+    )
+
+    assert isolated["XAI_API_KEY"] == "grok-authority"
+    assert "UNRELATED_SETTING" not in isolated
+    assert isolated["PATH"] == "/usr/bin:/bin"
+    for forbidden in (
+        "CODEX_HOME",
+        "OPENAI_API_KEY",
+        "COPILOT_GITHUB_TOKEN",
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "ipfs_accelerate_py_CODEX_MODEL",
+        "IPFS_ACCELERATE_PY_OPENAI_API_KEY",
+        "ipfs_accelerate_py_OPENAI_BASE_URL",
+        "IPFS_DATASETS_PY_OPENAI_MODEL",
+        "AZURE_OPENAI_API_KEY",
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL",
+        "IPFS_ACCELERATE_AGENT_COPILOT_MODEL",
+        "IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI",
+        "DOCKER_HOST",
+        "DOCKER_AUTH_CONFIG",
+        "CONTAINER_HOST",
+        "KUBECONFIG",
+        "GOOSE_PROVIDER",
+        "META_AI_API_KEY",
+        "MODEL_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "IPFS_ACCELERATE_PY_GEMINI_CLI_CMD",
+        "IPFS_DATASETS_PY_MISTRAL_API_KEY",
+        "OPENROUTER_API_KEY",
+        "HF_TOKEN",
+        "IPFS_ACCELERATE_PY_HF_API_TOKEN",
+        "ipfs_accelerate_py_HF_API_TOKEN",
+        "IPFS_DATASETS_PY_HF_API_TOKEN",
+        "HUGGINGFACEHUB_API_TOKEN",
+        "GOOGLE_API_KEY",
+        "DATABRICKS_TOKEN",
+        "GROQ_API_KEY",
+        "LLVM_API_KEY",
+        "OVMS_API_KEY",
+        "VLLM_API_KEY",
+        "S3_ACCESS_KEY",
+        "S3_SECRET_KEY",
+        "GROK_AUTH_PROVIDER_COMMAND",
+        "GROK_CODE_BACKEND_URL",
+        "GROK_MODELS_LIST_URL",
+        "XAI_API_BASE_URL",
+        "CLI_CHAT_PROXY_BASE_URL",
+        "GROK_MANAGED_CONFIG_URL",
+        "GROK_WORKSPACE_BUNDLED_SKILLS_DIR",
+        "GROK_SANDBOX_AUTO_ALLOW_BASH",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "SSH_AUTH_SOCK",
+    ):
+        assert forbidden not in isolated
+    assert isolated["GROK_CODEX_SKILLS_ENABLED"] == "0"
+    assert isolated["GROK_CODEX_SESSIONS_ENABLED"] == "0"
+    # The caller/parent mapping remains able to authorize a later quota-gated
+    # fallback; sanitization applies only to Grok's child environment.
+    assert source["OPENAI_API_KEY"] == "openai-authority"
+    assert source["CODEX_HOME"] == "/private/codex"
 
 
 def test_grok_cli_provider_reports_missing_auth(monkeypatch) -> None:

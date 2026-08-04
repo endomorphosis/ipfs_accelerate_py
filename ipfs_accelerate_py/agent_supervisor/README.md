@@ -1,5 +1,21 @@
 # agent_supervisor
 
+**Status:** Current
+
+**Owner:** agent-supervisor maintainers
+
+**Audience:** Developers embedding or extending the supervisor
+
+**Sources:** package modules under this directory; package `__init__.py` export
+inventories; supervisor console scripts in `pyproject.toml`;
+`test/api/test_agent_supervisor_*.py`
+
+**Last-verified:** 2026-08-03 @ `d5f3aa5c6`; imports, entrypoints, and focused
+test paths rechecked
+
+**Freshness triggers:** domain-module moves, public-export or console-script
+changes, and supervisor test relocation
+
 Control plane for **objective-driven, evidence-bounded software work**.
 
 Models propose plans and edits. Deterministic validation, leases, allowlists,
@@ -65,10 +81,11 @@ from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
 # Domain modules (examples)
 from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import ConflictGraph
 from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
-    GoalCompletionEvaluator,  # illustrative — use real symbols from the module
+    GoalCompletionDecision,
+    evaluate_goal_completion,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-    ImplementationDaemon,  # illustrative
+    PortalImplementationDaemon,
 )
 
 # Reviewed package-root inventories (semantic names)
@@ -271,8 +288,9 @@ Focused suites live under `test/api/` (and package-local tests where present).
 python -m pytest test/api/test_agent_supervisor_asref_layout_evidence.py \
   test/api/test_agent_supervisor_semantic_layout_exports.py -q
 
-# Control / contracts (examples — expand as needed)
-python -m pytest test/api/test_agent_supervisor_control_conformance.py -q
+# Control / contracts
+python -m pytest test/api/test_agent_supervisor_control_conformance_v2.py \
+  test/api/test_agent_supervisor_control_plane.py -q
 ```
 
 When changing a domain package, run the nearest module tests plus any

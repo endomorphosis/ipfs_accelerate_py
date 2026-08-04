@@ -1,11 +1,12 @@
 """Grok-first, quota-gated Codex command for merge-conflict resolution.
 
-The resolver deliberately has one narrow provider route: exact Grok 4.5 is
-the primary, and exact Codex ``gpt-5.6-terra`` at medium reasoning is allowed
-only when the captured output from that same Grok invocation is classified by
-the supervisor's trusted capacity classifier as explicit quota or balance
-exhaustion.  Missing tools, authentication failures, timeouts, transient rate
-limits, and every other failure fail closed.  Copilot is not a route member.
+Compatibility entrypoint for LLM merge-conflict resolution. Exact Grok 4.5 is
+the primary route; exact Codex ``gpt-5.6-terra`` at medium reasoning is allowed
+only after a typed native Grok quota/balance exhaustion event from that same
+invocation. Missing tools, authentication failures, timeouts, transient rate
+limits, and every other failure fail closed. Copilot is not a route member.
+The legacy module CLI remains available only to configurations that invoke it
+explicitly.
 """
 
 from __future__ import annotations
@@ -59,13 +60,14 @@ def llm_merge_resolver_fallback_command(
     *,
     python_executable: str = "python3",
 ) -> str:
-    """Return a shell-safe command for the packaged fallback resolver."""
+    """Return the canonical shell-safe Grok/quota-only resolver command."""
+
+    from ..grok_cli_runner import build_grok_quota_routed_agent_command
 
     return shlex.join(
-        (
-            python_executable,
-            "-m",
-            "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback",
+        build_grok_quota_routed_agent_command(
+            workspace=".",
+            python_executable=python_executable,
         )
     )
 

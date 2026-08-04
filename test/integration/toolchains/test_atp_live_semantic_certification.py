@@ -77,6 +77,8 @@ REQUIRED_BINDING_FIELDS = {
     "conclusion",
     "limits",
     "reconstruction_status",
+    "independent_kernel_reconstruction",
+    "kernel_reconstruction_claimed",
     "raw_szs_output_digest",
 }
 
@@ -106,7 +108,8 @@ def atp_cert():
 
 @pytest.fixture(scope="module")
 def offline_env(atp_cert) -> dict[str, str]:
-    return atp_cert.offline_env(os.environ)
+    # Prefer managed theorem-prover bins without install or network.
+    return atp_cert.managed_execution_env(os.environ)
 
 
 @pytest.fixture(scope="module")
@@ -119,7 +122,11 @@ def live_receipt(atp_cert, offline_env) -> dict[str, Any]:
 
 @pytest.fixture(scope="module")
 def live_certificate(atp_cert, live_receipt, offline_env) -> dict[str, Any]:
-    """Ensure the durable certificate exists and load it."""
+    """Ensure the durable certificate exists and load it.
+
+    Tool-less re-runs must not demote a prior production live certificate
+    (objective validation repair).
+    """
 
     path = atp_cert.write_live_certificate(
         live_receipt,
@@ -174,6 +181,11 @@ def test_live_corpus_schema_and_required_cases(atp_cert) -> None:
     assert manifest["policy"][
         "kernel_reconstruction_required_for_theorem_authority"
     ] is True
+    assert manifest["policy"]["kernel_reconstruction_receipt_validated"] is False
+    assert (
+        manifest["policy"]["boolean_reconstruction_claim_cannot_elevate"]
+        is True
+    )
     assert manifest["policy"]["live_execution_required_for_production"] is True
     assert manifest["policy"]["fixture_or_parser_cannot_satisfy_live_goal"] is True
     assert manifest["policy"]["no_install"] is True
@@ -314,10 +326,15 @@ def test_proof_object_and_reconstruction(live_receipt: dict[str, Any]) -> None:
         assert proof["authority"] == "candidate"
         assert proof["proof_object_present"] is True or proof["proof_bound"] is True
         assert proof["reconstruction_status"] == "unreconstructed"
-        assert recon["status"] == "theorem_authority"
-        assert recon["authority"] == "theorem"
-        assert recon["independent_kernel_reconstruction"] is True
-        assert recon["reconstruction_status"] == "kernel_reconstructed"
+        assert recon["status"] == "theorem_candidate"
+        assert recon["authority"] == "candidate"
+        assert recon["independent_kernel_reconstruction"] is False
+        assert recon["kernel_reconstruction_claimed"] is True
+        assert recon["reconstruction_status"] == "kernel_receipt_missing"
+        assert (
+            "kernel_reconstruction_receipt_required"
+            in recon["reason_codes"]
+        )
 
 
 def test_authority_ceiling_without_reconstruction(live_receipt: dict[str, Any], atp_cert) -> None:
@@ -327,16 +344,22 @@ def test_authority_ceiling_without_reconstruction(live_receipt: dict[str, Any], 
     assert (
         boundary["sample_without_reconstruction"]["authority"] == "candidate"
     )
-    assert boundary["sample_with_reconstruction"]["authority"] == "theorem"
+    assert (
+        boundary["sample_with_reconstruction"]["authority"]
+        == "candidate"
+    )
+    assert (
+        "kernel_reconstruction_receipt_required"
+        in boundary["sample_with_reconstruction"]["reason_codes"]
+    )
+    assert boundary["kernel_reconstruction_receipt_validated"] is False
+    assert boundary["boolean_reconstruction_claim_cannot_elevate"] is True
 
     for case in live_receipt.get("cases") or []:
         if case.get("execution_mode") == "skipped":
             continue
-        if case.get("authority") == "theorem":
-            assert case.get("independent_kernel_reconstruction") is True
-            assert case.get("reconstruction_status") == "kernel_reconstructed"
-        else:
-            assert case.get("authority") == "candidate"
+        assert case.get("authority") == "candidate"
+        assert case.get("independent_kernel_reconstruction") is False
 
 
 def test_receipt_binds_required_fields(live_receipt: dict[str, Any]) -> None:
@@ -438,6 +461,63 @@ def test_live_certificate_schema(live_certificate: dict[str, Any]) -> None:
     assert live_certificate.get("receipt_digest_sha256")
     assert len(live_certificate["receipt_digest_sha256"]) == 64
     assert LIVE_CERTIFICATE_PATH.is_file()
+    # Objective validation repair evidence binding (FVT-071 / FVT-G207).
+    repair = live_certificate.get("objective_validation_repair") or {}
+    assert repair.get("schema_version") == "objective-validation-repair/v1"
+    assert repair.get("goal_id") == LIVE_GOAL_ID
+    assert "objective validation repair" in (repair.get("evidence_terms") or [])
+    assert live_certificate.get("policy", {}).get("objective_validation_repair") is True
+
+
+def test_live_and_checked_in_certificates_are_portable_and_digest_valid(
+    atp_cert,
+    live_receipt: dict[str, Any],
+    live_certificate: dict[str, Any],
+) -> None:
+    for payload in (live_receipt, live_certificate):
+        encoded = json.dumps(payload, sort_keys=True)
+        for private_root in ("/home/", "/Users/", "/tmp/", "/private/tmp/"):
+            assert private_root not in encoded
+        assert str(REPO_ROOT.resolve()) not in encoded
+        assert payload["public_evidence_policy"]["satisfied"] is True
+        assert payload["receipt_digest_sha256"] == atp_cert.content_digest(
+            {
+                key: value
+                for key, value in payload.items()
+                if key != "receipt_digest_sha256"
+            }
+        )
+
+    checked_in = json.loads(LIVE_CERTIFICATE_PATH.read_text(encoding="utf-8"))
+    encoded = LIVE_CERTIFICATE_PATH.read_text(encoding="utf-8")
+    for private_root in ("/home/", "/Users/", "/tmp/", "/private/tmp/"):
+        assert private_root not in encoded
+    assert str(REPO_ROOT.resolve()) not in encoded
+    assert checked_in["public_evidence_policy"]["satisfied"] is True
+
+
+def test_public_projection_preserves_portable_atp_basename_markers(atp_cert) -> None:
+    projected = atp_cert.public_evidence_projection(
+        {
+            "executable": "/home/operator/tools/bin/vampire",
+            "macos_executable": "/Users/operator/tools/bin/eprover",
+            "preview": "file('/tmp/atp-live-random/problem.p', axiom)",
+            "macos_preview": (
+                "file('/private/tmp/atp-live-random/problem.p', axiom)"
+            ),
+            "source": f"{REPO_ROOT}/tools/logic/certification/atp.py",
+        },
+        repo_root=REPO_ROOT,
+    )
+    assert projected["executable"] == "<host-path-redacted>/vampire"
+    assert projected["macos_executable"] == "<host-path-redacted>/eprover"
+    assert "<host-path-redacted>/problem.p" in projected["preview"]
+    assert "<host-path-redacted>/problem.p" in projected["macos_preview"]
+    assert projected["source"] == "<repo-root>/tools/logic/certification/atp.py"
+    assert atp_cert.public_evidence_audit(
+        projected,
+        repo_root=REPO_ROOT,
+    )["satisfied"] is True
 
 
 def test_live_certificate_cases_bind_digests(live_certificate: dict[str, Any]) -> None:
@@ -502,3 +582,122 @@ def test_build_atp_argv_vampire_uses_spaced_time_limit(atp_cert) -> None:
     # Vampire 5.0.1 rejects --time_limit=N equals form.
     assert not any(part.startswith("--time_limit=") for part in argv)
     assert "szs" in argv
+
+
+def test_write_live_certificate_does_not_demote_production(
+    atp_cert, offline_env, tmp_path
+) -> None:
+    """Tool-less re-runs must preserve production live certificate digests.
+
+    Objective validation repair: sealed PATH without Vampire/E cannot overwrite
+    a prior production-certified live certificate.
+    """
+
+    production = atp_cert.build_live_semantic_receipt(
+        repo_root=REPO_ROOT,
+        env=offline_env,
+    )
+    if not production.get("production_certified"):
+        pytest.skip("pinned Vampire/E not available to seed production certificate")
+
+    target = tmp_path / "formal_verification_atp_live_certificate.json"
+    path = atp_cert.write_live_certificate(
+        production,
+        repo_root=REPO_ROOT,
+        path=target,
+        env=offline_env,
+    )
+    assert path == target
+    before = json.loads(target.read_text(encoding="utf-8"))
+    assert before["production_certified"] is True
+    production_digest = before["receipt_digest_sha256"]
+
+    unavailable = atp_cert.build_live_semantic_receipt(
+        repo_root=REPO_ROOT,
+        env=offline_env,
+        vampire_executable="/nonexistent/vampire-binary",
+        eprover_executable="/nonexistent/eprover-binary",
+    )
+    assert unavailable["production_certified"] is False
+    assert unavailable["live_execution"] is False
+
+    preserved = atp_cert.write_live_certificate(
+        unavailable,
+        repo_root=REPO_ROOT,
+        path=target,
+        env=offline_env,
+    )
+    assert preserved == target
+    after = json.loads(target.read_text(encoding="utf-8"))
+    assert after["production_certified"] is True
+    assert after["live_execution"] is True
+    assert after["receipt_digest_sha256"] == production_digest
+
+    # Explicit force may replace production with unavailable (diagnostic only).
+    forced = atp_cert.write_live_certificate(
+        unavailable,
+        repo_root=REPO_ROOT,
+        path=target,
+        env=offline_env,
+        force=True,
+    )
+    assert forced == target
+    demoted = json.loads(target.read_text(encoding="utf-8"))
+    assert demoted["production_certified"] is False
+
+
+def test_write_live_certificate_rejects_unsafe_passed_receipt(
+    atp_cert,
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "unsafe-atp-certificate.json"
+    with pytest.raises(ValueError, match="unsafe ATP public evidence"):
+        atp_cert.write_live_certificate(
+            {
+                "interface": LIVE_INTERFACE,
+                "notes": "generated under /tmp/private-atp-run/problem.p",
+            },
+            repo_root=REPO_ROOT,
+            path=target,
+            force=True,
+        )
+    assert not target.exists()
+
+
+def test_managed_execution_env_prefers_managed_bin(atp_cert, tmp_path) -> None:
+    """Approved/managed install roots are searched without ambient PATH."""
+
+    managed_root = tmp_path / "theorem-provers"
+    managed_bin = managed_root / "bin"
+    managed_bin.mkdir(parents=True)
+    # Non-executable placeholder must not resolve; only real X_OK binaries.
+    fake = managed_bin / "vampire"
+    fake.write_text("#!/bin/sh\necho Vampire 5.0.1\n", encoding="utf-8")
+    fake.chmod(0o755)
+
+    env = {
+        "PATH": "/usr/bin",
+        "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT": str(managed_root),
+        "XDG_DATA_HOME": str(tmp_path / "empty-xdg"),
+    }
+    resolved = atp_cert.resolve_executable(["vampire"], env=env)
+    assert resolved is not None
+    assert Path(resolved).resolve() == fake.resolve()
+
+    managed_env = atp_cert.managed_execution_env(env)
+    assert str(managed_bin) in managed_env["PATH"].split(os.pathsep)
+
+
+def test_objective_validation_repair_receipt_binding(live_receipt: dict[str, Any]) -> None:
+    """Receipt always binds the objective validation repair evidence term."""
+
+    repair = live_receipt.get("objective_validation_repair") or {}
+    assert repair.get("schema_version") == "objective-validation-repair/v1"
+    assert repair.get("goal_id") == LIVE_GOAL_ID
+    assert repair.get("interface") == LIVE_INTERFACE
+    assert "objective validation repair" in (repair.get("evidence_terms") or [])
+    assert live_receipt.get("policy", {}).get("objective_validation_repair") is True
+    if live_receipt.get("production_certified"):
+        assert repair.get("status") == "satisfied"
+    elif not live_receipt.get("live_execution"):
+        assert repair.get("status") == "withheld_live_tools_unavailable"

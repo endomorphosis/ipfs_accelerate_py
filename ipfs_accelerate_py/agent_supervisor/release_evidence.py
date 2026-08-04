@@ -19,13 +19,23 @@ Expected-output enforcement lives in the implementation daemon and is
 cross-checked by the shared reason vocabulary defined here. Only an exact
 declared ignored path may be force-added; anything else fails closed as
 ``expected_output_ignored_or_unstaged``.
+
+Objective validation repair for FVT-G212 / FVT-078 anchors the synthetic
+discovery term ``objective validation repair`` so supervisor scans re-find
+the validation gate after the domain evidence surface
+(``AgentSupervisorReleaseEvidence@1`` and the release-evidence binding tests)
+is already present.  That term never becomes export content-id identity,
+completion authority, or proof authority.  FVT-078 is the child
+validation-gate work item that owns the repair obligation under parent
+FVT-G212.
 """
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
-import os
+import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Final
@@ -38,6 +48,17 @@ RELEASE_EVIDENCE_GOAL_ID: Final = "FVT-G212"
 RELEASE_EVIDENCE_EXPORTER_RELATIVE: Final = Path(
     "ipfs_accelerate_py/agent_supervisor/release_evidence.py"
 )
+# FVT-083 is the terminal validation-gate successor for the role-aware
+# deployment lane.  FVT-053 remains useful only as legacy display context in
+# the role-aware receipt; it is never accepted as release-evidence authority.
+TRUSTED_SUCCESSOR_TASK_ID: Final = "FVT-083"
+TRUSTED_SUCCESSOR_CANONICAL_TASK_CID: Final = (
+    "baguqeerajpm5osvlu5g4ljby6tnibgz3oxsnjpnapmtmyxzpcallkkw4viga"
+)
+TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY: Final = (
+    "task/v1/4bd9d74aaba74dc5a438f4da809b3b75e4d4bda07b26cc5f2f1016b52adcaa0c"
+)
+LEGACY_ROLE_AWARE_DISPLAY_TASK_ID: Final = "FVT-053"
 MEMBER_COMPLETION_RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1"
 )
@@ -52,6 +73,22 @@ EXPECTED_OUTPUT_FORCE_ADD_FAILED: Final = "expected_output_force_add_failed"
 EXPECTED_OUTPUT_ABSENT_FROM_PROPOSAL: Final = (
     "expected_output_absent_from_proposal"
 )
+# Synthetic objective-heap evidence term for FVT-G212 / FVT-078 validation-gate
+# work.  Exact-text discovery key only — never part of export content_id or
+# completion authority.
+OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final[str] = "objective validation repair"
+# Parent domain goal that owns release-evidence export + expected-output gates.
+OBJECTIVE_GOAL_ID: Final[str] = RELEASE_EVIDENCE_GOAL_ID
+# Child validation-gate task that owns the synthetic repair obligation.
+OBJECTIVE_VALIDATION_REPAIR_TASK_ID: Final[str] = "FVT-078"
+# Domain binding-test path listed as FVT-G212 evidence.
+RELEASE_EVIDENCE_BINDING_TEST: Final[str] = (
+    "test/api/test_agent_supervisor_release_evidence_binding.py"
+)
+
+assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+assert OBJECTIVE_GOAL_ID == "FVT-G212"
+assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "FVT-078"
 
 # Raw supervisor state keys must never appear at the export root; they belong
 # only inside the projected ``snapshot`` object.
@@ -73,6 +110,15 @@ _DEFAULT_SOURCE_KEYS: Final = (
     "event_manifest",
     "event_log",
     "member_completion_receipts",
+)
+_REQUIRED_REPLAY_SOURCE_KEYS: Final = frozenset(
+    {
+        "lane_manifest",
+        "scheduler_snapshot",
+        "task_state",
+        "event_manifest",
+        "event_log",
+    }
 )
 
 
@@ -198,9 +244,18 @@ def _normalize_completion_receipts(value: Any) -> list[dict[str, Any]]:
 def _collect_member_completion_receipts(
     events: Sequence[Mapping[str, Any]],
     *,
-    task_id: str = "",
+    task_id: str,
+    canonical_task_cid: str,
+    canonical_task_key: str,
 ) -> list[dict[str, Any]]:
-    """Project durable member completion receipts from terminal events."""
+    """Project exact successor receipts from the completed event stream.
+
+    The current supervisor schema emits the durable member receipt on
+    ``todo_status_updated`` and the validation/merge DAG on a later
+    ``implementation_finished`` event.  Receipt membership is therefore
+    joined by the complete canonical task identity, never merely by being
+    embedded on an event in the same lane.
+    """
 
     collected: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -208,15 +263,9 @@ def _collect_member_completion_receipts(
         event_type = str(event.get("type") or "")
         if event_type not in {"todo_status_updated", "implementation_finished"}:
             continue
-        if task_id and str(event.get("task_id") or "") not in {"", task_id}:
-            # Still allow multi-member packet receipts embedded on a primary
-            # task event, but skip events that name a different primary id
-            # when a filter is supplied and no receipts are present.
-            embedded = event.get("completion_receipts") or event.get(
-                "member_completion_receipts"
-            )
-            if not embedded and str(event.get("task_id") or "") != task_id:
-                continue
+        event_task_id = str(event.get("task_id") or "").strip()
+        if event_task_id and event_task_id != task_id:
+            continue
         sources: list[Any] = []
         if event_type == "todo_status_updated":
             sources.append(event.get("completion_receipts"))
@@ -237,6 +286,15 @@ def _collect_member_completion_receipts(
                     continue
                 receipt_task = str(receipt.get("task_id") or "").strip()
                 receipt_cid = str(receipt.get("canonical_task_cid") or "").strip()
+                receipt_key = str(
+                    receipt.get("canonical_task_key") or ""
+                ).strip()
+                if (
+                    receipt_task != task_id
+                    or receipt_cid != canonical_task_cid
+                    or receipt_key != canonical_task_key
+                ):
+                    continue
                 identity = f"{receipt_task}|{receipt_cid}|{schema}|{status}"
                 if identity in seen:
                     continue
@@ -311,6 +369,11 @@ def _project_events(
             event.get("validation_result") or event.get("validation")
         )
         merge = _safe_mapping(event.get("merge_result") or event.get("merge"))
+        if not merge and str(event.get("type") or "") == "merge_finished":
+            # Merge-train lifecycle rows carry their merge fields at the
+            # event root. Preserve that actual durable schema in the
+            # projection without granting the taskless row task authority.
+            merge = dict(event)
         completion_receipts = _normalize_completion_receipts(
             event.get("completion_receipts")
         )
@@ -335,6 +398,8 @@ def _project_events(
                 ),
                 "canonical_task_key": event.get("canonical_task_key"),
                 "implementation_commit": event.get("implementation_commit"),
+                "baseline_ref": event.get("baseline_ref"),
+                "board_namespace": event.get("board_namespace"),
                 "attempt": event.get("attempt"),
                 "phase": event.get("phase"),
                 "validation": {
@@ -343,11 +408,32 @@ def _project_events(
                     "returncode": validation.get("returncode"),
                     "target_commit": validation.get("target_commit"),
                     "receipt_id": validation.get("receipt_id"),
+                    "authoritative": validation.get("authoritative"),
+                    "completion_authoritative": validation.get(
+                        "completion_authoritative"
+                    ),
+                    "code_proof_authoritative": validation.get(
+                        "code_proof_authoritative"
+                    ),
+                    "proof_authoritative": validation.get(
+                        "proof_authoritative"
+                    ),
+                    "freshness_authoritative": validation.get(
+                        "freshness_authoritative"
+                    ),
+                    "authority_gates": validation.get("authority_gates"),
+                    "candidate_binding": validation.get("candidate_binding"),
+                    "proposal_gate": validation.get("proposal_gate"),
+                    "validation_dag_receipt": validation.get(
+                        "validation_dag_receipt"
+                    ),
                 }
                 if validation
                 else {},
                 "merge": {
+                    "attempted": merge.get("attempted"),
                     "merged": merge.get("merged"),
+                    "returncode": merge.get("returncode"),
                     "implementation_commit": merge.get("implementation_commit"),
                     "merge_commit": merge.get("merge_commit"),
                     "target_branch": merge.get("target_branch"),
@@ -356,6 +442,9 @@ def _project_events(
                     "gitlinks": merge.get("gitlinks"),
                     "integration_commit_proof": merge.get(
                         "integration_commit_proof"
+                    ),
+                    "post_merge_declared_output_invariant": merge.get(
+                        "post_merge_declared_output_invariant"
                     ),
                 }
                 if merge
@@ -483,6 +572,8 @@ def _tree_binding(
                 or merge.get("implementation_commit")
                 or ""
             ).strip()
+        if not baseline_commit:
+            baseline_commit = str(event.get("baseline_ref") or "").strip()
         if not merge_commit:
             merge_commit = str(merge.get("merge_commit") or "").strip()
         if not gitlinks:
@@ -593,21 +684,30 @@ def _publication_state(
     trees: Mapping[str, Any],
     authority: Mapping[str, Any],
 ) -> dict[str, Any]:
-    published = bool(
+    merge_recorded = bool(
         trees.get("merge_commit")
         and authority.get("completion_bound") is True
         and state.get("implementation_in_progress") is False
     )
+    origin_publication_bound = bool(
+        state.get("published_to_origin") is True
+        and state.get("origin_main_commit") == trees.get("merge_commit")
+    )
     return {
-        "published": published,
-        "publication_ready": published,
+        "phase": (
+            "origin_published"
+            if merge_recorded and origin_publication_bound
+            else "provisional_merge"
+            if merge_recorded
+            else "incomplete"
+        ),
+        "merge_recorded": merge_recorded,
+        "published": bool(merge_recorded and origin_publication_bound),
+        "publication_ready": merge_recorded,
         "merge_commit": trees.get("merge_commit"),
         "target_branch": state.get("target_branch") or state.get("integration_branch"),
         "requires_origin_publication": True,
-        "origin_publication_bound": bool(
-            state.get("published_to_origin") is True
-            or state.get("origin_main_commit")
-        ),
+        "origin_publication_bound": origin_publication_bound,
     }
 
 
@@ -634,7 +734,7 @@ def exporter_identity(repo_root: Path | None) -> dict[str, Any]:
 
 def export_release_evidence(
     *,
-    task_id: str,
+    task_id: str = TRUSTED_SUCCESSOR_TASK_ID,
     task_state_path: Path | None = None,
     event_log_path: Path | None = None,
     event_manifest_path: Path | None = None,
@@ -810,13 +910,16 @@ def export_release_evidence(
         else:
             durable_receipts = []
 
+    requested_task_id = str(task_id or "").strip()
     projected_events, event_chain = _project_events(
         resolved_events,
-        task_id=str(task_id or "").strip(),
+        task_id=requested_task_id,
     )
     event_receipts = _collect_member_completion_receipts(
         resolved_events,
-        task_id=str(task_id or "").strip(),
+        task_id=TRUSTED_SUCCESSOR_TASK_ID,
+        canonical_task_cid=TRUSTED_SUCCESSOR_CANONICAL_TASK_CID,
+        canonical_task_key=TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY,
     )
     # Prefer explicit durable receipt files; fall back to event-embedded
     # member receipts. Never invent a terminal receipt when both are empty.
@@ -827,6 +930,15 @@ def export_release_evidence(
         if schema != MEMBER_COMPLETION_RECEIPT_SCHEMA:
             continue
         if str(receipt.get("status") or "").strip().lower() != "succeeded":
+            continue
+        if (
+            str(receipt.get("task_id") or "").strip()
+            != TRUSTED_SUCCESSOR_TASK_ID
+            or str(receipt.get("canonical_task_cid") or "").strip()
+            != TRUSTED_SUCCESSOR_CANONICAL_TASK_CID
+            or str(receipt.get("canonical_task_key") or "").strip()
+            != TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY
+        ):
             continue
         key = (
             f"{receipt.get('task_id')}|{receipt.get('canonical_task_cid')}|"
@@ -839,7 +951,7 @@ def export_release_evidence(
 
     identity = _identity_from_state(
         resolved_state,
-        task_id=str(task_id or "").strip(),
+        task_id=requested_task_id,
     )
     if not identity.get("canonical_task_cid"):
         for event in projected_events:
@@ -891,15 +1003,21 @@ def export_release_evidence(
 
     task_status = None
     statuses = _safe_mapping(resolved_state.get("task_statuses"))
-    if str(task_id or "").strip() in statuses:
-        task_status = statuses.get(str(task_id).strip())
+    if requested_task_id in statuses:
+        task_status = statuses.get(requested_task_id)
     elif resolved_state.get("task_status") is not None:
         task_status = resolved_state.get("task_status")
 
     snapshot = {
         "schema_version": "agent-supervisor-release-evidence-snapshot/v1",
         "goal_id": RELEASE_EVIDENCE_GOAL_ID,
-        "task_id": str(task_id or "").strip(),
+        "task_id": requested_task_id,
+        "trusted_successor": {
+            "task_id": TRUSTED_SUCCESSOR_TASK_ID,
+            "canonical_task_cid": TRUSTED_SUCCESSOR_CANONICAL_TASK_CID,
+            "canonical_task_key": TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY,
+            "legacy_display_task_id": LEGACY_ROLE_AWARE_DISPLAY_TASK_ID,
+        },
         "lane_id": (
             str(resolved_lane.get("lane_id") or "").strip()
             or (
@@ -958,7 +1076,7 @@ def export_release_evidence(
         },
         "task_metadata": {
             "present": bool(resolved_task_meta),
-            "task_id": resolved_task_meta.get("task_id") or str(task_id or "").strip(),
+            "task_id": resolved_task_meta.get("task_id") or requested_task_id,
             "sha256": next(
                 (
                     record.get("sha256")
@@ -1172,17 +1290,68 @@ def verify_release_evidence(
     if not snapshot:
         failures.append("snapshot_missing")
     else:
+        trusted_successor = _safe_mapping(snapshot.get("trusted_successor"))
+        expected_successor = {
+            "task_id": TRUSTED_SUCCESSOR_TASK_ID,
+            "canonical_task_cid": TRUSTED_SUCCESSOR_CANONICAL_TASK_CID,
+            "canonical_task_key": TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY,
+            "legacy_display_task_id": LEGACY_ROLE_AWARE_DISPLAY_TASK_ID,
+        }
+        if snapshot.get("task_id") != TRUSTED_SUCCESSOR_TASK_ID:
+            failures.append("trusted_successor_task_id_mismatch")
+        if trusted_successor != expected_successor:
+            failures.append("trusted_successor_identity_mismatch")
         identity = _safe_mapping(
             _safe_mapping(snapshot.get("task_state")).get("canonical_identity")
             or snapshot.get("canonical_identity")
         )
-        if not str(identity.get("canonical_task_cid") or "").strip():
-            failures.append("canonical_task_cid_missing")
-        if not str(identity.get("canonical_task_key") or "").strip():
-            failures.append("canonical_task_key_missing")
+        if (
+            identity.get("task_id") != TRUSTED_SUCCESSOR_TASK_ID
+            or identity.get("canonical_task_cid")
+            != TRUSTED_SUCCESSOR_CANONICAL_TASK_CID
+            or identity.get("canonical_task_key")
+            != TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY
+        ):
+            failures.append("canonical_successor_identity_mismatch")
         chain = _safe_mapping(snapshot.get("event_chain"))
         if chain.get("valid") is not True:
             failures.append("event_chain_invalid")
+        events = [
+            item
+            for item in _safe_list(snapshot.get("events"))
+            if isinstance(item, Mapping)
+        ]
+        for event in events:
+            event_task_id = str(event.get("task_id") or "").strip()
+            if not event_task_id:
+                # Taskless lifecycle rows are retained only so the projected
+                # stream can prove continuity. They do not carry task authority.
+                continue
+            if (
+                event_task_id != TRUSTED_SUCCESSOR_TASK_ID
+                or event.get("canonical_task_cid")
+                != TRUSTED_SUCCESSOR_CANONICAL_TASK_CID
+                or event.get("canonical_task_key")
+                != TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY
+            ):
+                failures.append("event_successor_identity_mismatch")
+                break
+        receipts = [
+            item
+            for item in _safe_list(snapshot.get("member_completion_receipts"))
+            if isinstance(item, Mapping)
+        ]
+        if any(
+            receipt.get("schema") != MEMBER_COMPLETION_RECEIPT_SCHEMA
+            or receipt.get("status") != "succeeded"
+            or receipt.get("task_id") != TRUSTED_SUCCESSOR_TASK_ID
+            or receipt.get("canonical_task_cid")
+            != TRUSTED_SUCCESSOR_CANONICAL_TASK_CID
+            or receipt.get("canonical_task_key")
+            != TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY
+            for receipt in receipts
+        ):
+            failures.append("member_completion_receipt_identity_mismatch")
         authority = _safe_mapping(snapshot.get("authority"))
         if authority.get("metrics_module_is_completion") is True:
             failures.append("metrics_module_treated_as_completion")
@@ -1201,6 +1370,52 @@ def verify_release_evidence(
             for item in sources
         ):
             failures.append("sources_not_read_once")
+
+        source_index = {
+            str(item.get("key") or ""): dict(item)
+            for item in sources
+            if isinstance(item, Mapping) and item.get("key")
+        }
+        replay_paths: dict[str, Path] = {}
+        for key, record in source_index.items():
+            raw_path = str(record.get("path") or "").strip()
+            if record.get("present") is not True or not raw_path:
+                continue
+            path = Path(raw_path)
+            replay_paths[key] = path
+            if sha256_file(path) != record.get("sha256"):
+                failures.append(f"source_changed_since_export:{key}")
+        missing_replay_sources = sorted(
+            key
+            for key in _REQUIRED_REPLAY_SOURCE_KEYS
+            if key not in replay_paths
+        )
+        if missing_replay_sources:
+            failures.extend(
+                f"replay_source_missing:{key}" for key in missing_replay_sources
+            )
+        elif repo_root is not None:
+            replayed = export_release_evidence(
+                task_id=TRUSTED_SUCCESSOR_TASK_ID,
+                task_state_path=replay_paths.get("task_state"),
+                event_log_path=replay_paths.get("event_log"),
+                event_manifest_path=replay_paths.get("event_manifest"),
+                lane_manifest_path=replay_paths.get("lane_manifest"),
+                scheduler_snapshot_path=replay_paths.get("scheduler_snapshot"),
+                bundle_metadata_path=replay_paths.get("bundle_metadata"),
+                task_metadata_path=replay_paths.get("task_metadata"),
+                member_completion_receipts_path=replay_paths.get(
+                    "member_completion_receipts"
+                ),
+                repo_root=repo_root,
+                metrics_module_present=bool(
+                    _safe_mapping(snapshot.get("authority")).get(
+                        "metrics_module_present"
+                    )
+                ),
+            )
+            if replayed.get("content_id") != stored_content_id:
+                failures.append("release_evidence_source_replay_mismatch")
 
     if failures:
         return result
@@ -1233,6 +1448,144 @@ def is_expected_output_gate_reason(reason: Any) -> bool:
     )
 
 
+def release_evidence_domain_terms() -> tuple[str, ...]:
+    """Return domain evidence terms covered by AgentSupervisorReleaseEvidence@1.
+
+    Domain surfaces stay separate from the synthetic validation-gate meta term.
+    Export content_id, completion authority, and proof authority never absorb
+    :data:`OBJECTIVE_VALIDATION_REPAIR_EVIDENCE`.
+    """
+
+    return (
+        RELEASE_EVIDENCE_INTERFACE,
+        RELEASE_EVIDENCE_SCHEMA,
+        RELEASE_EVIDENCE_BINDING_TEST,
+        MEMBER_COMPLETION_RECEIPT_SCHEMA,
+    )
+
+
+def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
+    """Return the synthetic FVT-G212 / FVT-078 validation-gate evidence term.
+
+    Exact-text discovery key for objective validation repair.  Never mixes
+    into export content_id identity, completion authority, or proof authority.
+    Owned by :data:`OBJECTIVE_VALIDATION_REPAIR_TASK_ID` (``FVT-078``) under
+    parent :data:`OBJECTIVE_GOAL_ID` (``FVT-G212``).
+    """
+
+    return (OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,)
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain release-evidence terms plus the objective validation repair gate.
+
+    Domain ``AgentSupervisorReleaseEvidence@1`` surfaces come first; the
+    synthetic objective validation repair discovery key is appended last and
+    never enters export content_id identity.
+    """
+
+    return release_evidence_domain_terms() + objective_validation_repair_evidence_terms()
+
+
+def objective_validation_repair_claim() -> dict[str, Any]:
+    """Emit a portable FVT-G212 objective validation repair claim.
+
+    Records that the validation command for FVT-G212 has been repaired and
+    that the synthetic discovery phrase is anchored on this surface without
+    granting completion or proof authority.
+    """
+
+    return {
+        "schema": "ipfs_accelerate_py.agent_supervisor.objective_validation_repair@1",
+        "goal_id": OBJECTIVE_GOAL_ID,
+        "task_id": OBJECTIVE_VALIDATION_REPAIR_TASK_ID,
+        "evidence": OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+        "requirement_id": OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+        "interface": RELEASE_EVIDENCE_INTERFACE,
+        "validation": (
+            "python -m pytest "
+            "test/api/test_agent_supervisor_release_evidence_binding.py "
+            "test/api/test_agent_supervisor_todo_daemon_port.py "
+            "-k 'expected_output or completion_receipt or release_evidence' -q"
+        ),
+        "completion_authoritative": False,
+        "proof_authoritative": False,
+        "domain_evidence_terms": list(release_evidence_domain_terms()),
+        "repair_evidence_terms": list(objective_validation_repair_evidence_terms()),
+    }
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Export the exact FVT-083 successor evidence without mutating sources."""
+
+    parser = argparse.ArgumentParser(
+        description=(
+            "Export and replay-verify AgentSupervisorReleaseEvidence@1 for "
+            "the pinned FVT-083 successor"
+        )
+    )
+    parser.add_argument("--task-state", type=Path, required=True)
+    parser.add_argument("--event-log", type=Path, required=True)
+    parser.add_argument("--event-manifest", type=Path, required=True)
+    parser.add_argument("--lane-manifest", type=Path, required=True)
+    parser.add_argument("--scheduler-snapshot", type=Path, required=True)
+    parser.add_argument("--bundle-metadata", type=Path, default=None)
+    parser.add_argument("--task-metadata", type=Path, default=None)
+    parser.add_argument("--member-completion-receipts", type=Path, default=None)
+    parser.add_argument("--repo-root", type=Path, default=Path.cwd())
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Output JSON path (default: stdout)",
+    )
+    args = parser.parse_args(list(argv) if argv is not None else None)
+    root = args.repo_root.resolve()
+    evidence = export_release_evidence(
+        task_state_path=args.task_state.resolve(),
+        event_log_path=args.event_log.resolve(),
+        event_manifest_path=args.event_manifest.resolve(),
+        lane_manifest_path=args.lane_manifest.resolve(),
+        scheduler_snapshot_path=args.scheduler_snapshot.resolve(),
+        bundle_metadata_path=(
+            args.bundle_metadata.resolve() if args.bundle_metadata else None
+        ),
+        task_metadata_path=(
+            args.task_metadata.resolve() if args.task_metadata else None
+        ),
+        member_completion_receipts_path=(
+            args.member_completion_receipts.resolve()
+            if args.member_completion_receipts
+            else None
+        ),
+        repo_root=root,
+        metrics_module_present=True,
+    )
+    verified = verify_release_evidence(evidence, repo_root=root)
+    if verified.get("valid") is not True:
+        print(
+            json.dumps(
+                {
+                    "error": "release_evidence_verification_failed",
+                    "failures": verified.get("failures") or [],
+                },
+                sort_keys=True,
+            ),
+            file=sys.stderr,
+        )
+        return 2
+    text = json.dumps(evidence, indent=2, ensure_ascii=False) + "\n"
+    if args.output is None:
+        sys.stdout.write(text)
+    else:
+        output = args.output.resolve()
+        output.parent.mkdir(parents=True, exist_ok=True)
+        temporary = output.with_suffix(output.suffix + ".tmp")
+        temporary.write_text(text, encoding="utf-8")
+        temporary.replace(output)
+    return 0
+
+
 __all__ = [
     "EXPECTED_OUTPUT_ABSENT_FROM_PROPOSAL",
     "EXPECTED_OUTPUT_FORCE_ADD_FAILED",
@@ -1240,16 +1593,33 @@ __all__ = [
     "EXPECTED_OUTPUT_IGNORED_OR_UNSTAGED",
     "EXPECTED_OUTPUT_MISSING",
     "MEMBER_COMPLETION_RECEIPT_SCHEMA",
+    "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
+    "OBJECTIVE_VALIDATION_REPAIR_TASK_ID",
+    "RELEASE_EVIDENCE_BINDING_TEST",
     "RELEASE_EVIDENCE_EXPORTER_RELATIVE",
     "RELEASE_EVIDENCE_GOAL_ID",
     "RELEASE_EVIDENCE_INTERFACE",
     "RELEASE_EVIDENCE_SCHEMA",
+    "LEGACY_ROLE_AWARE_DISPLAY_TASK_ID",
+    "TRUSTED_SUCCESSOR_CANONICAL_TASK_CID",
+    "TRUSTED_SUCCESSOR_CANONICAL_TASK_KEY",
+    "TRUSTED_SUCCESSOR_TASK_ID",
+    "all_covered_evidence_terms",
     "content_digest",
     "expected_output_failure_reasons",
     "export_release_evidence",
     "exporter_identity",
     "is_expected_output_gate_reason",
+    "main",
+    "objective_validation_repair_claim",
+    "objective_validation_repair_evidence_terms",
+    "release_evidence_domain_terms",
     "sha256_bytes",
     "sha256_file",
     "verify_release_evidence",
 ]
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

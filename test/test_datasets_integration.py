@@ -30,6 +30,40 @@ def test_availability_check():
     assert status['available'] == available
 
 
+def test_source_resolution_skips_empty_gitlink_for_workspace_sibling(tmp_path):
+    """An uninitialized nested submodule must not hide a valid workspace copy."""
+    from ipfs_accelerate_py.datasets_integration import (
+        _resolve_datasets_source_path,
+    )
+
+    repo_root = tmp_path / "ipfs_accelerate"
+    (repo_root / "ipfs_datasets_py").mkdir(parents=True)
+    sibling_root = tmp_path / "ipfs_datasets"
+    package_root = sibling_root / "ipfs_datasets_py"
+    package_root.mkdir(parents=True)
+    (package_root / "__init__.py").write_text("", encoding="utf-8")
+
+    assert _resolve_datasets_source_path(repo_root) == sibling_root.resolve()
+
+
+def test_source_resolution_prefers_initialized_repo_root_submodule(tmp_path):
+    """Standalone checkouts retain priority over umbrella-workspace siblings."""
+    from ipfs_accelerate_py.datasets_integration import (
+        _resolve_datasets_source_path,
+    )
+
+    repo_root = tmp_path / "ipfs_accelerate"
+    root_checkout = repo_root / "ipfs_datasets_py"
+    root_package = root_checkout / "ipfs_datasets_py"
+    root_package.mkdir(parents=True)
+    (root_package / "__init__.py").write_text("", encoding="utf-8")
+    sibling_package = tmp_path / "ipfs_datasets" / "ipfs_datasets_py"
+    sibling_package.mkdir(parents=True)
+    (sibling_package / "__init__.py").write_text("", encoding="utf-8")
+
+    assert _resolve_datasets_source_path(repo_root) == root_checkout.resolve()
+
+
 def test_datasets_manager_init():
     """Test that DatasetsManager initializes correctly."""
     from ipfs_accelerate_py.datasets_integration import DatasetsManager

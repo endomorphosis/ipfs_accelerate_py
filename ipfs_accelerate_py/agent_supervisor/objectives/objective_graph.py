@@ -6594,20 +6594,88 @@ def priority_rank(value: str) -> int:
     return 9
 
 
+_TASK_SCHEDULING_POLICY_FIELDS = frozenset(
+    {"is_schedulable", "review_only"}
+)
+_AMBIGUOUS_TASK_SCHEDULING_POLICY = (
+    "<ambiguous-task-scheduling-policy>"
+)
+
+
 def _task_record_mapping(task: Any) -> dict[str, Any]:
+    result: dict[str, Any] | None = None
     if isinstance(task, Mapping):
-        return dict(task)
-    if hasattr(task, "to_dict"):
+        result = dict(task)
+    elif hasattr(task, "to_dict"):
         value = task.to_dict()
         if isinstance(value, Mapping):
-            return dict(value)
-    if hasattr(task, "__dataclass_fields__"):
-        return asdict(task)
-    return {
-        name: getattr(task, name)
-        for name in dir(task)
-        if not name.startswith("_") and not callable(getattr(task, name, None))
+            result = dict(value)
+    if result is None and hasattr(task, "__dataclass_fields__"):
+        result = asdict(task)
+    if result is None:
+        result = {
+            name: getattr(task, name)
+            for name in dir(task)
+            if not name.startswith("_") and not callable(getattr(task, name, None))
+        }
+
+    # PortalTask deliberately retains the human Markdown labels in a nested
+    # metadata mapping.  Promote non-destructive wire-format aliases so the
+    # dependency scheduler sees the same goal, authority, and scheduling
+    # fields as task-source and daemon consumers.
+    #
+    # Scheduling booleans are an authorization boundary.  Preserve duplicate
+    # normalized aliases as an explicit ambiguity instead of making their
+    # meaning depend on mapping insertion order.  This mirrors the direct
+    # implementation daemon's fail-closed handling.
+    policy_values: dict[str, list[Any]] = {
+        name: [] for name in _TASK_SCHEDULING_POLICY_FIELDS
     }
+    for key, value in tuple(result.items()):
+        normalized = normalize_field_key(str(key))
+        if normalized in policy_values:
+            policy_values[normalized].append(value)
+        elif normalized:
+            result.setdefault(normalized, value)
+    metadata = result.get("metadata")
+    if isinstance(metadata, Mapping):
+        for key, value in metadata.items():
+            normalized = normalize_field_key(str(key))
+            if normalized in policy_values:
+                policy_values[normalized].append(value)
+            elif normalized:
+                result.setdefault(normalized, value)
+    for name, values in policy_values.items():
+        if len(values) == 1:
+            result[name] = values[0]
+        elif len(values) > 1:
+            result[name] = _AMBIGUOUS_TASK_SCHEDULING_POLICY
+    return result
+
+
+def _task_record_flag_resolution(
+    task: Mapping[str, Any],
+    name: str,
+    default: bool,
+) -> tuple[bool, bool]:
+    """Return a strict scheduling boolean and whether it was well formed."""
+
+    if name not in task:
+        return default, True
+    value = task[name]
+    if value == _AMBIGUOUS_TASK_SCHEDULING_POLICY:
+        return default, False
+    if isinstance(value, bool):
+        return value, True
+    if isinstance(value, int) and value in {0, 1}:
+        return bool(value), True
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"0", "false", "no", "off"}:
+            return False, True
+        if normalized in {"1", "true", "yes", "on"}:
+            return True, True
+    return default, False
 
 
 def _task_record_flag(
@@ -6615,26 +6683,36 @@ def _task_record_flag(
     name: str,
     default: bool,
 ) -> bool:
-    """Read a persisted task boolean without treating ``"false"`` as true."""
+    """Read one policy boolean, projecting malformed values fail closed."""
 
-    value = task.get(name, default)
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"0", "false", "no", "off"}:
-            return False
-        if normalized in {"1", "true", "yes", "on"}:
-            return True
-    return bool(value)
+    value, valid = _task_record_flag_resolution(task, name, default)
+    if valid:
+        return value
+    # An invalid schedulable declaration cannot authorize execution.  An
+    # invalid review-only declaration is conservatively projected as review
+    # only for bundle/index consumers.
+    return name == "review_only"
 
 
 def _task_record_scheduling_allowed(task: Mapping[str, Any]) -> bool:
     """Return whether policy allows a task to participate in scheduling."""
 
-    return _task_record_flag(
+    is_schedulable, schedulable_valid = _task_record_flag_resolution(
         task,
         "is_schedulable",
         True,
-    ) and not _task_record_flag(task, "review_only", False)
+    )
+    review_only, review_only_valid = _task_record_flag_resolution(
+        task,
+        "review_only",
+        False,
+    )
+    return (
+        schedulable_valid
+        and review_only_valid
+        and is_schedulable
+        and not review_only
+    )
 
 
 def _task_record_is_schedulable(task: Mapping[str, Any]) -> bool:
@@ -9303,6 +9381,40 @@ def _objective_goal_task_ids_from_todo(
     return task_ids_by_goal
 
 
+def _project_objective_dependencies_to_task_ids(
+    dependencies: Iterable[str],
+    *,
+    known_goal_ids: Iterable[str],
+    task_ids_by_goal: Mapping[str, Sequence[str]],
+    materialized_task_ids: Iterable[str],
+) -> list[str]:
+    """Project objective-goal references onto executable task identities.
+
+    A known goal without a materialized task is an abstract planning node, not
+    an executable prerequisite, so it contributes no task-level edge.  Goal
+    references with materialized tasks expand to those task IDs.  Every other
+    reference is retained so concrete task IDs and unknown aliases continue to
+    fail closed in the task dependency graph instead of being silently lost.
+    """
+
+    known_goals = set(_unique_strings(known_goal_ids))
+    materialized_tasks = set(_unique_strings(materialized_task_ids))
+    projected: list[str] = []
+    for dependency in _unique_strings(dependencies):
+        if dependency in materialized_tasks:
+            projected.append(dependency)
+            continue
+        mapped_task_ids = _unique_strings(
+            task_ids_by_goal.get(dependency, ())
+        )
+        if mapped_task_ids:
+            projected.extend(mapped_task_ids)
+            continue
+        if dependency not in known_goals:
+            projected.append(dependency)
+    return _unique_strings(projected)
+
+
 def canonical_task_cids_from_todo(todo_text: str) -> set[str]:
     """Return canonical task identities already materialized on a board."""
 
@@ -10605,7 +10717,7 @@ def render_task_block(
 - Token class: {finding.token_class or "medium"}
 - Estimated tokens: {max(0, _parse_int(finding.estimated_tokens, 0))}
 - Context budget tokens: 4096
-- Provider role: grok-implement, codex-review
+- Provider role: grok, codex-review
 - Resources: {", ".join(finding.resources or [finding.resource_class or "cpu-medium"])}
 - Merge fate: {finding.merge_fate or finding.merge_family or finding.merge_key}
 - Rejection reasons: {", ".join(finding.rejection_reasons) or "none (accepted)"}
@@ -11586,25 +11698,27 @@ def generate_objective_todos(
                     if goal_id in packet_goal_ids
                     and any(str(requirement).strip() for requirement in requirements)
                 }
-            projected_dependencies: list[str] = []
-            for dependency in _unique_strings(
-                [*depends_on, *finding.dependencies]
-            ):
-                # A packet aggregate is the execution unit which satisfies
-                # every explicitly bound packet goal.  Retaining one of those
-                # goals as its own prerequisite creates an impossible
-                # ``task -> goal -> task`` cycle.  Only bindings with concrete
-                # evidence requirements qualify; malformed or merely
-                # descriptive packet metadata remains fail-closed.
-                if dependency in packet_internal_goal_dependencies:
-                    continue
-                if dependency in materialized_task_ids:
-                    projected_dependencies.append(dependency)
-                else:
-                    projected_dependencies.extend(
-                        task_ids_by_goal.get(dependency) or [dependency]
-                    )
-            projected_dependencies = _unique_strings(projected_dependencies)
+            # A packet aggregate is the execution unit which satisfies every
+            # explicitly bound packet goal.  Retaining one of those goals as
+            # its own prerequisite creates an impossible ``task -> goal ->
+            # task`` cycle.  Only bindings with concrete evidence requirements
+            # qualify; malformed or merely descriptive packet metadata remains
+            # fail-closed.
+            dependency_references = [
+                dependency
+                for dependency in _unique_strings(
+                    [*depends_on, *finding.dependencies]
+                )
+                if dependency not in packet_internal_goal_dependencies
+            ]
+            projected_dependencies = (
+                _project_objective_dependencies_to_task_ids(
+                    dependency_references,
+                    known_goal_ids=objective_goals_by_id,
+                    task_ids_by_goal=task_ids_by_goal,
+                    materialized_task_ids=materialized_task_ids,
+                )
+            )
             dependency_refs_by_task_id[task_id] = tuple(
                 dependency
                 for dependency in _unique_strings(
@@ -11659,19 +11773,13 @@ def generate_objective_todos(
             rerendered_records: list[ObjectiveTaskRecord] = []
             rerendered_blocks: list[str] = []
             for record in records:
-                projected_dependencies: list[str] = []
-                for dependency in dependency_refs_by_task_id.get(
-                    record.task_id,
-                    (),
-                ):
-                    if dependency in materialized_task_ids:
-                        projected_dependencies.append(dependency)
-                    else:
-                        projected_dependencies.extend(
-                            task_ids_by_goal.get(dependency) or [dependency]
-                        )
-                projected_dependencies = _unique_strings(
-                    projected_dependencies
+                projected_dependencies = (
+                    _project_objective_dependencies_to_task_ids(
+                        dependency_refs_by_task_id.get(record.task_id, ()),
+                        known_goal_ids=objective_goals_by_id,
+                        task_ids_by_goal=task_ids_by_goal,
+                        materialized_task_ids=materialized_task_ids,
+                    )
                 )
                 projected_finding = replace(
                     record.finding,
@@ -11735,21 +11843,35 @@ def generate_objective_todos(
     ):
         try:
             from ..task_sources.todo_vector_index import (
+                _project_bundle_work_contracts_onto_records,
                 parse_todo_vector_records,
             )
 
             existing_vector_payload = json.loads(
                 index_path.read_text(encoding="utf-8")
             )
+            projected_records = parse_todo_vector_records(
+                repo_root=repo_root,
+                todo_path=todo_path,
+                task_header_prefix=task_markdown_heading_prefix(
+                    task_prefix
+                ),
+            )
+            if bundle_index_path.exists():
+                # The persisted vector projection is hydrated with the
+                # scheduler's admitted work contracts.  Compare like with
+                # like here; a raw Markdown parse deliberately lacks those
+                # contracts and otherwise makes every no-op refill look
+                # stale, rotating generated timestamps and DuckDB state.
+                projected_records = (
+                    _project_bundle_work_contracts_onto_records(
+                        bundle_index_path=bundle_index_path,
+                        records=projected_records,
+                    )
+                )
             projected_vector_records = [
                 record.to_dict()
-                for record in parse_todo_vector_records(
-                    repo_root=repo_root,
-                    todo_path=todo_path,
-                    task_header_prefix=task_markdown_heading_prefix(
-                        task_prefix
-                    ),
-                )
+                for record in projected_records
             ]
             vector_projection_stale = (
                 not isinstance(existing_vector_payload, Mapping)
@@ -12083,6 +12205,11 @@ def build_bundle_task_payloads(
         # Zero is the shared unlimited sentinel.  Preserve it explicitly so
         # the queue payload and its embedded Profile-G TaskSpec cannot diverge
         # by letting the adapter substitute its bounded default.
+        # Keep the worker, queue, and immutable Profile-G TaskSpec on one
+        # attempt policy.  Profile-G v1 permits zero as the unlimited sentinel;
+        # omitting it here would make the adapter silently substitute its
+        # finite compatibility default even though the worker remains
+        # unlimited.
         task_payload["max_attempts"] = selected_max_attempts
         task_payloads.append(task_payload)
 

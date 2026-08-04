@@ -5,7 +5,7 @@ child obligations:
 
 - **ASREF-G010** — Branch bootstrap inventory and frozen move map
 - **ASREF-G090** — Public API package README, root hygiene, and cutover surface
-- **ASREF-G100** — Autonomous multi-lane supervisor execution with Grok 4.6
+- **ASREF-G100** — Grok 4.5 multi-lane execution with quota-only Terra/medium
 
 Objective scans match these goal identifiers as exact-text evidence when this
 module (and its tests / launch scripts) are present on the tree. The helpers
@@ -40,7 +40,7 @@ ASREF_MERGE_BRANCH = "refactor/agent-supervisor-layout"
 ASREF_TASK_PREFIX = "ASREF-"
 ASREF_GOAL_PREFIX = "ASREF-G"
 ASREF_DEFAULT_NAMESPACE = "asref-v1"
-ASREF_DEFAULT_IMPLEMENTATION_PROVIDER = "grok"
+ASREF_DEFAULT_IMPLEMENTATION_PROVIDER = "auto"
 ASREF_IMPLEMENTATION_PROVIDER_ENV = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
 )
@@ -827,7 +827,7 @@ def asref_g100_launch_recipe(
     Operators run this via::
 
         python scripts/ops/agent_supervisor/asref_multi_lane_launch.py \\
-            --lanes 4 --implementation-provider grok --dry-run
+            --lanes 4 --implementation-provider auto --dry-run
     """
 
     argv = [
@@ -850,7 +850,10 @@ def asref_g100_launch_recipe(
     return {
         "schema": "ipfs_accelerate_py.asref.g100_launch_recipe.v1",
         "goal_id": ASREF_G100,
-        "title": "Autonomous supervisor execution with Grok 4.6",
+        "title": (
+            "Autonomous supervisor execution with Grok 4.5 and quota-only "
+            "Terra/medium fallback"
+        ),
         "merge_branch": ASREF_MERGE_BRANCH,
         "task_prefix": ASREF_TASK_PREFIX,
         "goal_prefix": ASREF_GOAL_PREFIX,

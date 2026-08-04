@@ -44,6 +44,11 @@ for candidate in (_REPO_ROOT, _DATASETS_ROOT):
     if text not in sys.path:
         sys.path.insert(0, text)
 
+from tools.logic.certification.public_evidence import (  # noqa: E402
+    public_evidence_audit,
+    public_evidence_projection,
+)
+
 try:  # pragma: no cover - worktree packaging varies
     from tools.logic.certification.roles import (  # type: ignore
         bind_lane_handler as _bind_lane_handler,
@@ -71,6 +76,7 @@ LOCKED_EXECUTABLE: Final = "isabelle"
 
 PROBE_TIMEOUT_SECONDS: Final = 10.0
 CHECK_TIMEOUT_SECONDS: Final = 60.0
+MANAGED_TOOL_PATH_MARKER: Final = "<managed-tool-path-redacted>"
 
 DEFAULT_LOCK_RELATIVE: Final = Path("config/formal_verification_toolchains.lock.json")
 
@@ -345,6 +351,38 @@ def content_digest(payload: Any) -> str:
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _managed_executable_reference(value: object) -> tuple[str | None, str | None]:
+    """Return a portable kernel executable marker and useful basename."""
+
+    if value in (None, ""):
+        return None, None
+    basename = Path(str(value)).name
+    return f"{MANAGED_TOOL_PATH_MARKER}/{basename}", basename
+
+
+def _finalize_public_evidence(
+    value: Mapping[str, Any],
+    *,
+    repo_root: Path,
+    digest_field: str,
+) -> dict[str, Any]:
+    """Project an Isabelle receipt before computing its outer digest."""
+
+    projected = public_evidence_projection(dict(value), repo_root=repo_root)
+    if not isinstance(projected, dict):
+        raise RuntimeError("Isabelle public evidence projection must be an object")
+    audit = public_evidence_audit(projected, repo_root=repo_root)
+    if not audit.get("satisfied"):
+        raise RuntimeError(
+            "unsafe Isabelle public evidence: "
+            + ",".join(str(item) for item in audit.get("failures") or [])
+        )
+    projected[digest_field] = content_digest(
+        {key: item for key, item in projected.items() if key != digest_field}
+    )
+    return projected
 
 
 def offline_env(base: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -1465,8 +1503,18 @@ FANIN_INTERFACE: Final = "KernelLiveSemanticFanIn@1"
 FANIN_SCHEMA_VERSION: Final = "kernel-live-semantic-fanin/v1"
 FANIN_GOAL_ID: Final = "FVT-G206"
 FANIN_TASK_ID: Final = "FVT-057"
+FANIN_VALIDATION_TASK_ID: Final = "FVT-074"
+FANIN_OBJECTIVE_EVIDENCE: Final = "objective validation repair"
 FANIN_KERNEL_ID: Final = "isabelle"
 FANIN_TIMEOUT_SECONDS: Final = 0.05
+FANIN_VALIDATION_COMMAND: Final = (
+    "python -m pytest "
+    "test/integration/toolchains/test_kernel_live_semantic_fanin.py "
+    "test/integration/toolchains/test_lean_semantic_certification.py "
+    "test/integration/toolchains/test_rocq_toolchain_certification.py "
+    "test/integration/toolchains/test_isabelle_toolchain_certification.py "
+    "-q"
+)
 REQUIRED_FANIN_CASE_KINDS: Final[frozenset[str]] = frozenset(
     {
         "positive",
@@ -1813,10 +1861,15 @@ def build_live_fanin_contribution(
         )
 
     positive = outcomes_by_id.get("true_theorem")
+    public_executable, public_executable_basename = _managed_executable_reference(
+        identity.get("executable_path")
+    )
     bindings = {
         "kernel_id": FANIN_KERNEL_ID,
         "tool_id": TOOL_ID,
-        "executable_path": identity.get("executable_path"),
+        "executable_path": public_executable,
+        "executable_basename": public_executable_basename,
+        "managed_executable": public_executable is not None,
         "version_string": identity.get("version_string"),
         "locked_version": LOCKED_VERSION,
         "dependency_digests": {
@@ -1874,6 +1927,9 @@ def build_live_fanin_contribution(
         "fanin_schema_version": FANIN_SCHEMA_VERSION,
         "goal_id": FANIN_GOAL_ID,
         "task_id": FANIN_TASK_ID,
+        "validation_task_id": FANIN_VALIDATION_TASK_ID,
+        "objective_evidence": FANIN_OBJECTIVE_EVIDENCE,
+        "objective_validation_repair": True,
         "lane_id": LANE_ID,
         "owner_module": CERTIFICATION_SURFACE,
         "locked_version": LOCKED_VERSION,
@@ -1886,7 +1942,9 @@ def build_live_fanin_contribution(
         "live_source_helper_exercised": live_helper_exercised,
         "sibling_kernel_substitution": False,
         "advisor_substitution": False,
-        "executable_path": identity.get("executable_path"),
+        "executable_path": public_executable,
+        "executable_basename": public_executable_basename,
+        "managed_executable": public_executable is not None,
         "version_string": identity.get("version_string"),
         "network_used": bool(identity.get("network_used")),
         "install_attempted": bool(identity.get("install_attempted")),
@@ -1897,23 +1955,31 @@ def build_live_fanin_contribution(
         "cases": cases,
         "checks": checks,
         "bindings": bindings,
+        "evidence": {
+            "goal_id": FANIN_GOAL_ID,
+            "task_id": FANIN_TASK_ID,
+            "validation_task_id": FANIN_VALIDATION_TASK_ID,
+            "objective_evidence": FANIN_OBJECTIVE_EVIDENCE,
+            "objective_validation_repair": True,
+            "certification_surface": CERTIFICATION_SURFACE,
+            "live_source_helper": "check_isabelle_source_live",
+            "validation_command": FANIN_VALIDATION_COMMAND,
+        },
         "repo_root": str(root),
         "notes": (
             "Isabelle live fan-in contribution via check_isabelle_source_live; "
             "own kernel only; Hammer proposal-only; no Lean/Rocq/advisor "
-            "substitution; timeout fail-closed."
+            "substitution; timeout fail-closed; objective validation repair "
+            "(FVT-074)."
             if usable
             else "Isabelle pin unavailable; live fan-in contribution incomplete."
         ),
     }
-    contribution["contribution_digest_sha256"] = content_digest(
-        {
-            key: value
-            for key, value in contribution.items()
-            if key != "contribution_digest_sha256"
-        }
+    return _finalize_public_evidence(
+        contribution,
+        repo_root=root,
+        digest_field="contribution_digest_sha256",
     )
-    return contribution
 
 
 # ---------------------------------------------------------------------------
@@ -2029,6 +2095,9 @@ __all__ = [
     "FANIN_SCHEMA_VERSION",
     "FANIN_GOAL_ID",
     "FANIN_TASK_ID",
+    "FANIN_VALIDATION_TASK_ID",
+    "FANIN_OBJECTIVE_EVIDENCE",
+    "FANIN_VALIDATION_COMMAND",
     "REQUIRED_FANIN_CASE_KINDS",
     "live_fanin_case_recipes",
     "build_live_fanin_contribution",

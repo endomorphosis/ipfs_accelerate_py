@@ -306,6 +306,26 @@ def test_production_certified_receipt(receipt: dict[str, Any]) -> None:
     assert receipt["receipt_digest_sha256"]
 
 
+def test_public_receipt_uses_portable_lock_path_and_outer_digest(
+    zkp_cert, receipt: dict[str, Any]
+) -> None:
+    encoded = json.dumps(receipt, sort_keys=True)
+    assert receipt["lock_path"] == (
+        "config/formal_verification_zkp_deployment.lock.json"
+    )
+    assert str(REPO_ROOT) not in encoded
+    assert zkp_cert.public_evidence_audit(
+        receipt, repo_root=REPO_ROOT
+    )["satisfied"] is True
+    assert receipt["receipt_digest_sha256"] == zkp_cert.content_digest(
+        {
+            key: value
+            for key, value in receipt.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+
+
 def test_all_required_case_kinds_pass(receipt: dict[str, Any]) -> None:
     cases = receipt["cases"]
     assert cases

@@ -16,7 +16,6 @@ import subprocess
 import sys
 import threading
 import time
-import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, fields, replace
 from datetime import datetime, timedelta, timezone
@@ -78,6 +77,9 @@ logger = logging.getLogger(__name__)
 COORDINATION_COMPACTION_INTERVAL_CYCLES = 10
 COORDINATION_COMPACTION_MIN_BYTES = 64 * 1024 * 1024
 SCHEDULER_GC_INTERVAL_CYCLES = 10
+_TASK_ATTEMPT_LIMIT_IDLE_REASON = (
+    "all_selectable_ready_tasks_reached_max_task_attempts"
+)
 BUNDLE_TASKBOARD_INPUT_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.bundle_taskboard_input@2"
 )
@@ -1949,6 +1951,106 @@ def _execution_slice_members(
     ]
 
 
+def _apply_runtime_task_exclusions(
+    payloads: Sequence[dict[str, Any]],
+    *,
+    excluded_task_ids: Sequence[str],
+) -> list[dict[str, Any]]:
+    """Fence selected ready members without changing reviewed bundle inputs.
+
+    Task exclusions are an operator control for one supervisor run, not a task
+    completion signal.  Keep every source member and work contract attached as
+    dependency/provenance evidence, but narrow the authorized execution slice.
+    A bundle whose entire ready slice is excluded is omitted instead of being
+    registered with coordination, so the fenced work cannot consume a retry.
+
+    Embedded Profile-G artifacts bind the original execution slice.  Detach
+    that aggregate identity whenever the slice changes and retain a compact
+    provenance reference; registration will derive a fresh slice identity from
+    the remaining canonical member identities.
+    """
+
+    excluded = {
+        str(task_id).strip()
+        for task_id in excluded_task_ids
+        if str(task_id).strip()
+    }
+    if not excluded:
+        return list(payloads)
+
+    projected_payloads: list[dict[str, Any]] = []
+    for original in payloads:
+        payload = dict(original)
+        execution_tasks = _execution_slice_members(
+            payload,
+            _mapping_list(payload.get("tasks")),
+        )
+        excluded_members = [
+            task
+            for task in execution_tasks
+            if str(task.get("task_id") or "").strip() in excluded
+        ]
+        if not excluded_members:
+            projected_payloads.append(payload)
+            continue
+
+        retained_members = [
+            task
+            for task in execution_tasks
+            if str(task.get("task_id") or "").strip() not in excluded
+        ]
+        if not retained_members:
+            continue
+
+        source_profile = (
+            dict(payload.get("profile_g") or {})
+            if isinstance(payload.get("profile_g"), Mapping)
+            else {}
+        )
+        if source_profile:
+            payload["source_profile_g_ref"] = {
+                key: str(source_profile.get(key) or "")
+                for key in (
+                    "goal_cid",
+                    "subgoal_cid",
+                    "plan_branch_cid",
+                    "selection_cid",
+                    "task_cid",
+                    "task_spec_cid",
+                )
+                if source_profile.get(key)
+            }
+            payload.pop("profile_g", None)
+
+        payload["execution_slice_task_ids"] = [
+            str(task.get("task_id") or "").strip()
+            for task in retained_members
+            if str(task.get("task_id") or "").strip()
+        ]
+        payload["execution_slice_task_cids"] = [
+            str(
+                task.get("canonical_task_cid")
+                or task.get("task_cid")
+                or ""
+            ).strip()
+            for task in retained_members
+            if str(
+                task.get("canonical_task_cid")
+                or task.get("task_cid")
+                or ""
+            ).strip()
+        ]
+        payload["runtime_excluded_task_ids"] = sorted(
+            {
+                str(task.get("task_id") or "").strip()
+                for task in excluded_members
+                if str(task.get("task_id") or "").strip()
+            }
+        )
+        projected_payloads.append(payload)
+    return projected_payloads
+
+
 def _first_nonempty(payloads: Sequence[dict[str, Any]], *keys: str) -> Any:
     for payload in payloads:
         for key in keys:
@@ -3135,6 +3237,8 @@ def plan_bundle_lanes(
     completion_receipts: Mapping[str, Any] | None = None,
     optimize_bundles: bool = True,
     bundle_optimization_policy: BundleOptimizationPolicy | None = None,
+    excluded_bundle_keys: Sequence[str] = (),
+    excluded_task_ids: Sequence[str] = (),
 ) -> list[BundleLaneSpec]:
     """Return one isolated supervisor command for each objective bundle."""
 
@@ -3172,7 +3276,14 @@ def plan_bundle_lanes(
         for payload in bundle_payloads
         for task_id in _string_list(payload.get("completed_member_task_ids"))
     )
-    excluded_bundle_keys = _excluded_bundle_keys(bundle_index_path)
+    excluded_bundle_keys = {
+        *_excluded_bundle_keys(bundle_index_path),
+        *(
+            str(bundle_key).strip()
+            for bundle_key in excluded_bundle_keys
+            if str(bundle_key).strip()
+        ),
+    }
     bundle_payloads = [
         payload
         for payload in bundle_payloads
@@ -3180,6 +3291,10 @@ def plan_bundle_lanes(
         and payload.get("is_schedulable") is not False
         and payload.get("review_only") is not True
     ]
+    bundle_payloads = _apply_runtime_task_exclusions(
+        bundle_payloads,
+        excluded_task_ids=excluded_task_ids,
+    )
     # Implementation daemons currently coordinate managed-submodule mutation
     # with one repository-shared claim per configured submodule root.  Do not
     # let precise outer conflict planning over-admit work that the inner daemon
@@ -3508,6 +3623,34 @@ def _lane_launch_policy_error(lane: BundleLaneSpec) -> str:
         }:
             return f"execution slice contains terminal task status {status}"
     return ""
+
+
+def _receipt_drained_execution_slice(lane: BundleLaneSpec) -> bool:
+    """Return whether durable member receipts drained the entire lane slice."""
+
+    payload = lane.queue_payload
+    if (
+        lane.task_ids
+        or not isinstance(payload, dict)
+        or payload.get("claimable") is not False
+        or payload.get("external_active_member_fence") is True
+        or "execution_slice_task_cids" not in payload
+        or "execution_slice_task_ids" not in payload
+        or _string_list(payload.get("execution_slice_task_cids"))
+        or _string_list(payload.get("execution_slice_task_ids"))
+    ):
+        return False
+    completed_ids = set(_string_list(payload.get("completed_member_task_ids")))
+    completed_cids = set(_string_list(payload.get("completed_member_task_cids")))
+    tasks = _mapping_list(payload.get("tasks"))
+    if not tasks or not (completed_ids or completed_cids):
+        return False
+    return all(
+        str(task.get("task_id") or "") in completed_ids
+        or str(task.get("canonical_task_cid") or task.get("task_cid") or "")
+        in completed_cids
+        for task in tasks
+    )
 
 
 def launch_bundle_lanes(
@@ -4254,7 +4397,8 @@ class DynamicBundleScheduler:
                 self._plan_cache = None
         if self._plan_cache is None:
             allowed = {
-                "task_prefix", "implement", "daemon_interval", "stale_seconds",
+                "task_prefix", "excluded_bundle_keys", "excluded_task_ids", "implement",
+                "daemon_interval", "stale_seconds",
                 "check_interval", "max_restarts", "max_task_attempts",
                 "implementation_timeout",
                 "implementation_command", "llm_merge_resolver_command",
@@ -4587,6 +4731,61 @@ class DynamicBundleScheduler:
             str(task.status).strip().lower() not in {"complete", "completed", "blocked", "on_hold"}
             for task in selected
         )
+
+    @staticmethod
+    def _receipt_backed_attempt_limit_disposition(
+        lane: BundleLaneSpec,
+        projection: Mapping[str, Any],
+    ) -> str:
+        """Return ``blocked`` for an idle slice already fenced by its wrapper.
+
+        The implementation daemon and the bundle coordinator have independent
+        attempt budgets.  Once a scoped wrapper publishes a durable blocked
+        receipt because the daemon exhausted its task attempts, later
+        coordination attempts may consume their remaining budget without
+        spawning the same exhausted daemon again.  Requiring both the receipt
+        and exact idle state keeps an ordinary transiently idle worker alive.
+        """
+
+        release_reason = str(projection.get("release_reason") or "")
+        if not (
+            release_reason.startswith("receipt:")
+            and release_reason.endswith(":blocked")
+        ):
+            return ""
+        if not lane.task_ids:
+            return ""
+        state_path = lane.state_dir / f"{lane.state_prefix}_task_state.json"
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return ""
+        if not isinstance(state, Mapping):
+            return ""
+        if (
+            str(state.get("selection_idle_reason") or "")
+            != _TASK_ATTEMPT_LIMIT_IDLE_REASON
+            or state.get("implementation_in_progress") is not False
+            or str(state.get("active_task_id") or "").strip()
+            or state.get("selectable_ready_count") != 0
+        ):
+            return ""
+        statuses = state.get("task_statuses")
+        if not isinstance(statuses, Mapping):
+            return ""
+        expected_ids = {
+            str(task_id).strip()
+            for task_id in lane.task_ids
+            if str(task_id).strip()
+        }
+        terminal_or_limited = {"ready", "complete", "completed", "blocked", "on_hold"}
+        if not expected_ids or any(
+            str(statuses.get(task_id) or "").strip().lower()
+            not in terminal_or_limited
+            for task_id in expected_ids
+        ):
+            return ""
+        return "blocked"
 
     def _disposition(self, lane: BundleLaneSpec) -> str:
         value = self._lane_disposition(lane)
@@ -5152,26 +5351,24 @@ class DynamicBundleScheduler:
                     == self.claimant_did
                 )
                 accounted_active_workers = len(accounted_worker_task_cids)
+                # Receipt overlays intentionally leave fully drained bundle
+                # records in discovery so they remain visible to planning, but
+                # those records must never be registered, claimed, or launched.
+                # Other non-launchable records (for example an external active
+                # fence) remain registered so their blocked state is observable.
                 registered: list[BundleLaneSpec] = []
                 receipt_drained_completion_task_cids: set[str] = set()
-                for lane in (item for item in discovered if item.queue_payload):
+                for lane in (
+                    item
+                    for item in discovered
+                    if item.queue_payload
+                    and not (
+                        _receipt_drained_execution_slice(item)
+                        and self._disposition(item) != "completed"
+                    )
+                ):
+                    receipt_drained = _receipt_drained_execution_slice(lane)
                     policy_error = _lane_launch_policy_error(lane)
-                    completed_member_cids = _string_list(
-                        lane.queue_payload.get("completed_member_task_cids")
-                    )
-                    completed_member_ids = _string_list(
-                        lane.queue_payload.get("completed_member_task_ids")
-                    )
-                    receipt_drained = (
-                        not lane.task_ids
-                        and bool(completed_member_cids or completed_member_ids)
-                        and not _string_list(
-                            lane.queue_payload.get("execution_slice_task_cids")
-                        )
-                        and not _string_list(
-                            lane.queue_payload.get("execution_slice_task_ids")
-                        )
-                    )
                     if (
                         policy_error
                         and receipt_drained
@@ -5244,10 +5441,15 @@ class DynamicBundleScheduler:
                             lane.task_cid,
                             reason="bundle_board_reopened",
                         )
-                    coordinator.requeue_exhausted_blocked(
-                        lane.task_cid,
-                        reason="bundle_board_reopened",
-                    )
+                    current_projection = coordinator.task_state(lane.task_cid) or {}
+                    if not self._receipt_backed_attempt_limit_disposition(
+                        lane,
+                        current_projection,
+                    ):
+                        coordinator.requeue_exhausted_blocked(
+                            lane.task_cid,
+                            reason="bundle_board_reopened",
+                        )
                 current_task_cids = {
                     *(lane.task_cid for lane in registered),
                     *self._running.keys(),
@@ -5257,6 +5459,11 @@ class DynamicBundleScheduler:
                     task_cids=current_task_cids,
                     include_claimability=True,
                 )
+                decision_projection_by_task_cid = {
+                    str(item.get("task_cid") or ""): item
+                    for item in decision_projection
+                    if str(item.get("task_cid") or "")
+                }
                 ready_input_binding_task_cids = {
                     str(item.get("task_cid") or "")
                     for item in decision_projection
@@ -5318,7 +5525,13 @@ class DynamicBundleScheduler:
                     for running in self._running.values()
                 }
                 dispositions = {
-                    lane.task_cid: self._disposition(lane)
+                    lane.task_cid: (
+                        self._disposition(lane)
+                        or self._receipt_backed_attempt_limit_disposition(
+                            lane,
+                            decision_projection_by_task_cid.get(lane.task_cid, {}),
+                        )
+                    )
                     for lane in registered
                     if lane.task_cid not in self._running and lane.task_cid in snapshot_ready
                     and lane.bundle_key not in running_by_bundle_key
@@ -5787,6 +6000,24 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--manifest-path", type=Path, default=None)
     parser.add_argument("--metrics-path", type=Path, default=None)
     parser.add_argument("--task-prefix", default=DEFAULT_TASK_PREFIX)
+    parser.add_argument(
+        "--exclude-bundle-key",
+        action="append",
+        default=[],
+        help=(
+            "Exact bundle key to omit from this supervisor run; repeat the "
+            "option to fence multiple bundles without rewriting the index"
+        ),
+    )
+    parser.add_argument(
+        "--exclude-task-id",
+        action="append",
+        default=[],
+        help=(
+            "Exact task ID to omit from this supervisor run; repeat the option "
+            "to fence members without rewriting their shared bundle or taskboard"
+        ),
+    )
     parser.add_argument("--start", action="store_true", help="Launch the planned lane supervisors")
     parser.add_argument("--max-lanes", type=int, default=1, help="Maximum concurrent leased workers")
     parser.add_argument("--poll-interval", type=float, default=5.0)
@@ -5902,6 +6133,16 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
     bundle_index_path = args.bundle_index_path.resolve()
     lane_options = dict(
         task_prefix=args.task_prefix,
+        excluded_bundle_keys=tuple(
+            str(bundle_key).strip()
+            for bundle_key in (getattr(args, "exclude_bundle_key", ()) or ())
+            if str(bundle_key).strip()
+        ),
+        excluded_task_ids=tuple(
+            str(task_id).strip()
+            for task_id in (getattr(args, "exclude_task_id", ()) or ())
+            if str(task_id).strip()
+        ),
         implement=args.implement,
         daemon_interval=args.daemon_interval,
         stale_seconds=args.stale_seconds,

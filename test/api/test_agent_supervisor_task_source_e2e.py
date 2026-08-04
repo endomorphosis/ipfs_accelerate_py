@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,6 +9,8 @@ from types import SimpleNamespace
 import pytest
 
 duckdb = pytest.importorskip("duckdb")
+
+from test.api.authoritative_completion_test_utils import real_git_authority
 
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_task_source import (
     DuckDBTaskSource,
@@ -191,6 +194,31 @@ def _exercise_lifecycle(source):
 
 
 def _daemon(tmp_path: Path, source) -> PortalImplementationDaemon:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["git", "init"],
+        cwd=tmp_path,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Task Source Test"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "task-source@example.invalid"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "--allow-empty", "-m", "task source baseline"],
+        cwd=tmp_path,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
     daemon = PortalImplementationDaemon(
         task_source=source,
         state_path=tmp_path / "state.json",
@@ -244,7 +272,12 @@ def test_daemon_consumes_either_source_and_receipts_bind_source_identity(
     for name, source in (("markdown", markdown), ("duckdb", database)):
         daemon = _daemon(tmp_path / name, source)
         first = daemon.run_once()
-        completed = daemon._mark_task_completed_in_todo("FIX-001")
+        receipt, gate = real_git_authority(daemon.repo_root, "FIX-001")
+        completed = daemon._mark_task_completed_in_todo(
+            "FIX-001",
+            authoritative_receipt=receipt,
+            authoritative_gate=gate,
+        )
         second = daemon.run_once()
 
         assert first["active_task_id"] == "FIX-001"

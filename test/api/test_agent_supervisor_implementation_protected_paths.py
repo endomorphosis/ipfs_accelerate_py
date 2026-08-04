@@ -202,6 +202,8 @@ def _git(repo: Path, *args: str) -> str:
 
 def _protected_git_worktree_daemon(
     tmp_path: Path,
+    *,
+    worktree_submodule_paths: tuple[str, ...] = (),
 ) -> tuple[PortalImplementationDaemon, Path, Path, Path]:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -236,6 +238,7 @@ def _protected_git_worktree_daemon(
         implementation_protected_paths=(POLICY_PATH,),
         use_ephemeral_worktree=True,
         worktree_root=worktree_root,
+        worktree_submodule_paths=worktree_submodule_paths,
     )
     return daemon, repo, workspace, protected
 
@@ -308,6 +311,107 @@ def _persist_active_attempt_state(
     state.last_implementation_task_cid = identity.canonical_task_cid
     state.save(daemon.state_path)
     return state
+
+
+def _persist_shutdown_coordination_artifacts(
+    daemon: PortalImplementationDaemon,
+    *,
+    task: PortalTask,
+    workspace: Path,
+    implementation_owner_pid: int,
+    claim_owner_pid: int,
+    pool_owner_pid: int,
+    claim_state_dir: Path | None = None,
+) -> dict[str, Path]:
+    started_at = "2026-07-30T21:03:00+00:00"
+    implementation_lock = daemon._build_implementation_lock_metadata(
+        task,
+        1,
+        started_at,
+    )
+    implementation_lock["pid"] = implementation_owner_pid
+    implementation_lock_path = daemon._implementation_lock_path()
+    implementation_lock_path.parent.mkdir(parents=True, exist_ok=True)
+    implementation_lock_path.write_text(
+        json.dumps(implementation_lock, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    task_claim = daemon._build_implementation_task_claim_metadata(
+        task,
+        1,
+        started_at,
+    )
+    task_claim["pid"] = claim_owner_pid
+    if claim_state_dir is not None:
+        task_claim["state_dir"] = str(claim_state_dir.resolve())
+    task_claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    task_claim_path.parent.mkdir(parents=True, exist_ok=True)
+    task_claim_path.write_text(
+        json.dumps(task_claim, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    resource_path = "vendor/dependency"
+    resource_claim = daemon._build_implementation_resource_claim_metadata(
+        task,
+        1,
+        started_at,
+        resource_path,
+    )
+    resource_claim["pid"] = claim_owner_pid
+    if claim_state_dir is not None:
+        resource_claim["state_dir"] = str(claim_state_dir.resolve())
+    resource_claim_path = daemon._implementation_resource_claim_path(
+        resource_path
+    )
+    resource_claim_path.parent.mkdir(parents=True, exist_ok=True)
+    resource_claim_path.write_text(
+        json.dumps(resource_claim, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    pool = daemon.worktree_pool
+    assert pool is not None
+    entry_id = "shutdown-fixture-lease"
+    pool_state = {
+        "schema": implementation_daemon_module.WORKTREE_POOL_SCHEMA,
+        "lease_token": entry_id,
+        "path": str(workspace.resolve()),
+        "repo_root": str(daemon.repo_root.resolve()),
+        "repo_common_dir": str(pool.repo_common_dir),
+        "cache_key": "shutdown-fixture",
+        "base_commit": _git(workspace, "rev-parse", "HEAD"),
+        "dependency_paths": [],
+        "dependency_heads": {},
+        "state": "leased",
+        "lease_pid": pool_owner_pid,
+        "branch": "lane",
+        "created_at_epoch": 1.0,
+        "last_used_at_epoch": 1.0,
+        "use_count": 1,
+    }
+    pool.state_root.mkdir(parents=True, exist_ok=True)
+    pool_state_path = pool._state_path(entry_id)
+    pool_state_path.write_text(
+        json.dumps(pool_state, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    pool_lock_path = pool._lock_path(pool_state)
+    pool_lock_path.write_text(
+        json.dumps({"pid": pool_owner_pid}, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return {
+        "implementation_lock": implementation_lock_path,
+        "task_claim": task_claim_path,
+        "resource_claim": resource_claim_path,
+        "pool_state": pool_state_path,
+        "pool_lock": pool_lock_path,
+    }
 
 
 def test_normalize_implementation_protected_paths_is_exact_and_fail_closed(
@@ -1193,6 +1297,240 @@ def test_quiesced_shutdown_reconciles_fence_before_operator_board_revision(
         "scan_outside_lease": True,
     }
     assert not daemon._implementation_protected_incident_path().exists()
+
+
+def test_quiesced_shutdown_clears_exact_dead_owner_coordination_artifacts(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path,
+        worktree_submodule_paths=("vendor/dependency",),
+    )
+    task = _task(outputs=["vendor/dependency/src/example.py"])
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+    dead_pid = 2_000_000_000
+    artifacts = _persist_shutdown_coordination_artifacts(
+        daemon,
+        task=task,
+        workspace=workspace,
+        implementation_owner_pid=dead_pid,
+        claim_owner_pid=dead_pid,
+        pool_owner_pid=dead_pid,
+    )
+    candidate = workspace / "src" / "candidate.py"
+    candidate.parent.mkdir(parents=True)
+    candidate.write_text("VALUE = 'preserve me'\n", encoding="utf-8")
+    head_before = _git(workspace, "rev-parse", "HEAD")
+    status_before = _git(
+        workspace,
+        "status",
+        "--porcelain",
+        "--untracked-files=all",
+    )
+
+    result = daemon.reconcile_quiesced_active_attempt(
+        expected_owner_pid=dead_pid,
+    )
+
+    assert result["reconciled"] is True
+    cleanup = result["coordination_cleanup"]
+    assert cleanup["attempted"] is True
+    assert cleanup["owner_pid"] == dead_pid
+    assert len(cleanup["task_claims"]["cleared"]) == 1
+    assert cleanup["task_claims"]["preserved"] == []
+    assert len(cleanup["resource_claims"]["cleared"]) == 1
+    assert cleanup["resource_claims"]["preserved"] == []
+    assert cleanup["worktree_pool"]["detached"] is True
+    assert cleanup["worktree_pool"]["workspace_preserved"] is True
+    assert all(not path.exists() for path in artifacts.values())
+    assert workspace.is_dir()
+    assert candidate.read_text(encoding="utf-8") == "VALUE = 'preserve me'\n"
+    assert _git(workspace, "rev-parse", "HEAD") == head_before
+    assert (
+        _git(
+            workspace,
+            "status",
+            "--porcelain",
+            "--untracked-files=all",
+        )
+        == status_before
+    )
+    assert str(workspace.resolve()) in {
+        str(Path(path).resolve())
+        for path in (
+            line.removeprefix("worktree ")
+            for line in _git(
+                repo,
+                "worktree",
+                "list",
+                "--porcelain",
+            ).splitlines()
+            if line.startswith("worktree ")
+        )
+    }
+
+
+def test_quiesced_shutdown_preserves_live_foreign_coordination_artifacts(
+    tmp_path: Path,
+) -> None:
+    daemon, _repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path,
+        worktree_submodule_paths=("vendor/dependency",),
+    )
+    task = _task(outputs=["vendor/dependency/src/example.py"])
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+    dead_pid = 2_000_000_000
+    artifacts = _persist_shutdown_coordination_artifacts(
+        daemon,
+        task=task,
+        workspace=workspace,
+        implementation_owner_pid=dead_pid,
+        claim_owner_pid=os.getpid(),
+        pool_owner_pid=os.getpid(),
+        claim_state_dir=tmp_path / "foreign-state",
+    )
+    preserved = {
+        name: path.read_bytes()
+        for name, path in artifacts.items()
+        if name != "implementation_lock"
+    }
+
+    result = daemon.reconcile_quiesced_active_attempt(
+        expected_owner_pid=dead_pid,
+    )
+
+    assert result["reconciled"] is True
+    cleanup = result["coordination_cleanup"]
+    assert cleanup["attempted"] is True
+    assert cleanup["task_claims"]["cleared"] == []
+    assert cleanup["task_claims"]["preserved"][0]["reason"] == (
+        "owner_pid_mismatch"
+    )
+    assert cleanup["resource_claims"]["cleared"] == []
+    assert cleanup["resource_claims"]["preserved"][0]["reason"] == (
+        "owner_pid_mismatch"
+    )
+    assert cleanup["worktree_pool"]["detached"] is False
+    assert cleanup["worktree_pool"]["reason"] == "pool_state_preserved"
+    assert cleanup["worktree_pool"]["preserved"][0]["reason"] == (
+        "owner_pid_mismatch"
+    )
+    assert not artifacts["implementation_lock"].exists()
+    for name, content in preserved.items():
+        assert artifacts[name].read_bytes() == content
+    assert workspace.is_dir()
+
+
+def test_quiesced_shutdown_serializes_replacement_implementation_lease(
+    tmp_path: Path,
+) -> None:
+    daemon, _repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+    dead_pid = 2_000_000_000
+    stale_lock = daemon._build_implementation_lock_metadata(
+        task,
+        1,
+        "2026-07-30T21:03:00+00:00",
+    )
+    stale_lock["pid"] = dead_pid
+    lock_path = daemon._implementation_lock_path()
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_text(
+        json.dumps(stale_lock, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    replacement_daemon = PortalImplementationDaemon(
+        todo_path=daemon.todo_path,
+        state_path=daemon.state_path,
+        strategy_path=daemon.strategy_path,
+        events_path=daemon.events_path,
+        repo_root=daemon.repo_root,
+        implement=True,
+        implementation_command="fake-agent",
+        implementation_protected_paths=(POLICY_PATH,),
+        use_ephemeral_worktree=True,
+        worktree_root=daemon.worktree_root,
+        worktree_submodule_paths=(),
+    )
+    replacement = replacement_daemon._build_implementation_lock_metadata(
+        task,
+        2,
+        "2026-07-30T21:04:00+00:00",
+    )
+    reconciliation_entered = threading.Event()
+    contender_started = threading.Event()
+    contender_finished = threading.Event()
+    contender_result: list[tuple[bool, str]] = []
+    reconcile_fence = daemon._reconcile_implementation_protected_path_fence
+
+    def fenced_reconciliation() -> dict[str, object]:
+        reconciliation_entered.set()
+        assert contender_started.wait(timeout=2)
+        time.sleep(0.05)
+        assert not contender_finished.is_set()
+        return reconcile_fence()
+
+    def acquire_replacement() -> None:
+        assert reconciliation_entered.wait(timeout=2)
+        contender_started.set()
+        acquired, reason, _existing = (
+            replacement_daemon._try_acquire_implementation_lock(
+                lock_path,
+                replacement,
+            )
+        )
+        contender_result.append((acquired, reason))
+        contender_finished.set()
+
+    daemon._reconcile_implementation_protected_path_fence = (
+        fenced_reconciliation
+    )
+    thread = threading.Thread(target=acquire_replacement, daemon=True)
+    thread.start()
+
+    result = daemon.reconcile_quiesced_active_attempt(
+        expected_owner_pid=dead_pid,
+    )
+    thread.join(timeout=2)
+
+    assert result["reconciled"] is True
+    assert contender_finished.is_set()
+    assert contender_result == [(True, "acquired")]
+    assert json.loads(lock_path.read_text(encoding="utf-8")) == replacement
+    assert replacement_daemon._release_implementation_lock(
+        lock_path,
+        replacement,
+    )
 
 
 def test_quiesced_shutdown_preserves_real_protected_path_incident(

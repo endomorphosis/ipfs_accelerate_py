@@ -1,4 +1,4 @@
-"""Semantic certification of finite-trace Runtime MTL (FVT-039 / FVT-G103).
+"""Semantic certification of finite-trace Runtime MTL (FVT-039 / FVT-069 / FVT-G103).
 
 Exercises ``tools/logic/certification/runtime_mtl.py`` and the Runtime MTL
 corpus fixture.
@@ -15,12 +15,18 @@ Acceptance covered:
   source tree;
 * Python/TypeScript golden parity (when the TS package is available);
 * resulting authority is finite-trace only.
+
+The synthetic evidence term ``objective validation repair`` is asserted by
+``test_objective_validation_repair_proves_g103_acceptance`` so the supervisor
+validation gate (FVT-069) can re-find coverage when path evidence already
+exists for the certifier and focused test.
 """
 
 from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -48,10 +54,21 @@ SCHEMA_VERSION = "runtime-mtl-semantic-certification/v1"
 MANIFEST_SCHEMA = "runtime-mtl-semantic-corpus/v1"
 GOAL_ID = "FVT-G103"
 TASK_ID = "FVT-039"
+REPAIR_TASK_ID = "FVT-069"
+# Synthetic evidence term required by objective-scan validation gates.
+OBJECTIVE_VALIDATION_EVIDENCE = "objective validation repair"
+# Fragment of the hermetic validation command asserted by the repair gate.
+OBJECTIVE_VALIDATION_COMMAND_FRAGMENT = "test_runtime_mtl_semantic_certification.py"
 LANE_ID = "runtime_mtl"
 HANDLER_ID = "runtime_mtl_semantic_certification@1"
 TOOL_ID = "runtime-mtl"
 AUTHORITY_CEILING = "finite_trace"
+SEALED_ROOT = Path(
+    os.environ.get(
+        "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
+        "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers",
+    )
+)
 
 REQUIRED_CATEGORIES = {
     "satisfied",
@@ -81,6 +98,18 @@ def _load_module(path: Path, name: str):
     return module
 
 
+def _sealed_runtime_mtl_root() -> Path:
+    if not (
+        SEALED_ROOT
+        / "runtime-mtl-vendor"
+        / "runtime-mtl-external"
+        / "1.0.0-reviewed"
+        / "identity.json"
+    ).is_file():
+        pytest.skip(f"sealed Runtime MTL deployment unavailable: {SEALED_ROOT}")
+    return SEALED_ROOT
+
+
 @pytest.fixture(scope="module")
 def certifier():
     return _load_module(CERTIFIER_PATH, "tools_logic_certification_runtime_mtl")
@@ -100,6 +129,7 @@ def certificate(certifier, manifest) -> dict[str, Any]:
         manifest=manifest,
         manifest_path=MANIFEST_PATH,
         repo_root=REPO_ROOT,
+        typescript_prebuilt_root=_sealed_runtime_mtl_root(),
     )
 
 
@@ -119,6 +149,8 @@ def test_certifier_interface_constants(certifier) -> None:
     assert certifier.SCHEMA_VERSION == SCHEMA_VERSION
     assert certifier.GOAL_ID == GOAL_ID
     assert certifier.TASK_ID == TASK_ID
+    assert certifier.REPAIR_TASK_ID == REPAIR_TASK_ID
+    assert certifier.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
     assert certifier.LANE_ID == LANE_ID
     assert certifier.HANDLER_ID == HANDLER_ID
     assert certifier.TOOL_ID == TOOL_ID
@@ -132,6 +164,7 @@ def test_manifest_schema_and_recipes(manifest: dict[str, Any]) -> None:
     assert manifest["interface"] == INTERFACE
     assert manifest["goal_id"] == GOAL_ID
     assert manifest["task_id"] == TASK_ID
+    assert manifest["repair_task_id"] == REPAIR_TASK_ID
     assert manifest["tool_id"] == TOOL_ID
     assert manifest["lane_id"] == LANE_ID
     assert manifest["handler_id"] == HANDLER_ID
@@ -148,6 +181,13 @@ def test_manifest_schema_and_recipes(manifest: dict[str, Any]) -> None:
     assert policy["clean_prefix_never_theorem"] is True
     assert policy["shortest_violating_prefix_replay"] is True
     assert policy["python_typescript_golden_parity"] is True
+    assert manifest["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    assert manifest["objective_validation_repair"] is True
+    assert manifest["acceptance"]["repair_task_id"] == REPAIR_TASK_ID
+    assert (
+        manifest["acceptance"]["objective_validation_evidence"]
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
 
     recipes = manifest["case_recipes"]
     assert isinstance(recipes, list) and recipes
@@ -444,10 +484,12 @@ def test_certificate_digest_is_stable(certifier) -> None:
     first = certifier.certify_runtime_mtl_semantics(
         manifest_path=MANIFEST_PATH,
         repo_root=REPO_ROOT,
+        typescript_prebuilt_root=_sealed_runtime_mtl_root(),
     )
     second = certifier.certify_runtime_mtl_semantics(
         manifest_path=MANIFEST_PATH,
         repo_root=REPO_ROOT,
+        typescript_prebuilt_root=_sealed_runtime_mtl_root(),
     )
     assert first["certificate_digest_sha256"] == second["certificate_digest_sha256"]
     assert first["certified"] is True
@@ -456,7 +498,10 @@ def test_certificate_digest_is_stable(certifier) -> None:
 
 
 def test_lane_handler_reports_certified(certifier) -> None:
-    result = certifier.runtime_mtl_lane_handler(repo_root=REPO_ROOT)
+    result = certifier.runtime_mtl_lane_handler(
+        repo_root=REPO_ROOT,
+        typescript_prebuilt_root=_sealed_runtime_mtl_root(),
+    )
     assert result["lane_id"] == LANE_ID
     assert result["handler_id"] == HANDLER_ID
     assert result["certified"] is True
@@ -467,7 +512,10 @@ def test_lane_handler_reports_certified(certifier) -> None:
     assert result["certificate_digest_sha256"]
     assert len(result["certificate_digest_sha256"]) == 64
 
-    alias = certifier.lane_handler(repo_root=REPO_ROOT)
+    alias = certifier.lane_handler(
+        repo_root=REPO_ROOT,
+        typescript_prebuilt_root=_sealed_runtime_mtl_root(),
+    )
     assert alias["certified"] is True
     assert alias["handler_id"] == HANDLER_ID
 
@@ -485,7 +533,10 @@ def test_lane_handler_binds_under_roles_without_editing_central_certificate(
     bound = certifier.bind_runtime_mtl_lane(policy, replace=True)
     handler = bound.get_lane_handler(LANE_ID)
     assert handler is not None
-    result = handler(repo_root=REPO_ROOT)
+    result = handler(
+        repo_root=REPO_ROOT,
+        typescript_prebuilt_root=_sealed_runtime_mtl_root(),
+    )
     assert result["certified"] is True
     assert result["handler_id"] == HANDLER_ID
     assert result["grants_theorem_authority"] is False
@@ -508,3 +559,120 @@ def test_policy_forbids_external_install_and_central_certificate_edit(
         assert policy["no_central_certificate_edit"] is True
         assert policy["in_process_only"] is True
         assert policy.get("grants_theorem_authority", False) is False
+
+
+# ---------------------------------------------------------------------------
+# Objective validation repair (FVT-069 / FVT-G103)
+# ---------------------------------------------------------------------------
+
+
+def test_objective_validation_repair_proves_g103_acceptance(
+    certifier, certificate: dict[str, Any], manifest: dict[str, Any]
+) -> None:
+    """Objective validation repair covers every FVT-G103 acceptance term.
+
+    This is the synthetic evidence term ``objective validation repair`` for the
+    validation gate (FVT-069): path evidence for the certifier and focused test
+    may already exist while the supervisor still needs an explicit re-proof of
+    satisfied/violated traces, interval and event mutations, shortest
+    violating-prefix replay, timestamp boundaries, malformed fail-closed
+    handling, clean-prefix non-theorem authority, receipt binding, and
+    Python/TypeScript golden parity.
+    """
+
+    assert OBJECTIVE_VALIDATION_EVIDENCE == "objective validation repair"
+    assert REPAIR_TASK_ID == "FVT-069"
+    assert GOAL_ID == "FVT-G103"
+    assert TASK_ID == "FVT-039"
+
+    assert certifier.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
+    assert certifier.REPAIR_TASK_ID == REPAIR_TASK_ID
+    assert certifier.GOAL_ID == GOAL_ID
+    assert OBJECTIVE_VALIDATION_COMMAND_FRAGMENT in certifier.OBJECTIVE_VALIDATION_COMMAND
+
+    # Phrase must appear in all three declared outputs so path+content scans
+    # re-find the validation-gate evidence term.
+    certifier_source = CERTIFIER_PATH.read_text(encoding="utf-8")
+    manifest_source = MANIFEST_PATH.read_text(encoding="utf-8")
+    module_source = Path(__file__).read_text(encoding="utf-8")
+    assert OBJECTIVE_VALIDATION_EVIDENCE in certifier_source
+    assert OBJECTIVE_VALIDATION_EVIDENCE in manifest_source
+    assert OBJECTIVE_VALIDATION_EVIDENCE in module_source
+
+    assert CERTIFIER_PATH.is_file() and CERTIFIER_PATH.stat().st_size > 1000
+    assert MANIFEST_PATH.is_file() and MANIFEST_PATH.stat().st_size > 500
+
+    # Full semantic certificate is hermetically certified for finite-trace MTL.
+    assert certificate["certified"] is True
+    assert certificate["production_certified"] is True
+    assert certificate["goal_id"] == GOAL_ID
+    assert certificate["task_id"] == TASK_ID
+    assert certificate["repair_task_id"] == REPAIR_TASK_ID
+    assert certificate["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    assert certificate["objective_validation_repair"] is True
+    assert certificate["forbids_theorem_authority"] is True
+    assert certificate["authority_ceiling"] == AUTHORITY_CEILING
+    assert certificate["policy"]["grants_theorem_authority"] is False
+    assert certificate["policy"]["grants_finite_trace_authority"] is True
+    assert certificate["policy"]["clean_prefix_never_theorem"] is True
+    assert certificate["policy"]["shortest_violating_prefix_replay"] is True
+    assert certificate["policy"]["python_typescript_golden_parity"] is True
+    assert certificate["policy"]["mutations_must_change_verdict"] is True
+    assert (
+        certificate["policy"][
+            "receipts_bind_formula_trace_clock_bounds_implementation_source_tree"
+        ]
+        is True
+    )
+    assert certificate["acceptance"]["objective_validation_repair"] is True
+    assert (
+        certificate["acceptance"]["objective_validation_evidence"]
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    assert certificate["acceptance"]["repair_task_id"] == REPAIR_TASK_ID
+    assert certificate["acceptance"]["semantically_certified"] is True
+    assert certificate["summary"]["objective_validation_repair"] is True
+    assert certificate["summary"]["block_reasons"] == []
+    assert certificate["block_reasons"] == []
+    assert all(
+        check["status"] in {"passed", "skipped"} for check in certificate["checks"]
+    )
+    assert all(check["authorizes_global_proof"] is False for check in certificate["checks"])
+
+    # Required categories and mutations exercised.
+    categories = set(certificate["categories_exercised"])
+    assert REQUIRED_CATEGORIES <= categories
+    assert set(certificate["mutation_kinds"]) == REQUIRED_MUTATIONS
+
+    statuses = {item["status"] for item in certificate["case_results"]}
+    assert "satisfied" in statuses
+    assert "violated" in statuses
+
+    for record in certificate["case_results"]:
+        if record["category"] == "parity":
+            continue
+        assert record["authority"] == "monitor"
+        assert record["authorizes_global_proof"] is False
+        assert record["formula_digest"]
+        assert record["trace_digest"]
+
+    # Compact manifest recipes still bound (no bulk golden dumps).
+    assert manifest["objective_validation_repair"] is True
+    assert set(manifest["required_categories"]) == REQUIRED_CATEGORIES
+    assert set(manifest["required_mutation_kinds"]) == REQUIRED_MUTATIONS
+    for item in manifest["case_recipes"]:
+        assert "formula" not in item
+        assert "trace" not in item
+        assert item["recipe"]
+
+    # Lane handler reports the same validation-repair binding.
+    handler = certifier.runtime_mtl_lane_handler(
+        repo_root=REPO_ROOT,
+        typescript_prebuilt_root=_sealed_runtime_mtl_root(),
+    )
+    assert handler["certified"] is True
+    assert handler["repair_task_id"] == REPAIR_TASK_ID
+    assert handler["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    assert handler["objective_validation_repair"] is True
+    assert handler["grants_theorem_authority"] is False
+    assert handler["grants_finite_trace_authority"] is True

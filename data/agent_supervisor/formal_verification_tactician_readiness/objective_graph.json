@@ -1,8 +1,8 @@
 {
-  "active_goal_count": 68,
+  "active_goal_count": 77,
   "completed_goal_count": 0,
-  "generated_at": "2026-08-01T05:45:29.317305+00:00",
-  "goal_count": 68,
+  "generated_at": "2026-08-03T18:31:51.323115+00:00",
+  "goal_count": 77,
   "goals": [
     {
       "bundle": "formal-verification-tactician/readiness",
@@ -1025,6 +1025,52 @@
       "track": "supervisor-integrity"
     },
     {
+      "bundle": "formal-verification-tactician/packaging-distribution",
+      "evidence": [
+        "test/packaging/test_logic_verification_clean_install.py",
+        "test/packaging/test_formal_verification_distribution_contract.py"
+      ],
+      "fib_priority": 121393,
+      "goal_id": "FVT-G215",
+      "parents": [
+        "FVT-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Close formal-verification packaging and distribution coverage",
+      "track": "dependency-integrity"
+    },
+    {
+      "bundle": "formal-verification-tactician/secpal-live-toolchain",
+      "evidence": [
+        "test/integration/toolchains/test_secpal_live_toolchain_contract.py"
+      ],
+      "fib_priority": 121393,
+      "goal_id": "FVT-G217",
+      "parents": [
+        "FVT-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Implement the genuine SecPAL external-toolchain path",
+      "track": "external-capability"
+    },
+    {
+      "bundle": "formal-verification-tactician/ergoai-live-toolchain",
+      "evidence": [
+        "test/integration/toolchains/test_ergoai_live_toolchain_contract.py"
+      ],
+      "fib_priority": 121393,
+      "goal_id": "FVT-G218",
+      "parents": [
+        "FVT-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Implement the genuine ErgoAI advisor-toolchain path",
+      "track": "external-capability"
+    },
+    {
       "bundle": "formal-verification-tactician/semantic-receipt-aggregation",
       "evidence": [
         "test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py"
@@ -1038,6 +1084,54 @@
       "status": "active",
       "title": "Aggregate full specialized receipts with composite lane handlers",
       "track": "certification-integrity"
+    },
+    {
+      "bundle": "formal-verification-tactician/lazy-installer-facade",
+      "evidence": [
+        "ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py",
+        "ipfs_datasets_py/tests/unit_tests/logic/external_provers/test_lazy_native_solver_installation.py"
+      ],
+      "fib_priority": 196418,
+      "goal_id": "FVT-G216",
+      "parents": [
+        "FVT-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Bind the public Logic API to transactional lazy installers",
+      "track": "dependency-integrity"
+    },
+    {
+      "bundle": "formal-verification-tactician/secpal-live-authority",
+      "evidence": [
+        "docs/architecture/formal_verification_secpal_live_receipt.json",
+        "test/integration/toolchains/test_secpal_authoritative_live_evidence.py"
+      ],
+      "fib_priority": 196418,
+      "goal_id": "FVT-G219",
+      "parents": [
+        "FVT-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Acquire authoritative SecPAL live evidence",
+      "track": "external-authority"
+    },
+    {
+      "bundle": "formal-verification-tactician/ergoai-java-api",
+      "evidence": [
+        "test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py",
+        "ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py"
+      ],
+      "fib_priority": 196418,
+      "goal_id": "FVT-G222",
+      "parents": [
+        "FVT-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Complete the optional ErgoAI Java API capability",
+      "track": "dependency-integrity"
     },
     {
       "bundle": "formal-verification-tactician/toolchain-release-candidate",
@@ -1058,6 +1152,39 @@
       "track": "completion"
     },
     {
+      "bundle": "formal-verification-tactician/end-to-end-assurance",
+      "evidence": [
+        "test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py",
+        "docs/architecture/formal_verification_end_to_end_assurance_matrix.json"
+      ],
+      "fib_priority": 317811,
+      "goal_id": "FVT-G220",
+      "parents": [
+        "FVT-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Audit every deployment axis end to end",
+      "track": "certification-integrity"
+    },
+    {
+      "bundle": "formal-verification-tactician/ergoai-java-api-live-certification",
+      "evidence": [
+        "docs/architecture/formal_verification_ergoai_java_api_live_receipt.json",
+        "test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py",
+        "ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py"
+      ],
+      "fib_priority": 317811,
+      "goal_id": "FVT-G223",
+      "parents": [
+        "FVT-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Live-certify/harden managed ErgoAI Java/JDK path",
+      "track": "certification-integrity"
+    },
+    {
       "bundle": "formal-verification-tactician/toolchain-release-finalizer",
       "evidence": [
         "test/integration/test_formal_verification_role_aware_post_merge_attestation.py",
@@ -1071,6 +1198,22 @@
       "refinement_depth": "1",
       "status": "active",
       "title": "Publish the post-merge deployment attestation",
+      "track": "completion"
+    },
+    {
+      "bundle": "formal-verification-tactician/authoritative-vendor-release",
+      "evidence": [
+        "docs/architecture/formal_verification_authoritative_vendor_release.json",
+        "test/integration/test_formal_verification_authoritative_vendor_release.py"
+      ],
+      "fib_priority": 514229,
+      "goal_id": "FVT-G221",
+      "parents": [
+        "FVT-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Reissue deployment certification with authoritative vendor evidence",
       "track": "completion"
     },
     {
@@ -1156,7 +1299,16 @@
         "FVT-G211",
         "FVT-G212",
         "FVT-G213",
-        "FVT-G214"
+        "FVT-G214",
+        "FVT-G215",
+        "FVT-G216",
+        "FVT-G217",
+        "FVT-G218",
+        "FVT-G219",
+        "FVT-G220",
+        "FVT-G221",
+        "FVT-G222",
+        "FVT-G223"
       ]
     },
     "depths": {
@@ -1227,7 +1379,16 @@
       "FVT-G211": 1,
       "FVT-G212": 1,
       "FVT-G213": 1,
-      "FVT-G214": 1
+      "FVT-G214": 1,
+      "FVT-G215": 1,
+      "FVT-G216": 1,
+      "FVT-G217": 1,
+      "FVT-G218": 1,
+      "FVT-G219": 1,
+      "FVT-G220": 1,
+      "FVT-G221": 1,
+      "FVT-G222": 1,
+      "FVT-G223": 1
     },
     "edges": [
       {
@@ -1564,6 +1725,51 @@
         "from": "FVT-G000",
         "kind": "refines",
         "to": "FVT-G200"
+      },
+      {
+        "from": "FVT-G000",
+        "kind": "refines",
+        "to": "FVT-G215"
+      },
+      {
+        "from": "FVT-G000",
+        "kind": "refines",
+        "to": "FVT-G216"
+      },
+      {
+        "from": "FVT-G000",
+        "kind": "refines",
+        "to": "FVT-G217"
+      },
+      {
+        "from": "FVT-G000",
+        "kind": "refines",
+        "to": "FVT-G218"
+      },
+      {
+        "from": "FVT-G000",
+        "kind": "refines",
+        "to": "FVT-G219"
+      },
+      {
+        "from": "FVT-G000",
+        "kind": "refines",
+        "to": "FVT-G220"
+      },
+      {
+        "from": "FVT-G000",
+        "kind": "refines",
+        "to": "FVT-G221"
+      },
+      {
+        "from": "FVT-G000",
+        "kind": "refines",
+        "to": "FVT-G222"
+      },
+      {
+        "from": "FVT-G000",
+        "kind": "refines",
+        "to": "FVT-G223"
       }
     ],
     "evidence_edges": [
@@ -2226,6 +2432,91 @@
         "from": "FVT-G214",
         "kind": "requires_evidence",
         "to": "evidence:c5638cf375e121c6"
+      },
+      {
+        "from": "FVT-G215",
+        "kind": "requires_evidence",
+        "to": "evidence:8550373e236bf175"
+      },
+      {
+        "from": "FVT-G215",
+        "kind": "requires_evidence",
+        "to": "evidence:5d69fb75c1dd2823"
+      },
+      {
+        "from": "FVT-G216",
+        "kind": "requires_evidence",
+        "to": "evidence:a926aa50efbe610f"
+      },
+      {
+        "from": "FVT-G216",
+        "kind": "requires_evidence",
+        "to": "evidence:56cc94e2734b5d82"
+      },
+      {
+        "from": "FVT-G217",
+        "kind": "requires_evidence",
+        "to": "evidence:748c40787a0fe02a"
+      },
+      {
+        "from": "FVT-G218",
+        "kind": "requires_evidence",
+        "to": "evidence:54b031a7e025d005"
+      },
+      {
+        "from": "FVT-G219",
+        "kind": "requires_evidence",
+        "to": "evidence:2b4dd2c1204e9fa6"
+      },
+      {
+        "from": "FVT-G219",
+        "kind": "requires_evidence",
+        "to": "evidence:4a6f6b168ff042b6"
+      },
+      {
+        "from": "FVT-G220",
+        "kind": "requires_evidence",
+        "to": "evidence:33aad7ee3a936d9c"
+      },
+      {
+        "from": "FVT-G220",
+        "kind": "requires_evidence",
+        "to": "evidence:9e5145d4e8ee804f"
+      },
+      {
+        "from": "FVT-G221",
+        "kind": "requires_evidence",
+        "to": "evidence:5ece086f14412337"
+      },
+      {
+        "from": "FVT-G221",
+        "kind": "requires_evidence",
+        "to": "evidence:9a1e4fdde820dda5"
+      },
+      {
+        "from": "FVT-G222",
+        "kind": "requires_evidence",
+        "to": "evidence:ea624d87e530ec42"
+      },
+      {
+        "from": "FVT-G222",
+        "kind": "requires_evidence",
+        "to": "evidence:822120acdba0a050"
+      },
+      {
+        "from": "FVT-G223",
+        "kind": "requires_evidence",
+        "to": "evidence:55f8de787b83fd0a"
+      },
+      {
+        "from": "FVT-G223",
+        "kind": "requires_evidence",
+        "to": "evidence:272cc2ca588e2793"
+      },
+      {
+        "from": "FVT-G223",
+        "kind": "requires_evidence",
+        "to": "evidence:04ee0864460f39f3"
       }
     ],
     "evidence_nodes": [
@@ -2888,6 +3179,91 @@
         "acceptance_criterion": "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
         "goal_id": "FVT-G214",
         "id": "evidence:c5638cf375e121c6"
+      },
+      {
+        "acceptance_criterion": "test/packaging/test_logic_verification_clean_install.py",
+        "goal_id": "FVT-G215",
+        "id": "evidence:8550373e236bf175"
+      },
+      {
+        "acceptance_criterion": "test/packaging/test_formal_verification_distribution_contract.py",
+        "goal_id": "FVT-G215",
+        "id": "evidence:5d69fb75c1dd2823"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py",
+        "goal_id": "FVT-G216",
+        "id": "evidence:a926aa50efbe610f"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/tests/unit_tests/logic/external_provers/test_lazy_native_solver_installation.py",
+        "goal_id": "FVT-G216",
+        "id": "evidence:56cc94e2734b5d82"
+      },
+      {
+        "acceptance_criterion": "test/integration/toolchains/test_secpal_live_toolchain_contract.py",
+        "goal_id": "FVT-G217",
+        "id": "evidence:748c40787a0fe02a"
+      },
+      {
+        "acceptance_criterion": "test/integration/toolchains/test_ergoai_live_toolchain_contract.py",
+        "goal_id": "FVT-G218",
+        "id": "evidence:54b031a7e025d005"
+      },
+      {
+        "acceptance_criterion": "docs/architecture/formal_verification_secpal_live_receipt.json",
+        "goal_id": "FVT-G219",
+        "id": "evidence:2b4dd2c1204e9fa6"
+      },
+      {
+        "acceptance_criterion": "test/integration/toolchains/test_secpal_authoritative_live_evidence.py",
+        "goal_id": "FVT-G219",
+        "id": "evidence:4a6f6b168ff042b6"
+      },
+      {
+        "acceptance_criterion": "test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py",
+        "goal_id": "FVT-G220",
+        "id": "evidence:33aad7ee3a936d9c"
+      },
+      {
+        "acceptance_criterion": "docs/architecture/formal_verification_end_to_end_assurance_matrix.json",
+        "goal_id": "FVT-G220",
+        "id": "evidence:9e5145d4e8ee804f"
+      },
+      {
+        "acceptance_criterion": "docs/architecture/formal_verification_authoritative_vendor_release.json",
+        "goal_id": "FVT-G221",
+        "id": "evidence:5ece086f14412337"
+      },
+      {
+        "acceptance_criterion": "test/integration/test_formal_verification_authoritative_vendor_release.py",
+        "goal_id": "FVT-G221",
+        "id": "evidence:9a1e4fdde820dda5"
+      },
+      {
+        "acceptance_criterion": "test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py",
+        "goal_id": "FVT-G222",
+        "id": "evidence:ea624d87e530ec42"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py",
+        "goal_id": "FVT-G222",
+        "id": "evidence:822120acdba0a050"
+      },
+      {
+        "acceptance_criterion": "docs/architecture/formal_verification_ergoai_java_api_live_receipt.json",
+        "goal_id": "FVT-G223",
+        "id": "evidence:55f8de787b83fd0a"
+      },
+      {
+        "acceptance_criterion": "test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py",
+        "goal_id": "FVT-G223",
+        "id": "evidence:272cc2ca588e2793"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py",
+        "goal_id": "FVT-G223",
+        "id": "evidence:04ee0864460f39f3"
       }
     ],
     "lifecycle": {
@@ -2959,7 +3335,16 @@
         "FVT-G211",
         "FVT-G212",
         "FVT-G213",
-        "FVT-G214"
+        "FVT-G214",
+        "FVT-G215",
+        "FVT-G216",
+        "FVT-G217",
+        "FVT-G218",
+        "FVT-G219",
+        "FVT-G220",
+        "FVT-G221",
+        "FVT-G222",
+        "FVT-G223"
       ],
       "schedulable_goal_ids": [
         "FVT-G000",
@@ -3029,10 +3414,19 @@
         "FVT-G211",
         "FVT-G212",
         "FVT-G213",
-        "FVT-G214"
+        "FVT-G214",
+        "FVT-G215",
+        "FVT-G216",
+        "FVT-G217",
+        "FVT-G218",
+        "FVT-G219",
+        "FVT-G220",
+        "FVT-G221",
+        "FVT-G222",
+        "FVT-G223"
       ],
       "state_counts": {
-        "active": 68
+        "active": 77
       },
       "terminal_goal_ids": []
     },
@@ -4254,6 +4648,167 @@
         "status": "active",
         "terminal": false,
         "title": "Publish the post-merge deployment attestation"
+      },
+      "FVT-G215": {
+        "completion_evidence": {
+          "acceptance_criterion": "Root and datasets setup.py, pyproject metadata, requirements files, and extras have one machine-checked dependency inventory; namespace-package discovery includes logic backends, software verification, installer plugins, and runtime assets in built wheels; every declared plugin module exists; a clean isolated wheel install imports and inventories the Logic API without network access, downloads, builds, user-site leakage, editable-source leakage, or installation side effects; optional native and external provers remain optional and are surfaced as unavailable rather than breaking base installation."
+        },
+        "goal_id": "FVT-G215",
+        "lifecycle_state": "active",
+        "parents": [
+          "FVT-G000"
+        ],
+        "required_evidence": [
+          "test/packaging/test_logic_verification_clean_install.py",
+          "test/packaging/test_formal_verification_distribution_contract.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Close formal-verification packaging and distribution coverage"
+      },
+      "FVT-G216": {
+        "completion_evidence": {
+          "acceptance_criterion": "LogicVerificationAPI.install_provider resolves reviewed family plugins for SMT, kernels, state models, authorization, protocols, ATP, hyperproperties, Runtime MTL, advisors, and ZKP; probe, inventory, import, dry-run, and offline certification execute no installer command and perform no network access; installation requires an explicit allow flag and produces a bounded plan before mutation; platform, dependency, license, checksum, artifact, executable, rollback, and post-install semantic-probe results are returned as structured evidence; interrupted or failed publication preserves the previous good installation and cannot promote capability or semantic authority."
+        },
+        "goal_id": "FVT-G216",
+        "lifecycle_state": "active",
+        "parents": [
+          "FVT-G000"
+        ],
+        "required_evidence": [
+          "ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py",
+          "ipfs_datasets_py/tests/unit_tests/logic/external_provers/test_lazy_native_solver_installation.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Bind the public Logic API to transactional lazy installers"
+      },
+      "FVT-G217": {
+        "completion_evidence": {
+          "acceptance_criterion": "Every supported SecPAL target binds an official publisher URL or operator-supplied reviewed artifact, immutable version and digest, redistribution and execution terms, architecture and OS, runtime dependencies, install plan, executable identity, and rollback behavior; unsupported hosts are derived from the reviewed lock and cannot install, certify, or count as complete; real allow, deny, unknown, delegation, conflict, rule/scope mutation, replay, malformed, timeout, and disagreement cases execute through the selected external engine; the in-process Datalog/SecPAL family and any hermetic adapter remain separately named and cannot impersonate the vendor tool."
+        },
+        "goal_id": "FVT-G217",
+        "lifecycle_state": "active",
+        "parents": [
+          "FVT-G000"
+        ],
+        "required_evidence": [
+          "test/integration/toolchains/test_secpal_live_toolchain_contract.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Implement the genuine SecPAL external-toolchain path"
+      },
+      "FVT-G218": {
+        "completion_evidence": {
+          "acceptance_criterion": "The lock binds the official ErgoAI distribution or reviewed source revision, license and acquisition conditions, archive/source digests, XSB and every runtime/build dependency, supported OS/architecture matrix, entry point, and exact identity probe; explicit lazy installation is staged, checksum-verified, atomic, relocatable, and offline after acquisition; live entailment, non-entailment, contradiction, rule/query mutation, deterministic replay, malformed input, timeout, and resource-bound cases execute through ErgoAI; results remain proposal or candidate evidence until reconstructed or checked by an independent proof authority."
+        },
+        "goal_id": "FVT-G218",
+        "lifecycle_state": "active",
+        "parents": [
+          "FVT-G000"
+        ],
+        "required_evidence": [
+          "test/integration/toolchains/test_ergoai_live_toolchain_contract.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Implement the genuine ErgoAI advisor-toolchain path"
+      },
+      "FVT-G219": {
+        "completion_evidence": {
+          "acceptance_criterion": "Independent allow, deny, unknown, delegation, conflict, rule/scope mutation, replay, malformed, timeout, resource-bound, and cross-engine disagreement cases run against the exact official SecPAL executable on a host covered by its reviewed platform lock; the receipt binds acquisition authority, license disposition without publishing restricted bytes, host OS and architecture, every runtime dependency, executable and artifact digests, policies, queries, bounds, raw-output digests, parser decisions, witnesses, timestamps, freshness, and deterministic replay; fixture, in-process Datalog/SecPAL, shim, parser-only, wrapper-only, proposed, identity-only, previously completed ErgoAI evidence, or unsupported-host results cannot satisfy this SecPAL authority goal."
+        },
+        "goal_id": "FVT-G219",
+        "lifecycle_state": "active",
+        "parents": [
+          "FVT-G000"
+        ],
+        "required_evidence": [
+          "docs/architecture/formal_verification_secpal_live_receipt.json",
+          "test/integration/toolchains/test_secpal_authoritative_live_evidence.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Acquire authoritative SecPAL live evidence"
+      },
+      "FVT-G220": {
+        "completion_evidence": {
+          "acceptance_criterion": "Each provider and host tuple reports separate dependency, packaging, installer, capability, semantic, platform, authority, freshness, and public-surface states with exact evidence references and reason codes; no axis inherits success from another; supported missing dependencies, missing wheel files, placeholder dispatch, stale locks, wrong-architecture artifacts, parser fixtures, advisor-only evidence, and unsupported hosts are distinguishable; SecPAL in-process and external identities and ErgoAI advisor and independent proof authority remain distinct; an adversarial test mutates every axis and proves that the joint readiness claim fails closed."
+        },
+        "goal_id": "FVT-G220",
+        "lifecycle_state": "active",
+        "parents": [
+          "FVT-G000"
+        ],
+        "required_evidence": [
+          "test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py",
+          "docs/architecture/formal_verification_end_to_end_assurance_matrix.json"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Audit every deployment axis end to end"
+      },
+      "FVT-G221": {
+        "completion_evidence": {
+          "acceptance_criterion": "The release binds clean-wheel evidence, explicit lazy-install receipts, exact dependency and platform identities, complete specialized semantic cases, SecPAL and ErgoAI authoritative live receipts, authority ceilings, disagreement quarantines, public-safe envelopes, durable supervisor completion, source and merged trees, recursive gitlinks, and origin publication; every dependency is reachable and fresh; fixture, shim, unsupported, proposal-only, or externally blocked lanes remain disclosed and prevent deployment-ready status."
+        },
+        "goal_id": "FVT-G221",
+        "lifecycle_state": "active",
+        "parents": [
+          "FVT-G000"
+        ],
+        "required_evidence": [
+          "docs/architecture/formal_verification_authoritative_vendor_release.json",
+          "test/integration/test_formal_verification_authoritative_vendor_release.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Reissue deployment certification with authoritative vendor evidence"
+      },
+      "FVT-G222": {
+        "completion_evidence": {
+          "acceptance_criterion": "The lock selects reviewed Eclipse Temurin or another authoritative OpenJDK JDK artifact by exact version, publisher, immutable URL, SHA-256, signature or equivalent publisher evidence, license, OS, architecture, archive size, and required `java`, `javac`, and `jar` identities; only an explicit allow flag may perform a bounded acquisition and symlink-safe extraction into the validated user-local transaction root; interruption, checksum mismatch, archive traversal, unsupported hosts, stale dependency identities, or failed post-install probes roll back and remain unavailable; the managed ErgoAI wrapper binds the exact JDK identity used by its Java consumers and executes positive, negative, malformed, timeout, replay, relocation, and dependency-mutation cases; capability, dependency, semantic, platform, packaging, and authority axes remain independently visible; setup.py, pyproject, and requirements inventories classify the JDK as a reviewed external lazy dependency rather than an invalid mandatory Python package; import, probe, wheel installation, dry-run, and offline certification never download or install; core ErgoAI remains independently usable when the Java API capability is absent."
+        },
+        "goal_id": "FVT-G222",
+        "lifecycle_state": "active",
+        "parents": [
+          "FVT-G000"
+        ],
+        "required_evidence": [
+          "test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py",
+          "ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Complete the optional ErgoAI Java API capability"
+      },
+      "FVT-G223": {
+        "completion_evidence": {
+          "acceptance_criterion": "On each reviewed host, an explicit opt-in installs the immutable official Eclipse Temurin 17.0.20+8 artifact, verifies its pinned archive digest, size, release checksum, detached signature or equivalently strong publisher evidence, vendor, license, OS, and architecture, and records exact `java`, `javac`, and `jar` versions, paths, and byte digests; the pinned official ErgoAI 3.0 tree then compiles and executes at least one real vendor Java consumer against real ErgoAI/XSB, and a synthetic HelloWorld or JDK-only probe cannot satisfy the semantic case; a real timeout terminates the complete child process tree within a bounded grace period and removes transient consumer workspaces, locks, and partial outputs; relocating the validated JDK and ErgoAI pair beneath a fresh HOME preserves identity binding and produces deterministic replay evidence without ambient `JAVA_HOME`, PATH, caches, or source-tree leakage; byte mutations of each selected Java tool and every identity-bound ErgoAI Java launcher, archive, or classpath artifact are rejected before execution and cannot be repaired into success by stale evidence; concurrent processes use a bounded cross-process single-flight lock so only one acquisition/publication occurs, all waiters observe the same validated identity, abandoned locks are recovered safely, and no partial tree is visible; a failed `force=True` replacement, including download, publisher-evidence, extraction, probe, or publication failure, rolls back to the exact previous-good tree and receipt while quarantining or deleting only bounded staged state; every mutable install, cache, staging, lock, backup, quarantine, and temporary path is a strict canonical descendant of the selected HOME, while HOME itself, sibling or prefix-collision paths, lexical traversal, and symlinked ancestors or targets fail closed; manifests and receipts bind the official publisher evidence, artifact and executable digests, platform tuple, canonical paths, ErgoAI release identity, test inputs, raw-output digests, cleanup result, and source/merged trees; the Java capability remains advisor-only, cannot discharge a proof obligation without an independent kernel or solver, and its absence or failure never makes the already certified core ErgoAI advisor unavailable."
+        },
+        "goal_id": "FVT-G223",
+        "lifecycle_state": "active",
+        "parents": [
+          "FVT-G000"
+        ],
+        "required_evidence": [
+          "docs/architecture/formal_verification_ergoai_java_api_live_receipt.json",
+          "test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py",
+          "ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Live-certify/harden managed ErgoAI Java/JDK path"
       }
     },
     "nodes": [
@@ -4324,7 +4879,16 @@
       "FVT-G211",
       "FVT-G212",
       "FVT-G213",
-      "FVT-G214"
+      "FVT-G214",
+      "FVT-G215",
+      "FVT-G216",
+      "FVT-G217",
+      "FVT-G218",
+      "FVT-G219",
+      "FVT-G220",
+      "FVT-G221",
+      "FVT-G222",
+      "FVT-G223"
     ],
     "roots": [
       "FVT-G000"
@@ -4397,10 +4961,19 @@
       "FVT-G211",
       "FVT-G212",
       "FVT-G213",
-      "FVT-G214"
+      "FVT-G214",
+      "FVT-G215",
+      "FVT-G216",
+      "FVT-G217",
+      "FVT-G218",
+      "FVT-G219",
+      "FVT-G220",
+      "FVT-G221",
+      "FVT-G222",
+      "FVT-G223"
     ],
     "state_counts": {
-      "active": 68
+      "active": 77
     },
     "terminal_goal_ids": []
   },
@@ -5847,9 +6420,33 @@
     },
     {
       "fib_priority": 121393,
-      "goal_id": "FVT-G208",
+      "goal_id": "FVT-G215",
       "graph_depth": 1,
       "heap_index": 60,
+      "output_count": 9,
+      "parents": [
+        "FVT-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 2,
+      "sort_key": [
+        121393,
+        0,
+        -32,
+        1,
+        "FVT-G215"
+      ],
+      "status": "active",
+      "title": "Close formal-verification packaging and distribution coverage",
+      "track": "dependency-integrity",
+      "work_surface_score": 32
+    },
+    {
+      "fib_priority": 121393,
+      "goal_id": "FVT-G208",
+      "graph_depth": 1,
+      "heap_index": 61,
       "output_count": 5,
       "parents": [
         "FVT-G000"
@@ -5871,9 +6468,33 @@
     },
     {
       "fib_priority": 121393,
+      "goal_id": "FVT-G218",
+      "graph_depth": 1,
+      "heap_index": 62,
+      "output_count": 5,
+      "parents": [
+        "FVT-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 1,
+      "sort_key": [
+        121393,
+        0,
+        -20,
+        1,
+        "FVT-G218"
+      ],
+      "status": "active",
+      "title": "Implement the genuine ErgoAI advisor-toolchain path",
+      "track": "external-capability",
+      "work_surface_score": 20
+    },
+    {
+      "fib_priority": 121393,
       "goal_id": "FVT-G202",
       "graph_depth": 1,
-      "heap_index": 61,
+      "heap_index": 63,
       "output_count": 4,
       "parents": [
         "FVT-G000"
@@ -5895,9 +6516,33 @@
     },
     {
       "fib_priority": 121393,
+      "goal_id": "FVT-G217",
+      "graph_depth": 1,
+      "heap_index": 64,
+      "output_count": 4,
+      "parents": [
+        "FVT-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 1,
+      "sort_key": [
+        121393,
+        0,
+        -18,
+        1,
+        "FVT-G217"
+      ],
+      "status": "active",
+      "title": "Implement the genuine SecPAL external-toolchain path",
+      "track": "external-capability",
+      "work_surface_score": 18
+    },
+    {
+      "fib_priority": 121393,
       "goal_id": "FVT-G212",
       "graph_depth": 1,
-      "heap_index": 62,
+      "heap_index": 65,
       "output_count": 4,
       "parents": [
         "FVT-G000"
@@ -5921,7 +6566,7 @@
       "fib_priority": 121393,
       "goal_id": "FVT-G201",
       "graph_depth": 1,
-      "heap_index": 63,
+      "heap_index": 66,
       "output_count": 2,
       "parents": [
         "FVT-G000"
@@ -5943,9 +6588,57 @@
     },
     {
       "fib_priority": 196418,
+      "goal_id": "FVT-G222",
+      "graph_depth": 1,
+      "heap_index": 67,
+      "output_count": 13,
+      "parents": [
+        "FVT-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 2,
+      "sort_key": [
+        196418,
+        0,
+        -43,
+        1,
+        "FVT-G222"
+      ],
+      "status": "active",
+      "title": "Complete the optional ErgoAI Java API capability",
+      "track": "dependency-integrity",
+      "work_surface_score": 43
+    },
+    {
+      "fib_priority": 196418,
+      "goal_id": "FVT-G216",
+      "graph_depth": 1,
+      "heap_index": 68,
+      "output_count": 4,
+      "parents": [
+        "FVT-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 2,
+      "sort_key": [
+        196418,
+        0,
+        -22,
+        1,
+        "FVT-G216"
+      ],
+      "status": "active",
+      "title": "Bind the public Logic API to transactional lazy installers",
+      "track": "dependency-integrity",
+      "work_surface_score": 22
+    },
+    {
+      "fib_priority": 196418,
       "goal_id": "FVT-G203",
       "graph_depth": 1,
-      "heap_index": 64,
+      "heap_index": 69,
       "output_count": 3,
       "parents": [
         "FVT-G000"
@@ -5966,11 +6659,59 @@
       "work_surface_score": 16
     },
     {
+      "fib_priority": 196418,
+      "goal_id": "FVT-G219",
+      "graph_depth": 1,
+      "heap_index": 70,
+      "output_count": 2,
+      "parents": [
+        "FVT-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 2,
+      "sort_key": [
+        196418,
+        0,
+        -15,
+        1,
+        "FVT-G219"
+      ],
+      "status": "active",
+      "title": "Acquire authoritative SecPAL live evidence",
+      "track": "external-authority",
+      "work_surface_score": 15
+    },
+    {
+      "fib_priority": 317811,
+      "goal_id": "FVT-G223",
+      "graph_depth": 1,
+      "heap_index": 71,
+      "output_count": 8,
+      "parents": [
+        "FVT-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 3,
+      "sort_key": [
+        317811,
+        0,
+        -40,
+        1,
+        "FVT-G223"
+      ],
+      "status": "active",
+      "title": "Live-certify/harden managed ErgoAI Java/JDK path",
+      "track": "certification-integrity",
+      "work_surface_score": 40
+    },
+    {
       "fib_priority": 317811,
       "goal_id": "FVT-G213",
       "graph_depth": 1,
-      "heap_index": 65,
-      "output_count": 6,
+      "heap_index": 72,
+      "output_count": 7,
       "parents": [
         "FVT-G000"
       ],
@@ -5980,20 +6721,68 @@
       "sort_key": [
         317811,
         0,
-        -34,
+        -36,
         1,
         "FVT-G213"
       ],
       "status": "active",
       "title": "Build the fail-closed role-aware release candidate",
       "track": "completion",
-      "work_surface_score": 34
+      "work_surface_score": 36
+    },
+    {
+      "fib_priority": 317811,
+      "goal_id": "FVT-G220",
+      "graph_depth": 1,
+      "heap_index": 73,
+      "output_count": 4,
+      "parents": [
+        "FVT-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 2,
+      "sort_key": [
+        317811,
+        0,
+        -22,
+        1,
+        "FVT-G220"
+      ],
+      "status": "active",
+      "title": "Audit every deployment axis end to end",
+      "track": "certification-integrity",
+      "work_surface_score": 22
+    },
+    {
+      "fib_priority": 514229,
+      "goal_id": "FVT-G221",
+      "graph_depth": 1,
+      "heap_index": 74,
+      "output_count": 5,
+      "parents": [
+        "FVT-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 2,
+      "sort_key": [
+        514229,
+        0,
+        -21,
+        1,
+        "FVT-G221"
+      ],
+      "status": "active",
+      "title": "Reissue deployment certification with authoritative vendor evidence",
+      "track": "completion",
+      "work_surface_score": 21
     },
     {
       "fib_priority": 514229,
       "goal_id": "FVT-G214",
       "graph_depth": 1,
-      "heap_index": 66,
+      "heap_index": 75,
       "output_count": 4,
       "parents": [
         "FVT-G000"
@@ -6017,7 +6806,7 @@
       "fib_priority": 24157817,
       "goal_id": "FVT-G000",
       "graph_depth": 0,
-      "heap_index": 67,
+      "heap_index": 76,
       "output_count": 1,
       "parents": [],
       "priority": "P0",
@@ -6039,7 +6828,7 @@
   "objective_path": "/home/barberb/lift_coding/data/logic_software_verification_program/repo/docs/architecture/formal_verification_tactician_readiness.objectives.md",
   "schema": "ipfs_accelerate_py.agent_supervisor.objectives.objective_graph",
   "thought_graph": {
-    "edge_count": 499,
+    "edge_count": 594,
     "edges": [
       {
         "from": "goal:FVT-G000",
@@ -8447,6 +9236,11 @@
         "to": "code_surface:687fa7f114ef"
       },
       {
+        "from": "goal:FVT-G213",
+        "kind": "touches_surface",
+        "to": "code_surface:59d44a2fa481"
+      },
+      {
         "from": "goal:FVT-G214",
         "kind": "requires_evidence",
         "to": "evidence:ca64a8a539e8"
@@ -8535,9 +9329,479 @@
         "from": "interoperability_pair:070a7ef81943",
         "kind": "needs_test_strategy",
         "to": "test_strategy:070a7ef81943"
+      },
+      {
+        "from": "goal:FVT-G215",
+        "kind": "requires_evidence",
+        "to": "evidence:8550373e236b"
+      },
+      {
+        "from": "goal:FVT-G215",
+        "kind": "requires_evidence",
+        "to": "evidence:5d69fb75c1dd"
+      },
+      {
+        "from": "goal:FVT-G215",
+        "kind": "validated_by",
+        "to": "validation:009f14765662"
+      },
+      {
+        "from": "goal:FVT-G215",
+        "kind": "touches_surface",
+        "to": "code_surface:b6ad839a3cee"
+      },
+      {
+        "from": "goal:FVT-G215",
+        "kind": "touches_surface",
+        "to": "code_surface:701fed67dbd4"
+      },
+      {
+        "from": "goal:FVT-G215",
+        "kind": "touches_surface",
+        "to": "code_surface:82fb8544545a"
+      },
+      {
+        "from": "goal:FVT-G215",
+        "kind": "touches_surface",
+        "to": "code_surface:aed14716a02b"
+      },
+      {
+        "from": "goal:FVT-G215",
+        "kind": "touches_surface",
+        "to": "code_surface:f94972645a30"
+      },
+      {
+        "from": "goal:FVT-G215",
+        "kind": "touches_surface",
+        "to": "code_surface:411009807fe2"
+      },
+      {
+        "from": "goal:FVT-G215",
+        "kind": "touches_surface",
+        "to": "code_surface:778e92c86dc9"
+      },
+      {
+        "from": "goal:FVT-G215",
+        "kind": "touches_surface",
+        "to": "code_surface:42c61a500b1a"
+      },
+      {
+        "from": "goal:FVT-G215",
+        "kind": "touches_surface",
+        "to": "code_surface:5d69fb75c1dd"
+      },
+      {
+        "from": "goal:FVT-G215",
+        "kind": "targets_interoperability",
+        "to": "interoperability_pair:136fcd47a092"
+      },
+      {
+        "from": "interoperability_pair:136fcd47a092",
+        "kind": "needs_test_strategy",
+        "to": "test_strategy:136fcd47a092"
+      },
+      {
+        "from": "goal:FVT-G216",
+        "kind": "requires_evidence",
+        "to": "evidence:a926aa50efbe"
+      },
+      {
+        "from": "goal:FVT-G216",
+        "kind": "requires_evidence",
+        "to": "evidence:56cc94e2734b"
+      },
+      {
+        "from": "goal:FVT-G216",
+        "kind": "validated_by",
+        "to": "validation:2290bea96752"
+      },
+      {
+        "from": "goal:FVT-G216",
+        "kind": "touches_surface",
+        "to": "code_surface:b9a308b29d1e"
+      },
+      {
+        "from": "goal:FVT-G216",
+        "kind": "touches_surface",
+        "to": "code_surface:fc217251a8af"
+      },
+      {
+        "from": "goal:FVT-G216",
+        "kind": "touches_surface",
+        "to": "code_surface:41758d2f0065"
+      },
+      {
+        "from": "goal:FVT-G216",
+        "kind": "touches_surface",
+        "to": "code_surface:a926aa50efbe"
+      },
+      {
+        "from": "goal:FVT-G216",
+        "kind": "targets_interoperability",
+        "to": "interoperability_pair:e646b5dab1f1"
+      },
+      {
+        "from": "interoperability_pair:e646b5dab1f1",
+        "kind": "needs_test_strategy",
+        "to": "test_strategy:e646b5dab1f1"
+      },
+      {
+        "from": "goal:FVT-G217",
+        "kind": "requires_evidence",
+        "to": "evidence:748c40787a0f"
+      },
+      {
+        "from": "goal:FVT-G217",
+        "kind": "validated_by",
+        "to": "validation:cde70ab62de5"
+      },
+      {
+        "from": "goal:FVT-G217",
+        "kind": "touches_surface",
+        "to": "code_surface:54745c50ae20"
+      },
+      {
+        "from": "goal:FVT-G217",
+        "kind": "touches_surface",
+        "to": "code_surface:e2e3701dccf3"
+      },
+      {
+        "from": "goal:FVT-G217",
+        "kind": "touches_surface",
+        "to": "code_surface:5316d0ed6cfc"
+      },
+      {
+        "from": "goal:FVT-G217",
+        "kind": "touches_surface",
+        "to": "code_surface:748c40787a0f"
+      },
+      {
+        "from": "goal:FVT-G217",
+        "kind": "targets_interoperability",
+        "to": "interoperability_pair:8a92698c71eb"
+      },
+      {
+        "from": "interoperability_pair:8a92698c71eb",
+        "kind": "needs_test_strategy",
+        "to": "test_strategy:8a92698c71eb"
+      },
+      {
+        "from": "goal:FVT-G218",
+        "kind": "requires_evidence",
+        "to": "evidence:54b031a7e025"
+      },
+      {
+        "from": "goal:FVT-G218",
+        "kind": "validated_by",
+        "to": "validation:1386f63dbf4f"
+      },
+      {
+        "from": "goal:FVT-G218",
+        "kind": "touches_surface",
+        "to": "code_surface:59512465305a"
+      },
+      {
+        "from": "goal:FVT-G218",
+        "kind": "touches_surface",
+        "to": "code_surface:84ffc2c05941"
+      },
+      {
+        "from": "goal:FVT-G218",
+        "kind": "touches_surface",
+        "to": "code_surface:e25ec782e828"
+      },
+      {
+        "from": "goal:FVT-G218",
+        "kind": "touches_surface",
+        "to": "code_surface:b58b37339f84"
+      },
+      {
+        "from": "goal:FVT-G218",
+        "kind": "touches_surface",
+        "to": "code_surface:54b031a7e025"
+      },
+      {
+        "from": "goal:FVT-G218",
+        "kind": "targets_interoperability",
+        "to": "interoperability_pair:31be9690d58f"
+      },
+      {
+        "from": "interoperability_pair:31be9690d58f",
+        "kind": "needs_test_strategy",
+        "to": "test_strategy:31be9690d58f"
+      },
+      {
+        "from": "goal:FVT-G219",
+        "kind": "requires_evidence",
+        "to": "evidence:2b4dd2c1204e"
+      },
+      {
+        "from": "goal:FVT-G219",
+        "kind": "requires_evidence",
+        "to": "evidence:4a6f6b168ff0"
+      },
+      {
+        "from": "goal:FVT-G219",
+        "kind": "validated_by",
+        "to": "validation:a414a0fadd42"
+      },
+      {
+        "from": "goal:FVT-G219",
+        "kind": "touches_surface",
+        "to": "code_surface:2b4dd2c1204e"
+      },
+      {
+        "from": "goal:FVT-G219",
+        "kind": "touches_surface",
+        "to": "code_surface:4a6f6b168ff0"
+      },
+      {
+        "from": "goal:FVT-G220",
+        "kind": "requires_evidence",
+        "to": "evidence:33aad7ee3a93"
+      },
+      {
+        "from": "goal:FVT-G220",
+        "kind": "requires_evidence",
+        "to": "evidence:9e5145d4e8ee"
+      },
+      {
+        "from": "goal:FVT-G220",
+        "kind": "validated_by",
+        "to": "validation:adc871b7c3b4"
+      },
+      {
+        "from": "goal:FVT-G220",
+        "kind": "touches_surface",
+        "to": "code_surface:8dc06ab9b7d3"
+      },
+      {
+        "from": "goal:FVT-G220",
+        "kind": "touches_surface",
+        "to": "code_surface:b7dfeaa9d298"
+      },
+      {
+        "from": "goal:FVT-G220",
+        "kind": "touches_surface",
+        "to": "code_surface:9e5145d4e8ee"
+      },
+      {
+        "from": "goal:FVT-G220",
+        "kind": "touches_surface",
+        "to": "code_surface:33aad7ee3a93"
+      },
+      {
+        "from": "goal:FVT-G220",
+        "kind": "targets_interoperability",
+        "to": "interoperability_pair:8ba8c2a299ca"
+      },
+      {
+        "from": "interoperability_pair:8ba8c2a299ca",
+        "kind": "needs_test_strategy",
+        "to": "test_strategy:8ba8c2a299ca"
+      },
+      {
+        "from": "goal:FVT-G221",
+        "kind": "requires_evidence",
+        "to": "evidence:5ece086f1441"
+      },
+      {
+        "from": "goal:FVT-G221",
+        "kind": "requires_evidence",
+        "to": "evidence:9a1e4fdde820"
+      },
+      {
+        "from": "goal:FVT-G221",
+        "kind": "validated_by",
+        "to": "validation:e4716538fac6"
+      },
+      {
+        "from": "goal:FVT-G221",
+        "kind": "touches_surface",
+        "to": "code_surface:e4e332f5fc9f"
+      },
+      {
+        "from": "goal:FVT-G221",
+        "kind": "touches_surface",
+        "to": "code_surface:128774409db0"
+      },
+      {
+        "from": "goal:FVT-G221",
+        "kind": "touches_surface",
+        "to": "code_surface:5ece086f1441"
+      },
+      {
+        "from": "goal:FVT-G221",
+        "kind": "touches_surface",
+        "to": "code_surface:af3fc8d6ad3e"
+      },
+      {
+        "from": "goal:FVT-G221",
+        "kind": "touches_surface",
+        "to": "code_surface:9a1e4fdde820"
+      },
+      {
+        "from": "goal:FVT-G222",
+        "kind": "requires_evidence",
+        "to": "evidence:ea624d87e530"
+      },
+      {
+        "from": "goal:FVT-G222",
+        "kind": "requires_evidence",
+        "to": "evidence:822120acdba0"
+      },
+      {
+        "from": "goal:FVT-G222",
+        "kind": "validated_by",
+        "to": "validation:51580b7d2c55"
+      },
+      {
+        "from": "goal:FVT-G222",
+        "kind": "touches_surface",
+        "to": "code_surface:91c2dfed51f9"
+      },
+      {
+        "from": "goal:FVT-G222",
+        "kind": "touches_surface",
+        "to": "code_surface:f9de981a605c"
+      },
+      {
+        "from": "goal:FVT-G222",
+        "kind": "touches_surface",
+        "to": "code_surface:0841e509278c"
+      },
+      {
+        "from": "goal:FVT-G222",
+        "kind": "touches_surface",
+        "to": "code_surface:71c801c75c4a"
+      },
+      {
+        "from": "goal:FVT-G222",
+        "kind": "touches_surface",
+        "to": "code_surface:364117df75b8"
+      },
+      {
+        "from": "goal:FVT-G222",
+        "kind": "touches_surface",
+        "to": "code_surface:4272b037245c"
+      },
+      {
+        "from": "goal:FVT-G222",
+        "kind": "touches_surface",
+        "to": "code_surface:c6693097ac0f"
+      },
+      {
+        "from": "goal:FVT-G222",
+        "kind": "touches_surface",
+        "to": "code_surface:c896d03ee073"
+      },
+      {
+        "from": "goal:FVT-G222",
+        "kind": "touches_surface",
+        "to": "code_surface:a3bc70a4e1da"
+      },
+      {
+        "from": "goal:FVT-G222",
+        "kind": "touches_surface",
+        "to": "code_surface:eea3222289ae"
+      },
+      {
+        "from": "goal:FVT-G222",
+        "kind": "touches_surface",
+        "to": "code_surface:c5915f47195b"
+      },
+      {
+        "from": "goal:FVT-G222",
+        "kind": "touches_surface",
+        "to": "code_surface:ea624d87e530"
+      },
+      {
+        "from": "goal:FVT-G222",
+        "kind": "touches_surface",
+        "to": "code_surface:822120acdba0"
+      },
+      {
+        "from": "goal:FVT-G222",
+        "kind": "targets_interoperability",
+        "to": "interoperability_pair:ed1fa1e92eca"
+      },
+      {
+        "from": "interoperability_pair:ed1fa1e92eca",
+        "kind": "needs_test_strategy",
+        "to": "test_strategy:ed1fa1e92eca"
+      },
+      {
+        "from": "goal:FVT-G223",
+        "kind": "requires_evidence",
+        "to": "evidence:55f8de787b83"
+      },
+      {
+        "from": "goal:FVT-G223",
+        "kind": "requires_evidence",
+        "to": "evidence:272cc2ca588e"
+      },
+      {
+        "from": "goal:FVT-G223",
+        "kind": "requires_evidence",
+        "to": "evidence:04ee0864460f"
+      },
+      {
+        "from": "goal:FVT-G223",
+        "kind": "validated_by",
+        "to": "validation:b2593c74336c"
+      },
+      {
+        "from": "goal:FVT-G223",
+        "kind": "touches_surface",
+        "to": "code_surface:8d95d46fe672"
+      },
+      {
+        "from": "goal:FVT-G223",
+        "kind": "touches_surface",
+        "to": "code_surface:645ce3f2aee1"
+      },
+      {
+        "from": "goal:FVT-G223",
+        "kind": "touches_surface",
+        "to": "code_surface:3a2baa0db323"
+      },
+      {
+        "from": "goal:FVT-G223",
+        "kind": "touches_surface",
+        "to": "code_surface:fb3e3a0d37c8"
+      },
+      {
+        "from": "goal:FVT-G223",
+        "kind": "touches_surface",
+        "to": "code_surface:55f8de787b83"
+      },
+      {
+        "from": "goal:FVT-G223",
+        "kind": "touches_surface",
+        "to": "code_surface:d01e6532fa5b"
+      },
+      {
+        "from": "goal:FVT-G223",
+        "kind": "touches_surface",
+        "to": "code_surface:272cc2ca588e"
+      },
+      {
+        "from": "goal:FVT-G223",
+        "kind": "touches_surface",
+        "to": "code_surface:04ee0864460f"
+      },
+      {
+        "from": "goal:FVT-G223",
+        "kind": "targets_interoperability",
+        "to": "interoperability_pair:be3ebd375a85"
+      },
+      {
+        "from": "interoperability_pair:be3ebd375a85",
+        "kind": "needs_test_strategy",
+        "to": "test_strategy:be3ebd375a85"
       }
     ],
-    "node_count": 567,
+    "node_count": 671,
     "nodes": [
       {
         "goal_id": "FVT-G180",
@@ -8575,11 +9839,25 @@
         "thought": "Inspect or modify `docs/formal_verification_tactician.md` as part of this objective."
       },
       {
+        "goal_id": "FVT-G223",
+        "id": "code_surface:04ee0864460f",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G203",
         "id": "code_surface:06e31926c59b",
         "kind": "code_surface",
         "path": "tools/logic/certify_formal_verification_toolchains.py",
         "thought": "Inspect or modify `tools/logic/certify_formal_verification_toolchains.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G222",
+        "id": "code_surface:0841e509278c",
+        "kind": "code_surface",
+        "path": "requirements.txt",
+        "thought": "Inspect or modify `requirements.txt` as part of this objective."
       },
       {
         "goal_id": "FVT-G208",
@@ -8629,6 +9907,13 @@
         "kind": "code_surface",
         "path": "test/packaging/test_formal_verification_external_tool_locks.py",
         "thought": "Inspect or modify `test/packaging/test_formal_verification_external_tool_locks.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G221",
+        "id": "code_surface:128774409db0",
+        "kind": "code_surface",
+        "path": "tools/logic/build_formal_verification_tactician_receipt.py",
+        "thought": "Inspect or modify `tools/logic/build_formal_verification_tactician_receipt.py` as part of this objective."
       },
       {
         "goal_id": "FVT-G044",
@@ -8736,6 +10021,13 @@
         "thought": "Inspect or modify `docs/architecture/formal_verification_atp_live_certificate.json` as part of this objective."
       },
       {
+        "goal_id": "FVT-G223",
+        "id": "code_surface:272cc2ca588e",
+        "kind": "code_surface",
+        "path": "test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py",
+        "thought": "Inspect or modify `test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G036",
         "id": "code_surface:296b499b6d8f",
         "kind": "code_surface",
@@ -8748,6 +10040,13 @@
         "kind": "code_surface",
         "path": "ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_goal_compiler.py",
         "thought": "Inspect or modify `ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_goal_compiler.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G219",
+        "id": "code_surface:2b4dd2c1204e",
+        "kind": "code_surface",
+        "path": "docs/architecture/formal_verification_secpal_live_receipt.json",
+        "thought": "Inspect or modify `docs/architecture/formal_verification_secpal_live_receipt.json` as part of this objective."
       },
       {
         "goal_id": "FVT-G050",
@@ -8799,6 +10098,13 @@
         "thought": "Inspect or modify `tools/logic/certification/lean.py` as part of this objective."
       },
       {
+        "goal_id": "FVT-G220",
+        "id": "code_surface:33aad7ee3a93",
+        "kind": "code_surface",
+        "path": "test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py",
+        "thought": "Inspect or modify `test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G033",
         "id": "code_surface:34b03778142a",
         "kind": "code_surface",
@@ -8818,6 +10124,20 @@
         "kind": "code_surface",
         "path": "tools/logic/certify_formal_verification_toolchains.py",
         "thought": "Inspect or modify `tools/logic/certify_formal_verification_toolchains.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G222",
+        "id": "code_surface:364117df75b8",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/pyproject.toml",
+        "thought": "Inspect or modify `ipfs_datasets_py/pyproject.toml` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G223",
+        "id": "code_surface:3a2baa0db323",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py` as part of this objective."
       },
       {
         "goal_id": "FVT-G204",
@@ -8848,6 +10168,20 @@
         "thought": "Inspect or modify `tools/logic/certification/runtime_mtl_external.py` as part of this objective."
       },
       {
+        "goal_id": "FVT-G215",
+        "id": "code_surface:411009807fe2",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/requirements.txt",
+        "thought": "Inspect or modify `ipfs_datasets_py/requirements.txt` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G216",
+        "id": "code_surface:41758d2f0065",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/registry.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/registry.py` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G180",
         "id": "code_surface:419709e08d60",
         "kind": "code_surface",
@@ -8855,11 +10189,25 @@
         "thought": "Inspect or modify `tools/logic/certification/authorization_external.py` as part of this objective."
       },
       {
+        "goal_id": "FVT-G222",
+        "id": "code_surface:4272b037245c",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/requirements.txt",
+        "thought": "Inspect or modify `ipfs_datasets_py/requirements.txt` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G101",
         "id": "code_surface:42984e149fd3",
         "kind": "code_surface",
         "path": "test/fixtures/formal_verification/toolchains/lean/manifest.json",
         "thought": "Inspect or modify `test/fixtures/formal_verification/toolchains/lean/manifest.json` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G215",
+        "id": "code_surface:42c61a500b1a",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/requirements-theorem-provers.txt",
+        "thought": "Inspect or modify `ipfs_datasets_py/requirements-theorem-provers.txt` as part of this objective."
       },
       {
         "goal_id": "FVT-G021",
@@ -8888,6 +10236,13 @@
         "kind": "code_surface",
         "path": "ipfs_datasets_py/tests/integration/logic/test_goal_tactician_public_api.py",
         "thought": "Inspect or modify `ipfs_datasets_py/tests/integration/logic/test_goal_tactician_public_api.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G219",
+        "id": "code_surface:4a6f6b168ff0",
+        "kind": "code_surface",
+        "path": "test/integration/toolchains/test_secpal_authoritative_live_evidence.py",
+        "thought": "Inspect or modify `test/integration/toolchains/test_secpal_authoritative_live_evidence.py` as part of this objective."
       },
       {
         "goal_id": "FVT-G020",
@@ -8939,6 +10294,27 @@
         "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py` as part of this objective."
       },
       {
+        "goal_id": "FVT-G217",
+        "id": "code_surface:5316d0ed6cfc",
+        "kind": "code_surface",
+        "path": "tools/logic/certification/authorization_external.py",
+        "thought": "Inspect or modify `tools/logic/certification/authorization_external.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G217",
+        "id": "code_surface:54745c50ae20",
+        "kind": "code_surface",
+        "path": "config/formal_verification_toolchains.lock.json",
+        "thought": "Inspect or modify `config/formal_verification_toolchains.lock.json` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G218",
+        "id": "code_surface:54b031a7e025",
+        "kind": "code_surface",
+        "path": "test/integration/toolchains/test_ergoai_live_toolchain_contract.py",
+        "thought": "Inspect or modify `test/integration/toolchains/test_ergoai_live_toolchain_contract.py` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G060",
         "id": "code_surface:54b6fdfa3bcb",
         "kind": "code_surface",
@@ -8967,6 +10343,13 @@
         "thought": "Inspect or modify `test/integration/toolchains/test_formal_verification_probe_integrity.py` as part of this objective."
       },
       {
+        "goal_id": "FVT-G223",
+        "id": "code_surface:55f8de787b83",
+        "kind": "code_surface",
+        "path": "docs/architecture/formal_verification_ergoai_java_api_live_receipt.json",
+        "thought": "Inspect or modify `docs/architecture/formal_verification_ergoai_java_api_live_receipt.json` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G013",
         "id": "code_surface:57f9a35304e5",
         "kind": "code_surface",
@@ -8974,11 +10357,32 @@
         "thought": "Inspect or modify `docs/architecture/formal_verification_live_example_report.json` as part of this objective."
       },
       {
+        "goal_id": "FVT-G218",
+        "id": "code_surface:59512465305a",
+        "kind": "code_surface",
+        "path": "config/formal_verification_toolchains.lock.json",
+        "thought": "Inspect or modify `config/formal_verification_toolchains.lock.json` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G213",
+        "id": "code_surface:59d44a2fa481",
+        "kind": "code_surface",
+        "path": "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
+        "thought": "Inspect or modify `docs/architecture/formal_verification_tactician_readiness_completion_receipt.json` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G206",
         "id": "code_surface:5c740a9effac",
         "kind": "code_surface",
         "path": "tools/logic/certification/rocq.py",
         "thought": "Inspect or modify `tools/logic/certification/rocq.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G215",
+        "id": "code_surface:5d69fb75c1dd",
+        "kind": "code_surface",
+        "path": "test/packaging/test_formal_verification_distribution_contract.py",
+        "thought": "Inspect or modify `test/packaging/test_formal_verification_distribution_contract.py` as part of this objective."
       },
       {
         "goal_id": "FVT-G202",
@@ -9000,6 +10404,13 @@
         "kind": "code_surface",
         "path": "config/formal_verification_zkp_deployment.lock.json",
         "thought": "Inspect or modify `config/formal_verification_zkp_deployment.lock.json` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G221",
+        "id": "code_surface:5ece086f1441",
+        "kind": "code_surface",
+        "path": "docs/architecture/formal_verification_authoritative_vendor_release.json",
+        "thought": "Inspect or modify `docs/architecture/formal_verification_authoritative_vendor_release.json` as part of this objective."
       },
       {
         "goal_id": "FVT-G041",
@@ -9042,6 +10453,13 @@
         "kind": "code_surface",
         "path": "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_semantic_minimization.py",
         "thought": "Inspect or modify `ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_semantic_minimization.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G223",
+        "id": "code_surface:645ce3f2aee1",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py` as part of this objective."
       },
       {
         "goal_id": "FVT-G131",
@@ -9142,6 +10560,20 @@
         "thought": "Inspect or modify `ipfs_accelerate_py/agent_supervisor/proof/goal_tactician_lifecycle.py` as part of this objective."
       },
       {
+        "goal_id": "FVT-G215",
+        "id": "code_surface:701fed67dbd4",
+        "kind": "code_surface",
+        "path": "pyproject.toml",
+        "thought": "Inspect or modify `pyproject.toml` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G222",
+        "id": "code_surface:71c801c75c4a",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/setup.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/setup.py` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G213",
         "id": "code_surface:71df39feffcf",
         "kind": "code_surface",
@@ -9156,11 +10588,25 @@
         "thought": "Inspect or modify `docs/architecture/formal_verification_protocol_live_certificate.json` as part of this objective."
       },
       {
+        "goal_id": "FVT-G217",
+        "id": "code_surface:748c40787a0f",
+        "kind": "code_surface",
+        "path": "test/integration/toolchains/test_secpal_live_toolchain_contract.py",
+        "thought": "Inspect or modify `test/integration/toolchains/test_secpal_live_toolchain_contract.py` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G103",
         "id": "code_surface:7548860bb17c",
         "kind": "code_surface",
         "path": "tools/logic/certification/runtime_mtl.py",
         "thought": "Inspect or modify `tools/logic/certification/runtime_mtl.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G215",
+        "id": "code_surface:778e92c86dc9",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/requirements-lazy.txt",
+        "thought": "Inspect or modify `ipfs_datasets_py/requirements-lazy.txt` as part of this objective."
       },
       {
         "goal_id": "FVT-G150",
@@ -9219,6 +10665,13 @@
         "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py` as part of this objective."
       },
       {
+        "goal_id": "FVT-G222",
+        "id": "code_surface:822120acdba0",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G090",
         "id": "code_surface:82a410279f56",
         "kind": "code_surface",
@@ -9226,11 +10679,25 @@
         "thought": "Inspect or modify `tools/logic/build_formal_verification_tactician_receipt.py` as part of this objective."
       },
       {
+        "goal_id": "FVT-G215",
+        "id": "code_surface:82fb8544545a",
+        "kind": "code_surface",
+        "path": "requirements.txt",
+        "thought": "Inspect or modify `requirements.txt` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G006",
         "id": "code_surface:8457a0f23c6d",
         "kind": "code_surface",
         "path": "test/api/test_logic_receipt_authority_boundary.py",
         "thought": "Inspect or modify `test/api/test_logic_receipt_authority_boundary.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G218",
+        "id": "code_surface:84ffc2c05941",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py` as part of this objective."
       },
       {
         "goal_id": "FVT-G006",
@@ -9324,6 +10791,20 @@
         "thought": "Inspect or modify `docs/architecture/formal_verification_tactician_benchmark.json` as part of this objective."
       },
       {
+        "goal_id": "FVT-G223",
+        "id": "code_surface:8d95d46fe672",
+        "kind": "code_surface",
+        "path": "config/formal_verification_toolchains.lock.json",
+        "thought": "Inspect or modify `config/formal_verification_toolchains.lock.json` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G220",
+        "id": "code_surface:8dc06ab9b7d3",
+        "kind": "code_surface",
+        "path": "tools/logic/certify_formal_verification_toolchains.py",
+        "thought": "Inspect or modify `tools/logic/certify_formal_verification_toolchains.py` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G102",
         "id": "code_surface:8e8db16f0803",
         "kind": "code_surface",
@@ -9350,6 +10831,13 @@
         "kind": "code_surface",
         "path": "tools/logic/certification/isabelle.py",
         "thought": "Inspect or modify `tools/logic/certification/isabelle.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G222",
+        "id": "code_surface:91c2dfed51f9",
+        "kind": "code_surface",
+        "path": "config/formal_verification_toolchains.lock.json",
+        "thought": "Inspect or modify `config/formal_verification_toolchains.lock.json` as part of this objective."
       },
       {
         "goal_id": "FVT-G209",
@@ -9429,6 +10917,13 @@
         "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/end_goal_formalizer.py` as part of this objective."
       },
       {
+        "goal_id": "FVT-G221",
+        "id": "code_surface:9a1e4fdde820",
+        "kind": "code_surface",
+        "path": "test/integration/test_formal_verification_authoritative_vendor_release.py",
+        "thought": "Inspect or modify `test/integration/test_formal_verification_authoritative_vendor_release.py` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G206",
         "id": "code_surface:9b2222719b61",
         "kind": "code_surface",
@@ -9464,6 +10959,13 @@
         "thought": "Inspect or modify `test/integration/toolchains/test_protocol_live_semantic_certification.py` as part of this objective."
       },
       {
+        "goal_id": "FVT-G220",
+        "id": "code_surface:9e5145d4e8ee",
+        "kind": "code_surface",
+        "path": "docs/architecture/formal_verification_end_to_end_assurance_matrix.json",
+        "thought": "Inspect or modify `docs/architecture/formal_verification_end_to_end_assurance_matrix.json` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G033",
         "id": "code_surface:9e5bc7a8ff5a",
         "kind": "code_surface",
@@ -9485,11 +10987,25 @@
         "thought": "Inspect or modify `docs/operations/formal_verification_tactician_runbook.md` as part of this objective."
       },
       {
+        "goal_id": "FVT-G222",
+        "id": "code_surface:a3bc70a4e1da",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G036",
         "id": "code_surface:a7b66d2582d3",
         "kind": "code_surface",
         "path": "test/api/test_goal_directed_tactician_integration.py",
         "thought": "Inspect or modify `test/api/test_goal_directed_tactician_integration.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G216",
+        "id": "code_surface:a926aa50efbe",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py` as part of this objective."
       },
       {
         "goal_id": "FVT-G008",
@@ -9525,6 +11041,20 @@
         "kind": "code_surface",
         "path": "tools/logic/build_formal_verification_tactician_receipt.py",
         "thought": "Inspect or modify `tools/logic/build_formal_verification_tactician_receipt.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G215",
+        "id": "code_surface:aed14716a02b",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/setup.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/setup.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G221",
+        "id": "code_surface:af3fc8d6ad3e",
+        "kind": "code_surface",
+        "path": "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
+        "thought": "Inspect or modify `docs/architecture/formal_verification_tactician_readiness_completion_receipt.json` as part of this objective."
       },
       {
         "goal_id": "FVT-G005",
@@ -9576,11 +11106,32 @@
         "thought": "Inspect or modify `ipfs_datasets_py/typescript/logic-runtime-mtl` as part of this objective."
       },
       {
+        "goal_id": "FVT-G218",
+        "id": "code_surface:b58b37339f84",
+        "kind": "code_surface",
+        "path": "tools/logic/certification/advisors.py",
+        "thought": "Inspect or modify `tools/logic/certification/advisors.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G215",
+        "id": "code_surface:b6ad839a3cee",
+        "kind": "code_surface",
+        "path": "setup.py",
+        "thought": "Inspect or modify `setup.py` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G030",
         "id": "code_surface:b70ac5b9fcfe",
         "kind": "code_surface",
         "path": "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/proof_holes.py",
         "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/proof_holes.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G220",
+        "id": "code_surface:b7dfeaa9d298",
+        "kind": "code_surface",
+        "path": "tools/logic/build_formal_verification_tactician_receipt.py",
+        "thought": "Inspect or modify `tools/logic/build_formal_verification_tactician_receipt.py` as part of this objective."
       },
       {
         "goal_id": "FVT-G034",
@@ -9602,6 +11153,13 @@
         "kind": "code_surface",
         "path": "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
         "thought": "Inspect or modify `docs/architecture/formal_verification_tactician_readiness_completion_receipt.json` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G216",
+        "id": "code_surface:b9a308b29d1e",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py` as part of this objective."
       },
       {
         "goal_id": "FVT-G090",
@@ -9646,11 +11204,32 @@
         "thought": "Inspect or modify `docs/architecture/formal_verification_role_aware_deployment_receipt.json` as part of this objective."
       },
       {
+        "goal_id": "FVT-G222",
+        "id": "code_surface:c5915f47195b",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G222",
+        "id": "code_surface:c6693097ac0f",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/requirements-lazy.txt",
+        "thought": "Inspect or modify `ipfs_datasets_py/requirements-lazy.txt` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G007",
         "id": "code_surface:c862d33376f2",
         "kind": "code_surface",
         "path": "ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py",
         "thought": "Inspect or modify `ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G222",
+        "id": "code_surface:c896d03ee073",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/requirements-theorem-provers.txt",
+        "thought": "Inspect or modify `ipfs_datasets_py/requirements-theorem-provers.txt` as part of this objective."
       },
       {
         "goal_id": "FVT-G031",
@@ -9693,6 +11272,13 @@
         "kind": "code_surface",
         "path": "test/security/test_formal_verification_tactician_adversarial.py",
         "thought": "Inspect or modify `test/security/test_formal_verification_tactician_adversarial.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G223",
+        "id": "code_surface:d01e6532fa5b",
+        "kind": "code_surface",
+        "path": "test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py",
+        "thought": "Inspect or modify `test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py` as part of this objective."
       },
       {
         "goal_id": "FVT-G063",
@@ -9807,6 +11393,27 @@
         "thought": "Inspect or modify `tools/logic/certification/state_model.py` as part of this objective."
       },
       {
+        "goal_id": "FVT-G218",
+        "id": "code_surface:e25ec782e828",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/flogic/ergoai_wrapper.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G217",
+        "id": "code_surface:e2e3701dccf3",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G221",
+        "id": "code_surface:e4e332f5fc9f",
+        "kind": "code_surface",
+        "path": "tools/logic/certify_formal_verification_toolchains.py",
+        "thought": "Inspect or modify `tools/logic/certify_formal_verification_toolchains.py` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G041",
         "id": "code_surface:e771b40676a3",
         "kind": "code_surface",
@@ -9826,6 +11433,13 @@
         "kind": "code_surface",
         "path": "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_equivalence.py",
         "thought": "Inspect or modify `ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_equivalence.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G222",
+        "id": "code_surface:ea624d87e530",
+        "kind": "code_surface",
+        "path": "test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py",
+        "thought": "Inspect or modify `test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py` as part of this objective."
       },
       {
         "goal_id": "FVT-G080",
@@ -9861,6 +11475,13 @@
         "kind": "code_surface",
         "path": "ipfs_accelerate_py/agent_supervisor/proof/counterexample_guided_tactician.py",
         "thought": "Inspect or modify `ipfs_accelerate_py/agent_supervisor/proof/counterexample_guided_tactician.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G222",
+        "id": "code_surface:eea3222289ae",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/external_provers/lazy_installer.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/external_provers/lazy_installer.py` as part of this objective."
       },
       {
         "goal_id": "FVT-G007",
@@ -9903,6 +11524,34 @@
         "kind": "code_surface",
         "path": "test/integration/toolchains/test_external_authorization_vendor_certification.py",
         "thought": "Inspect or modify `test/integration/toolchains/test_external_authorization_vendor_certification.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G215",
+        "id": "code_surface:f94972645a30",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/pyproject.toml",
+        "thought": "Inspect or modify `ipfs_datasets_py/pyproject.toml` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G222",
+        "id": "code_surface:f9de981a605c",
+        "kind": "code_surface",
+        "path": "setup.py",
+        "thought": "Inspect or modify `setup.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G223",
+        "id": "code_surface:fb3e3a0d37c8",
+        "kind": "code_surface",
+        "path": "tools/logic/certification/advisors.py",
+        "thought": "Inspect or modify `tools/logic/certification/advisors.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G216",
+        "id": "code_surface:fc217251a8af",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/external_provers/lazy_installer.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/external_provers/lazy_installer.py` as part of this objective."
       },
       {
         "goal_id": "FVT-G005",
@@ -9959,6 +11608,13 @@
         "kind": "evidence_requirement",
         "term": "docs/formal_verification_tactician.md",
         "thought": "Find or create repository evidence proving `docs/formal_verification_tactician.md`."
+      },
+      {
+        "goal_id": "FVT-G223",
+        "id": "evidence:04ee0864460f",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py`."
       },
       {
         "goal_id": "FVT-G204",
@@ -10073,6 +11729,13 @@
         "thought": "Find or create repository evidence proving `docs/architecture/formal_verification_atp_live_certificate.json`."
       },
       {
+        "goal_id": "FVT-G223",
+        "id": "evidence:272cc2ca588e",
+        "kind": "evidence_requirement",
+        "term": "test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py",
+        "thought": "Find or create repository evidence proving `test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py`."
+      },
+      {
         "goal_id": "FVT-G036",
         "id": "evidence:296b499b6d8f",
         "kind": "evidence_requirement",
@@ -10087,6 +11750,13 @@
         "thought": "Find or create repository evidence proving `ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_goal_compiler.py`."
       },
       {
+        "goal_id": "FVT-G219",
+        "id": "evidence:2b4dd2c1204e",
+        "kind": "evidence_requirement",
+        "term": "docs/architecture/formal_verification_secpal_live_receipt.json",
+        "thought": "Find or create repository evidence proving `docs/architecture/formal_verification_secpal_live_receipt.json`."
+      },
+      {
         "goal_id": "FVT-G013",
         "id": "evidence:2d1e14b34da3",
         "kind": "evidence_requirement",
@@ -10099,6 +11769,13 @@
         "kind": "evidence_requirement",
         "term": "test/integration/toolchains/test_lean_semantic_certification.py",
         "thought": "Find or create repository evidence proving `test/integration/toolchains/test_lean_semantic_certification.py`."
+      },
+      {
+        "goal_id": "FVT-G220",
+        "id": "evidence:33aad7ee3a93",
+        "kind": "evidence_requirement",
+        "term": "test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py",
+        "thought": "Find or create repository evidence proving `test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py`."
       },
       {
         "goal_id": "FVT-G033",
@@ -10157,6 +11834,13 @@
         "thought": "Find or create repository evidence proving `ipfs_datasets_py/tests/integration/logic/test_goal_tactician_public_api.py`."
       },
       {
+        "goal_id": "FVT-G219",
+        "id": "evidence:4a6f6b168ff0",
+        "kind": "evidence_requirement",
+        "term": "test/integration/toolchains/test_secpal_authoritative_live_evidence.py",
+        "thought": "Find or create repository evidence proving `test/integration/toolchains/test_secpal_authoritative_live_evidence.py`."
+      },
+      {
         "goal_id": "FVT-G020",
         "id": "evidence:4c9a737cc0ae",
         "kind": "evidence_requirement",
@@ -10199,6 +11883,13 @@
         "thought": "Find or create repository evidence proving `ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py`."
       },
       {
+        "goal_id": "FVT-G218",
+        "id": "evidence:54b031a7e025",
+        "kind": "evidence_requirement",
+        "term": "test/integration/toolchains/test_ergoai_live_toolchain_contract.py",
+        "thought": "Find or create repository evidence proving `test/integration/toolchains/test_ergoai_live_toolchain_contract.py`."
+      },
+      {
         "goal_id": "FVT-G060",
         "id": "evidence:54b6fdfa3bcb",
         "kind": "evidence_requirement",
@@ -10227,11 +11918,39 @@
         "thought": "Find or create repository evidence proving `test/integration/toolchains/test_formal_verification_probe_integrity.py`."
       },
       {
+        "goal_id": "FVT-G223",
+        "id": "evidence:55f8de787b83",
+        "kind": "evidence_requirement",
+        "term": "docs/architecture/formal_verification_ergoai_java_api_live_receipt.json",
+        "thought": "Find or create repository evidence proving `docs/architecture/formal_verification_ergoai_java_api_live_receipt.json`."
+      },
+      {
+        "goal_id": "FVT-G216",
+        "id": "evidence:56cc94e2734b",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/tests/unit_tests/logic/external_provers/test_lazy_native_solver_installation.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/tests/unit_tests/logic/external_provers/test_lazy_native_solver_installation.py`."
+      },
+      {
+        "goal_id": "FVT-G215",
+        "id": "evidence:5d69fb75c1dd",
+        "kind": "evidence_requirement",
+        "term": "test/packaging/test_formal_verification_distribution_contract.py",
+        "thought": "Find or create repository evidence proving `test/packaging/test_formal_verification_distribution_contract.py`."
+      },
+      {
         "goal_id": "FVT-G207",
         "id": "evidence:5eb1b8313e32",
         "kind": "evidence_requirement",
         "term": "test/integration/toolchains/test_atp_live_semantic_certification.py",
         "thought": "Find or create repository evidence proving `test/integration/toolchains/test_atp_live_semantic_certification.py`."
+      },
+      {
+        "goal_id": "FVT-G221",
+        "id": "evidence:5ece086f1441",
+        "kind": "evidence_requirement",
+        "term": "docs/architecture/formal_verification_authoritative_vendor_release.json",
+        "thought": "Find or create repository evidence proving `docs/architecture/formal_verification_authoritative_vendor_release.json`."
       },
       {
         "goal_id": "FVT-G041",
@@ -10353,6 +12072,13 @@
         "thought": "Find or create repository evidence proving `docs/architecture/formal_verification_protocol_live_certificate.json`."
       },
       {
+        "goal_id": "FVT-G217",
+        "id": "evidence:748c40787a0f",
+        "kind": "evidence_requirement",
+        "term": "test/integration/toolchains/test_secpal_live_toolchain_contract.py",
+        "thought": "Find or create repository evidence proving `test/integration/toolchains/test_secpal_live_toolchain_contract.py`."
+      },
+      {
         "goal_id": "FVT-G103",
         "id": "evidence:7548860bb17c",
         "kind": "evidence_requirement",
@@ -10395,6 +12121,13 @@
         "thought": "Find or create repository evidence proving `test/api/test_formal_verification_toolchain_roles.py`."
       },
       {
+        "goal_id": "FVT-G222",
+        "id": "evidence:822120acdba0",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py`."
+      },
+      {
         "goal_id": "FVT-G090",
         "id": "evidence:82a410279f56",
         "kind": "evidence_requirement",
@@ -10407,6 +12140,13 @@
         "kind": "evidence_requirement",
         "term": "test/api/test_logic_receipt_authority_boundary.py",
         "thought": "Find or create repository evidence proving `test/api/test_logic_receipt_authority_boundary.py`."
+      },
+      {
+        "goal_id": "FVT-G215",
+        "id": "evidence:8550373e236b",
+        "kind": "evidence_requirement",
+        "term": "test/packaging/test_logic_verification_clean_install.py",
+        "thought": "Find or create repository evidence proving `test/packaging/test_logic_verification_clean_install.py`."
       },
       {
         "goal_id": "FVT-G080",
@@ -10542,6 +12282,13 @@
         "thought": "Find or create repository evidence proving `ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/end_goal_formalizer.py`."
       },
       {
+        "goal_id": "FVT-G221",
+        "id": "evidence:9a1e4fdde820",
+        "kind": "evidence_requirement",
+        "term": "test/integration/test_formal_verification_authoritative_vendor_release.py",
+        "thought": "Find or create repository evidence proving `test/integration/test_formal_verification_authoritative_vendor_release.py`."
+      },
+      {
         "goal_id": "FVT-G031",
         "id": "evidence:9b9d5987cbfd",
         "kind": "evidence_requirement",
@@ -10563,6 +12310,13 @@
         "thought": "Find or create repository evidence proving `test/integration/toolchains/test_protocol_live_semantic_certification.py`."
       },
       {
+        "goal_id": "FVT-G220",
+        "id": "evidence:9e5145d4e8ee",
+        "kind": "evidence_requirement",
+        "term": "docs/architecture/formal_verification_end_to_end_assurance_matrix.json",
+        "thought": "Find or create repository evidence proving `docs/architecture/formal_verification_end_to_end_assurance_matrix.json`."
+      },
+      {
         "goal_id": "FVT-G033",
         "id": "evidence:9e5bc7a8ff5a",
         "kind": "evidence_requirement",
@@ -10582,6 +12336,13 @@
         "kind": "evidence_requirement",
         "term": "test/api/test_goal_directed_tactician_integration.py",
         "thought": "Find or create repository evidence proving `test/api/test_goal_directed_tactician_integration.py`."
+      },
+      {
+        "goal_id": "FVT-G216",
+        "id": "evidence:a926aa50efbe",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py`."
       },
       {
         "goal_id": "FVT-G008",
@@ -10785,6 +12546,13 @@
         "kind": "evidence_requirement",
         "term": "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_equivalence.py",
         "thought": "Find or create repository evidence proving `ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_equivalence.py`."
+      },
+      {
+        "goal_id": "FVT-G222",
+        "id": "evidence:ea624d87e530",
+        "kind": "evidence_requirement",
+        "term": "test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py",
+        "thought": "Find or create repository evidence proving `test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py`."
       },
       {
         "goal_id": "FVT-G080",
@@ -11537,6 +13305,96 @@
         "track": "completion"
       },
       {
+        "goal_id": "FVT-G215",
+        "id": "goal:FVT-G215",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Make every public formal-verification module, reviewed installer plugin, runtime asset, and optional dependency declaration survive both source and clean wheel installations.",
+        "title": "Close formal-verification packaging and distribution coverage",
+        "track": "dependency-integrity"
+      },
+      {
+        "goal_id": "FVT-G216",
+        "id": "goal:FVT-G216",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Replace placeholder and stale installer dispatch with one explicit, platform-aware, transactional lazy-install lifecycle for every reviewed prover family.",
+        "title": "Bind the public Logic API to transactional lazy installers",
+        "track": "dependency-integrity"
+      },
+      {
+        "goal_id": "FVT-G217",
+        "id": "goal:FVT-G217",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Replace ambiguous SecPAL acquisition and adapter behavior with an official-artifact, license-aware, host-specific lazy installer and live semantic runner.",
+        "title": "Implement the genuine SecPAL external-toolchain path",
+        "track": "external-capability"
+      },
+      {
+        "goal_id": "FVT-G218",
+        "id": "goal:FVT-G218",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Replace ErgoAI wrapper and proposal-only assumptions with a locked official distribution, dependency-complete lazy installer, and bounded live semantic adapter while preserving advisor authority ceilings.",
+        "title": "Implement the genuine ErgoAI advisor-toolchain path",
+        "track": "external-capability"
+      },
+      {
+        "goal_id": "FVT-G219",
+        "id": "goal:FVT-G219",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Execute SecPAL on a genuinely supported host with a legally acquired official artifact and publish replayable, content-addressed live evidence; the already acquired ErgoAI evidence is upstream evidence and is not an external blocker for this goal.",
+        "title": "Acquire authoritative SecPAL live evidence",
+        "track": "external-authority"
+      },
+      {
+        "goal_id": "FVT-G220",
+        "id": "goal:FVT-G220",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Make dependency, capability, semantic, platform-binding, authority, packaging, installer-boundary, and public-surface readiness independently visible and jointly fail closed.",
+        "title": "Audit every deployment axis end to end",
+        "track": "certification-integrity"
+      },
+      {
+        "goal_id": "FVT-G221",
+        "id": "goal:FVT-G221",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Reissue the role-aware release and post-merge attestation only after packaging, lazy installers, every readiness axis, and genuine SecPAL and ErgoAI live evidence are closed.",
+        "title": "Reissue deployment certification with authoritative vendor evidence",
+        "track": "completion"
+      },
+      {
+        "goal_id": "FVT-G222",
+        "id": "goal:FVT-G222",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Turn the currently detected Java-runtime-only ErgoAI installation into a separately certified Java API capability by providing an authoritative, checksum-pinned, platform-bound, user-local JDK lifecycle without weakening the already working core ErgoAI lane.",
+        "title": "Complete the optional ErgoAI Java API capability",
+        "track": "dependency-integrity"
+      },
+      {
+        "goal_id": "FVT-G223",
+        "id": "goal:FVT-G223",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Convert the managed ErgoAI Java/JDK capability from contract and fixture coverage into a live, adversarially hardened, replayable deployment path using the exact official ErgoAI 3.0 and Eclipse Temurin 17.0.20+8 identities, without coupling core ErgoAI availability to Java or raising advisor output above its authority ceiling.",
+        "title": "Live-certify/harden managed ErgoAI Java/JDK path",
+        "track": "certification-integrity"
+      },
+      {
         "goal_id": "FVT-G200",
         "id": "interoperability_pair:070a7ef81943",
         "kind": "interoperability_pair",
@@ -11566,6 +13424,15 @@
       {
         "goal_id": "FVT-G033",
         "id": "interoperability_pair:12f027fcad81",
+        "kind": "interoperability_pair",
+        "submodules": [
+          "ipfs_datasets_py"
+        ],
+        "thought": "Prove these components interoperate through contracts and tests."
+      },
+      {
+        "goal_id": "FVT-G215",
+        "id": "interoperability_pair:136fcd47a092",
         "kind": "interoperability_pair",
         "submodules": [
           "ipfs_datasets_py"
@@ -11629,6 +13496,15 @@
       {
         "goal_id": "FVT-G203",
         "id": "interoperability_pair:2ee1db3f9f01",
+        "kind": "interoperability_pair",
+        "submodules": [
+          "ipfs_datasets_py"
+        ],
+        "thought": "Prove these components interoperate through contracts and tests."
+      },
+      {
+        "goal_id": "FVT-G218",
+        "id": "interoperability_pair:31be9690d58f",
         "kind": "interoperability_pair",
         "submodules": [
           "ipfs_datasets_py"
@@ -11780,6 +13656,24 @@
         "thought": "Prove these components interoperate through contracts and tests."
       },
       {
+        "goal_id": "FVT-G217",
+        "id": "interoperability_pair:8a92698c71eb",
+        "kind": "interoperability_pair",
+        "submodules": [
+          "ipfs_datasets_py"
+        ],
+        "thought": "Prove these components interoperate through contracts and tests."
+      },
+      {
+        "goal_id": "FVT-G220",
+        "id": "interoperability_pair:8ba8c2a299ca",
+        "kind": "interoperability_pair",
+        "submodules": [
+          "ipfs_datasets_py"
+        ],
+        "thought": "Prove these components interoperate through contracts and tests."
+      },
+      {
         "goal_id": "FVT-G070",
         "id": "interoperability_pair:95ca158ef2e7",
         "kind": "interoperability_pair",
@@ -11888,6 +13782,15 @@
         "thought": "Prove these components interoperate through contracts and tests."
       },
       {
+        "goal_id": "FVT-G223",
+        "id": "interoperability_pair:be3ebd375a85",
+        "kind": "interoperability_pair",
+        "submodules": [
+          "ipfs_datasets_py"
+        ],
+        "thought": "Prove these components interoperate through contracts and tests."
+      },
+      {
         "goal_id": "FVT-G103",
         "id": "interoperability_pair:bf1649afd61b",
         "kind": "interoperability_pair",
@@ -11942,6 +13845,15 @@
         "thought": "Prove these components interoperate through contracts and tests."
       },
       {
+        "goal_id": "FVT-G216",
+        "id": "interoperability_pair:e646b5dab1f1",
+        "kind": "interoperability_pair",
+        "submodules": [
+          "ipfs_datasets_py"
+        ],
+        "thought": "Prove these components interoperate through contracts and tests."
+      },
+      {
         "goal_id": "FVT-G013",
         "id": "interoperability_pair:e71dcf46f45b",
         "kind": "interoperability_pair",
@@ -11962,6 +13874,15 @@
       {
         "goal_id": "FVT-G210",
         "id": "interoperability_pair:e8a345507f01",
+        "kind": "interoperability_pair",
+        "submodules": [
+          "ipfs_datasets_py"
+        ],
+        "thought": "Prove these components interoperate through contracts and tests."
+      },
+      {
+        "goal_id": "FVT-G222",
+        "id": "interoperability_pair:ed1fa1e92eca",
         "kind": "interoperability_pair",
         "submodules": [
           "ipfs_datasets_py"
@@ -12016,6 +13937,15 @@
       {
         "goal_id": "FVT-G033",
         "id": "test_strategy:12f027fcad81",
+        "kind": "test_strategy",
+        "submodules": [
+          "ipfs_datasets_py"
+        ],
+        "thought": "Write or update integration tests that exercise the shared runtime boundary."
+      },
+      {
+        "goal_id": "FVT-G215",
+        "id": "test_strategy:136fcd47a092",
         "kind": "test_strategy",
         "submodules": [
           "ipfs_datasets_py"
@@ -12079,6 +14009,15 @@
       {
         "goal_id": "FVT-G203",
         "id": "test_strategy:2ee1db3f9f01",
+        "kind": "test_strategy",
+        "submodules": [
+          "ipfs_datasets_py"
+        ],
+        "thought": "Write or update integration tests that exercise the shared runtime boundary."
+      },
+      {
+        "goal_id": "FVT-G218",
+        "id": "test_strategy:31be9690d58f",
         "kind": "test_strategy",
         "submodules": [
           "ipfs_datasets_py"
@@ -12230,6 +14169,24 @@
         "thought": "Write or update integration tests that exercise the shared runtime boundary."
       },
       {
+        "goal_id": "FVT-G217",
+        "id": "test_strategy:8a92698c71eb",
+        "kind": "test_strategy",
+        "submodules": [
+          "ipfs_datasets_py"
+        ],
+        "thought": "Write or update integration tests that exercise the shared runtime boundary."
+      },
+      {
+        "goal_id": "FVT-G220",
+        "id": "test_strategy:8ba8c2a299ca",
+        "kind": "test_strategy",
+        "submodules": [
+          "ipfs_datasets_py"
+        ],
+        "thought": "Write or update integration tests that exercise the shared runtime boundary."
+      },
+      {
         "goal_id": "FVT-G070",
         "id": "test_strategy:95ca158ef2e7",
         "kind": "test_strategy",
@@ -12338,6 +14295,15 @@
         "thought": "Write or update integration tests that exercise the shared runtime boundary."
       },
       {
+        "goal_id": "FVT-G223",
+        "id": "test_strategy:be3ebd375a85",
+        "kind": "test_strategy",
+        "submodules": [
+          "ipfs_datasets_py"
+        ],
+        "thought": "Write or update integration tests that exercise the shared runtime boundary."
+      },
+      {
         "goal_id": "FVT-G103",
         "id": "test_strategy:bf1649afd61b",
         "kind": "test_strategy",
@@ -12392,6 +14358,15 @@
         "thought": "Write or update integration tests that exercise the shared runtime boundary."
       },
       {
+        "goal_id": "FVT-G216",
+        "id": "test_strategy:e646b5dab1f1",
+        "kind": "test_strategy",
+        "submodules": [
+          "ipfs_datasets_py"
+        ],
+        "thought": "Write or update integration tests that exercise the shared runtime boundary."
+      },
+      {
         "goal_id": "FVT-G013",
         "id": "test_strategy:e71dcf46f45b",
         "kind": "test_strategy",
@@ -12419,6 +14394,15 @@
         "thought": "Write or update integration tests that exercise the shared runtime boundary."
       },
       {
+        "goal_id": "FVT-G222",
+        "id": "test_strategy:ed1fa1e92eca",
+        "kind": "test_strategy",
+        "submodules": [
+          "ipfs_datasets_py"
+        ],
+        "thought": "Write or update integration tests that exercise the shared runtime boundary."
+      },
+      {
         "goal_id": "FVT-G050",
         "id": "test_strategy:ee2e8af51905",
         "kind": "test_strategy",
@@ -12435,6 +14419,13 @@
           "ipfs_datasets_py"
         ],
         "thought": "Write or update integration tests that exercise the shared runtime boundary."
+      },
+      {
+        "command": "python -m pytest test/packaging/test_logic_verification_clean_install.py test/packaging/test_formal_verification_distribution_contract.py test/test_pip_install_simulation.py -q",
+        "goal_id": "FVT-G215",
+        "id": "validation:009f14765662",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
       },
       {
         "command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_external_authorization_vendor_certification.py test/integration/toolchains/test_external_authorization_toolchain_certification.py -q",
@@ -12500,6 +14491,13 @@
         "thought": "Run this validation before closing the goal."
       },
       {
+        "command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_ergoai_live_toolchain_contract.py test/integration/toolchains/test_advisor_role_certification.py -q",
+        "goal_id": "FVT-G218",
+        "id": "validation:1386f63dbf4f",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
         "command": "python -m pytest test/api/test_formal_verification_tactician_readiness_completion.py -q",
         "goal_id": "FVT-G090",
         "id": "validation:16cdedbdb4b5",
@@ -12510,6 +14508,13 @@
         "command": "python scripts/docs/check_agent_supervisor_docs.py && python -m pytest test/api/test_formal_verification_tactician_docs.py -q",
         "goal_id": "FVT-G070",
         "id": "validation:1b4d23d2f1a7",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/unit/logic/test_verification_api_lazy_installation.py ipfs_datasets_py/tests/unit/test_lazy_dependency_installation.py ipfs_datasets_py/tests/unit_tests/logic/external_provers/test_lazy_native_solver_installation.py test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py -q",
+        "goal_id": "FVT-G216",
+        "id": "validation:2290bea96752",
         "kind": "validation_strategy",
         "thought": "Run this validation before closing the goal."
       },
@@ -12601,6 +14606,13 @@
         "command": "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_goal_compiler.py -q",
         "goal_id": "FVT-G024",
         "id": "validation:4fbea0e13ada",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py test/integration/toolchains/test_ergoai_live_toolchain_contract.py ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_lazy_installation.py test/packaging/test_formal_verification_distribution_contract.py -q",
+        "goal_id": "FVT-G222",
+        "id": "validation:51580b7d2c55",
         "kind": "validation_strategy",
         "thought": "Run this validation before closing the goal."
       },
@@ -12766,6 +14778,13 @@
         "thought": "Run this validation before closing the goal."
       },
       {
+        "command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_secpal_authoritative_live_evidence.py -q",
+        "goal_id": "FVT-G219",
+        "id": "validation:a414a0fadd42",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
         "command": "python -m pytest test/integration/toolchains/test_atp_live_semantic_certification.py test/integration/toolchains/test_atp_toolchain_certification.py -q",
         "goal_id": "FVT-G207",
         "id": "validation:a67d9bad02b9",
@@ -12783,6 +14802,20 @@
         "command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py test/integration/test_formal_verification_real_tool_matrix.py -q",
         "goal_id": "FVT-G203",
         "id": "validation:ad7318a819e9",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py test/integration/test_formal_verification_real_tool_matrix.py test/packaging/test_logic_verification_clean_install.py -q",
+        "goal_id": "FVT-G220",
+        "id": "validation:adc871b7c3b4",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "IPFS_DATASETS_PY_TEST_LIVE_ERGOAI_JAVA=1 IPFS_DATASETS_PY_ALLOW_LAZY_INSTALL=1 PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_ergoai_java_api_live_toolchain_contract.py test/integration/toolchains/test_ergoai_java_api_toolchain_contract.py test/integration/toolchains/test_ergoai_live_toolchain_contract.py ipfs_datasets_py/tests/unit/logic/backends/test_ergoai_java_api_transactional_hardening.py -q",
+        "goal_id": "FVT-G223",
+        "id": "validation:b2593c74336c",
         "kind": "validation_strategy",
         "thought": "Run this validation before closing the goal."
       },
@@ -12836,6 +14869,13 @@
         "thought": "Run this validation before closing the goal."
       },
       {
+        "command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_secpal_live_toolchain_contract.py test/integration/toolchains/test_external_authorization_vendor_certification.py test/integration/toolchains/test_external_authorization_toolchain_certification.py -q",
+        "goal_id": "FVT-G217",
+        "id": "validation:cde70ab62de5",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
         "command": "python -m pytest test/api/test_formal_verification_readiness_baseline.py -q",
         "goal_id": "FVT-G005",
         "id": "validation:d7ede42c7b3d",
@@ -12881,6 +14921,13 @@
         "command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/api/test_agent_supervisor_program_analysis_zkp_conformance.py ipfs_datasets_py/tests/integration/logic/test_proof_receipt_attestation.py test/integration/toolchains/test_zkp_deployment_certification.py -q",
         "goal_id": "FVT-G190",
         "id": "validation:e380b1cec3f5",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/test_formal_verification_authoritative_vendor_release.py test/integration/toolchains/test_formal_verification_end_to_end_assurance_matrix.py test/integration/toolchains/test_secpal_ergoai_authoritative_live_evidence.py -q",
+        "goal_id": "FVT-G221",
+        "id": "validation:e4716538fac6",
         "kind": "validation_strategy",
         "thought": "Run this validation before closing the goal."
       },

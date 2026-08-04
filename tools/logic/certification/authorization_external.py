@@ -2,7 +2,7 @@
 """External Datalog/SecPAL differential-shadow and vendor certification.
 
 ``ExternalAuthorizationShadowCertification@1`` / FVT-G180 (FVT-051)
-``ExternalAuthorizationVendorCertification@1`` / FVT-G209 (FVT-055)
+``ExternalAuthorizationVendorCertification@1`` / FVT-G209 (FVT-055, FVT-073)
 
 Shadow path: explicit strict installation selects pin-bound Soufflé and
 SecPAL-compatible hermetic shadow engines for differential work only.
@@ -10,12 +10,32 @@ SecPAL-compatible hermetic shadow engines for differential work only.
 Vendor path (FVT-G209): replace the Soufflé case-oracle shadow with a
 checksummed vendor build bound to the immutable 2.4.1 source archive and
 reviewed build dependencies.  Real allow/deny/unknown/conflict/delegation
-plus rule/scope mutation, replay, malformed, timeout, and disagreement cases
-execute through the vendor engine.  linux-aarch64 is supported for Soufflé.
+plus rule/scope mutation and replay cases execute through the vendor engine.
+Malformed-output, timeout, and disagreement probes are injected at the
+bounded runner boundary, never through vendor-prover environment controls.
+linux-aarch64 is supported for Soufflé.
 External SecPAL is a lock-derived narrow unsupported-platform exception on
 linux-aarch64 and never counts as installed, complete, authoritative, or
 production-certified.  Hermetic shadows remain differential-only and cannot
 satisfy vendor production evidence.
+
+That legacy exception closes only the bounded FVT-G209 Souffle-vendor lane. It
+does not satisfy full live SecPAL readiness.  The certificate embeds the
+offline ``secpal-vendor-prerequisite-report/v1`` so the retired official
+distribution and missing artifact/checksum/provenance/license/runtime/
+executable/installer contracts remain explicit prerequisites for any future
+end-to-end SecPAL task.
+
+Objective validation repair (FVT-073)
+-------------------------------------
+Path evidence for this certifier, the vendor installer, the lock pins, the
+focused tests, and the checked-in vendor receipt may already exist while the
+supervisor validation gate still needs an explicit re-proof of the full
+FVT-G209 acceptance matrix.  The synthetic evidence term
+``objective validation repair`` is bound in the vendor certificate receipt,
+the checked-in install receipt, and
+``test_external_authorization_vendor_certification.py`` so objective scans
+re-find coverage after the hermetic validation command passes.
 
 External engines remain role=shadow: authorization authority stays with the
 in-process Datalog/SecPAL references (FVT-G102 / FVT-038).
@@ -33,9 +53,10 @@ import json
 import os
 import sys
 import tempfile
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Final, Mapping, Sequence
+from typing import Any, Final
 
 # Allow running as a script from a worktree without an installed package.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -52,22 +73,29 @@ from ipfs_datasets_py.logic.backends.datalog.adapters import (  # noqa: E402
     render_datalog_program,
     render_secpal_program,
 )
-from ipfs_datasets_py.logic.backends.installers import authorization as authz_installer  # noqa: E402
+from ipfs_datasets_py.logic.backends.installers import (  # noqa: E402
+    authorization as authz_installer,
+)
 from ipfs_datasets_py.logic.backends.process import (  # noqa: E402
     BoundedToolRunner,
     ToolRunLimits,
     ToolRunRequest,
+    ToolRunResult,
     ToolRuntime,
 )
 from ipfs_datasets_py.logic.backends.toolchain_roles import (  # noqa: E402
-    ToolRole,
     ToolchainAuthorityCeiling,
+    ToolRole,
     get_tool_role,
 )
 from ipfs_datasets_py.logic.software_verification.authorization import (  # noqa: E402
     AuthorizationIR,
     DecisionOutcome,
     DecisionQuery,
+)
+from tools.logic.certification.public_evidence import (  # noqa: E402
+    public_evidence_audit,
+    public_evidence_projection,
 )
 
 # Reuse compact recipes / mutations from the in-process semantic certifier.
@@ -107,6 +135,10 @@ VENDOR_INSTALL_RECEIPT_SCHEMA: Final = (
 )
 VENDOR_GOAL_ID: Final = "FVT-G209"
 VENDOR_TASK_ID: Final = "FVT-055"
+# Validation-gate task that re-proves FVT-G209 when path evidence already exists.
+VENDOR_REPAIR_TASK_ID: Final = "FVT-073"
+# Synthetic evidence term required by objective-scan validation gates.
+OBJECTIVE_VALIDATION_EVIDENCE: Final = "objective validation repair"
 VENDOR_PROGRAM: Final = (
     "formal-verification-tactician/authorization-vendor-toolchains"
 )
@@ -119,6 +151,15 @@ LINUX_AARCH64: Final = "linux-aarch64"
 SOUFFLE_REQUIRED_SOURCE_SHA256: Final = (
     authz_installer.SOUFFLE_SOURCE_ARCHIVE_SHA256
 )
+
+# Hermetic validation command bound by FVT-G209 / FVT-073.
+OBJECTIVE_VALIDATION_COMMAND: Final = (
+    "PYTHONPATH=ipfs_datasets_py python -m pytest "
+    "test/integration/toolchains/test_external_authorization_vendor_certification.py "
+    "test/integration/toolchains/test_external_authorization_toolchain_certification.py "
+    "-q"
+)
+MANAGED_TOOL_PATH_MARKER: Final = "<managed-tool-path-redacted>"
 
 # External engines are shadows — authority ceiling is none.
 SHADOW_AUTHORITY_CEILING: Final = ToolchainAuthorityCeiling.NONE.value
@@ -162,6 +203,76 @@ CHECK_KINDS: Final = frozenset(
 
 class ExternalAuthorizationCertificationError(ValueError):
     """Raised when external authorization shadow certification fails closed."""
+
+
+FAULT_MALFORMED_OUTPUT: Final = "malformed_output"
+FAULT_TIMEOUT: Final = "timeout"
+FAULT_DISAGREEMENT: Final = "disagreement"
+AUTHORIZATION_FAULT_MODES: Final = frozenset(
+    {
+        FAULT_MALFORMED_OUTPUT,
+        FAULT_TIMEOUT,
+        FAULT_DISAGREEMENT,
+    }
+)
+
+
+@dataclass(slots=True)
+class AuthorizationFaultHarness:
+    """Inject a bounded runner result without requiring prover fault controls.
+
+    Native vendor tools are treated as opaque executables.  Timeout,
+    malformed-output, and disagreement behavior is injected at the runner
+    boundary, where the certification code owns the contract, instead of
+    assuming a vendor executable honors ``AUTHZ_SHADOW_*`` shim variables.
+    """
+
+    mode: str
+    requests: list[ToolRunRequest] = field(default_factory=list)
+    interface_version: str = BoundedToolRunner.interface_version
+
+    def __post_init__(self) -> None:
+        if self.mode not in AUTHORIZATION_FAULT_MODES:
+            raise ExternalAuthorizationCertificationError(
+                f"unsupported authorization fault mode {self.mode!r}"
+            )
+
+    def run(self, request: ToolRunRequest) -> ToolRunResult:
+        self.requests.append(request)
+        common = {
+            "interface_version": self.interface_version,
+            "runtime": request.runtime,
+            "command": request.argv,
+            "elapsed_seconds": 0.0,
+            "output_files": {},
+            "workspace_cleaned": True,
+        }
+        if self.mode == FAULT_TIMEOUT:
+            return ToolRunResult(
+                **common,
+                returncode=None,
+                stdout="",
+                stderr="",
+                timed_out=True,
+                process_tree_terminated=True,
+                termination_reason="authorization_fault_harness_timeout",
+                error="runner harness injected bounded timeout",
+            )
+        if self.mode == FAULT_MALFORMED_OUTPUT:
+            return ToolRunResult(
+                **common,
+                returncode=0,
+                stdout="%%% authorization fault harness malformed output %%%\n",
+                stderr="",
+                termination_reason="authorization_fault_harness_malformed_output",
+            )
+        return ToolRunResult(
+            **common,
+            returncode=0,
+            stdout="DENY\n",
+            stderr="",
+            termination_reason="authorization_fault_harness_disagreement",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -322,6 +433,336 @@ def _stable_json_digest(payload: Mapping[str, Any] | Sequence[Any] | str) -> str
     return hashlib.sha256(raw).hexdigest()
 
 
+def _sha256_file(path: Path) -> str:
+    if not path.is_file() or path.is_symlink():
+        raise ExternalAuthorizationCertificationError(
+            f"native Soufflé evidence is missing or unsafe: {path}"
+        )
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _validated_native_souffle_evidence(
+    identity: authz_installer.ShadowEngineIdentity,
+) -> dict[str, Any]:
+    """Re-bind the native executable, manifest, source, and build inputs."""
+
+    install_root = Path(identity.install_root).expanduser().resolve()
+    executable = Path(identity.executable).expanduser().resolve()
+    manifest_path = authz_installer.identity_manifest_path(
+        install_root,
+        TOOL_SOUFFLE,
+        identity.version,
+        vendor=True,
+    )
+    if not manifest_path.is_file() or manifest_path.is_symlink():
+        raise ExternalAuthorizationCertificationError(
+            "native Soufflé identity manifest is missing or unsafe"
+        )
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ExternalAuthorizationCertificationError(
+            "native Soufflé identity manifest is unreadable"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise ExternalAuthorizationCertificationError(
+            "native Soufflé identity manifest must be an object"
+        )
+
+    manifest_identity_sha256 = str(payload.get("identity_manifest_sha256") or "")
+    unsigned_manifest = {
+        key: value
+        for key, value in payload.items()
+        if key != "identity_manifest_sha256"
+    }
+    if (
+        not manifest_identity_sha256
+        or _stable_json_digest(unsigned_manifest) != manifest_identity_sha256
+        or manifest_identity_sha256 != identity.identity_manifest_sha256
+    ):
+        raise ExternalAuthorizationCertificationError(
+            "native Soufflé identity manifest digest mismatch"
+        )
+
+    artifact_sha256 = _sha256_file(executable)
+    artifact_size_bytes = executable.stat().st_size
+    native_binary_format, native_machine = authz_installer._native_binary_identity(
+        executable
+    )
+    source_archive = Path(identity.source_archive_path).expanduser().resolve()
+    source_archive_sha256 = _sha256_file(source_archive)
+    deployment_lock = Path(identity.deployment_lock_path).expanduser().resolve()
+    if _sha256_file(deployment_lock) != identity.deployment_lock_sha256:
+        raise ExternalAuthorizationCertificationError(
+            "native Soufflé current deployment lock digest mismatch"
+        )
+
+    immutable_scalar_bindings = {
+        "artifact_kind": "native_compiled_executable",
+        "artifact_sha256": identity.artifact_sha256,
+        "artifact_size_bytes": identity.artifact_size_bytes,
+        "build_contract_sha256": identity.build_contract_sha256,
+        "native_binary_format": identity.native_binary_format,
+        "native_machine": identity.native_machine,
+        "pin_contract_sha256": identity.pin_contract_sha256,
+        "source_archive_sha256": identity.source_archive_sha256,
+    }
+    if not identity.is_relocated_install:
+        # ``deployment_lock_sha256`` in the manifest is immutable build-time
+        # provenance.  ``identity.deployment_lock_sha256`` binds the current
+        # lock, whose policy and Soufflé pin contract were revalidated by the
+        # installer before this evidence pass.
+        immutable_scalar_bindings.update(
+            {
+                "dependency_package_set_sha256": (
+                    identity.dependency_package_set_sha256
+                ),
+            }
+        )
+    mismatches = [
+        name
+        for name, expected in immutable_scalar_bindings.items()
+        if payload.get(name) != expected
+    ]
+    manifest_paths_match = (
+        Path(str(payload.get("executable") or "")).resolve() == executable
+        and Path(str(payload.get("install_root") or "")).resolve()
+        == install_root
+        and Path(str(payload.get("source_archive_path") or "")).resolve()
+        == source_archive
+    )
+    if (
+        mismatches
+        or artifact_sha256 != identity.artifact_sha256
+        or artifact_size_bytes != identity.artifact_size_bytes
+        or native_binary_format != identity.native_binary_format
+        or native_machine != identity.native_machine
+        or source_archive_sha256 != identity.source_archive_sha256
+        or (not identity.is_relocated_install and not manifest_paths_match)
+        or (
+            identity.is_relocated_install
+            and (
+                len(identity.relocation_binding_sha256) != 64
+                or Path(identity.dependency_prefix).expanduser().resolve()
+                != (
+                    install_root.parent
+                    / authz_installer.SOUFFLE_LINUX_AARCH64_DEPENDENCY_PREFIX_SUFFIX
+                ).resolve()
+            )
+        )
+    ):
+        detail = ",".join(mismatches) or "filesystem_identity"
+        raise ExternalAuthorizationCertificationError(
+            f"native Soufflé manifest binding mismatch: {detail}"
+        )
+
+    build_contract = payload.get("build_contract")
+    manifest_dependency_identities = payload.get(
+        "build_dependency_identities"
+    )
+    if (
+        not isinstance(build_contract, Mapping)
+        or _stable_json_digest(build_contract) != identity.build_contract_sha256
+        or not isinstance(manifest_dependency_identities, Mapping)
+        or build_contract.get("build_dependency_identities")
+        != manifest_dependency_identities
+    ):
+        raise ExternalAuthorizationCertificationError(
+            "native Soufflé build contract digest mismatch"
+        )
+
+    expected_dependency_identities = {
+        item.name: item.to_dict() for item in identity.build_dependency_identities
+    }
+    if (
+        not expected_dependency_identities
+        or (
+            not identity.is_relocated_install
+            and manifest_dependency_identities
+            != expected_dependency_identities
+        )
+    ):
+        raise ExternalAuthorizationCertificationError(
+            "native Soufflé build dependency identities mismatch"
+        )
+    portable_dependency_identities: dict[str, dict[str, Any]] = {}
+    for name, item in expected_dependency_identities.items():
+        dependency_executable = Path(str(item["executable"])).expanduser().resolve()
+        if _sha256_file(dependency_executable) != item["executable_sha256"]:
+            raise ExternalAuthorizationCertificationError(
+                f"native Soufflé build dependency changed: {name}"
+            )
+        portable_dependency_identities[name] = {
+            "binding_sha256": item["binding_sha256"],
+            "constraint": item["constraint"],
+            "executable_basename": dependency_executable.name,
+            "executable_sha256": item["executable_sha256"],
+            "resolver_kind": item["resolver_kind"],
+            "schema_version": item["schema_version"],
+            "version": item["version"],
+        }
+
+    manifest_packages = payload.get("dependency_packages")
+    manifest_package_set_sha256 = str(
+        payload.get("dependency_package_set_sha256") or ""
+    )
+    if (
+        not isinstance(manifest_packages, Mapping)
+        or _stable_json_digest(manifest_packages)
+        != manifest_package_set_sha256
+    ):
+        raise ExternalAuthorizationCertificationError(
+            "native Soufflé provenance package-set digest mismatch"
+        )
+    if identity.is_relocated_install:
+        try:
+            prefix_contract = authz_installer._dependency_prefix_contract(
+                identity.dependency_prefix,
+                platform_id=identity.platform_id,
+            )
+        except Exception as exc:
+            raise ExternalAuthorizationCertificationError(
+                "native Soufflé relocated dependency prefix failed validation"
+            ) from exc
+        raw_packages = prefix_contract["dependency_packages"]
+    else:
+        raw_packages = manifest_packages
+    expected_packages = {
+        name: {
+            "architecture": architecture,
+            "sha256": sha256,
+            "version": version,
+        }
+        for name, version, architecture, sha256 in identity.dependency_packages
+    }
+    if (
+        not isinstance(raw_packages, Mapping)
+        or not expected_packages
+        or _stable_json_digest(raw_packages)
+        != identity.dependency_package_set_sha256
+    ):
+        raise ExternalAuthorizationCertificationError(
+            "native Soufflé dependency package-set digest mismatch"
+        )
+    portable_packages: dict[str, dict[str, Any]] = {}
+    for name, expected in expected_packages.items():
+        raw = raw_packages.get(name)
+        if not isinstance(raw, Mapping):
+            raise ExternalAuthorizationCertificationError(
+                f"native Soufflé dependency package is missing: {name}"
+            )
+        package_path = Path(str(raw.get("path") or "")).expanduser().resolve()
+        if (
+            raw.get("architecture") != expected["architecture"]
+            or raw.get("sha256") != expected["sha256"]
+            or raw.get("version") != expected["version"]
+            or _sha256_file(package_path) != expected["sha256"]
+            or raw.get("size_bytes") != package_path.stat().st_size
+        ):
+            raise ExternalAuthorizationCertificationError(
+                f"native Soufflé dependency package changed: {name}"
+            )
+        portable_packages[name] = {
+            **expected,
+            "size_bytes": package_path.stat().st_size,
+        }
+
+    return {
+        "artifact_kind": "native_compiled_executable",
+        "artifact_sha256": artifact_sha256,
+        "artifact_size_bytes": artifact_size_bytes,
+        "build_contract_sha256": identity.build_contract_sha256,
+        "build_dependency_identities": portable_dependency_identities,
+        "dependency_package_set_sha256": identity.dependency_package_set_sha256,
+        "dependency_packages": portable_packages,
+        "deployment_lock_sha256": identity.deployment_lock_sha256,
+        "identity_manifest_file_sha256": _sha256_file(manifest_path),
+        "identity_manifest_sha256": manifest_identity_sha256,
+        "is_relocated_install": identity.is_relocated_install,
+        "native_binary_format": native_binary_format,
+        "native_machine": native_machine,
+        "pin_contract_sha256": identity.pin_contract_sha256,
+        "provenance_dependency_package_set_sha256": (
+            manifest_package_set_sha256
+        ),
+        "provenance_deployment_lock_sha256": str(
+            payload.get("deployment_lock_sha256") or ""
+        ),
+        "relocation_binding_sha256": identity.relocation_binding_sha256,
+        "source_archive_sha256": source_archive_sha256,
+        "source_archive_size_bytes": source_archive.stat().st_size,
+    }
+
+
+def native_souffle_runtime_environment(
+    dependency_prefix: Path | str | None,
+) -> dict[str, str]:
+    """Return the minimal runtime environment for the managed native binary."""
+
+    if dependency_prefix in (None, ""):
+        return {}
+    resolved = Path(str(dependency_prefix)).expanduser().resolve()
+    environment = authz_installer._dependency_prefix_environment(resolved) or {}
+    return {
+        name: str(environment[name])
+        for name in ("LD_LIBRARY_PATH", "PATH")
+        if environment.get(name)
+    }
+
+
+def _managed_executable_reference(value: object) -> tuple[str | None, str | None]:
+    """Keep a portable managed-tool identity without retaining its host path."""
+
+    if value in (None, ""):
+        return None, None
+    basename = Path(str(value)).name
+    return f"{MANAGED_TOOL_PATH_MARKER}/{basename}", basename
+
+
+def _finalize_public_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    repo_root: Path | str | None = None,
+) -> dict[str, Any]:
+    """Project a receipt before assigning its portable outer digest."""
+
+    root = Path(repo_root) if repo_root is not None else _repo_root()
+    projected = public_evidence_projection(dict(receipt), repo_root=root)
+    if not isinstance(projected, dict):
+        raise ExternalAuthorizationCertificationError(
+            "public evidence projection did not produce a receipt object"
+        )
+    projected["receipt_digest_sha256"] = _stable_json_digest(
+        {
+            key: value
+            for key, value in projected.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+    return projected
+
+
+def _audit_public_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    repo_root: Path | str | None = None,
+) -> None:
+    """Refuse durable writes when public-evidence policy is not satisfied."""
+
+    root = Path(repo_root) if repo_root is not None else _repo_root()
+    audit = public_evidence_audit(receipt, repo_root=root)
+    if not audit.get("satisfied"):
+        failures = ",".join(str(item) for item in audit.get("failures") or [])
+        raise ExternalAuthorizationCertificationError(
+            "refusing to write unsafe public authorization receipt"
+            + (f": {failures}" if failures else "")
+        )
+
+
 def _reference_outcome(
     document: AuthorizationIR, query: DecisionQuery
 ) -> DecisionOutcome:
@@ -349,7 +790,7 @@ def _run_shadow_process(
     *,
     timeout_seconds: float = 2.0,
     env: Mapping[str, str] | None = None,
-    runner: BoundedToolRunner | None = None,
+    runner: BoundedToolRunner | AuthorizationFaultHarness | None = None,
 ) -> tuple[str | None, dict[str, Any]]:
     """Execute one external shadow and return (outcome_token_or_None, meta)."""
 
@@ -357,8 +798,13 @@ def _run_shadow_process(
     tool_runner = runner or BoundedToolRunner()
     filename = f"policy.{suffix}"
     argv = (executable, *argv_prefix, f"{{workspace}}/{filename}")
-    # Merge environment for hermetic shim controls.
-    run_env = dict(os.environ)
+    # Environment is execution context only.  Certification fault behavior is
+    # owned by an injected runner harness, not by a vendor-prover convention.
+    run_env = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("AUTHZ_SHADOW_")
+    }
     if env:
         run_env.update({str(k): str(v) for k, v in env.items()})
     request = ToolRunRequest(
@@ -426,7 +872,7 @@ def run_shadow_case(
     expect_error: bool = False,
     timeout_seconds: float = 2.0,
     env: Mapping[str, str] | None = None,
-    runner: BoundedToolRunner | None = None,
+    runner: BoundedToolRunner | AuthorizationFaultHarness | None = None,
 ) -> ShadowRunRecord:
     """Run one case on one external shadow and differentially compare."""
 
@@ -437,11 +883,13 @@ def run_shadow_case(
             bad.write_text("{not valid authorization policy@@@@\n", encoding="utf-8")
             tool_runner = runner or BoundedToolRunner()
             argv_prefix: tuple[str, ...] = () if engine_id == TOOL_SOUFFLE else ("check",)
-            run_env = dict(os.environ)
+            run_env = {
+                name: value
+                for name, value in os.environ.items()
+                if not name.startswith("AUTHZ_SHADOW_")
+            }
             if env:
                 run_env.update({str(k): str(v) for k, v in env.items()})
-            # Force malformed emission from hermetic shim when available.
-            run_env.setdefault(authz_installer.ENV_MALFORMED, "1")
             request = ToolRunRequest(
                 argv=(executable, *argv_prefix, str(bad)),
                 runtime=ToolRuntime.NATIVE,
@@ -647,6 +1095,9 @@ def certify_engine(
     usable = Path(identity.executable).is_file()
     if not usable:
         block_reasons.append("executable_missing")
+    engine_environment = native_souffle_runtime_environment(
+        identity.dependency_prefix
+    )
 
     category_seen: set[str] = set()
     mutation_seen: set[str] = set()
@@ -663,6 +1114,7 @@ def certify_engine(
             query,
             executable=identity.executable,
             engine_version=identity.version,
+            env=engine_environment,
         )
         records.append(record)
         category_seen.add(spec.category)
@@ -719,6 +1171,7 @@ def certify_engine(
                 query,
                 executable=identity.executable,
                 engine_version=identity.version,
+                env=engine_environment,
             )
             records.append(replay)
             replay_ok = (
@@ -758,6 +1211,7 @@ def certify_engine(
             base.query,
             executable=identity.executable,
             engine_version=identity.version,
+            env=engine_environment,
         )
         records.append(base_record)
         document, query, expected = materialize_case(spec)
@@ -768,6 +1222,7 @@ def certify_engine(
             query,
             executable=identity.executable,
             engine_version=identity.version,
+            env=engine_environment,
         )
         records.append(mutated)
         mutation_seen.add(spec.mutation_kind)
@@ -794,7 +1249,7 @@ def certify_engine(
     if missing_mutations:
         block_reasons.append(f"missing_mutations:{','.join(missing_mutations)}")
 
-    # ---- malformed output fail-closed
+    # ---- malformed output fail-closed (runner-owned fault injection)
     malformed = run_shadow_case(
         engine_id,
         "case:malformed",
@@ -803,6 +1258,8 @@ def certify_engine(
         executable=identity.executable,
         engine_version=identity.version,
         expect_error=True,
+        env=engine_environment,
+        runner=AuthorizationFaultHarness(FAULT_MALFORMED_OUTPUT),
     )
     records.append(malformed)
     malformed_ok = (
@@ -825,7 +1282,7 @@ def certify_engine(
     if not malformed_ok:
         block_reasons.append("malformed_not_fail_closed")
 
-    # ---- timeout probe (hermetic sleep via env)
+    # ---- timeout probe (runner-owned fault injection)
     timeout_fixture = next(
         item for item in DEFAULT_AUTHORIZATION_FIXTURES if item.category == "allow"
     )
@@ -837,7 +1294,8 @@ def certify_engine(
         executable=identity.executable,
         engine_version=identity.version,
         timeout_seconds=0.25,
-        env={authz_installer.ENV_SLEEP_SECONDS: "2.0"},
+        env=engine_environment,
+        runner=AuthorizationFaultHarness(FAULT_TIMEOUT),
     )
     records.append(timed)
     timeout_ok = timed.timed_out and timed.quarantined
@@ -864,7 +1322,8 @@ def certify_engine(
         timeout_fixture.query,
         executable=identity.executable,
         engine_version=identity.version,
-        env={authz_installer.ENV_DISAGREE: "1"},
+        env=engine_environment,
+        runner=AuthorizationFaultHarness(FAULT_DISAGREEMENT),
     )
     records.append(disagree)
     disagree_ok = (
@@ -1155,6 +1614,10 @@ def derive_secpal_platform_exception(
             TOOL_SECPAL, repo_root=repo_root, lock_path=lock_path
         )
     )
+    live_readiness = authz_installer.secpal_vendor_prerequisite_report(
+        repo_root=repo_root,
+        lock_path=lock_path,
+    )
     if supported:
         return {
             "tool_id": TOOL_SECPAL,
@@ -1168,6 +1631,10 @@ def derive_secpal_platform_exception(
             "production_certified": False,
             "supported_platforms": supported_platforms,
             "notes": "external SecPAL is supported on this host under the lock",
+            "live_ready": bool(live_readiness["ready"]),
+            "live_block_reasons": list(live_readiness["block_reasons"]),
+            "live_readiness": live_readiness,
+            "platform_exception_satisfies_live_readiness": False,
         }
     return {
         "tool_id": TOOL_SECPAL,
@@ -1180,6 +1647,10 @@ def derive_secpal_platform_exception(
         "authoritative": False,
         "production_certified": False,
         "supported_platforms": supported_platforms,
+        "live_ready": bool(live_readiness["ready"]),
+        "live_block_reasons": list(live_readiness["block_reasons"]),
+        "live_readiness": live_readiness,
+        "platform_exception_satisfies_live_readiness": False,
         "notes": (
             "external SecPAL is a narrow unsupported-platform exception on "
             f"{host} under the current contract and never counts as installed, "
@@ -1192,6 +1663,8 @@ def _certify_vendor_souffle(
     identity: authz_installer.ShadowEngineIdentity,
     *,
     install_status: str,
+    native_evidence: Mapping[str, Any] | None = None,
+    expected_version: str | None = None,
 ) -> EngineCertification:
     """Run the full corpus through the checksummed vendor Soufflé engine."""
 
@@ -1212,6 +1685,11 @@ def _certify_vendor_souffle(
         raise ExternalAuthorizationCertificationError(
             "vendor Soufflé requires immutable build dependency pins"
         )
+    evidence = dict(
+        native_evidence
+        if native_evidence is not None
+        else _validated_native_souffle_evidence(identity)
+    )
 
     engine = certify_engine(
         TOOL_SOUFFLE,
@@ -1221,7 +1699,12 @@ def _certify_vendor_souffle(
     # Extra vendor pin checks layered on top of the shadow corpus.
     extra: list[CheckResult] = []
     pin_ok = (
-        identity.version == authz_installer.pin_for_tool(TOOL_SOUFFLE)["version"]
+        identity.version
+        == (
+            expected_version
+            if expected_version is not None
+            else authz_installer.pin_for_tool(TOOL_SOUFFLE)["version"]
+        )
         and identity.source_archive_sha256 == SOUFFLE_REQUIRED_SOURCE_SHA256
         and bool(identity.artifact_sha256)
         and identity.is_vendor_build
@@ -1238,6 +1721,95 @@ def _certify_vendor_souffle(
             engine_id=TOOL_SOUFFLE,
         )
     )
+    extra.extend(
+        (
+            CheckResult(
+                check_id="souffle.vendor.native_compiled_executable",
+                kind="install",
+                status="passed",
+                expected="native_compiled_executable",
+                observed=(
+                    f"{evidence['native_binary_format']}/"
+                    f"{evidence['native_machine']}"
+                ),
+                detail=(
+                    f"size={evidence['artifact_size_bytes']}; "
+                    f"sha256={evidence['artifact_sha256']}"
+                ),
+                engine_id=TOOL_SOUFFLE,
+            ),
+            CheckResult(
+                check_id="souffle.vendor.identity_manifest_exact",
+                kind="install",
+                status="passed",
+                expected="self-digested immutable install manifest",
+                observed=str(evidence["identity_manifest_sha256"]),
+                detail=(
+                    "serialized_manifest_sha256="
+                    f"{evidence['identity_manifest_file_sha256']}"
+                ),
+                engine_id=TOOL_SOUFFLE,
+            ),
+            CheckResult(
+                check_id="souffle.vendor.source_archive_retained",
+                kind="install",
+                status="passed",
+                expected=SOUFFLE_REQUIRED_SOURCE_SHA256,
+                observed=str(evidence["source_archive_sha256"]),
+                detail=f"size={evidence['source_archive_size_bytes']}",
+                engine_id=TOOL_SOUFFLE,
+            ),
+            CheckResult(
+                check_id="souffle.vendor.build_contract_exact",
+                kind="install",
+                status="passed",
+                expected=identity.build_contract_sha256,
+                observed=str(evidence["build_contract_sha256"]),
+                detail=(
+                    "deployment_lock_sha256="
+                    f"{evidence['deployment_lock_sha256']}; "
+                    f"pin_contract_sha256={evidence['pin_contract_sha256']}"
+                ),
+                engine_id=TOOL_SOUFFLE,
+            ),
+            CheckResult(
+                check_id="souffle.vendor.dependency_package_set_exact",
+                kind="install",
+                status="passed",
+                expected=identity.dependency_package_set_sha256,
+                observed=str(evidence["dependency_package_set_sha256"]),
+                detail=(
+                    f"packages={len(evidence['dependency_packages'])}; "
+                    "package archives rehashed"
+                ),
+                engine_id=TOOL_SOUFFLE,
+            ),
+            CheckResult(
+                check_id="souffle.vendor.build_dependency_identities_exact",
+                kind="install",
+                status="passed",
+                expected="all build dependency executable bindings rehashed",
+                observed=str(len(evidence["build_dependency_identities"])),
+                detail="compiler, build executor, and declared tools are exact",
+                engine_id=TOOL_SOUFFLE,
+            ),
+        )
+    )
+    if evidence.get("is_relocated_install"):
+        extra.append(
+            CheckResult(
+                check_id="souffle.vendor.relocation_binding_exact",
+                kind="install",
+                status="passed",
+                expected="current paths+lock bound to immutable provenance",
+                observed=str(evidence["relocation_binding_sha256"]),
+                detail=(
+                    "original self-digested manifest retained unchanged; "
+                    "known common-tree suffixes rehashed"
+                ),
+                engine_id=TOOL_SOUFFLE,
+            )
+        )
     extra.append(
         CheckResult(
             check_id="souffle.vendor.artifact_digest_exact",
@@ -1296,9 +1868,38 @@ def _certify_vendor_souffle(
     )
 
 
+def _secpal_vendor_certification_block_reasons(
+    secpal_exception: Mapping[str, Any],
+    secpal_receipt: authz_installer.InstallReceipt | None,
+) -> list[str]:
+    """Return fail-closed SecPAL blockers for the combined vendor lane."""
+
+    if secpal_exception.get("exception"):
+        # A lock-authorized unsupported-platform exception may close the
+        # legacy Soufflé lane, but it must never claim SecPAL completion.
+        return [
+            f"secpal_exception_claimed_{key}"
+            for key in (
+                "installed",
+                "complete",
+                "authoritative",
+                "production_certified",
+            )
+            if secpal_exception.get(key) is True
+        ]
+    if secpal_receipt is None:
+        return ["secpal_vendor_receipt_missing_on_supported_host"]
+    if secpal_receipt.platform_exception:
+        return ["secpal_platform_exception_claimed_on_supported_host"]
+    if not secpal_receipt.ok or secpal_receipt.identity is None:
+        return [f"secpal_vendor_{secpal_receipt.status}_on_supported_host"]
+    return []
+
+
 def certify_external_authorization_vendor(
     *,
     install_root: Path | str | None = None,
+    dependency_prefix: Path | str | None = None,
     force_install: bool = False,
     skip_install: bool = False,
     platform_id: str | None = None,
@@ -1312,8 +1913,9 @@ def certify_external_authorization_vendor(
 
     * Soufflé 2.4.1 source/archive and build dependencies are immutable and
       checksummed; user-local executable and artifact digests are exact.
-    * allow/deny/unknown/conflict/delegation + rule/scope mutation, replay,
-      malformed, timeout, and disagreement cases execute through vendor Soufflé.
+    * allow/deny/unknown/conflict/delegation + rule/scope mutation and replay
+      execute through vendor Soufflé; malformed-output, timeout, and
+      disagreement behavior is injected at the owned runner boundary.
     * linux-aarch64 is supported for Soufflé.
     * external SecPAL is a narrow unsupported-platform exception on
       linux-aarch64 and never counts as installed/complete/authoritative/
@@ -1321,8 +1923,14 @@ def certify_external_authorization_vendor(
     * hermetic shadows remain differential-only.
     """
 
+    public_root = Path(repo_root) if repo_root is not None else _repo_root()
     host = platform_id or authz_installer._detect_platform()
     root = authz_installer._expand_install_root(install_root)
+    resolved_dependency_prefix = (
+        None
+        if dependency_prefix is None
+        else Path(dependency_prefix).expanduser().resolve()
+    )
     install_bundle: authz_installer.AuthorizationInstallBundle | None = None
     souffle_identity: authz_installer.ShadowEngineIdentity | None = None
     souffle_status = "missing"
@@ -1333,7 +1941,13 @@ def certify_external_authorization_vendor(
             TOOL_SOUFFLE, repo_root=repo_root, lock_path=lock_path
         )
         souffle_identity = authz_installer._identity_from_disk(
-            TOOL_SOUFFLE, root, pin, vendor=True
+            TOOL_SOUFFLE,
+            root,
+            pin,
+            vendor=True,
+            repo_root=public_root,
+            lock_path=lock_path,
+            dependency_prefix=resolved_dependency_prefix,
         )
         if souffle_identity is None:
             raise ExternalAuthorizationCertificationError(
@@ -1354,6 +1968,12 @@ def certify_external_authorization_vendor(
             checksum_verified=True,
         )
     else:
+        if resolved_dependency_prefix is None:
+            raise ExternalAuthorizationCertificationError(
+                "native vendor Soufflé installation requires an explicit "
+                "dependency_prefix; use skip_install to reuse a fully "
+                "identity-verified managed deployment"
+            )
         install_bundle = authz_installer.ensure_authorization_vendor(
             yes=True,
             strict=True,
@@ -1363,6 +1983,7 @@ def certify_external_authorization_vendor(
             lock_path=lock_path,
             platform_id=host,
             checksum_verified=True,
+            dependency_prefix=resolved_dependency_prefix,
         )
         for receipt in install_bundle.receipts:
             if receipt.tool_id == TOOL_SOUFFLE:
@@ -1377,6 +1998,18 @@ def certify_external_authorization_vendor(
 
     if souffle_identity is None:
         raise ExternalAuthorizationCertificationError("vendor Soufflé identity missing")
+    if Path(souffle_identity.install_root).expanduser().resolve() != root:
+        raise ExternalAuthorizationCertificationError(
+            "vendor Soufflé identity is bound to a different managed install root"
+        )
+    if (
+        resolved_dependency_prefix is not None
+        and Path(souffle_identity.dependency_prefix).expanduser().resolve()
+        != resolved_dependency_prefix
+    ):
+        raise ExternalAuthorizationCertificationError(
+            "vendor Soufflé identity is bound to a different dependency prefix"
+        )
 
     # linux-aarch64 must be supported for Soufflé under the current lock.
     souffle_supported = authz_installer.tool_supported_on_platform(
@@ -1391,14 +2024,27 @@ def certify_external_authorization_vendor(
             f"Soufflé unsupported on host platform {host!r}"
         )
 
+    native_evidence = _validated_native_souffle_evidence(souffle_identity)
+    souffle_pin = authz_installer.pin_for_tool(
+        TOOL_SOUFFLE,
+        repo_root=public_root,
+        lock_path=lock_path,
+    )
     souffle_engine = _certify_vendor_souffle(
-        souffle_identity, install_status=souffle_status
+        souffle_identity,
+        install_status=souffle_status,
+        native_evidence=native_evidence,
+        expected_version=str(souffle_pin["version"]),
     )
 
     secpal_exception = derive_secpal_platform_exception(
         platform_id=host, repo_root=repo_root, lock_path=lock_path
     )
-    if secpal_receipt is not None and secpal_receipt.platform_exception:
+    if (
+        secpal_receipt is not None
+        and secpal_receipt.platform_exception
+        and secpal_exception.get("exception")
+    ):
         # Reinforce fail-closed exception claims from the install receipt.
         secpal_exception = {
             **secpal_exception,
@@ -1428,6 +2074,20 @@ def certify_external_authorization_vendor(
                 else secpal_receipt.identity.to_dict()
             ),
         }
+    elif secpal_receipt is not None:
+        # A supported-host failure is evidence of non-installation, never an
+        # implicit platform exception or a successful combined certificate.
+        secpal_exception = {
+            **secpal_exception,
+            "exception": False,
+            "narrow_scope": False,
+            "installed": False,
+            "complete": False,
+            "authoritative": False,
+            "production_certified": False,
+            "install_status": secpal_receipt.status,
+            "block_reasons": list(secpal_receipt.block_reasons),
+        }
 
     # Hermetic shadow must not satisfy vendor certification.
     hermetic_cannot_satisfy = True
@@ -1438,19 +2098,37 @@ def certify_external_authorization_vendor(
     block_reasons = list(souffle_engine.block_reasons)
     if not hermetic_cannot_satisfy:
         block_reasons.append("hermetic_shadow_used_for_vendor")
-    if secpal_exception.get("exception"):
-        # Exception path must never claim production success for SecPAL.
-        for key in ("installed", "complete", "authoritative", "production_certified"):
-            if secpal_exception.get(key) is True:
-                block_reasons.append(f"secpal_exception_claimed_{key}")
+    souffle_vendor_certified = bool(souffle_engine.certified) and not block_reasons
+    block_reasons.extend(
+        _secpal_vendor_certification_block_reasons(
+            secpal_exception,
+            secpal_receipt,
+        )
+    )
 
-    certified = bool(souffle_engine.certified) and not block_reasons
+    # ``certified`` retains the legacy FVT-G209 meaning: the Soufflé vendor
+    # lane may close through a narrow lock-authorized SecPAL platform
+    # exception.  The explicit combined label never treats that exception,
+    # mere installation, or readiness metadata as SecPAL certification.
+    certified = souffle_vendor_certified and not block_reasons
+    secpal_live_ready = bool(secpal_exception.get("live_ready"))
+    secpal_vendor_certified = bool(
+        not secpal_exception.get("exception")
+        and secpal_receipt is not None
+        and secpal_receipt.ok
+        and secpal_live_ready
+        and secpal_exception.get("production_certified") is True
+    )
+    combined_external_authorization_certified = bool(
+        souffle_vendor_certified and secpal_vendor_certified
+    )
 
     payload: dict[str, Any] = {
         "schema_version": VENDOR_SCHEMA_VERSION,
         "interface": VENDOR_INTERFACE,
         "goal_id": VENDOR_GOAL_ID,
         "task_id": VENDOR_TASK_ID,
+        "repair_task_id": VENDOR_REPAIR_TASK_ID,
         "program": VENDOR_PROGRAM,
         "lane_id": VENDOR_LANE_ID,
         "handler_id": VENDOR_HANDLER_ID,
@@ -1460,17 +2138,54 @@ def certify_external_authorization_vendor(
         "forbids_theorem_authority": True,
         "forbids_authorization_authority_on_shadows": True,
         "certified": certified,
+        "souffle_vendor_certified": souffle_vendor_certified,
+        "secpal_vendor_certified": secpal_vendor_certified,
+        "secpal_live_ready": secpal_live_ready,
+        "combined_external_authorization_certified": (
+            combined_external_authorization_certified
+        ),
+        # FVT-073 objective validation repair: re-prove FVT-G209 acceptance.
+        "objective_validation_evidence": OBJECTIVE_VALIDATION_EVIDENCE,
+        "objective_validation_repair": bool(certified),
+        "objective_validation_command": OBJECTIVE_VALIDATION_COMMAND,
+        "acceptance": {
+            "objective_validation_repair": bool(certified),
+            "objective_validation_evidence": OBJECTIVE_VALIDATION_EVIDENCE,
+            "repair_task_id": VENDOR_REPAIR_TASK_ID,
+            "goal_id": VENDOR_GOAL_ID,
+            "task_id": VENDOR_TASK_ID,
+            "souffle_source_archive_checksummed": True,
+            "souffle_native_compiled_executable": True,
+            "souffle_identity_manifest_verified": True,
+            "souffle_dependency_package_set_verified": True,
+            "souffle_linux_aarch64_supported": True,
+            "secpal_linux_aarch64_narrow_platform_exception": True,
+            "hermetic_shadows_are_differential_only": True,
+            "hermetic_shadows_cannot_satisfy_vendor": hermetic_cannot_satisfy,
+            "never_mutate_system_package_manager": True,
+            "forbids_theorem_authority": True,
+            "forbids_authorization_authority_on_shadows": True,
+            "categories": categories,
+            "mutation_kinds": sorted(REQUIRED_MUTATION_KINDS),
+            "runner_owned_fault_injection": True,
+        },
         "souffle": {
             **souffle_engine.to_dict(),
+            **native_evidence,
             "is_vendor_build": True,
             "is_hermetic_shadow": False,
             "source_archive_sha256": souffle_identity.source_archive_sha256,
             "source_archive_url": souffle_identity.source_archive_url,
+            "dependency_prefix": souffle_identity.dependency_prefix,
             "artifact_sha256": souffle_identity.artifact_sha256,
             "build_dependencies": {
                 k: v for k, v in souffle_identity.build_dependencies
             },
             "platform_id": souffle_identity.platform_id or host,
+            "managed_dependency_prefix": bool(
+                souffle_identity.dependency_prefix
+            ),
+            "is_relocated_install": souffle_identity.is_relocated_install,
             "linux_aarch64_supported": authz_installer.tool_supported_on_platform(
                 TOOL_SOUFFLE,
                 LINUX_AARCH64,
@@ -1479,6 +2194,9 @@ def certify_external_authorization_vendor(
             ),
         },
         "secpal_platform_exception": secpal_exception,
+        "secpal_live_readiness": dict(
+            secpal_exception.get("live_readiness") or {}
+        ),
         "engines": [souffle_engine.to_dict()],
         "engine_ids": [TOOL_SOUFFLE],
         "categories_exercised": categories,
@@ -1493,9 +2211,15 @@ def certify_external_authorization_vendor(
             "never_promote_hermetic_shadow_as_vendor": True,
             "never_mutate_system_package_manager": True,
             "strict_installation_selects_exact_pins": True,
+            "native_install_manifest_identity_verified": True,
+            "native_dependency_packages_rehashed": True,
+            "runner_owned_fault_injection": True,
+            "vendor_prover_fault_environment_required": False,
             "souffle_source_archive_checksummed": True,
             "souffle_linux_aarch64_supported": True,
             "secpal_linux_aarch64_narrow_platform_exception": True,
+            "secpal_platform_exception_does_not_satisfy_live_readiness": True,
+            "secpal_requires_live_authoritative_vendor_evidence": True,
             "never_grants_theorem_authority": True,
             "never_grants_authorization_authority_to_shadows": True,
             "grants_theorem_authority": False,
@@ -1504,26 +2228,37 @@ def certify_external_authorization_vendor(
         },
         "summary": {
             "souffle_certified": souffle_engine.certified,
+            "souffle_vendor_certified": souffle_vendor_certified,
             "secpal_exception": bool(secpal_exception.get("exception")),
+            "secpal_vendor_certified": secpal_vendor_certified,
+            "secpal_live_ready": secpal_live_ready,
+            "combined_external_authorization_certified": (
+                combined_external_authorization_certified
+            ),
             "checks_passed": sum(1 for check in souffle_engine.checks if check.passed),
             "checks_total": len(souffle_engine.checks),
             "categories_exercised": categories,
             "mutation_kinds": sorted(REQUIRED_MUTATION_KINDS),
             "block_reasons": sorted(set(block_reasons)),
             "hermetic_shadows_cannot_satisfy_vendor": hermetic_cannot_satisfy,
+            "objective_validation_repair": bool(certified),
+            "repair_task_id": VENDOR_REPAIR_TASK_ID,
         },
     }
-    payload["certificate_digest_sha256"] = _stable_json_digest(
+    certificate_basis = public_evidence_projection(
         {
             key: value
             for key, value in payload.items()
             if key != "certificate_digest_sha256"
-        }
+        },
+        repo_root=public_root,
     )
+    payload["certificate_digest_sha256"] = _stable_json_digest(certificate_basis)
 
-    receipt = build_vendor_install_receipt(payload)
+    receipt = build_vendor_install_receipt(payload, repo_root=public_root)
     if write_receipt_path is not None:
         path = Path(write_receipt_path)
+        _audit_public_receipt(receipt, repo_root=public_root)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(receipt, indent=2, sort_keys=True) + "\n",
@@ -1534,33 +2269,114 @@ def certify_external_authorization_vendor(
     return payload
 
 
-def build_vendor_install_receipt(certificate: Mapping[str, Any]) -> dict[str, Any]:
+def build_vendor_install_receipt(
+    certificate: Mapping[str, Any],
+    *,
+    repo_root: Path | str | None = None,
+) -> dict[str, Any]:
     """Build the checked-in vendor install receipt envelope."""
 
     souffle = certificate.get("souffle") or {}
+    executable, executable_basename = _managed_executable_reference(
+        souffle.get("executable")
+    )
     exception = certificate.get("secpal_platform_exception") or {}
+    certified = bool(certificate.get("certified"))
+    acceptance = dict(certificate.get("acceptance") or {})
+    if not acceptance:
+        acceptance = {
+            "objective_validation_repair": certified,
+            "objective_validation_evidence": OBJECTIVE_VALIDATION_EVIDENCE,
+            "repair_task_id": VENDOR_REPAIR_TASK_ID,
+            "goal_id": VENDOR_GOAL_ID,
+            "task_id": VENDOR_TASK_ID,
+        }
+    summary = dict(certificate.get("summary") or {})
+    summary.setdefault("objective_validation_repair", certified)
+    summary.setdefault("repair_task_id", VENDOR_REPAIR_TASK_ID)
     receipt = {
         "schema_version": VENDOR_INSTALL_RECEIPT_SCHEMA,
         "interface": VENDOR_INTERFACE,
         "goal_id": VENDOR_GOAL_ID,
         "task_id": VENDOR_TASK_ID,
+        "repair_task_id": VENDOR_REPAIR_TASK_ID,
         "program": VENDOR_PROGRAM,
         "lane_id": VENDOR_LANE_ID,
         "handler_id": VENDOR_HANDLER_ID,
         "host_platform": certificate.get("host_platform"),
-        "certified": bool(certificate.get("certified")),
+        "certified": certified,
+        "souffle_vendor_certified": bool(
+            certificate.get("souffle_vendor_certified")
+        ),
+        "secpal_vendor_certified": bool(
+            certificate.get("secpal_vendor_certified")
+        ),
+        "secpal_live_ready": bool(certificate.get("secpal_live_ready")),
+        "combined_external_authorization_certified": bool(
+            certificate.get("combined_external_authorization_certified")
+        ),
         "authority_ceiling": SHADOW_AUTHORITY_CEILING,
+        # FVT-073 objective validation repair discovery keys.
+        "objective_validation_evidence": OBJECTIVE_VALIDATION_EVIDENCE,
+        "objective_validation_repair": certified,
+        "objective_validation_command": OBJECTIVE_VALIDATION_COMMAND,
+        "acceptance": acceptance,
         "souffle": {
             "tool_id": TOOL_SOUFFLE,
             "version": souffle.get("version"),
-            "executable": souffle.get("executable"),
+            "executable": executable,
+            "executable_basename": executable_basename,
+            "managed_executable": executable is not None,
             "usable": souffle.get("usable"),
             "certified": souffle.get("certified"),
             "is_vendor_build": True,
             "is_hermetic_shadow": False,
             "source_archive_sha256": souffle.get("source_archive_sha256"),
             "source_archive_url": souffle.get("source_archive_url"),
+            "source_archive_size_bytes": souffle.get(
+                "source_archive_size_bytes"
+            ),
             "artifact_sha256": souffle.get("artifact_sha256"),
+            "artifact_size_bytes": souffle.get("artifact_size_bytes"),
+            "artifact_kind": souffle.get("artifact_kind"),
+            "native_binary_format": souffle.get("native_binary_format"),
+            "native_machine": souffle.get("native_machine"),
+            "identity_manifest_sha256": souffle.get(
+                "identity_manifest_sha256"
+            ),
+            "identity_manifest_file_sha256": souffle.get(
+                "identity_manifest_file_sha256"
+            ),
+            "deployment_lock_sha256": souffle.get(
+                "deployment_lock_sha256"
+            ),
+            "pin_contract_sha256": souffle.get("pin_contract_sha256"),
+            "build_contract_sha256": souffle.get(
+                "build_contract_sha256"
+            ),
+            "build_dependency_identities": souffle.get(
+                "build_dependency_identities"
+            )
+            or {},
+            "dependency_package_set_sha256": souffle.get(
+                "dependency_package_set_sha256"
+            ),
+            "dependency_packages": souffle.get("dependency_packages") or {},
+            "managed_dependency_prefix": bool(
+                souffle.get("managed_dependency_prefix")
+            ),
+            "is_relocated_install": bool(
+                souffle.get("is_relocated_install")
+            ),
+            "relocation_binding_sha256": souffle.get(
+                "relocation_binding_sha256"
+            ),
+            "provenance_dependency_package_set_sha256": souffle.get(
+                "provenance_dependency_package_set_sha256"
+            ),
+            "provenance_deployment_lock_sha256": souffle.get(
+                "provenance_deployment_lock_sha256"
+            ),
             "build_dependencies": souffle.get("build_dependencies") or {},
             "platform_id": souffle.get("platform_id"),
             "linux_aarch64_supported": souffle.get("linux_aarch64_supported"),
@@ -1580,18 +2396,21 @@ def build_vendor_install_receipt(certificate: Mapping[str, Any]) -> dict[str, An
             "authoritative": False,
             "production_certified": False,
             "supported_platforms": exception.get("supported_platforms") or [],
+            "live_ready": bool(exception.get("live_ready")),
+            "live_block_reasons": list(
+                exception.get("live_block_reasons") or []
+            ),
+            "live_readiness": dict(exception.get("live_readiness") or {}),
+            "platform_exception_satisfies_live_readiness": False,
             "notes": exception.get("notes") or "",
         },
         "categories_exercised": list(certificate.get("categories_exercised") or []),
         "mutation_kinds": list(certificate.get("mutation_kinds") or []),
         "policy": dict(certificate.get("policy") or {}),
-        "summary": dict(certificate.get("summary") or {}),
+        "summary": summary,
         "certificate_digest_sha256": certificate.get("certificate_digest_sha256"),
     }
-    receipt["receipt_digest_sha256"] = _stable_json_digest(
-        {k: v for k, v in receipt.items() if k != "receipt_digest_sha256"}
-    )
-    return receipt
+    return _finalize_public_receipt(receipt, repo_root=repo_root)
 
 
 def write_vendor_install_receipt(
@@ -1599,7 +2418,10 @@ def write_vendor_install_receipt(
     *,
     repo_root: Path | str | None = None,
     install_root: Path | str | None = None,
+    dependency_prefix: Path | str | None = None,
+    skip_install: bool = False,
     platform_id: str | None = None,
+    lock_path: Path | str | None = None,
     receipt_path: Path | str | None = None,
 ) -> dict[str, Any]:
     """Certify (if needed) and write the vendor install receipt artifact."""
@@ -1613,12 +2435,16 @@ def write_vendor_install_receipt(
     if certificate is None:
         certificate = certify_external_authorization_vendor(
             install_root=install_root,
+            dependency_prefix=dependency_prefix,
+            skip_install=skip_install,
             platform_id=platform_id,
             repo_root=root,
+            lock_path=lock_path,
             write_receipt_path=path,
         )
         return dict(certificate.get("install_receipt") or {})
-    receipt = build_vendor_install_receipt(certificate)
+    receipt = build_vendor_install_receipt(certificate, repo_root=root)
+    _audit_public_receipt(receipt, repo_root=root)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return receipt
@@ -1632,6 +2458,7 @@ def external_authorization_vendor_lane_handler(
 
     result = certify_external_authorization_vendor(
         install_root=kwargs.get("install_root"),
+        dependency_prefix=kwargs.get("dependency_prefix"),
         force_install=bool(kwargs.get("force_install", False)),
         skip_install=bool(kwargs.get("skip_install", False)),
         platform_id=kwargs.get("platform_id"),
@@ -1639,12 +2466,22 @@ def external_authorization_vendor_lane_handler(
         lock_path=kwargs.get("lock_path"),
         write_receipt_path=kwargs.get("write_receipt_path"),
     )
+    certified = bool(result["certified"])
     return {
         "lane_id": VENDOR_LANE_ID,
         "owner_module": CERTIFICATION_SURFACE,
         "handler_id": VENDOR_HANDLER_ID,
-        "status": "certified" if result["certified"] else "failed",
-        "certified": bool(result["certified"]),
+        "status": "certified" if certified else "failed",
+        "certified": certified,
+        "souffle_vendor_certified": bool(
+            result.get("souffle_vendor_certified")
+        ),
+        "secpal_vendor_certified": bool(
+            result.get("secpal_vendor_certified")
+        ),
+        "combined_external_authorization_certified": bool(
+            result.get("combined_external_authorization_certified")
+        ),
         "authority_ceiling": SHADOW_AUTHORITY_CEILING,
         "reason_codes": list(result["summary"].get("block_reasons") or []),
         "certificate_digest_sha256": result["certificate_digest_sha256"],
@@ -1653,10 +2490,21 @@ def external_authorization_vendor_lane_handler(
         "secpal_exception": bool(
             (result.get("secpal_platform_exception") or {}).get("exception")
         ),
+        "secpal_live_ready": bool(
+            (result.get("secpal_live_readiness") or {}).get("ready")
+        ),
+        "secpal_live_block_reasons": list(
+            (result.get("secpal_live_readiness") or {}).get("block_reasons")
+            or []
+        ),
         "args_received": bool(args) or bool(kwargs),
         "interface": VENDOR_INTERFACE,
         "goal_id": VENDOR_GOAL_ID,
         "task_id": VENDOR_TASK_ID,
+        "repair_task_id": VENDOR_REPAIR_TASK_ID,
+        "objective_validation_evidence": OBJECTIVE_VALIDATION_EVIDENCE,
+        "objective_validation_repair": certified,
+        "objective_validation_command": OBJECTIVE_VALIDATION_COMMAND,
         "grants_theorem_authority": False,
         "grants_authorization_decision_authority": False,
         "external_engines_are_shadows": True,
@@ -1689,6 +2537,17 @@ def main(argv: list[str] | None = None) -> int:
         help="Force re-materialization of hermetic shadows / vendor engines",
     )
     parser.add_argument(
+        "--dependency-prefix",
+        type=Path,
+        default=None,
+        help="Managed dependency prefix for a native vendor Soufflé build",
+    )
+    parser.add_argument(
+        "--skip-install",
+        action="store_true",
+        help="Reuse and fully verify an existing managed vendor deployment",
+    )
+    parser.add_argument(
         "--engine",
         action="append",
         dest="engines",
@@ -1712,7 +2571,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.vendor:
             receipt = certify_external_authorization_vendor(
                 install_root=args.install_root,
+                dependency_prefix=args.dependency_prefix,
                 force_install=args.force_install,
+                skip_install=args.skip_install,
                 write_receipt_path=args.write_receipt,
             )
             interface = VENDOR_INTERFACE
@@ -1795,6 +2656,9 @@ __all__ = [
     "VENDOR_INSTALL_RECEIPT_SCHEMA",
     "VENDOR_GOAL_ID",
     "VENDOR_TASK_ID",
+    "VENDOR_REPAIR_TASK_ID",
+    "OBJECTIVE_VALIDATION_EVIDENCE",
+    "OBJECTIVE_VALIDATION_COMMAND",
     "VENDOR_PROGRAM",
     "VENDOR_LANE_ID",
     "VENDOR_HANDLER_ID",
@@ -1804,6 +2668,11 @@ __all__ = [
     "REFERENCE_ENGINES",
     "REQUIRED_CATEGORIES",
     "REQUIRED_MUTATION_KINDS",
+    "AUTHORIZATION_FAULT_MODES",
+    "FAULT_DISAGREEMENT",
+    "FAULT_MALFORMED_OUTPUT",
+    "FAULT_TIMEOUT",
+    "AuthorizationFaultHarness",
     "CheckResult",
     "EngineCertification",
     "ExternalAuthorizationCertificationError",
@@ -1818,6 +2687,7 @@ __all__ = [
     "external_authorization_vendor_lane_handler",
     "main",
     "materialize_case",
+    "native_souffle_runtime_environment",
     "run_shadow_case",
     "write_vendor_install_receipt",
 ]

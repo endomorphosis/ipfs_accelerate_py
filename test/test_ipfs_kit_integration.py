@@ -21,6 +21,7 @@ sys.path.insert(0, str(ipfs_accelerate_py_dir))
 # Import the integration module
 from ipfs_kit_integration import (
     IPFSKitStorage,
+    _resolve_ipfs_kit_source_path,
     get_storage,
     reset_storage,
     StorageBackendConfig
@@ -97,6 +98,34 @@ class TestIPFSKitStorageInitialization:
         expected_dir = Path.home() / ".cache" / "ipfs_accelerate"
         assert storage.cache_dir == expected_dir
         reset_storage()
+
+    def test_source_resolution_skips_empty_gitlink_for_workspace_sibling(
+        self,
+        tmp_path,
+    ):
+        repo_root = tmp_path / "ipfs_accelerate"
+        (repo_root / "ipfs_kit_py").mkdir(parents=True)
+        sibling_root = tmp_path / "ipfs_kit"
+        package_root = sibling_root / "ipfs_kit_py"
+        package_root.mkdir(parents=True)
+        (package_root / "__init__.py").write_text("", encoding="utf-8")
+
+        assert _resolve_ipfs_kit_source_path(repo_root) == sibling_root.resolve()
+
+    def test_source_resolution_prefers_initialized_repo_root_submodule(
+        self,
+        tmp_path,
+    ):
+        repo_root = tmp_path / "ipfs_accelerate"
+        root_checkout = repo_root / "ipfs_kit_py"
+        root_package = root_checkout / "ipfs_kit_py"
+        root_package.mkdir(parents=True)
+        (root_package / "__init__.py").write_text("", encoding="utf-8")
+        sibling_package = tmp_path / "ipfs_kit" / "ipfs_kit_py"
+        sibling_package.mkdir(parents=True)
+        (sibling_package / "__init__.py").write_text("", encoding="utf-8")
+
+        assert _resolve_ipfs_kit_source_path(repo_root) == root_checkout.resolve()
 
 
 class TestStorageOperations:

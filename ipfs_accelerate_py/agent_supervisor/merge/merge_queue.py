@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import tempfile
 import time
@@ -26,7 +27,6 @@ from ..task_sources.duckdb_state import (
     initialize_duckdb_database,
     open_duckdb_connection,
 )
-
 
 _PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 _ACTIVE_STATES = ("pending", "processing")
@@ -50,6 +50,8 @@ MERGE_QUEUE_THROUGHPUT_SCHEMA = (
 MERGE_TARGET_BINDING_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/merge-target-binding@1"
 )
+MAX_MERGE_QUEUE_DEFERRAL_SECONDS = 3600.0
+MAX_MERGE_QUEUE_RECORDED_DEFERRALS = 32
 
 
 class MergeQueueFullError(RuntimeError):
@@ -83,6 +85,7 @@ class MergeRequest:
     failure_reason: str = ""
     claim_token: str = ""
     claim_generation: int = 0
+    retry_not_before: float = 0.0
 
     @property
     def canonical_identity(self) -> str:
@@ -151,6 +154,7 @@ class MergeRequest:
             "failure_reason": self.failure_reason,
             "claim_token": self.claim_token,
             "claim_generation": self.claim_generation,
+            "retry_not_before": self.retry_not_before,
             "dedupe_key": self.dedupe_key,
         }
 
@@ -189,6 +193,10 @@ class MergeRequest:
             failure_reason=str(data.get("failure_reason") or ""),
             claim_token=str(data.get("claim_token") or ""),
             claim_generation=max(0, _safe_int(data.get("claim_generation"), 0)),
+            retry_not_before=max(
+                0.0,
+                _safe_float(data.get("retry_not_before"), 0.0),
+            ),
         )
 
 
@@ -384,6 +392,7 @@ class MergeQueue:
                     failure_reason TEXT NOT NULL DEFAULT '',
                     claim_token TEXT NOT NULL DEFAULT '',
                     claim_generation BIGINT NOT NULL DEFAULT 0,
+                    retry_not_before DOUBLE NOT NULL DEFAULT 0,
                     finished_at DOUBLE NOT NULL DEFAULT 0,
                     updated_at DOUBLE NOT NULL
                 );
@@ -391,14 +400,20 @@ class MergeQueue:
                   ADD COLUMN IF NOT EXISTS claim_token TEXT DEFAULT '';
                 ALTER TABLE merge_requests
                   ADD COLUMN IF NOT EXISTS claim_generation BIGINT DEFAULT 0;
+                ALTER TABLE merge_requests
+                  ADD COLUMN IF NOT EXISTS retry_not_before DOUBLE DEFAULT 0;
                 UPDATE merge_requests
                   SET claim_token=COALESCE(claim_token, ''),
-                      claim_generation=COALESCE(claim_generation, 0)
-                  WHERE claim_token IS NULL OR claim_generation IS NULL;
+                      claim_generation=COALESCE(claim_generation, 0),
+                      retry_not_before=COALESCE(retry_not_before, 0)
+                  WHERE claim_token IS NULL OR claim_generation IS NULL
+                     OR retry_not_before IS NULL;
                 CREATE UNIQUE INDEX IF NOT EXISTS merge_requests_dedupe
                   ON merge_requests(dedupe_key);
                 CREATE INDEX IF NOT EXISTS merge_requests_stage_order
                   ON merge_requests(status, enqueued_at);
+                CREATE INDEX IF NOT EXISTS merge_requests_retry_eligibility
+                  ON merge_requests(status, retry_not_before, enqueued_at);
                 """,
         )
 
@@ -446,8 +461,8 @@ class MergeQueue:
                 attempt, metadata_json, commit_sha, canonical_task_id,
                 canonical_task_key, dedupe_key, status, claimed_at, consumer_id,
                 failure_count, failure_reason, claim_token, claim_generation,
-                finished_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                retry_not_before, finished_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 request.request_id,
                 request.branch_name,
@@ -468,6 +483,7 @@ class MergeQueue:
                 request.failure_reason,
                 request.claim_token,
                 request.claim_generation,
+                request.retry_not_before,
                 0.0,
                 self._clock(),
             ),
@@ -691,7 +707,9 @@ class MergeQueue:
                 observed_bytes = self._observed_worktree_bytes()
                 worktree_bytes = max(reserved_bytes, observed_bytes)
                 rows = connection.execute(
-                    "SELECT * FROM merge_requests WHERE status = 'pending'"
+                    """SELECT * FROM merge_requests
+                       WHERE status = 'pending' AND retry_not_before <= ?""",
+                    (now,),
                 ).fetchall()
                 if self.target_repository_id or self.require_target_binding:
                     rows = [
@@ -725,7 +743,7 @@ class MergeQueue:
                         """UPDATE merge_requests
                            SET status='processing', claimed_at=?, consumer_id=?,
                                claim_token=?, claim_generation=claim_generation + 1,
-                               updated_at=?
+                               retry_not_before=0, updated_at=?
                            WHERE request_id=? AND status='pending'""",
                         (
                             now,
@@ -896,7 +914,8 @@ class MergeQueue:
             connection.execute(
                 """UPDATE merge_requests SET status='completed', metadata_json=?,
                    finished_at=?, updated_at=?, consumer_id='', claimed_at=0,
-                   claim_token='', claim_generation=claim_generation + 1
+                   claim_token='', claim_generation=claim_generation + 1,
+                   retry_not_before=0
                    WHERE request_id=? AND status='processing'
                      AND claim_token=? AND claim_generation=? AND consumer_id=?""",
                 (
@@ -977,7 +996,7 @@ class MergeQueue:
                 """UPDATE merge_requests SET status=?, attempt=?, failure_count=?,
                    failure_reason=?, metadata_json=?, claimed_at=0, consumer_id='',
                    claim_token='', claim_generation=claim_generation + 1,
-                   finished_at=?, updated_at=? WHERE request_id=?
+                   retry_not_before=0, finished_at=?, updated_at=? WHERE request_id=?
                      AND status='processing' AND claim_token=?
                      AND claim_generation=? AND consumer_id=?""",
                 (
@@ -1002,6 +1021,93 @@ class MergeQueue:
         updated = self._request_from_row(row)
         path = self._write_stage_receipt(updated)
         return path if terminal else updated
+
+    def defer(
+        self,
+        request: MergeRequest,
+        reason: str = "",
+        *,
+        delay_seconds: float,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> MergeRequest | None:
+        """Release a claim into a durable cooldown without consuming a retry.
+
+        Deferral is for external contention that prevented a merge attempt
+        from starting.  The request remains pending and retains its attempt
+        and failure counters; ``retry_not_before`` prevents immediate reclaim.
+        """
+
+        delay = float(delay_seconds)
+        if not math.isfinite(delay):
+            raise ValueError("merge queue deferral delay must be finite")
+        if delay > MAX_MERGE_QUEUE_DEFERRAL_SECONDS:
+            raise ValueError(
+                "merge queue deferral delay exceeds the durable cooldown limit"
+            )
+        delay = max(0.0, delay)
+        now = self._clock()
+        retry_not_before = now + delay
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM merge_requests WHERE request_id=?",
+                (request.request_id,),
+            ).fetchone()
+            if row is None:
+                connection.rollback()
+                return None
+            self._require_row_target(
+                row,
+                operation="defer",
+                request_id=request.request_id,
+            )
+            self._require_claim(row, request, operation="defer")
+            request_metadata = json.loads(row["metadata_json"] or "{}")
+            deferral: dict[str, Any] = {
+                "at": now,
+                "reason": str(reason),
+                "retry_not_before": retry_not_before,
+            }
+            if metadata:
+                deferral["metadata"] = dict(metadata)
+            deferrals = request_metadata.setdefault("deferrals", [])
+            if not isinstance(deferrals, list):
+                deferrals = []
+            deferrals.append(deferral)
+            request_metadata["deferrals"] = deferrals[
+                -MAX_MERGE_QUEUE_RECORDED_DEFERRALS:
+            ]
+            connection.execute(
+                """UPDATE merge_requests SET status='pending',
+                   metadata_json=?, claimed_at=0,
+                   consumer_id='', claim_token='',
+                   claim_generation=claim_generation + 1,
+                   retry_not_before=?, finished_at=0, updated_at=?
+                   WHERE request_id=? AND status='processing'
+                     AND claim_token=? AND claim_generation=? AND consumer_id=?""",
+                (
+                    json.dumps(
+                        request_metadata,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                    retry_not_before,
+                    now,
+                    request.request_id,
+                    request.claim_token,
+                    request.claim_generation,
+                    request.consumer_id,
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM merge_requests WHERE request_id=?",
+                (request.request_id,),
+            ).fetchone()
+            connection.commit()
+        assert row is not None
+        deferred = self._request_from_row(row)
+        receipt_path = self._write_stage_receipt(deferred)
+        return replace(deferred, file_path=receipt_path)
 
     def quarantine(
         self,
@@ -1042,9 +1148,9 @@ class MergeQueue:
                 """UPDATE merge_requests SET status='quarantined', failure_count=?,
                    failure_reason=?, metadata_json=?, claimed_at=0, consumer_id='',
                    claim_token='', claim_generation=claim_generation + 1,
-                   finished_at=?, updated_at=? WHERE request_id=?""",
+                   retry_not_before=0, finished_at=?, updated_at=? WHERE request_id=?""",
                 (
-                    max(1, int(row["failure_count"])),
+                    int(row["failure_count"]) + 1,
                     str(reason or row["failure_reason"]),
                     json.dumps(request_metadata, sort_keys=True, separators=(",", ":")),
                     now,
@@ -1114,7 +1220,8 @@ class MergeQueue:
             connection.execute(
                 """UPDATE merge_requests SET status='cancelled', failure_reason=?,
                    metadata_json=?, claimed_at=0, consumer_id='', claim_token='',
-                   claim_generation=claim_generation + 1, finished_at=?, updated_at=?
+                   claim_generation=claim_generation + 1,
+                   retry_not_before=0, finished_at=?, updated_at=?
                    WHERE request_id=? AND status IN ('pending','processing')""",
                 (
                     str(reason or "cancelled"),
@@ -1189,7 +1296,8 @@ class MergeQueue:
                    failure_count=?, failure_reason='', metadata_json=?, claimed_at=0,
                    consumer_id='', claim_token='',
                    claim_generation=claim_generation + 1,
-                   finished_at=0, updated_at=? WHERE request_id=?""",
+                   retry_not_before=0, finished_at=0, updated_at=?
+                   WHERE request_id=?""",
                 (
                     now,
                     attempt,
@@ -1415,13 +1523,14 @@ class MergeQueue:
                 else:
                     new_status = "quarantined"
                     new_attempt = attempt
-                    failure_count = max(1, failure_count)
+                    failure_count += 1
                     reason = "processing request exceeded max age"
                     finished_at = now
                 connection.execute(
                     """UPDATE merge_requests SET status=?, attempt=?, failure_count=?,
                        failure_reason=?, claimed_at=0, consumer_id='', claim_token='',
-                       claim_generation=claim_generation + 1, finished_at=?,
+                       claim_generation=claim_generation + 1,
+                       retry_not_before=0, finished_at=?,
                        updated_at=? WHERE request_id=?""",
                     (
                         new_status,
@@ -1477,7 +1586,8 @@ class MergeQueue:
                 connection.execute(
                     """UPDATE merge_requests SET status=?, attempt=?, failure_count=?,
                        failure_reason=?, claimed_at=0, consumer_id='', claim_token='',
-                       claim_generation=claim_generation + 1, finished_at=?,
+                       claim_generation=claim_generation + 1,
+                       retry_not_before=0, finished_at=?,
                        updated_at=? WHERE request_id=? AND status='processing'""",
                     (
                         status,
@@ -1636,6 +1746,7 @@ class MergeQueue:
             "failure_reason": row["failure_reason"],
             "claim_token": row["claim_token"],
             "claim_generation": row["claim_generation"],
+            "retry_not_before": row["retry_not_before"],
         }
         request = MergeRequest.from_dict(payload)
         return replace(request, file_path=self._stage_path(request))

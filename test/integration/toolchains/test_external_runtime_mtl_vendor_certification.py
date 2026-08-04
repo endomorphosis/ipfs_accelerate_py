@@ -1,4 +1,4 @@
-"""External Runtime MTL vendor certification tests (FVT-056 / FVT-G210).
+"""External Runtime MTL vendor certification tests (FVT-056 / FVT-G210 / FVT-072).
 
 ``ExternalRuntimeMTLVendorCertification@1``
 
@@ -6,12 +6,19 @@ Acceptance covered:
 
 * a locked TypeScript dependency graph builds an independent Node
   package/executable without importing or dispatching to the Python reference;
-* package, source, lockfile, runtime, executable, and artifact digests are bound;
+* package, source, lockfile, runtime, launcher, launcher target, executable, and
+  artifact digests are bound;
 * positive, negative, interval/event mutation, timestamp boundary, shortest-prefix
   replay, malformed input, timeout, bounds, and disagreement cases execute out of
   process;
 * finite-trace authority and inconclusive-prefix semantics are preserved;
-* generated Python parity wrappers remain non-production shadow evidence.
+* generated Python parity wrappers remain non-production shadow evidence;
+* offline semantic certification never builds or downloads;
+* sealed private-HOME validation receives an explicit approved immutable
+  deployment root rather than discovering mutable user paths.
+
+FVT-072 is the objective validation repair that re-proves FVT-G210 and binds
+the synthetic discovery term ``objective validation repair``.
 """
 
 from __future__ import annotations
@@ -60,6 +67,8 @@ VENDOR_RECEIPT_SCHEMA = (
 )
 VENDOR_GOAL_ID = "FVT-G210"
 VENDOR_TASK_ID = "FVT-056"
+VENDOR_REPAIR_TASK_ID = "FVT-072"
+OBJECTIVE_VALIDATION_EVIDENCE = "objective validation repair"
 VENDOR_INSTALLER_INTERFACE = "ExternalRuntimeMTLVendorInstaller@1"
 PACKAGE_IDENTITY = "@ipfs-datasets/logic-runtime-mtl"
 PIN_VERSION = "1.0.0-reviewed"
@@ -199,20 +208,46 @@ def test_installer_vendor_constants(installer) -> None:
     assert installer.VENDOR_INTERFACE == VENDOR_INSTALLER_INTERFACE
     assert installer.VENDOR_GOAL_ID == VENDOR_GOAL_ID
     assert installer.VENDOR_TASK_ID == VENDOR_TASK_ID
+    assert installer.VENDOR_REPAIR_TASK_ID == VENDOR_REPAIR_TASK_ID
+    assert installer.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
     assert installer.VENDOR_PACKAGE_IDENTITY == PACKAGE_IDENTITY
+    assert installer.MANAGED_INSTALL_ROOT_ENV_VARS[0] == (
+        "IPFS_ACCELERATE_FORMAL_VERIFICATION_TOOLCHAINS_ROOT"
+    )
     meta = installer.describe_runtime_mtl_installer()
+    assert meta["vendor"]["interface"] == VENDOR_INSTALLER_INTERFACE
+    assert meta["vendor"]["goal_id"] == VENDOR_GOAL_ID
+    assert meta["vendor"]["repair_task_id"] == VENDOR_REPAIR_TASK_ID
+    assert (
+        meta["vendor"]["objective_validation_evidence"]
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
     assert meta["policy"]["hermetic_parity_engines_are_non_production_shadows"] is True
     assert meta["policy"]["hermetic_parity_engines_cannot_satisfy_vendor"] is True
     assert meta["policy"]["vendor_builds_independent_typescript_node"] is True
     assert meta["policy"]["vendor_never_imports_python_reference"] is True
-    assert meta["vendor"]["interface"] == VENDOR_INSTALLER_INTERFACE
-    assert meta["vendor"]["goal_id"] == VENDOR_GOAL_ID
+    assert meta["policy"]["objective_validation_repair"] is True
+    assert meta["policy"]["explicit_approved_immutable_deployment_root"] is True
+    assert (
+        meta["policy"][
+            "package_source_lockfile_runtime_launcher_executable_artifact_digests_bound"
+        ]
+        is True
+    )
 
 
 def test_certifier_vendor_constants(certifier) -> None:
     assert certifier.VENDOR_INTERFACE == VENDOR_INTERFACE
     assert certifier.VENDOR_SCHEMA_VERSION == VENDOR_SCHEMA
     assert certifier.VENDOR_GOAL_ID == VENDOR_GOAL_ID
+    assert certifier.VENDOR_REPAIR_TASK_ID == VENDOR_REPAIR_TASK_ID
+    assert certifier.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
+    assert "test_external_runtime_mtl_vendor_certification.py" in (
+        certifier.OBJECTIVE_VALIDATION_COMMAND
+    )
+    assert "test_runtime_mtl_offline_install_boundary.py" in (
+        certifier.OBJECTIVE_VALIDATION_COMMAND
+    )
     assert certifier.VENDOR_TASK_ID == VENDOR_TASK_ID
     assert certifier.VENDOR_INSTALL_RECEIPT_SCHEMA == VENDOR_RECEIPT_SCHEMA
 
@@ -413,18 +448,42 @@ def test_vendor_certificate_envelope(vendor_certificate: dict[str, Any]) -> None
     assert vendor_certificate["interface"] == VENDOR_INTERFACE
     assert vendor_certificate["goal_id"] == VENDOR_GOAL_ID
     assert vendor_certificate["task_id"] == VENDOR_TASK_ID
+    assert vendor_certificate["repair_task_id"] == VENDOR_REPAIR_TASK_ID
     assert vendor_certificate["certified"] is True
     assert vendor_certificate["authority_ceiling"] == "finite_trace"
+    # FVT-072 objective validation repair discovery binding.
+    assert (
+        vendor_certificate["objective_validation_evidence"]
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    assert vendor_certificate["objective_validation_repair"] is True
+    assert "test_external_runtime_mtl_vendor_certification.py" in (
+        vendor_certificate["objective_validation_command"]
+    )
+    acceptance = vendor_certificate["acceptance"]
+    assert acceptance["objective_validation_repair"] is True
+    assert acceptance["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    assert acceptance["repair_task_id"] == VENDOR_REPAIR_TASK_ID
+    assert acceptance["explicit_approved_immutable_deployment_root"] is True
+    assert acceptance["offline_certification_never_builds_or_downloads"] is True
     policy = vendor_certificate["policy"]
     assert policy["locked_typescript_dependency_graph"] is True
     assert policy["independent_node_package_without_python_dispatch"] is True
     assert policy["package_source_lockfile_runtime_executable_artifact_digests_bound"] is True
+    assert policy[
+        "package_source_lockfile_runtime_launcher_executable_artifact_digests_bound"
+    ] is True
+    assert policy["offline_certification_never_builds_or_downloads"] is True
+    assert policy["explicit_approved_immutable_deployment_root"] is True
+    assert policy["objective_validation_repair"] is True
     assert policy["hermetic_parity_wrappers_are_non_production_shadows"] is True
     assert policy["hermetic_parity_wrappers_cannot_satisfy_vendor"] is True
     assert policy["finite_trace_authority_only"] is True
     assert policy["never_grants_theorem_authority"] is True
     assert policy["no_global_correctness_claim"] is True
     assert policy["grants_theorem_authority"] is False
+    assert vendor_certificate["summary"]["objective_validation_repair"] is True
+    assert vendor_certificate["summary"]["repair_task_id"] == VENDOR_REPAIR_TASK_ID
 
 
 def test_vendor_engine_digests_and_independence(
@@ -442,6 +501,8 @@ def test_vendor_engine_digests_and_independence(
         "source_digest_sha256",
         "lockfile_digest_sha256",
         "runtime_digest_sha256",
+        "launcher_digest_sha256",
+        "launcher_target_digest_sha256",
         "executable_digest_sha256",
         "artifact_sha256",
     ):
@@ -713,6 +774,9 @@ def test_vendor_lane_handler(certifier, install_root) -> None:
     assert result["interface"] == VENDOR_INTERFACE
     assert result["goal_id"] == VENDOR_GOAL_ID
     assert result["task_id"] == VENDOR_TASK_ID
+    assert result["repair_task_id"] == VENDOR_REPAIR_TASK_ID
+    assert result["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    assert result["objective_validation_repair"] is True
     assert result["certified"] is True
     assert result["status"] == "certified"
     assert result["finite_trace_authority_only"] is True
@@ -729,7 +793,15 @@ def test_checked_in_vendor_receipt_structure() -> None:
     assert receipt["interface"] == VENDOR_INTERFACE
     assert receipt["goal_id"] == VENDOR_GOAL_ID
     assert receipt["task_id"] == VENDOR_TASK_ID
+    assert receipt["repair_task_id"] == VENDOR_REPAIR_TASK_ID
     assert receipt["certified"] is True
+    # FVT-072 objective validation repair discovery keys must be on-disk.
+    assert receipt["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    assert receipt["objective_validation_repair"] is True
+    assert OBJECTIVE_VALIDATION_EVIDENCE in receipt_text
+    assert "objective validation repair" in receipt_text
+    assert receipt["acceptance"]["objective_validation_repair"] is True
+    assert receipt["acceptance"]["repair_task_id"] == VENDOR_REPAIR_TASK_ID
     engine = receipt["runtime_mtl_external"]
     assert engine["version"] == PIN_VERSION
     assert engine["is_vendor_build"] is True
@@ -747,6 +819,8 @@ def test_checked_in_vendor_receipt_structure() -> None:
         "source_digest_sha256",
         "lockfile_digest_sha256",
         "runtime_digest_sha256",
+        "launcher_digest_sha256",
+        "launcher_target_digest_sha256",
         "executable_digest_sha256",
         "artifact_sha256",
     ):
@@ -758,5 +832,8 @@ def test_checked_in_vendor_receipt_structure() -> None:
     assert REQUIRED_CATEGORIES <= set(receipt["categories_exercised"])
     assert set(receipt["mutation_kinds"]) == REQUIRED_MUTATIONS
     assert receipt["policy"]["never_grants_theorem_authority"] is True
+    assert receipt["policy"]["objective_validation_repair"] is True
+    assert receipt["summary"]["objective_validation_repair"] is True
+    assert receipt["summary"]["repair_task_id"] == VENDOR_REPAIR_TASK_ID
     assert receipt["receipt_digest_sha256"]
     assert len(receipt["receipt_digest_sha256"]) == 64

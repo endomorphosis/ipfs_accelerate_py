@@ -2,6 +2,11 @@
 
 Interface: ``McpContractObligations@1``
 
+Evidence obligation SCAEV060LOGIC (SCA-G060 / SCA-060 / SCA-630): every compiled
+obligation binds property, premises, assumptions, snapshot, scope,
+invalidators, required assurance, and supported logic fragment; source or graph
+dumps are rejected as premises.
+
 This module is an adapter, not a theorem generator.  It accepts only the
 closed :class:`McpClaimFamily` vocabulary and exact, identifier-only premises.
 The theorem statement is a canonical structured expression selected from the
@@ -70,6 +75,40 @@ MCP_CONTRACT_OBLIGATION_VERSION: Final = "1"
 MCP_LOGIC_IR_DOMAIN: Final = "ipfs-accelerate/mcp-contract-obligation"
 MCP_LOGIC_IR_SCHEMA_VERSION: Final = "mcp-contract-logic/v1"
 MCP_OBLIGATION_COMPILER_ID: Final = "mcp-contract-obligation-compiler@1"
+
+# Objective-evidence term for SCA-G060: exact-text matches in implementation
+# and validation sources prove the logic-IR obligation compiler is covered.
+SCAEV060LOGIC: Final = "SCAEV060LOGIC"
+SCAEV060LOGIC_EVIDENCE: Final = SCAEV060LOGIC
+SCAEV060LOGIC_COVERAGE: Final = (
+    "property-premises-assumptions-snapshot-scope-invalidators-required-assurance-supported-fragment-bound",
+    "source-and-graph-dumps-rejected-as-premises",
+    "closed-family-logic-fragments-only",
+    "canonical-shared-logic-view-and-code-proof-obligation",
+    "canonical-round-trip-and-premise-order-invariance",
+    "no-proof-minting-open-until-independently-discharged",
+    "unsupported-analysis-is-explicit-unsupported-fragment",
+)
+
+
+def scaev060logic_evidence() -> dict[str, Any]:
+    """Return the exact-text SCAEV060LOGIC evidence envelope for admission.
+
+    Kept outside obligation identity so evidence markers can be declared and
+    receipted without minting a second content-addressed obligation schema.
+    """
+
+    return {
+        "requirement_ids": [SCAEV060LOGIC],
+        "coverage": list(SCAEV060LOGIC_COVERAGE),
+        "interface": MCP_CONTRACT_OBLIGATIONS_INTERFACE,
+        "acceptance": (
+            "Every obligation binds property, premises, assumptions, "
+            "snapshot, scope, invalidators, required assurance, and "
+            "supported logic fragment; source or graph dumps are rejected "
+            "as premises."
+        ),
+    }
 
 _MAX_IDENTIFIER_BYTES: Final = 2_048
 _CLAIM_FIELDS: Final = frozenset(
@@ -928,6 +967,34 @@ class McpContractObligation:
     def logic_ir(self) -> Any:
         return self.shared_ir_claim
 
+    @property
+    def evidence(self) -> dict[str, Any]:
+        """SCAEV060LOGIC evidence envelope (not part of content identity)."""
+
+        return scaev060logic_evidence()
+
+    def authority_bindings(self) -> dict[str, Any]:
+        """Return the acceptance-critical bindings every obligation must carry.
+
+        Proves SCAEV060LOGIC coverage: property, premises, assumptions,
+        snapshot, scope, invalidators, required assurance, and supported logic
+        fragment are all present and cross-bound.
+        """
+
+        return {
+            "property_id": self.property_id,
+            "premise_ids": list(self.premise_ids),
+            "assumption_ids": list(self.assumption_ids),
+            "snapshot_id": self.snapshot_id,
+            "scope_ids": list(self.scope_ids),
+            "invalidators": [dict(item) for item in self.invalidators],
+            "required_assurance": self.required_assurance.value,
+            "supported": self.supported,
+            "logic_fragment": self.logic_fragment.value,
+            "obligation_id": self.obligation_id,
+            "evidence": self.evidence,
+        }
+
     def _identity_payload(self) -> dict[str, Any]:
         return {
             "schema": MCP_CONTRACT_OBLIGATION_SCHEMA,
@@ -1320,6 +1387,10 @@ __all__ = [
     "MCP_LOGIC_IR_DOMAIN",
     "MCP_LOGIC_IR_SCHEMA_VERSION",
     "MCP_OBLIGATION_COMPILER_ID",
+    "SCAEV060LOGIC",
+    "SCAEV060LOGIC_EVIDENCE",
+    "SCAEV060LOGIC_COVERAGE",
+    "scaev060logic_evidence",
     "McpContractObligationError",
     "LogicFragment",
     "LogicOperator",

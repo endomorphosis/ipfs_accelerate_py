@@ -5380,15 +5380,22 @@ def reconcile_objective_goal_completion(
         for goal_id in (*external_evaluation_goal_ids, *evaluation_goal_ids)
     ]
 
-    def descendant_states(goal_id: str) -> list[dict[str, Any]]:
+    def descendant_goal_ids(goal_id: str) -> list[str]:
         pending = list(hierarchy.get("children", {}).get(goal_id, ()))
         seen: set[str] = set()
-        descendants: list[dict[str, Any]] = []
+        descendants: list[str] = []
         while pending:
             child_id = str(pending.pop(0))
             if not child_id or child_id in seen:
                 continue
             seen.add(child_id)
+            descendants.append(child_id)
+            pending.extend(hierarchy.get("children", {}).get(child_id, ()))
+        return descendants
+
+    def descendant_states(goal_id: str) -> list[dict[str, Any]]:
+        descendants: list[dict[str, Any]] = []
+        for child_id in descendant_goal_ids(goal_id):
             child = goals_by_id.get(child_id)
             if child is not None:
                 state = effective_states[child_id].value
@@ -5397,7 +5404,6 @@ def reconcile_objective_goal_completion(
                     "state": state,
                     "verified": state == GoalState.VERIFIED_COMPLETE.value,
                 })
-            pending.extend(hierarchy.get("children", {}).get(child_id, ()))
         return descendants
 
     for goal in evaluation_goals:
@@ -5418,13 +5424,30 @@ def reconcile_objective_goal_completion(
         source_evidence_complete = bool(goal.required_evidence) and all(
             discovered_evidence.get(term) for term in goal.required_evidence
         )
+        descendant_ids = set(descendant_goal_ids(goal.goal_id))
+        descendant_producer_goal_ids = descendant_ids.intersection(
+            referenced_goal_ids
+        )
+        open_descendant_producer_goal_ids = (
+            descendant_producer_goal_ids.intersection(open_goal_ids)
+        )
+        descendant_implementation_complete = bool(
+            goal.goal_id not in externally_governed_goal_ids
+            and descendant_producer_goal_ids
+            and not open_descendant_producer_goal_ids
+        )
         tasks_complete = (
             goal.goal_id not in open_goal_ids
+            and (
+                goal.goal_id in externally_governed_goal_ids
+                or not open_descendant_producer_goal_ids
+            )
             and (
                 not completion_boards
                 or goal.goal_id in referenced_goal_ids
                 or bool(records)
                 or source_evidence_complete
+                or descendant_implementation_complete
                 or goal.goal_id in externally_governed_goal_ids
                 or is_legacy_completed_goal_state(
                     str(goal.fields.get("legacy_completion_state") or "")
@@ -5459,6 +5482,13 @@ def reconcile_objective_goal_completion(
 
         if not tasks_complete:
             referenced_boards = referenced_goal_ids.get(goal.goal_id, [])
+            descendant_open_boards = sorted(
+                {
+                    board
+                    for descendant_id in open_descendant_producer_goal_ids
+                    for board in open_goal_ids.get(descendant_id, ())
+                }
+            )
             validation_results[goal.goal_id] = {
                 "attempted": False,
                 "passed": False,
@@ -5466,11 +5496,16 @@ def reconcile_objective_goal_completion(
                 "reason": (
                     "open_todo_tasks"
                     if goal.goal_id in open_goal_ids
-                    else "no_producing_tasks"
+                    else (
+                        "open_descendant_todo_tasks"
+                        if open_descendant_producer_goal_ids
+                        else "no_producing_tasks"
+                    )
                 ),
-                "todo_boards": open_goal_ids.get(
-                    goal.goal_id,
-                    referenced_boards,
+                "todo_boards": (
+                    open_goal_ids.get(goal.goal_id, referenced_boards)
+                    if goal.goal_id in open_goal_ids
+                    else descendant_open_boards or referenced_boards
                 ),
             }
         elif current_state in {GoalState.PROVISIONALLY_COMPLETE, GoalState.VERIFIED_COMPLETE} and records:

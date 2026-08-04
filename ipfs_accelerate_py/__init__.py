@@ -942,5 +942,8 @@ class _IPFSAccelerateModule(ModuleType):
 
 sys.modules[__name__].__class__ = _IPFSAccelerateModule
 
-# Package version
-__version__ = "0.4.0"
+# Package version -- keep aligned with pyproject.toml / setup.py on every release.
+# A separate runtime string previously drifted to 0.4.0; packaging metadata is
+# the product pin (CHANGELOG, PyPI workflow).
+_PACKAGING_VERSION = "0.0.45"
+__version__ = _PACKAGING_VERSION

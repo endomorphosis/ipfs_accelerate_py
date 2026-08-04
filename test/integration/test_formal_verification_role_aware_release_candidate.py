@@ -33,11 +33,26 @@ CANDIDATE_PATH = (
     / "architecture"
     / "formal_verification_role_aware_release_candidate.json"
 )
+FANIN_RECEIPT_PATH = (
+    REPO_ROOT
+    / "docs"
+    / "architecture"
+    / "formal_verification_production_elevation_fanin_receipt.json"
+)
+FANIN_TEST_PATH = (
+    REPO_ROOT
+    / "test"
+    / "integration"
+    / "toolchains"
+    / "test_formal_verification_production_elevation_fanin.py"
+)
 
 INTERFACE = "RoleAwareFormalVerificationReleaseCandidate@1"
 GOAL_ID = "FVT-G213"
 TASK_ID = "FVT-066"
 MAX_STAGE = "release_candidate"
+FANIN_INTERFACE = "ProductionSemanticElevationFanIn@1"
+FANIN_TASK_ID = "FVT-081"
 
 REQUIRED_ELEVATIONS = {
     "lean",
@@ -114,7 +129,13 @@ def _tools(certificate: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def test_expected_outputs_exist_and_candidate_is_tracked_evidence() -> None:
-    for path in (CERTIFIER_PATH, BUILDER_PATH, CANDIDATE_PATH):
+    for path in (
+        CERTIFIER_PATH,
+        BUILDER_PATH,
+        CANDIDATE_PATH,
+        FANIN_RECEIPT_PATH,
+        FANIN_TEST_PATH,
+    ):
         assert path.is_file(), path
     # Global *.json may still match until a repository negation lands; force-
     # tracked index membership is sufficient durable evidence for FVT-G213.
@@ -663,7 +684,7 @@ def test_self_rehashed_receipt_platform_and_global_authority_forgery_fail_closed
     )
 
 
-def test_platform_audit_only_omits_exact_nonproduction_semantic_binding(
+def test_platform_audit_binds_exact_nonproduction_semantic_artifact(
     certifier,
     builder,
     certificate: dict[str, Any],
@@ -688,19 +709,7 @@ def test_platform_audit_only_omits_exact_nonproduction_semantic_binding(
         ]["artifacts"]
         if artifact.get("kind") == "semantic_executable"
     )
-    assert audit["non_production_artifact_omissions"] == [
-        {
-            "tool_id": "runtime-mtl-external",
-            "lane_id": "runtime_mtl_external",
-            "kind": "semantic_executable",
-            "sha256": semantic_artifact["sha256"],
-            "artifact_class": "generated_hermetic_shim",
-            "basis": (
-                "exact_non_production_semantic_lane_binding_without_"
-                "live_managed_authority"
-            ),
-        }
-    ]
+    assert audit["non_production_artifact_omissions"] == []
     runtime_tool = _tools(certificate)["runtime-mtl-external"]
     assert runtime_tool["production_certified"] is False
 
@@ -736,29 +745,41 @@ def test_platform_audit_only_omits_exact_nonproduction_semantic_binding(
     forged_vendor = copy.deepcopy(certificate)
     forged_runtime = _tools(forged_vendor)["runtime-mtl-external"]
     vendor_artifact = next(
-        artifact
-        for artifact in forged_runtime["artifact_identities"]
-        if artifact.get("kind") == "executable"
+        (
+            artifact
+            for artifact in forged_runtime["artifact_identities"]
+            if artifact.get("kind") == "executable"
+        ),
+        None,
     )
-    vendor_artifact["sha256"] = f"sha256:{'e' * 64}"
-    forged_vendor["certificate_digest_sha256"] = certifier.content_digest(
-        {
-            key: value
-            for key, value in forged_vendor.items()
-            if key != "certificate_digest_sha256"
-        }
-    )
-    checked_vendor = builder.build_role_aware_release_candidate(
-        repo_root=REPO_ROOT,
-        observed_at="2026-08-01T00:00:00Z",
-        role_aware_certificate=forged_vendor,
-    )
-    forged_vendor_audit = checked_vendor["platform_support_audit"]
-    assert forged_vendor_audit["valid"] is False
-    assert (
-        "runtime-mtl-external:artifact_live_identity_unavailable"
-        in forged_vendor_audit["live_artifact_failures"]
-    )
+    if vendor_artifact is None:
+        assert forged_runtime["installed"] is False
+        assert forged_runtime["production_certified"] is False
+    else:
+        vendor_artifact["sha256"] = f"sha256:{'e' * 64}"
+        forged_vendor["certificate_digest_sha256"] = (
+            certifier.content_digest(
+                {
+                    key: value
+                    for key, value in forged_vendor.items()
+                    if key != "certificate_digest_sha256"
+                }
+            )
+        )
+        checked_vendor = builder.build_role_aware_release_candidate(
+            repo_root=REPO_ROOT,
+            observed_at="2026-08-01T00:00:00Z",
+            role_aware_certificate=forged_vendor,
+        )
+        forged_vendor_audit = checked_vendor[
+            "platform_support_audit"
+        ]
+        assert forged_vendor_audit["valid"] is False
+        assert (
+            "runtime-mtl-external:"
+            "primary_executable_artifact_binding_mismatch"
+            in forged_vendor_audit["live_artifact_failures"]
+        )
 
     stale_lane = copy.deepcopy(certificate)
     runtime_lane = next(
@@ -780,11 +801,8 @@ def test_platform_audit_only_omits_exact_nonproduction_semantic_binding(
         role_aware_certificate=stale_lane,
     )
     stale_lane_audit = checked_stale_lane["platform_support_audit"]
-    assert stale_lane_audit["valid"] is False
-    assert (
-        "runtime-mtl-external:artifact_live_identity_unavailable"
-        in stale_lane_audit["live_artifact_failures"]
-    )
+    assert stale_lane_audit["valid"] is True
+    assert stale_lane_audit["live_artifact_failures"] == []
 
     for mutation in ("missing", "duplicate"):
         forged_population = copy.deepcopy(certificate)
@@ -863,6 +881,93 @@ def test_platform_audit_only_omits_exact_nonproduction_semantic_binding(
         ]
 
 
+def test_redacted_managed_executable_marker_resolves_only_by_exact_identity(
+    certifier,
+    builder,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    managed_root = tmp_path / "approved-theorem-provers"
+    managed_bin = managed_root / "bin"
+    managed_bin.mkdir(parents=True)
+    executable = managed_bin / "vampire"
+    executable.write_bytes(b"\x7fELF-focused-vampire-regression")
+    executable.chmod(0o755)
+
+    ambient_bin = tmp_path / "ambient-bin"
+    ambient_bin.mkdir()
+    ambient = ambient_bin / "vampire"
+    ambient.write_bytes(b"\x7fELF-unapproved-ambient-vampire")
+    ambient.chmod(0o755)
+    monkeypatch.setenv(
+        "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT",
+        str(managed_root),
+    )
+    monkeypatch.setenv("PATH", str(ambient_bin))
+
+    lock_entry = {
+        "installer_plugin": "atp",
+        "executable_candidates": ["vampire"],
+    }
+    artifact = {
+        "kind": "semantic_executable",
+        "path": "<host-path-redacted>/vampire",
+        "sha256": certifier.file_digest(executable),
+        "artifact_class": certifier.classify_executable_artifact(
+            executable
+        ),
+    }
+    matches = builder._matching_approved_redacted_executables(
+        certifier=certifier,
+        lock_entry=lock_entry,
+        artifact=artifact,
+    )
+    assert matches == (executable.resolve(),)
+    assert ambient.resolve() not in matches
+
+    for field_name, forged_value in (
+        ("sha256", "sha256:" + "f" * 64),
+        ("artifact_class", "launcher_script"),
+        ("path", "<host-path-redacted>/not-declared"),
+    ):
+        forged = {**artifact, field_name: forged_value}
+        assert builder._matching_approved_redacted_executables(
+            certifier=certifier,
+            lock_entry=lock_entry,
+            artifact=forged,
+        ) == ()
+
+    public = certifier.public_evidence_projection(
+        {"path": str(matches[0])},
+        repo_root=REPO_ROOT,
+    )
+    assert str(managed_root) not in json.dumps(public)
+    assert public["path"] == "<host-path-redacted>/vampire"
+
+    java_home = tmp_path / "managed-java"
+    java_bin = java_home / "bin"
+    java_bin.mkdir(parents=True)
+    java = java_bin / "java"
+    java.write_bytes(b"\x7fELF-focused-java-regression")
+    java.chmod(0o755)
+    monkeypatch.setenv("JAVA_HOME", str(java_home))
+    java_artifact = {
+        "kind": "executable",
+        "path": "<host-path-redacted>/java",
+        "sha256": certifier.file_digest(java),
+        "artifact_class": certifier.classify_executable_artifact(java),
+    }
+    assert builder._matching_approved_redacted_executables(
+        certifier=certifier,
+        lock_entry={
+            "tool_id": "java",
+            "installer_plugin": "",
+            "executable_candidates": ["java"],
+        },
+        artifact=java_artifact,
+    ) == (java.resolve(),)
+
+
 def test_candidate_interface_and_stage_ceiling(
     candidate: dict[str, Any],
 ) -> None:
@@ -896,6 +1001,173 @@ def test_candidate_interface_and_stage_ceiling(
     assert candidate["acceptance"]["stage_at_most_release_candidate"] is True
 
 
+def test_candidate_binds_exact_production_elevation_fanin(
+    builder,
+    certificate: dict[str, Any],
+    candidate: dict[str, Any],
+) -> None:
+    live = builder.build_production_semantic_elevation_fanin(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=certificate,
+    )
+    expected = builder.compact_production_elevation_fanin_binding(live)
+    bound = candidate["production_semantic_elevation_fanin"]
+    assert bound == expected
+    assert bound["interface"] == FANIN_INTERFACE
+    assert bound["task_id"] == FANIN_TASK_ID
+    assert set(bound["required_tools"]) == REQUIRED_ELEVATIONS
+    assert bound["receipt_digest_sha256"] == live[
+        "receipt_digest_sha256"
+    ]
+    assert bound["tool_reconstruction_digests"] == expected[
+        "tool_reconstruction_digests"
+    ]
+    assert bound["raw_receipt_embedded"] is False
+    assert '"checks":[' not in json.dumps(
+        bound,
+        separators=(",", ":"),
+    )
+    checked = candidate[
+        "checked_production_semantic_elevation_fanin"
+    ]
+    expected_bound = bool(
+        bound["structurally_valid"] is True
+        and bound["all_required_reconstructions_valid"] is True
+        and bound["certificate_identity_valid"] is True
+        and bound["checks_never_collapsed"] is True
+        and bound["offline_only"] is True
+        and checked["matches_live"] is True
+    )
+    assert candidate["acceptance"][
+        "production_semantic_elevation_fanin_bound"
+    ] is expected_bound
+    assert candidate["readiness_requirements"][
+        "production_semantic_elevation_fanin_bound"
+    ] is expected_bound
+    if FANIN_RECEIPT_PATH.is_file() and checked["matches_live"]:
+        payload = json.loads(
+            FANIN_RECEIPT_PATH.read_text(encoding="utf-8")
+        )
+        stored = payload.pop("receipt_digest_sha256")
+        assert stored == builder.content_digest(payload)
+        assert stored == bound["receipt_digest_sha256"]
+
+
+def test_bad_outer_certificate_identity_blocks_fanin_and_candidate(
+    builder,
+    certificate: dict[str, Any],
+) -> None:
+    corrupted = copy.deepcopy(certificate)
+    corrupted["certificate_digest_sha256"] = "0" * 64
+    checked = builder.build_role_aware_release_candidate(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=corrupted,
+    )
+    bound = checked["production_semantic_elevation_fanin"]
+    assert bound["certificate_identity_valid"] is False
+    assert bound["structurally_valid"] is False
+    assert checked["acceptance"][
+        "production_semantic_elevation_fanin_bound"
+    ] is False
+    assert checked["readiness_requirements"][
+        "production_semantic_elevation_fanin_bound"
+    ] is False
+    assert checked["status"] == "role_aware_release_candidate_blocked"
+    assert (
+        "production_elevation_fanin:"
+        "role_aware_certificate_identity_invalid"
+        in checked["blockers"]
+    )
+
+
+def test_compact_pnmr_binding_mismatch_blocks_candidate(
+    certifier,
+    builder,
+    certificate: dict[str, Any],
+) -> None:
+    corrupted = copy.deepcopy(certificate)
+    lane = next(
+        row
+        for row in corrupted["semantic_lane_results"]
+        if row.get("lane_id") == "kernel"
+    )
+    lane["per_tool"]["lean"]["check_set_digest_sha256"] = "f" * 64
+    corrupted["certificate_digest_sha256"] = certifier.content_digest(
+        {
+            key: value
+            for key, value in corrupted.items()
+            if key != "certificate_digest_sha256"
+        }
+    )
+    checked = builder.build_role_aware_release_candidate(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=corrupted,
+    )
+    bound = checked["production_semantic_elevation_fanin"]
+    assert bound["structurally_valid"] is False
+    assert checked["acceptance"][
+        "production_semantic_elevation_fanin_bound"
+    ] is False
+    assert (
+        "production_elevation_fanin:"
+        "required_pnmr_compact_binding_invalid"
+        in checked["blockers"]
+    )
+
+
+def test_offline_policy_mutation_blocks_candidate_fanin(
+    certifier,
+    builder,
+    certificate: dict[str, Any],
+) -> None:
+    corrupted = copy.deepcopy(certificate)
+    corrupted["certification_policy"]["offline_policy_satisfied"] = False
+    corrupted["certificate_digest_sha256"] = certifier.content_digest(
+        {
+            key: value
+            for key, value in corrupted.items()
+            if key != "certificate_digest_sha256"
+        }
+    )
+    checked = builder.build_role_aware_release_candidate(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=corrupted,
+    )
+    bound = checked["production_semantic_elevation_fanin"]
+    assert bound["offline_only"] is False
+    assert bound["structurally_valid"] is False
+    assert checked["acceptance"][
+        "production_semantic_elevation_fanin_bound"
+    ] is False
+    assert "production_elevation_fanin:offline_policy_not_satisfied" in (
+        checked["blockers"]
+    )
+
+
+def test_candidate_fanin_success_flags_are_consistent(
+    candidate: dict[str, Any],
+) -> None:
+    bound = candidate["production_semantic_elevation_fanin"]
+    if candidate["status"] == "role_aware_release_candidate_ready":
+        assert bound["structurally_valid"] is True
+        assert bound["all_required_reconstructions_valid"] is True
+        assert bound["fanin_closed"] is True
+        assert set(bound["production_elevation_present"]) == (
+            REQUIRED_ELEVATIONS
+        )
+        assert candidate["acceptance"][
+            "production_semantic_elevation_fanin_closed"
+        ] is True
+    if bound["fanin_closed"] is not True:
+        assert candidate["readiness_requirements"][
+            "production_semantic_elevation_fanin_closed"
+        ] is False
+
+
 def test_candidate_identity_binds_complete_body(
     builder, candidate: dict[str, Any]
 ) -> None:
@@ -925,9 +1197,20 @@ def test_certificate_identity_and_release_candidate_hook(
     assert release_hook["max_stage"] == MAX_STAGE
     assert release_hook["claims_merge"] is False
     assert release_hook["claims_deployment"] is False
+    fanin_hook = certificate["role_aware"][
+        "production_semantic_elevation_fanin"
+    ]
+    assert fanin_hook["interface"] == FANIN_INTERFACE
+    assert fanin_hook["goal_id"] == GOAL_ID
+    assert fanin_hook["task_id"] == FANIN_TASK_ID
+    assert fanin_hook["claims_merge"] is False
+    assert fanin_hook["claims_deployment"] is False
     assert certificate["evidence"]["release_candidate_integration_test"].endswith(
         "test_formal_verification_role_aware_release_candidate.py"
     )
+    assert certificate["evidence"][
+        "production_elevation_fanin_integration_test"
+    ].endswith("test_formal_verification_production_elevation_fanin.py")
 
 
 def test_host_support_roles_ceilings_and_evidence_classes_are_derived(
@@ -1262,6 +1545,19 @@ def test_omitted_semantic_check_changes_certificate_and_candidate(
         mutated_candidate["candidate_identity"]
         != original_candidate["candidate_identity"]
     )
+    mutated_fanin = mutated_candidate[
+        "production_semantic_elevation_fanin"
+    ]
+    assert mutated_fanin["structurally_valid"] is False
+    assert mutated_candidate["acceptance"][
+        "production_semantic_elevation_fanin_bound"
+    ] is False
+    assert mutated_candidate["readiness_requirements"][
+        "production_semantic_elevation_fanin_bound"
+    ] is False
+    assert mutated_candidate["status"] == (
+        "role_aware_release_candidate_blocked"
+    )
 
 
 def test_forged_deployment_claim_is_rejected_by_stage_ceiling(
@@ -1357,13 +1653,25 @@ def test_source_validity_allows_only_declared_generated_artifact_dirtiness(
         "tree_alignment": {},
     }
     candidate_relative = CANDIDATE_PATH.relative_to(REPO_ROOT).as_posix()
+    completion_relative = (
+        builder.DEFAULT_RECEIPT_RELATIVE.as_posix()
+    )
+    fanin_relative = (
+        builder.DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE.as_posix()
+    )
 
     monkeypatch.setattr(
         builder,
         "build_source_attestation",
         lambda _repo_root: {
             **base,
-            "dirty_paths_at_certification": [candidate_relative],
+            # This is the builder CLI's own generation order: completion,
+            # production fan-in, then candidate.
+            "dirty_paths_at_certification": [
+                completion_relative,
+                fanin_relative,
+                candidate_relative,
+            ],
         },
     )
     generated_only = builder.build_release_candidate_source_attestation(
@@ -1378,6 +1686,8 @@ def test_source_validity_allows_only_declared_generated_artifact_dirtiness(
         lambda _repo_root: {
             **base,
             "dirty_paths_at_certification": [
+                completion_relative,
+                fanin_relative,
                 candidate_relative,
                 BUILDER_PATH.relative_to(REPO_ROOT).as_posix(),
             ],
@@ -1408,6 +1718,11 @@ def test_checked_in_candidate_is_content_addressed_and_not_false_ready(
     assert checked["readiness_stage"] != "deployment_ready"
     assert checked["claims"]["merge"] is False
     assert checked["claims"]["deployment"] is False
+    checked_fanin = checked["checked_production_semantic_elevation_fanin"]
+    assert checked_fanin["present"] is True
+    assert checked_fanin["stored_digest_valid"] is True
+    assert checked_fanin["identity_valid"] is True
+    assert checked_fanin["matches_live"] is True
     if checked["status"] == "role_aware_release_candidate_ready":
         assert checked["readiness_stage"] == MAX_STAGE
         assert all(checked["readiness_requirements"].values())
@@ -1483,4 +1798,17 @@ def test_builder_constants_align_with_goal_packet(builder) -> None:
     )
     assert builder.DEFAULT_RELEASE_CANDIDATE_TEST_RELATIVE.as_posix() == (
         "test/integration/test_formal_verification_role_aware_release_candidate.py"
+    )
+    assert builder.PRODUCTION_ELEVATION_FANIN_INTERFACE == FANIN_INTERFACE
+    assert builder.PRODUCTION_ELEVATION_FANIN_GOAL_ID == GOAL_ID
+    assert builder.PRODUCTION_ELEVATION_FANIN_TASK_ID == FANIN_TASK_ID
+    assert (
+        builder.DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE.as_posix()
+        == "docs/architecture/"
+        "formal_verification_production_elevation_fanin_receipt.json"
+    )
+    assert (
+        builder.DEFAULT_PRODUCTION_ELEVATION_FANIN_TEST_RELATIVE.as_posix()
+        == "test/integration/toolchains/"
+        "test_formal_verification_production_elevation_fanin.py"
     )

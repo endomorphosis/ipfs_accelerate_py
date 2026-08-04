@@ -99,7 +99,8 @@ Conflict policy: keep edits inside this bundle when possible; use the LLM merge 
 - AST symbols: test/integration/test_formal_verification_role_aware_release_candidate.py, test/integration/toolchains/test_formal_verification_production_elevation_fanin.py, docs/architecture/formal_verification_role_aware_release_candidate.json, docs/architecture/formal_verification_production_elevation_fanin_receipt.json
 - Interfaces: RoleAwareFormalVerificationReleaseCandidate@1, ProductionSemanticElevationFanIn@1
 - Submodules:
-- Generated artifacts:
+- Generated artifacts: docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
+- Allowed paths: docs/architecture/formal_verification_tactician_readiness_completion_receipt.json, tools/logic/certification/public_evidence.py
 - Allow concurrent with:
 - Goal id: FVT-G213
 - Completion authority: local

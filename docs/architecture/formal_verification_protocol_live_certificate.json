@@ -2,7 +2,9 @@
   "authority_ceiling": "protocol",
   "authority_scope": "protocol_verification_only",
   "block_reasons": [],
-  "certificate_digest_sha256": "ad39c59afe4520b849ee8cb0ae02ae647faac19057ca09dfcdab718096eb15f6",
+  "capability_gaps": [],
+  "certificate_compact": true,
+  "certificate_digest_sha256": "dc3b9d2d8e947a96d4c1a3e1be4c6c73e4236f765fbf378005a3f05e4ca1600f",
   "engine_independence": {
     "independence_ok": true,
     "proverif_cannot_substitute_tamarin": true,
@@ -13,10 +15,13 @@
   "goal_id": "FVT-G205",
   "interface": "ProtocolLiveSemanticCertification@1",
   "lane_id": "protocol",
+  "live_execution": true,
   "live_semantic_certified": true,
-  "notes": "Both pinned Tamarin and ProVerif live semantic corpora certified with independent per-tool receipts.",
+  "notes": "Both pinned Tamarin and ProVerif live semantic corpora certified with independent compact per-tool receipts (objective validation repair FVT-075).",
   "policy": {
+    "durable_certificate_is_compact": true,
     "engines_are_independent": true,
+    "fixture_or_parser_cannot_satisfy_live_goal": true,
     "live_binary_required_for_semantic_proof": true,
     "maude_is_support_only": true,
     "no_download": true,
@@ -29,6 +34,19 @@
   "production_certified": true,
   "program": "formal-verification-tactician/protocol-live-semantics",
   "promotion_blocked": false,
+  "public_evidence_policy": {
+    "failures": [],
+    "host_private_paths_forbidden": true,
+    "max_public_string_bytes": 8192,
+    "raw_process_output_forbidden": true,
+    "raw_secret_or_witness_forbidden": true,
+    "repo_root_paths_forbidden": true,
+    "safe": true,
+    "satisfied": true,
+    "violation_count": 0,
+    "violations": []
+  },
+  "repair_task_id": "FVT-075",
   "required_case_kinds": [
     "attack",
     "bounded_search",
@@ -64,7 +82,7 @@
         },
         "dependency": {
           "can_promote_protocol_lane": false,
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/opam",
+          "executable_path": "<managed-tool-path-redacted>/opam",
           "identity_probed": true,
           "locked_version": "2.5.2",
           "support_only": true,
@@ -83,12 +101,12 @@
           "source_format": "pv"
         },
         "tool": {
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/proverif",
+          "executable_path": "<managed-tool-path-redacted>/proverif",
           "identity_probed": true,
           "locked_version": "2.05",
           "tool_id": "proverif",
           "version_match": true,
-          "version_string": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/proverif-2.05/proverif2.05/proverif: unknown option '--version'."
+          "version_string": "<managed-tool-path-redacted>/proverif: unknown option '--version'."
         },
         "witnesses_traces": {
           "live_attack_leak": {
@@ -207,6 +225,7 @@
       },
       "block_reasons": [],
       "cannot_substitute_tamarin": true,
+      "capability_gap": null,
       "cases": [
         {
           "assumptions": [
@@ -238,26 +257,24 @@
           "detail": "Live secure secrecy and authentication queries",
           "elapsed_ms": 6,
           "evidence_class": "live",
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/proverif",
+          "executable_path": "<managed-tool-path-redacted>/proverif",
           "expect": "secure",
           "kind": "secure",
           "live_executed": true,
           "matched": true,
           "output_digest": "c03346ef52780c328bcedbee73f55043e27992067683649635ce556e1e9d157b",
           "query": "query attacker(challenge) + auth correspondence",
-          "raw_output": "Process 0 (that is, the initial process):\n{1}event BeginChallenge(challenge);\n{2}out(c, h(challenge));\n{3}in(c, x: bitstring);\n{4}if (x = h(challenge)) then\n{5}event AcceptChallenge(challenge)\n\n-- Query not attacker(challenge[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(challenge[])\nRESULT not attacker(challenge[]) is true.\n-- Query event(AcceptChallenge(x_1)) ==> event(BeginChallenge(x_1)) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query event(AcceptChallenge(x_1)) ==> event(BeginChallenge(x_1))\ngoal reachable: b-event(BeginChallenge(challenge[])) -> event(AcceptChallenge(challenge[]))\nRESULT event(AcceptChallenge(x_1)) ==> event(BeginChallenge(x_1)) is true.\n\n--------------------------------------------------------------\nVerification summary:\n\nQuery not attacker(challenge[]) is true.\n\nQuery event(AcceptChallenge(x_1)) ==> event(BeginChallenge(x_1)) is true.\n\n--------------------------------------------------------------\n\n\n",
+          "raw_output_preview": "Process 0 (that is, the initial process):\n{1}event BeginChallenge(challenge);\n{2}out(c, h(challenge));\n{3}in(c, x: bitstring);\n{4}if (x = h(challenge)) then\n{5}event AcceptChallenge(challenge)\n\n-- Query not attacker(challenge[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(challenge[])\nRESULT not attacker(challenge[]) is true.\n-- Query event(",
           "reason_codes": [],
           "returncode": 0,
-          "source": "free c:channel.\nfree challenge:bitstring [private].\nfun h(bitstring):bitstring.\n\nquery attacker(challenge).\n\nevent BeginChallenge(bitstring).\nevent AcceptChallenge(bitstring).\n\nquery x:bitstring;\n  event(AcceptChallenge(x)) ==> event(BeginChallenge(x)).\n\nprocess\n  event BeginChallenge(challenge);\n  out(c, h(challenge));\n  in(c, x:bitstring);\n  if x = h(challenge) then\n    event AcceptChallenge(challenge)\n",
           "source_digest": "b6d67b85c49b11269d526f03e514bed8be73314ecb84949a7c61e0d47a72d774",
           "source_format": "pv",
+          "source_preview": "free c:channel.\nfree challenge:bitstring [private].\nfun h(bitstring):bitstring.\n\nquery attacker(challenge).\n\nevent BeginChallenge(bitstring).\nevent AcceptChallenge(bitstring).\n\nquery x:bitstring;\n  event(AcceptChallenge(x)) ==> event(BeginChallenge(x)).\n\nprocess\n  event BeginChallenge(challenge);\n  out(c, h(challenge));\n  in(c, x:bitstring);\n  if x = h(challenge) then\n    event AcceptChallenge(cha",
           "status": "secure",
-          "stderr": "",
-          "stdout": "Process 0 (that is, the initial process):\n{1}event BeginChallenge(challenge);\n{2}out(c, h(challenge));\n{3}in(c, x: bitstring);\n{4}if (x = h(challenge)) then\n{5}event AcceptChallenge(challenge)\n\n-- Query not attacker(challenge[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(challenge[])\nRESULT not attacker(challenge[]) is true.\n-- Query event(AcceptChallenge(x_1)) ==> event(BeginChallenge(x_1)) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query event(AcceptChallenge(x_1)) ==> event(BeginChallenge(x_1))\ngoal reachable: b-event(BeginChallenge(challenge[])) -> event(AcceptChallenge(challenge[]))\nRESULT event(AcceptChallenge(x_1)) ==> event(BeginChallenge(x_1)) is true.\n\n--------------------------------------------------------------\nVerification summary:\n\nQuery not attacker(challenge[]) is true.\n\nQuery event(AcceptChallenge(x_1)) ==> event(BeginChallenge(x_1)) is true.\n\n--------------------------------------------------------------\n\n",
           "support_tool_id": "opam",
           "support_tool_version": "2.5.2",
           "tool_id": "proverif",
-          "tool_version": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/proverif-2.05/proverif2.05/proverif: unknown option '--version'."
+          "tool_version": "<managed-tool-path-redacted>/proverif: unknown option '--version'."
         },
         {
           "assumptions": [
@@ -312,28 +329,26 @@
             }
           ],
           "detail": "Live concrete attack: private name leaked",
-          "elapsed_ms": 6,
+          "elapsed_ms": 5,
           "evidence_class": "live",
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/proverif",
+          "executable_path": "<managed-tool-path-redacted>/proverif",
           "expect": "attack",
           "kind": "attack",
           "live_executed": true,
           "matched": true,
           "output_digest": "a067fdd58d5c00f4dff605116a25a29a48b8cabb31807dccdfea682f2da29f2a",
           "query": "query attacker(challenge) expect false",
-          "raw_output": "Process 0 (that is, the initial process):\n{1}out(c, challenge)\n\n-- Query not attacker(challenge[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(challenge[])\ngoal reachable: attacker(challenge[])\n\nDerivation:\n\n1. The message challenge[] may be sent to the attacker at output {1}.\nattacker(challenge[]).\n\n2. By 1, attacker(challenge[]).\nThe goal is reached, represented in the following fact:\nattacker(challenge[]).\n\n\nA more detailed output of the traces is available with\n  set traceDisplay = long.\n\nout(c, ~M) with ~M = challenge at {1}\n\nThe attacker has the message ~M = challenge.\nA trace has been found.\nRESULT not attacker(challenge[]) is false.\n\n--------------------------------------------------------------\nVerification summary:\n\nQuery not attacker(challenge[]) is false.\n\n--------------------------------------------------------------\n\n\n",
+          "raw_output_preview": "Process 0 (that is, the initial process):\n{1}out(c, challenge)\n\n-- Query not attacker(challenge[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(challenge[])\ngoal reachable: attacker(challenge[])\n\nDerivation:\n\n1. The message challenge[] may be sent to the attacker at output {1}.\nattacker(challenge[]).\n\n2. By 1, attacker(challenge[]).\nThe goal ",
           "reason_codes": [],
           "returncode": 0,
-          "source": "free c:channel.\nfree challenge:bitstring [private].\n\nquery attacker(challenge).\n\nprocess\n  out(c, challenge)\n",
           "source_digest": "480ab7176b8d6974a4de35127f12f7d9e6db875a1c44fd46dcb4ea70a9ed8d49",
           "source_format": "pv",
+          "source_preview": "free c:channel.\nfree challenge:bitstring [private].\n\nquery attacker(challenge).\n\nprocess\n  out(c, challenge)\n",
           "status": "attack",
-          "stderr": "",
-          "stdout": "Process 0 (that is, the initial process):\n{1}out(c, challenge)\n\n-- Query not attacker(challenge[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(challenge[])\ngoal reachable: attacker(challenge[])\n\nDerivation:\n\n1. The message challenge[] may be sent to the attacker at output {1}.\nattacker(challenge[]).\n\n2. By 1, attacker(challenge[]).\nThe goal is reached, represented in the following fact:\nattacker(challenge[]).\n\n\nA more detailed output of the traces is available with\n  set traceDisplay = long.\n\nout(c, ~M) with ~M = challenge at {1}\n\nThe attacker has the message ~M = challenge.\nA trace has been found.\nRESULT not attacker(challenge[]) is false.\n\n--------------------------------------------------------------\nVerification summary:\n\nQuery not attacker(challenge[]) is false.\n\n--------------------------------------------------------------\n\n",
           "support_tool_id": "opam",
           "support_tool_version": "2.5.2",
           "tool_id": "proverif",
-          "tool_version": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/proverif-2.05/proverif2.05/proverif: unknown option '--version'."
+          "tool_version": "<managed-tool-path-redacted>/proverif: unknown option '--version'."
         },
         {
           "assumptions": [
@@ -436,30 +451,28 @@
             }
           ],
           "detail": "Premise/conclusion mutation must not remain secure",
-          "elapsed_ms": 6,
+          "elapsed_ms": 5,
           "evidence_class": "live",
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/proverif",
+          "executable_path": "<managed-tool-path-redacted>/proverif",
           "expect": "rejected_or_quarantined",
           "kind": "mutation",
           "live_executed": true,
           "matched": true,
           "output_digest": "1afdbc078f5400c217ec9960b2dd6c2d1fa32d2a881687e12642eb15a5f17975",
           "query": "mutated premise/conclusion auth query",
-          "raw_output": "Process 0 (that is, the initial process):\n{1}event AcceptChallenge(challenge);\n{2}out(c, h(challenge));\n{3}event BeginChallenge(challenge)\n\n-- Query not attacker(challenge[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(challenge[])\nRESULT not attacker(challenge[]) is true.\n-- Query event(AcceptChallenge(x)) ==> event(BeginChallenge(x)) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query event(AcceptChallenge(x)) ==> event(BeginChallenge(x))\ngoal reachable: event(AcceptChallenge(challenge[]))\n\nDerivation:\n\n1. Event AcceptChallenge(challenge[]) may be executed at {1}.\nevent(AcceptChallenge(challenge[])).\n\n2. By 1, event(AcceptChallenge(challenge[])).\nThe goal is reached, represented in the following fact:\nevent(AcceptChallenge(challenge[])).\n\n\nA more detailed output of the traces is available with\n  set traceDisplay = long.\n\nevent AcceptChallenge(challenge) at {1} (goal)\n\nThe event AcceptChallenge(challenge) is executed at {1}.\nA trace has been found.\nRESULT event(AcceptChallenge(x)) ==> event(BeginChallenge(x)) is false.\n\n--------------------------------------------------------------\nVerification summary:\n\nQuery not attacker(challenge[]) is true.\n\nQuery event(AcceptChallenge(x)) ==> event(BeginChallenge(x)) is false.\n\n--------------------------------------------------------------\n\n\n",
+          "raw_output_preview": "Process 0 (that is, the initial process):\n{1}event AcceptChallenge(challenge);\n{2}out(c, h(challenge));\n{3}event BeginChallenge(challenge)\n\n-- Query not attacker(challenge[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(challenge[])\nRESULT not attacker(challenge[]) is true.\n-- Query event(AcceptChallenge(x)) ==> event(BeginChallenge(x)) in pr",
           "reason_codes": [
             "disagreement"
           ],
           "returncode": 0,
-          "source": "free c:channel.\nfree challenge:bitstring [private].\nfun h(bitstring):bitstring.\n\nquery attacker(challenge).\n\nevent BeginChallenge(bitstring).\nevent AcceptChallenge(bitstring).\n\n(* Premise/conclusion mutation: Accept happens before Begin. *)\nquery x:bitstring;\n  event(AcceptChallenge(x)) ==> event(BeginChallenge(x)).\n\nprocess\n  event AcceptChallenge(challenge);\n  out(c, h(challenge));\n  event BeginChallenge(challenge)\n",
           "source_digest": "c38241618345f17fd9b5c08dc352d0c7d02242b5bfef48fb6d9a4382a936341f",
           "source_format": "pv",
+          "source_preview": "free c:channel.\nfree challenge:bitstring [private].\nfun h(bitstring):bitstring.\n\nquery attacker(challenge).\n\nevent BeginChallenge(bitstring).\nevent AcceptChallenge(bitstring).\n\n(* Premise/conclusion mutation: Accept happens before Begin. *)\nquery x:bitstring;\n  event(AcceptChallenge(x)) ==> event(BeginChallenge(x)).\n\nprocess\n  event AcceptChallenge(challenge);\n  out(c, h(challenge));\n  event Begin",
           "status": "quarantined",
-          "stderr": "",
-          "stdout": "Process 0 (that is, the initial process):\n{1}event AcceptChallenge(challenge);\n{2}out(c, h(challenge));\n{3}event BeginChallenge(challenge)\n\n-- Query not attacker(challenge[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(challenge[])\nRESULT not attacker(challenge[]) is true.\n-- Query event(AcceptChallenge(x)) ==> event(BeginChallenge(x)) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query event(AcceptChallenge(x)) ==> event(BeginChallenge(x))\ngoal reachable: event(AcceptChallenge(challenge[]))\n\nDerivation:\n\n1. Event AcceptChallenge(challenge[]) may be executed at {1}.\nevent(AcceptChallenge(challenge[])).\n\n2. By 1, event(AcceptChallenge(challenge[])).\nThe goal is reached, represented in the following fact:\nevent(AcceptChallenge(challenge[])).\n\n\nA more detailed output of the traces is available with\n  set traceDisplay = long.\n\nevent AcceptChallenge(challenge) at {1} (goal)\n\nThe event AcceptChallenge(challenge) is executed at {1}.\nA trace has been found.\nRESULT event(AcceptChallenge(x)) ==> event(BeginChallenge(x)) is false.\n\n--------------------------------------------------------------\nVerification summary:\n\nQuery not attacker(challenge[]) is true.\n\nQuery event(AcceptChallenge(x)) ==> event(BeginChallenge(x)) is false.\n\n--------------------------------------------------------------\n\n",
           "support_tool_id": "opam",
           "support_tool_version": "2.5.2",
           "tool_id": "proverif",
-          "tool_version": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/proverif-2.05/proverif2.05/proverif: unknown option '--version'."
+          "tool_version": "<managed-tool-path-redacted>/proverif: unknown option '--version'."
         },
         {
           "assumptions": [
@@ -515,28 +528,26 @@
             }
           ],
           "detail": "Protocol mutation yields an attack",
-          "elapsed_ms": 5,
+          "elapsed_ms": 4,
           "evidence_class": "live",
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/proverif",
+          "executable_path": "<managed-tool-path-redacted>/proverif",
           "expect": "attack",
           "kind": "mutation",
           "live_executed": true,
           "matched": true,
           "output_digest": "a067fdd58d5c00f4dff605116a25a29a48b8cabb31807dccdfea682f2da29f2a",
           "query": "query attacker after protocol mutation",
-          "raw_output": "Process 0 (that is, the initial process):\n{1}out(c, challenge)\n\n-- Query not attacker(challenge[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(challenge[])\ngoal reachable: attacker(challenge[])\n\nDerivation:\n\n1. The message challenge[] may be sent to the attacker at output {1}.\nattacker(challenge[]).\n\n2. By 1, attacker(challenge[]).\nThe goal is reached, represented in the following fact:\nattacker(challenge[]).\n\n\nA more detailed output of the traces is available with\n  set traceDisplay = long.\n\nout(c, ~M) with ~M = challenge at {1}\n\nThe attacker has the message ~M = challenge.\nA trace has been found.\nRESULT not attacker(challenge[]) is false.\n\n--------------------------------------------------------------\nVerification summary:\n\nQuery not attacker(challenge[]) is false.\n\n--------------------------------------------------------------\n\n\n",
+          "raw_output_preview": "Process 0 (that is, the initial process):\n{1}out(c, challenge)\n\n-- Query not attacker(challenge[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(challenge[])\ngoal reachable: attacker(challenge[])\n\nDerivation:\n\n1. The message challenge[] may be sent to the attacker at output {1}.\nattacker(challenge[]).\n\n2. By 1, attacker(challenge[]).\nThe goal ",
           "reason_codes": [],
           "returncode": 0,
-          "source": "free c:channel.\nfree challenge:bitstring [private].\n\nquery attacker(challenge).\n\nprocess\n  out(c, challenge)\n",
           "source_digest": "480ab7176b8d6974a4de35127f12f7d9e6db875a1c44fd46dcb4ea70a9ed8d49",
           "source_format": "pv",
+          "source_preview": "free c:channel.\nfree challenge:bitstring [private].\n\nquery attacker(challenge).\n\nprocess\n  out(c, challenge)\n",
           "status": "attack",
-          "stderr": "",
-          "stdout": "Process 0 (that is, the initial process):\n{1}out(c, challenge)\n\n-- Query not attacker(challenge[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(challenge[])\ngoal reachable: attacker(challenge[])\n\nDerivation:\n\n1. The message challenge[] may be sent to the attacker at output {1}.\nattacker(challenge[]).\n\n2. By 1, attacker(challenge[]).\nThe goal is reached, represented in the following fact:\nattacker(challenge[]).\n\n\nA more detailed output of the traces is available with\n  set traceDisplay = long.\n\nout(c, ~M) with ~M = challenge at {1}\n\nThe attacker has the message ~M = challenge.\nA trace has been found.\nRESULT not attacker(challenge[]) is false.\n\n--------------------------------------------------------------\nVerification summary:\n\nQuery not attacker(challenge[]) is false.\n\n--------------------------------------------------------------\n\n",
           "support_tool_id": "opam",
           "support_tool_version": "2.5.2",
           "tool_id": "proverif",
-          "tool_version": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/proverif-2.05/proverif2.05/proverif: unknown option '--version'."
+          "tool_version": "<managed-tool-path-redacted>/proverif: unknown option '--version'."
         },
         {
           "assumptions": [
@@ -566,28 +577,26 @@
             }
           ],
           "detail": "Deterministic live replay of the secure case",
-          "elapsed_ms": 6,
+          "elapsed_ms": 5,
           "evidence_class": "live",
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/proverif",
+          "executable_path": "<managed-tool-path-redacted>/proverif",
           "expect": "secure",
           "kind": "replay",
           "live_executed": true,
           "matched": true,
           "output_digest": "c03346ef52780c328bcedbee73f55043e27992067683649635ce556e1e9d157b",
           "query": "replay secure queries",
-          "raw_output": "Process 0 (that is, the initial process):\n{1}event BeginChallenge(challenge);\n{2}out(c, h(challenge));\n{3}in(c, x: bitstring);\n{4}if (x = h(challenge)) then\n{5}event AcceptChallenge(challenge)\n\n-- Query not attacker(challenge[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(challenge[])\nRESULT not attacker(challenge[]) is true.\n-- Query event(AcceptChallenge(x_1)) ==> event(BeginChallenge(x_1)) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query event(AcceptChallenge(x_1)) ==> event(BeginChallenge(x_1))\ngoal reachable: b-event(BeginChallenge(challenge[])) -> event(AcceptChallenge(challenge[]))\nRESULT event(AcceptChallenge(x_1)) ==> event(BeginChallenge(x_1)) is true.\n\n--------------------------------------------------------------\nVerification summary:\n\nQuery not attacker(challenge[]) is true.\n\nQuery event(AcceptChallenge(x_1)) ==> event(BeginChallenge(x_1)) is true.\n\n--------------------------------------------------------------\n\n\n",
+          "raw_output_preview": "Process 0 (that is, the initial process):\n{1}event BeginChallenge(challenge);\n{2}out(c, h(challenge));\n{3}in(c, x: bitstring);\n{4}if (x = h(challenge)) then\n{5}event AcceptChallenge(challenge)\n\n-- Query not attacker(challenge[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(challenge[])\nRESULT not attacker(challenge[]) is true.\n-- Query event(",
           "reason_codes": [],
           "returncode": 0,
-          "source": "free c:channel.\nfree challenge:bitstring [private].\nfun h(bitstring):bitstring.\n\nquery attacker(challenge).\n\nevent BeginChallenge(bitstring).\nevent AcceptChallenge(bitstring).\n\nquery x:bitstring;\n  event(AcceptChallenge(x)) ==> event(BeginChallenge(x)).\n\nprocess\n  event BeginChallenge(challenge);\n  out(c, h(challenge));\n  in(c, x:bitstring);\n  if x = h(challenge) then\n    event AcceptChallenge(challenge)\n",
           "source_digest": "b6d67b85c49b11269d526f03e514bed8be73314ecb84949a7c61e0d47a72d774",
           "source_format": "pv",
+          "source_preview": "free c:channel.\nfree challenge:bitstring [private].\nfun h(bitstring):bitstring.\n\nquery attacker(challenge).\n\nevent BeginChallenge(bitstring).\nevent AcceptChallenge(bitstring).\n\nquery x:bitstring;\n  event(AcceptChallenge(x)) ==> event(BeginChallenge(x)).\n\nprocess\n  event BeginChallenge(challenge);\n  out(c, h(challenge));\n  in(c, x:bitstring);\n  if x = h(challenge) then\n    event AcceptChallenge(cha",
           "status": "secure",
-          "stderr": "",
-          "stdout": "Process 0 (that is, the initial process):\n{1}event BeginChallenge(challenge);\n{2}out(c, h(challenge));\n{3}in(c, x: bitstring);\n{4}if (x = h(challenge)) then\n{5}event AcceptChallenge(challenge)\n\n-- Query not attacker(challenge[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(challenge[])\nRESULT not attacker(challenge[]) is true.\n-- Query event(AcceptChallenge(x_1)) ==> event(BeginChallenge(x_1)) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query event(AcceptChallenge(x_1)) ==> event(BeginChallenge(x_1))\ngoal reachable: b-event(BeginChallenge(challenge[])) -> event(AcceptChallenge(challenge[]))\nRESULT event(AcceptChallenge(x_1)) ==> event(BeginChallenge(x_1)) is true.\n\n--------------------------------------------------------------\nVerification summary:\n\nQuery not attacker(challenge[]) is true.\n\nQuery event(AcceptChallenge(x_1)) ==> event(BeginChallenge(x_1)) is true.\n\n--------------------------------------------------------------\n\n",
           "support_tool_id": "opam",
           "support_tool_version": "2.5.2",
           "tool_id": "proverif",
-          "tool_version": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/proverif-2.05/proverif2.05/proverif: unknown option '--version'."
+          "tool_version": "<managed-tool-path-redacted>/proverif: unknown option '--version'."
         },
         {
           "assumptions": [],
@@ -608,28 +617,26 @@
           "detail": "Malformed model never reports SECURE",
           "elapsed_ms": 4,
           "evidence_class": "live",
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/proverif",
+          "executable_path": "<managed-tool-path-redacted>/proverif",
           "expect": "quarantined",
           "kind": "malformed",
           "live_executed": true,
           "matched": true,
-          "output_digest": "9ef9be42a233bed9cd52c78fcd19c12d5577fb1744c5a4de94a23b2a9049d35b",
+          "output_digest": "017557ce308ad9cf2c22af4a64ee83e7e0204857945e7f2b61934d5db6fe3e99",
           "query": "parse/prove malformed model",
-          "raw_output": "File \"/tmp/proverif-live-h9whsr4u/live_malformed_model.pv\", line 1, characters 1-4:\nError: Syntax error.\n\n",
+          "raw_output_preview": "File \"<host-path-redacted>/live_malformed_model.pv\", line 1, characters 1-4:\nError: Syntax error.\n\n",
           "reason_codes": [
             "inconclusive"
           ],
           "returncode": 2,
-          "source": "this is not valid proverif source !!!!\nquery attacker(secret).\nprocess 0\n",
           "source_digest": "97aa8720cb5fc87b5107d85a0b337f362833ee37f15a58069219472b419a9524",
           "source_format": "pv",
+          "source_preview": "this is not valid proverif source !!!!\nquery attacker(secret).\nprocess 0\n",
           "status": "quarantined",
-          "stderr": "",
-          "stdout": "File \"/tmp/proverif-live-h9whsr4u/live_malformed_model.pv\", line 1, characters 1-4:\nError: Syntax error.\n",
           "support_tool_id": "opam",
           "support_tool_version": "2.5.2",
           "tool_id": "proverif",
-          "tool_version": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/proverif-2.05/proverif2.05/proverif: unknown option '--version'."
+          "tool_version": "<managed-tool-path-redacted>/proverif: unknown option '--version'."
         },
         {
           "assumptions": [
@@ -642,30 +649,28 @@
           "case_id": "live_timeout",
           "claim_outcomes": [],
           "detail": "Subprocess timeout quarantines rather than SECURE",
-          "elapsed_ms": 2,
+          "elapsed_ms": 1,
           "evidence_class": "live",
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/proverif",
+          "executable_path": "<managed-tool-path-redacted>/proverif",
           "expect": "quarantined",
           "kind": "timeout",
           "live_executed": true,
           "matched": true,
           "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
           "query": "query under extreme timeout bound",
-          "raw_output": "\n",
+          "raw_output_preview": "\n",
           "reason_codes": [
             "timeout"
           ],
           "returncode": null,
-          "source": "free c:channel.\nfree challenge:bitstring [private].\nfun h(bitstring):bitstring.\n\nquery attacker(challenge).\n\nevent BeginChallenge(bitstring).\nevent AcceptChallenge(bitstring).\n\nquery x:bitstring;\n  event(AcceptChallenge(x)) ==> event(BeginChallenge(x)).\n\nprocess\n  event BeginChallenge(challenge);\n  out(c, h(challenge));\n  in(c, x:bitstring);\n  if x = h(challenge) then\n    event AcceptChallenge(challenge)\n",
           "source_digest": "b6d67b85c49b11269d526f03e514bed8be73314ecb84949a7c61e0d47a72d774",
           "source_format": "pv",
+          "source_preview": "free c:channel.\nfree challenge:bitstring [private].\nfun h(bitstring):bitstring.\n\nquery attacker(challenge).\n\nevent BeginChallenge(bitstring).\nevent AcceptChallenge(bitstring).\n\nquery x:bitstring;\n  event(AcceptChallenge(x)) ==> event(BeginChallenge(x)).\n\nprocess\n  event BeginChallenge(challenge);\n  out(c, h(challenge));\n  in(c, x:bitstring);\n  if x = h(challenge) then\n    event AcceptChallenge(cha",
           "status": "quarantined",
-          "stderr": "",
-          "stdout": "",
           "support_tool_id": "opam",
           "support_tool_version": "2.5.2",
           "tool_id": "proverif",
-          "tool_version": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/proverif-2.05/proverif2.05/proverif: unknown option '--version'."
+          "tool_version": "<managed-tool-path-redacted>/proverif: unknown option '--version'."
         },
         {
           "assumptions": [
@@ -768,30 +773,28 @@
             }
           ],
           "detail": "Mixed true/false claims quarantine or attack",
-          "elapsed_ms": 5,
+          "elapsed_ms": 4,
           "evidence_class": "live",
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/proverif",
+          "executable_path": "<managed-tool-path-redacted>/proverif",
           "expect": "rejected_or_quarantined",
           "kind": "disagreement",
           "live_executed": true,
           "matched": true,
           "output_digest": "1afdbc078f5400c217ec9960b2dd6c2d1fa32d2a881687e12642eb15a5f17975",
           "query": "mixed secrecy(false)+auth(false) or mixed true/false",
-          "raw_output": "Process 0 (that is, the initial process):\n{1}event AcceptChallenge(challenge);\n{2}out(c, h(challenge));\n{3}event BeginChallenge(challenge)\n\n-- Query not attacker(challenge[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(challenge[])\nRESULT not attacker(challenge[]) is true.\n-- Query event(AcceptChallenge(x)) ==> event(BeginChallenge(x)) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query event(AcceptChallenge(x)) ==> event(BeginChallenge(x))\ngoal reachable: event(AcceptChallenge(challenge[]))\n\nDerivation:\n\n1. Event AcceptChallenge(challenge[]) may be executed at {1}.\nevent(AcceptChallenge(challenge[])).\n\n2. By 1, event(AcceptChallenge(challenge[])).\nThe goal is reached, represented in the following fact:\nevent(AcceptChallenge(challenge[])).\n\n\nA more detailed output of the traces is available with\n  set traceDisplay = long.\n\nevent AcceptChallenge(challenge) at {1} (goal)\n\nThe event AcceptChallenge(challenge) is executed at {1}.\nA trace has been found.\nRESULT event(AcceptChallenge(x)) ==> event(BeginChallenge(x)) is false.\n\n--------------------------------------------------------------\nVerification summary:\n\nQuery not attacker(challenge[]) is true.\n\nQuery event(AcceptChallenge(x)) ==> event(BeginChallenge(x)) is false.\n\n--------------------------------------------------------------\n\n\n",
+          "raw_output_preview": "Process 0 (that is, the initial process):\n{1}event AcceptChallenge(challenge);\n{2}out(c, h(challenge));\n{3}event BeginChallenge(challenge)\n\n-- Query not attacker(challenge[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(challenge[])\nRESULT not attacker(challenge[]) is true.\n-- Query event(AcceptChallenge(x)) ==> event(BeginChallenge(x)) in pr",
           "reason_codes": [
             "disagreement"
           ],
           "returncode": 0,
-          "source": "free c:channel.\nfree challenge:bitstring [private].\nfun h(bitstring):bitstring.\n\nquery attacker(challenge).\n\nevent BeginChallenge(bitstring).\nevent AcceptChallenge(bitstring).\n\nquery x:bitstring;\n  event(AcceptChallenge(x)) ==> event(BeginChallenge(x)).\n\n(* Secrecy holds (only hash is sent) while auth fails (Accept before Begin). *)\nprocess\n  event AcceptChallenge(challenge);\n  out(c, h(challenge));\n  event BeginChallenge(challenge)\n",
           "source_digest": "e1c8f03d30cdaf0b7c46dc57f02d76b0c5fbe87e173c19f2039f8f8f376109fd",
           "source_format": "pv",
+          "source_preview": "free c:channel.\nfree challenge:bitstring [private].\nfun h(bitstring):bitstring.\n\nquery attacker(challenge).\n\nevent BeginChallenge(bitstring).\nevent AcceptChallenge(bitstring).\n\nquery x:bitstring;\n  event(AcceptChallenge(x)) ==> event(BeginChallenge(x)).\n\n(* Secrecy holds (only hash is sent) while auth fails (Accept before Begin). *)\nprocess\n  event AcceptChallenge(challenge);\n  out(c, h(challenge)",
           "status": "quarantined",
-          "stderr": "",
-          "stdout": "Process 0 (that is, the initial process):\n{1}event AcceptChallenge(challenge);\n{2}out(c, h(challenge));\n{3}event BeginChallenge(challenge)\n\n-- Query not attacker(challenge[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(challenge[])\nRESULT not attacker(challenge[]) is true.\n-- Query event(AcceptChallenge(x)) ==> event(BeginChallenge(x)) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query event(AcceptChallenge(x)) ==> event(BeginChallenge(x))\ngoal reachable: event(AcceptChallenge(challenge[]))\n\nDerivation:\n\n1. Event AcceptChallenge(challenge[]) may be executed at {1}.\nevent(AcceptChallenge(challenge[])).\n\n2. By 1, event(AcceptChallenge(challenge[])).\nThe goal is reached, represented in the following fact:\nevent(AcceptChallenge(challenge[])).\n\n\nA more detailed output of the traces is available with\n  set traceDisplay = long.\n\nevent AcceptChallenge(challenge) at {1} (goal)\n\nThe event AcceptChallenge(challenge) is executed at {1}.\nA trace has been found.\nRESULT event(AcceptChallenge(x)) ==> event(BeginChallenge(x)) is false.\n\n--------------------------------------------------------------\nVerification summary:\n\nQuery not attacker(challenge[]) is true.\n\nQuery event(AcceptChallenge(x)) ==> event(BeginChallenge(x)) is false.\n\n--------------------------------------------------------------\n\n",
           "support_tool_id": "opam",
           "support_tool_version": "2.5.2",
           "tool_id": "proverif",
-          "tool_version": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/proverif-2.05/proverif2.05/proverif: unknown option '--version'."
+          "tool_version": "<managed-tool-path-redacted>/proverif: unknown option '--version'."
         },
         {
           "assumptions": [
@@ -816,30 +819,29 @@
           "detail": "Bounded search cannot-prove quarantines",
           "elapsed_ms": 5,
           "evidence_class": "live",
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/proverif",
+          "executable_path": "<managed-tool-path-redacted>/proverif",
           "expect": "quarantined",
           "kind": "bounded_search",
           "live_executed": true,
           "matched": true,
           "output_digest": "1503adb779f42be5619e8c36cfcc31eb0fa7288bec381127556c4253994fc824",
           "query": "query attacker with set maxDepth = 0",
-          "raw_output": "Process 0 (that is, the initial process):\n{1}out(c, s)\n\n-- Query not attacker(s[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(s[])\ngoal reachable: attacker(s[])\nYou have probably found a false attack due to the limitations\non depth of terms and/or number of hypotheses.\nI do not know if there is a real attack.\nRESULT not attacker(s[]) cannot be proved.\n\n--------------------------------------------------------------\nVerification summary:\n\nQuery not attacker(s[]) cannot be proved.\n\n--------------------------------------------------------------\n\n\n",
+          "raw_output_preview": "Process 0 (that is, the initial process):\n{1}out(c, s)\n\n-- Query not attacker(s[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(s[])\ngoal reachable: attacker(s[])\nYou have probably found a false attack due to the limitations\non depth of terms and/or number of hypotheses.\nI do not know if there is a real attack.\nRESULT not attacker(s[]) cannot",
           "reason_codes": [
             "inconclusive"
           ],
           "returncode": 0,
-          "source": "set maxDepth = 0.\nfree c:channel.\nfree s:bitstring [private].\nquery attacker(s).\nprocess out(c, s)\n",
           "source_digest": "cf6a4073958747665505496ac0519ea61e7bcd998b30208c888c59c8ab3e294c",
           "source_format": "pv",
+          "source_preview": "set maxDepth = 0.\nfree c:channel.\nfree s:bitstring [private].\nquery attacker(s).\nprocess out(c, s)\n",
           "status": "quarantined",
-          "stderr": "",
-          "stdout": "Process 0 (that is, the initial process):\n{1}out(c, s)\n\n-- Query not attacker(s[]) in process 0.\nTranslating the process into Horn clauses...\nCompleting...\nStarting query not attacker(s[])\ngoal reachable: attacker(s[])\nYou have probably found a false attack due to the limitations\non depth of terms and/or number of hypotheses.\nI do not know if there is a real attack.\nRESULT not attacker(s[]) cannot be proved.\n\n--------------------------------------------------------------\nVerification summary:\n\nQuery not attacker(s[]) cannot be proved.\n\n--------------------------------------------------------------\n\n",
           "support_tool_id": "opam",
           "support_tool_version": "2.5.2",
           "tool_id": "proverif",
-          "tool_version": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/proverif-2.05/proverif2.05/proverif: unknown option '--version'."
+          "tool_version": "<managed-tool-path-redacted>/proverif: unknown option '--version'."
         }
       ],
+      "certificate_compact": true,
       "certification_surface": "tools.logic.certification.proverif",
       "checks": [
         {
@@ -848,6 +850,7 @@
           "expected": "no_install_no_download_no_network",
           "kind": "policy",
           "observed": "offline_env",
+          "reason_codes": [],
           "status": "passed"
         },
         {
@@ -856,64 +859,51 @@
           "expected": "parser_fixture",
           "kind": "policy",
           "observed": "parser_fixture",
+          "reason_codes": [],
           "status": "passed"
         },
         {
-          "bindings": {
-            "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/proverif",
-            "version_string": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/proverif-2.05/proverif2.05/proverif: unknown option '--version'."
-          },
+          "binding_keys": [
+            "executable_path",
+            "version_string"
+          ],
+          "bindings_digest": "7bb07250a215bd348a9a7f7d28df9e9c38fdbed17be42b707ab76fca31976f41",
           "check_id": "proverif.live.identity",
+          "detail": "",
           "expected": "2.05",
           "kind": "identity",
-          "observed": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/proverif-2.05/proverif2.05/proverif: unknown option '--version'.",
+          "observed": "<managed-tool-path-redacted>/proverif: unknown option '--version'.",
+          "reason_codes": [],
           "status": "passed"
         },
         {
-          "bindings": {
-            "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/opam",
-            "support_only": true,
-            "version_string": "2.5.2"
-          },
+          "binding_keys": [
+            "executable_path",
+            "support_only",
+            "version_string"
+          ],
+          "bindings_digest": "03ed198a80fc5950127702780ef9cefc963fff54301f46e49fdc1b6a44ee323e",
           "check_id": "opam.live.identity",
+          "detail": "",
           "expected": "2.5.2",
           "kind": "identity",
           "observed": "2.5.2",
+          "reason_codes": [],
           "status": "passed"
         },
         {
-          "bindings": {
-            "assumptions": [
-              "dolev_yao_adversary",
-              "perfect_cryptography",
-              "hashing_constructor"
-            ],
-            "attack_trace": null,
-            "bounds": {
-              "timeout_seconds": 60.0
-            },
-            "claim_outcomes": [
-              {
-                "attack_trace": null,
-                "claim_id": "claim:secrecy",
-                "query_text": "not attacker(challenge[])",
-                "reason": "",
-                "verdict": "true"
-              },
-              {
-                "attack_trace": null,
-                "claim_id": "claim:auth",
-                "query_text": "event(AcceptChallenge(x_1)) ==> event(BeginChallenge(x_1))",
-                "reason": "",
-                "verdict": "true"
-              }
-            ],
-            "evidence_class": "live",
-            "live_executed": true,
-            "output_digest": "c03346ef52780c328bcedbee73f55043e27992067683649635ce556e1e9d157b",
-            "query": "query attacker(challenge) + auth correspondence",
-            "source_digest": "b6d67b85c49b11269d526f03e514bed8be73314ecb84949a7c61e0d47a72d774"
-          },
+          "binding_keys": [
+            "assumptions",
+            "attack_trace",
+            "bounds",
+            "claim_outcomes",
+            "evidence_class",
+            "live_executed",
+            "output_digest",
+            "query",
+            "source_digest"
+          ],
+          "bindings_digest": "87525f25fe6ced5a52c79e0d0add08bf72ffc1538e902071e5af723f20c62c5b",
           "check_id": "proverif.live.live_secure_secrecy_auth",
           "detail": "Live secure secrecy and authentication queries",
           "expected": "secure",
@@ -923,63 +913,18 @@
           "status": "passed"
         },
         {
-          "bindings": {
-            "assumptions": [
-              "dolev_yao_adversary"
-            ],
-            "attack_trace": {
-              "claim_id": "claim:secrecy",
-              "raw_digest": "139252b7af5570d6f46c774d5c2b77cf809be4e34e1262ffa835dce93939bba7",
-              "replay": [
-                "0:process:c:"
-              ],
-              "schema_version": "proverif-attack-trace/v1",
-              "steps": [
-                {
-                  "action": "process",
-                  "label": "c",
-                  "step_index": 0,
-                  "terms": []
-                }
-              ],
-              "trace_format": "proverif-trace",
-              "trace_id": "attack-trace:41b1ce579df86c7a8f0400705fce5e38edbd027013e354e0d6f2dd8204132c48"
-            },
-            "bounds": {
-              "timeout_seconds": 60.0
-            },
-            "claim_outcomes": [
-              {
-                "attack_trace": {
-                  "claim_id": "claim:secrecy",
-                  "raw_digest": "139252b7af5570d6f46c774d5c2b77cf809be4e34e1262ffa835dce93939bba7",
-                  "replay": [
-                    "0:process:c:"
-                  ],
-                  "schema_version": "proverif-attack-trace/v1",
-                  "steps": [
-                    {
-                      "action": "process",
-                      "label": "c",
-                      "step_index": 0,
-                      "terms": []
-                    }
-                  ],
-                  "trace_format": "proverif-trace",
-                  "trace_id": "attack-trace:41b1ce579df86c7a8f0400705fce5e38edbd027013e354e0d6f2dd8204132c48"
-                },
-                "claim_id": "claim:secrecy",
-                "query_text": "not attacker(challenge[])",
-                "reason": "",
-                "verdict": "false"
-              }
-            ],
-            "evidence_class": "live",
-            "live_executed": true,
-            "output_digest": "a067fdd58d5c00f4dff605116a25a29a48b8cabb31807dccdfea682f2da29f2a",
-            "query": "query attacker(challenge) expect false",
-            "source_digest": "480ab7176b8d6974a4de35127f12f7d9e6db875a1c44fd46dcb4ea70a9ed8d49"
-          },
+          "binding_keys": [
+            "assumptions",
+            "attack_trace",
+            "bounds",
+            "claim_outcomes",
+            "evidence_class",
+            "live_executed",
+            "output_digest",
+            "query",
+            "source_digest"
+          ],
+          "bindings_digest": "ff024e43f9495fe9bde014b373c244943ea03733ef9af637c4292eb15ceaa301",
           "check_id": "proverif.live.live_attack_leak",
           "detail": "Live concrete attack: private name leaked",
           "expected": "attack",
@@ -989,111 +934,18 @@
           "status": "passed"
         },
         {
-          "bindings": {
-            "assumptions": [
-              "dolev_yao_adversary",
-              "mutated_auth_ordering"
-            ],
-            "attack_trace": {
-              "claim_id": "claim:auth",
-              "raw_digest": "3dd214a73a1d148dec574d8ea03ec6d02505adca9e3432e4491de5d4ba4d0e30",
-              "replay": [
-                "0:process:AcceptChallenge:challenge[]",
-                "1:process:AcceptChallenge:challenge[]",
-                "2:process:AcceptChallenge:challenge"
-              ],
-              "schema_version": "proverif-attack-trace/v1",
-              "steps": [
-                {
-                  "action": "process",
-                  "label": "AcceptChallenge",
-                  "step_index": 0,
-                  "terms": [
-                    "challenge[]"
-                  ]
-                },
-                {
-                  "action": "process",
-                  "label": "AcceptChallenge",
-                  "step_index": 1,
-                  "terms": [
-                    "challenge[]"
-                  ]
-                },
-                {
-                  "action": "process",
-                  "label": "AcceptChallenge",
-                  "step_index": 2,
-                  "terms": [
-                    "challenge"
-                  ]
-                }
-              ],
-              "trace_format": "proverif-trace",
-              "trace_id": "attack-trace:3512d29a6b050778a0b86e226e97ed3d341126fabf13d17fb920abb4a3e17e4a"
-            },
-            "bounds": {
-              "timeout_seconds": 60.0
-            },
-            "claim_outcomes": [
-              {
-                "attack_trace": null,
-                "claim_id": "claim:secrecy",
-                "query_text": "not attacker(challenge[])",
-                "reason": "",
-                "verdict": "true"
-              },
-              {
-                "attack_trace": {
-                  "claim_id": "claim:auth",
-                  "raw_digest": "3dd214a73a1d148dec574d8ea03ec6d02505adca9e3432e4491de5d4ba4d0e30",
-                  "replay": [
-                    "0:process:AcceptChallenge:challenge[]",
-                    "1:process:AcceptChallenge:challenge[]",
-                    "2:process:AcceptChallenge:challenge"
-                  ],
-                  "schema_version": "proverif-attack-trace/v1",
-                  "steps": [
-                    {
-                      "action": "process",
-                      "label": "AcceptChallenge",
-                      "step_index": 0,
-                      "terms": [
-                        "challenge[]"
-                      ]
-                    },
-                    {
-                      "action": "process",
-                      "label": "AcceptChallenge",
-                      "step_index": 1,
-                      "terms": [
-                        "challenge[]"
-                      ]
-                    },
-                    {
-                      "action": "process",
-                      "label": "AcceptChallenge",
-                      "step_index": 2,
-                      "terms": [
-                        "challenge"
-                      ]
-                    }
-                  ],
-                  "trace_format": "proverif-trace",
-                  "trace_id": "attack-trace:3512d29a6b050778a0b86e226e97ed3d341126fabf13d17fb920abb4a3e17e4a"
-                },
-                "claim_id": "claim:auth",
-                "query_text": "event(AcceptChallenge(x)) ==> event(BeginChallenge(x))",
-                "reason": "",
-                "verdict": "false"
-              }
-            ],
-            "evidence_class": "live",
-            "live_executed": true,
-            "output_digest": "1afdbc078f5400c217ec9960b2dd6c2d1fa32d2a881687e12642eb15a5f17975",
-            "query": "mutated premise/conclusion auth query",
-            "source_digest": "c38241618345f17fd9b5c08dc352d0c7d02242b5bfef48fb6d9a4382a936341f"
-          },
+          "binding_keys": [
+            "assumptions",
+            "attack_trace",
+            "bounds",
+            "claim_outcomes",
+            "evidence_class",
+            "live_executed",
+            "output_digest",
+            "query",
+            "source_digest"
+          ],
+          "bindings_digest": "f99f2aca56e608d7b90c36dfd3c1240a277cb5c8c2231a462ace9462ede70c71",
           "check_id": "proverif.live.live_mutated_claim",
           "detail": "Premise/conclusion mutation must not remain secure",
           "expected": "rejected_or_quarantined",
@@ -1105,64 +957,18 @@
           "status": "passed"
         },
         {
-          "bindings": {
-            "assumptions": [
-              "dolev_yao_adversary",
-              "protocol_process_mutated"
-            ],
-            "attack_trace": {
-              "claim_id": "claim:secrecy",
-              "raw_digest": "139252b7af5570d6f46c774d5c2b77cf809be4e34e1262ffa835dce93939bba7",
-              "replay": [
-                "0:process:c:"
-              ],
-              "schema_version": "proverif-attack-trace/v1",
-              "steps": [
-                {
-                  "action": "process",
-                  "label": "c",
-                  "step_index": 0,
-                  "terms": []
-                }
-              ],
-              "trace_format": "proverif-trace",
-              "trace_id": "attack-trace:41b1ce579df86c7a8f0400705fce5e38edbd027013e354e0d6f2dd8204132c48"
-            },
-            "bounds": {
-              "timeout_seconds": 60.0
-            },
-            "claim_outcomes": [
-              {
-                "attack_trace": {
-                  "claim_id": "claim:secrecy",
-                  "raw_digest": "139252b7af5570d6f46c774d5c2b77cf809be4e34e1262ffa835dce93939bba7",
-                  "replay": [
-                    "0:process:c:"
-                  ],
-                  "schema_version": "proverif-attack-trace/v1",
-                  "steps": [
-                    {
-                      "action": "process",
-                      "label": "c",
-                      "step_index": 0,
-                      "terms": []
-                    }
-                  ],
-                  "trace_format": "proverif-trace",
-                  "trace_id": "attack-trace:41b1ce579df86c7a8f0400705fce5e38edbd027013e354e0d6f2dd8204132c48"
-                },
-                "claim_id": "claim:secrecy",
-                "query_text": "not attacker(challenge[])",
-                "reason": "",
-                "verdict": "false"
-              }
-            ],
-            "evidence_class": "live",
-            "live_executed": true,
-            "output_digest": "a067fdd58d5c00f4dff605116a25a29a48b8cabb31807dccdfea682f2da29f2a",
-            "query": "query attacker after protocol mutation",
-            "source_digest": "480ab7176b8d6974a4de35127f12f7d9e6db875a1c44fd46dcb4ea70a9ed8d49"
-          },
+          "binding_keys": [
+            "assumptions",
+            "attack_trace",
+            "bounds",
+            "claim_outcomes",
+            "evidence_class",
+            "live_executed",
+            "output_digest",
+            "query",
+            "source_digest"
+          ],
+          "bindings_digest": "4e551b2dbfc261f1cc83e5640853490b6b5ac6299201fb5acd6f3b19d74f17f5",
           "check_id": "proverif.live.live_mutated_protocol",
           "detail": "Protocol mutation yields an attack",
           "expected": "attack",
@@ -1172,38 +978,18 @@
           "status": "passed"
         },
         {
-          "bindings": {
-            "assumptions": [
-              "dolev_yao_adversary",
-              "perfect_cryptography",
-              "hashing_constructor"
-            ],
-            "attack_trace": null,
-            "bounds": {
-              "timeout_seconds": 60.0
-            },
-            "claim_outcomes": [
-              {
-                "attack_trace": null,
-                "claim_id": "claim:secrecy",
-                "query_text": "not attacker(challenge[])",
-                "reason": "",
-                "verdict": "true"
-              },
-              {
-                "attack_trace": null,
-                "claim_id": "claim:auth",
-                "query_text": "event(AcceptChallenge(x_1)) ==> event(BeginChallenge(x_1))",
-                "reason": "",
-                "verdict": "true"
-              }
-            ],
-            "evidence_class": "live",
-            "live_executed": true,
-            "output_digest": "c03346ef52780c328bcedbee73f55043e27992067683649635ce556e1e9d157b",
-            "query": "replay secure queries",
-            "source_digest": "b6d67b85c49b11269d526f03e514bed8be73314ecb84949a7c61e0d47a72d774"
-          },
+          "binding_keys": [
+            "assumptions",
+            "attack_trace",
+            "bounds",
+            "claim_outcomes",
+            "evidence_class",
+            "live_executed",
+            "output_digest",
+            "query",
+            "source_digest"
+          ],
+          "bindings_digest": "08c25bf15f5883944dd33c0fc2c16e7a7b51b40da987c11b1ce0a0d417805918",
           "check_id": "proverif.live.live_deterministic_replay",
           "detail": "Deterministic live replay of the secure case",
           "expected": "secure",
@@ -1213,27 +999,18 @@
           "status": "passed"
         },
         {
-          "bindings": {
-            "assumptions": [],
-            "attack_trace": null,
-            "bounds": {
-              "timeout_seconds": 60.0
-            },
-            "claim_outcomes": [
-              {
-                "attack_trace": null,
-                "claim_id": "claim:secrecy",
-                "query_text": "not attacker(secret[])",
-                "reason": "query outcome missing from ProVerif output",
-                "verdict": "unknown"
-              }
-            ],
-            "evidence_class": "live",
-            "live_executed": true,
-            "output_digest": "9ef9be42a233bed9cd52c78fcd19c12d5577fb1744c5a4de94a23b2a9049d35b",
-            "query": "parse/prove malformed model",
-            "source_digest": "97aa8720cb5fc87b5107d85a0b337f362833ee37f15a58069219472b419a9524"
-          },
+          "binding_keys": [
+            "assumptions",
+            "attack_trace",
+            "bounds",
+            "claim_outcomes",
+            "evidence_class",
+            "live_executed",
+            "output_digest",
+            "query",
+            "source_digest"
+          ],
+          "bindings_digest": "cb37bedf15019d01ab1b70d4ac726319a7777911962ed103a09b94d403f2abfb",
           "check_id": "proverif.live.live_malformed_model",
           "detail": "Malformed model never reports SECURE",
           "expected": "quarantined",
@@ -1245,21 +1022,18 @@
           "status": "passed"
         },
         {
-          "bindings": {
-            "assumptions": [
-              "dolev_yao_adversary"
-            ],
-            "attack_trace": null,
-            "bounds": {
-              "timeout_seconds": 0.001
-            },
-            "claim_outcomes": [],
-            "evidence_class": "live",
-            "live_executed": true,
-            "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
-            "query": "query under extreme timeout bound",
-            "source_digest": "b6d67b85c49b11269d526f03e514bed8be73314ecb84949a7c61e0d47a72d774"
-          },
+          "binding_keys": [
+            "assumptions",
+            "attack_trace",
+            "bounds",
+            "claim_outcomes",
+            "evidence_class",
+            "live_executed",
+            "output_digest",
+            "query",
+            "source_digest"
+          ],
+          "bindings_digest": "2039dabbb4536d1b26de615e620ba01d39f895b60ed078175d5f9c7cb17577e9",
           "check_id": "proverif.live.live_timeout",
           "detail": "Subprocess timeout quarantines rather than SECURE",
           "expected": "quarantined",
@@ -1271,111 +1045,18 @@
           "status": "passed"
         },
         {
-          "bindings": {
-            "assumptions": [
-              "dolev_yao_adversary",
-              "mixed_claim_batch"
-            ],
-            "attack_trace": {
-              "claim_id": "claim:auth",
-              "raw_digest": "3dd214a73a1d148dec574d8ea03ec6d02505adca9e3432e4491de5d4ba4d0e30",
-              "replay": [
-                "0:process:AcceptChallenge:challenge[]",
-                "1:process:AcceptChallenge:challenge[]",
-                "2:process:AcceptChallenge:challenge"
-              ],
-              "schema_version": "proverif-attack-trace/v1",
-              "steps": [
-                {
-                  "action": "process",
-                  "label": "AcceptChallenge",
-                  "step_index": 0,
-                  "terms": [
-                    "challenge[]"
-                  ]
-                },
-                {
-                  "action": "process",
-                  "label": "AcceptChallenge",
-                  "step_index": 1,
-                  "terms": [
-                    "challenge[]"
-                  ]
-                },
-                {
-                  "action": "process",
-                  "label": "AcceptChallenge",
-                  "step_index": 2,
-                  "terms": [
-                    "challenge"
-                  ]
-                }
-              ],
-              "trace_format": "proverif-trace",
-              "trace_id": "attack-trace:3512d29a6b050778a0b86e226e97ed3d341126fabf13d17fb920abb4a3e17e4a"
-            },
-            "bounds": {
-              "timeout_seconds": 60.0
-            },
-            "claim_outcomes": [
-              {
-                "attack_trace": null,
-                "claim_id": "claim:secrecy",
-                "query_text": "not attacker(challenge[])",
-                "reason": "",
-                "verdict": "true"
-              },
-              {
-                "attack_trace": {
-                  "claim_id": "claim:auth",
-                  "raw_digest": "3dd214a73a1d148dec574d8ea03ec6d02505adca9e3432e4491de5d4ba4d0e30",
-                  "replay": [
-                    "0:process:AcceptChallenge:challenge[]",
-                    "1:process:AcceptChallenge:challenge[]",
-                    "2:process:AcceptChallenge:challenge"
-                  ],
-                  "schema_version": "proverif-attack-trace/v1",
-                  "steps": [
-                    {
-                      "action": "process",
-                      "label": "AcceptChallenge",
-                      "step_index": 0,
-                      "terms": [
-                        "challenge[]"
-                      ]
-                    },
-                    {
-                      "action": "process",
-                      "label": "AcceptChallenge",
-                      "step_index": 1,
-                      "terms": [
-                        "challenge[]"
-                      ]
-                    },
-                    {
-                      "action": "process",
-                      "label": "AcceptChallenge",
-                      "step_index": 2,
-                      "terms": [
-                        "challenge"
-                      ]
-                    }
-                  ],
-                  "trace_format": "proverif-trace",
-                  "trace_id": "attack-trace:3512d29a6b050778a0b86e226e97ed3d341126fabf13d17fb920abb4a3e17e4a"
-                },
-                "claim_id": "claim:auth",
-                "query_text": "event(AcceptChallenge(x)) ==> event(BeginChallenge(x))",
-                "reason": "",
-                "verdict": "false"
-              }
-            ],
-            "evidence_class": "live",
-            "live_executed": true,
-            "output_digest": "1afdbc078f5400c217ec9960b2dd6c2d1fa32d2a881687e12642eb15a5f17975",
-            "query": "mixed secrecy(false)+auth(false) or mixed true/false",
-            "source_digest": "e1c8f03d30cdaf0b7c46dc57f02d76b0c5fbe87e173c19f2039f8f8f376109fd"
-          },
+          "binding_keys": [
+            "assumptions",
+            "attack_trace",
+            "bounds",
+            "claim_outcomes",
+            "evidence_class",
+            "live_executed",
+            "output_digest",
+            "query",
+            "source_digest"
+          ],
+          "bindings_digest": "882d08cc0778318837a2b1de46bcef55efacddaf354ec6f9feb280efdc0d08b7",
           "check_id": "proverif.live.live_disagreement",
           "detail": "Mixed true/false claims quarantine or attack",
           "expected": "rejected_or_quarantined",
@@ -1387,31 +1068,18 @@
           "status": "passed"
         },
         {
-          "bindings": {
-            "assumptions": [
-              "dolev_yao_adversary",
-              "maxDepth_bound"
-            ],
-            "attack_trace": null,
-            "bounds": {
-              "max_depth": 0,
-              "timeout_seconds": 60.0
-            },
-            "claim_outcomes": [
-              {
-                "attack_trace": null,
-                "claim_id": "claim:secrecy",
-                "query_text": "not attacker(s[])",
-                "reason": "query outcome missing from ProVerif output",
-                "verdict": "unknown"
-              }
-            ],
-            "evidence_class": "live",
-            "live_executed": true,
-            "output_digest": "1503adb779f42be5619e8c36cfcc31eb0fa7288bec381127556c4253994fc824",
-            "query": "query attacker with set maxDepth = 0",
-            "source_digest": "cf6a4073958747665505496ac0519ea61e7bcd998b30208c888c59c8ab3e294c"
-          },
+          "binding_keys": [
+            "assumptions",
+            "attack_trace",
+            "bounds",
+            "claim_outcomes",
+            "evidence_class",
+            "live_executed",
+            "output_digest",
+            "query",
+            "source_digest"
+          ],
+          "bindings_digest": "d0524aafa1f81e7c9cc5666603ebcc8fb6427b4ca58c38373b07697e3df48ac7",
           "check_id": "proverif.live.live_bounded_search",
           "detail": "Bounded search cannot-prove quarantines",
           "expected": "quarantined",
@@ -1423,238 +1091,86 @@
           "status": "passed"
         },
         {
-          "bindings": {
-            "replay_output_digest": "c03346ef52780c328bcedbee73f55043e27992067683649635ce556e1e9d157b",
-            "replay_source_digest": "b6d67b85c49b11269d526f03e514bed8be73314ecb84949a7c61e0d47a72d774",
-            "secure_output_digest": "c03346ef52780c328bcedbee73f55043e27992067683649635ce556e1e9d157b",
-            "secure_source_digest": "b6d67b85c49b11269d526f03e514bed8be73314ecb84949a7c61e0d47a72d774"
-          },
+          "binding_keys": [
+            "replay_output_digest",
+            "replay_source_digest",
+            "secure_output_digest",
+            "secure_source_digest"
+          ],
+          "bindings_digest": "6d5a95dccf9573d21f69a006e81723eb4d69c09f15a5ec30f644bd02222a41e9",
           "check_id": "proverif.live.deterministic_replay_binding",
+          "detail": "",
           "expected": "identical secure source digests",
           "kind": "replay",
           "observed": "secure=b6d67b85c49b,replay=b6d67b85c49b,out_secure=c03346ef5278,out_replay=c03346ef5278",
+          "reason_codes": [],
           "status": "passed"
         },
         {
-          "bindings": {
-            "authority_ceiling": "none",
-            "blocks_alone": true,
-            "can_satisfy_certified_authority": false,
-            "can_satisfy_protocol_requirement": false,
-            "ceiling_is_none": true,
-            "promotion_allowed": false,
-            "promotion_decision": {
-              "allowed": false,
-              "authority_ceiling": "none",
-              "can_satisfy_certified_authority": false,
-              "interface": "RoleAwarePromotionPolicy@1",
-              "reason_codes": [
-                "role_support_cannot_certify",
-                "ceiling_none_cannot_certify",
-                "presence_alone_is_not_authority",
-                "usability_alone_is_not_authority",
-                "cannot_satisfy_certified_authority_requirement"
-              ],
-              "role": "support",
-              "schema_version": "role-aware-promotion-policy/v1",
-              "tool_id": "opam"
-            },
-            "role": "support",
-            "support_only": true,
-            "tool_id": "opam"
-          },
+          "binding_keys": [
+            "authority_ceiling",
+            "blocks_alone",
+            "can_satisfy_certified_authority",
+            "can_satisfy_protocol_requirement",
+            "ceiling_is_none",
+            "promotion_allowed",
+            "promotion_decision",
+            "role",
+            "support_only",
+            "tool_id"
+          ],
+          "bindings_digest": "b798015f29fc9f6a7846d85550fb201797521d19ca0cd9939ccc50d0adbea3e2",
           "check_id": "opam.live.support_only_boundary",
+          "detail": "",
           "expected": "promotion_blocked",
           "kind": "authority",
           "observed": "allowed=False,can_satisfy=False",
+          "reason_codes": [],
           "status": "passed"
         },
         {
-          "bindings": {
-            "assumptions": [
-              "dolev_yao_adversary",
-              "perfect_cryptography",
-              "hashing_constructor"
-            ],
-            "authority": {
-              "backend_interface": "ProVerifBackend@1",
-              "ceiling": "protocol",
-              "not_tamarin": true,
-              "opam_is_support_only": true,
-              "parser_fixtures_are_non_production": true,
-              "scope": "protocol_verification_only"
-            },
-            "bound": {
-              "timeout_seconds": 60.0
-            },
-            "dependency": {
-              "can_promote_protocol_lane": false,
-              "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/opam",
-              "identity_probed": true,
-              "locked_version": "2.5.2",
-              "support_only": true,
-              "tool_id": "opam",
-              "version_match": true,
-              "version_string": "2.5.2"
-            },
-            "query": "query attacker(challenge) + auth correspondence",
-            "raw_output": {
-              "output_digest": "c03346ef52780c328bcedbee73f55043e27992067683649635ce556e1e9d157b",
-              "raw_output_cap_bytes": 8192
-            },
-            "source": {
-              "case_id": "live_secure_secrecy_auth",
-              "source_digest": "b6d67b85c49b11269d526f03e514bed8be73314ecb84949a7c61e0d47a72d774",
-              "source_format": "pv"
-            },
-            "tool": {
-              "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/proverif",
-              "identity_probed": true,
-              "locked_version": "2.05",
-              "tool_id": "proverif",
-              "version_match": true,
-              "version_string": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/proverif-2.05/proverif2.05/proverif: unknown option '--version'."
-            },
-            "witnesses_traces": {
-              "live_attack_leak": {
-                "claim_id": "claim:secrecy",
-                "raw_digest": "139252b7af5570d6f46c774d5c2b77cf809be4e34e1262ffa835dce93939bba7",
-                "replay": [
-                  "0:process:c:"
-                ],
-                "schema_version": "proverif-attack-trace/v1",
-                "steps": [
-                  {
-                    "action": "process",
-                    "label": "c",
-                    "step_index": 0,
-                    "terms": []
-                  }
-                ],
-                "trace_format": "proverif-trace",
-                "trace_id": "attack-trace:41b1ce579df86c7a8f0400705fce5e38edbd027013e354e0d6f2dd8204132c48"
-              },
-              "live_disagreement": {
-                "claim_id": "claim:auth",
-                "raw_digest": "3dd214a73a1d148dec574d8ea03ec6d02505adca9e3432e4491de5d4ba4d0e30",
-                "replay": [
-                  "0:process:AcceptChallenge:challenge[]",
-                  "1:process:AcceptChallenge:challenge[]",
-                  "2:process:AcceptChallenge:challenge"
-                ],
-                "schema_version": "proverif-attack-trace/v1",
-                "steps": [
-                  {
-                    "action": "process",
-                    "label": "AcceptChallenge",
-                    "step_index": 0,
-                    "terms": [
-                      "challenge[]"
-                    ]
-                  },
-                  {
-                    "action": "process",
-                    "label": "AcceptChallenge",
-                    "step_index": 1,
-                    "terms": [
-                      "challenge[]"
-                    ]
-                  },
-                  {
-                    "action": "process",
-                    "label": "AcceptChallenge",
-                    "step_index": 2,
-                    "terms": [
-                      "challenge"
-                    ]
-                  }
-                ],
-                "trace_format": "proverif-trace",
-                "trace_id": "attack-trace:3512d29a6b050778a0b86e226e97ed3d341126fabf13d17fb920abb4a3e17e4a"
-              },
-              "live_mutated_claim": {
-                "claim_id": "claim:auth",
-                "raw_digest": "3dd214a73a1d148dec574d8ea03ec6d02505adca9e3432e4491de5d4ba4d0e30",
-                "replay": [
-                  "0:process:AcceptChallenge:challenge[]",
-                  "1:process:AcceptChallenge:challenge[]",
-                  "2:process:AcceptChallenge:challenge"
-                ],
-                "schema_version": "proverif-attack-trace/v1",
-                "steps": [
-                  {
-                    "action": "process",
-                    "label": "AcceptChallenge",
-                    "step_index": 0,
-                    "terms": [
-                      "challenge[]"
-                    ]
-                  },
-                  {
-                    "action": "process",
-                    "label": "AcceptChallenge",
-                    "step_index": 1,
-                    "terms": [
-                      "challenge[]"
-                    ]
-                  },
-                  {
-                    "action": "process",
-                    "label": "AcceptChallenge",
-                    "step_index": 2,
-                    "terms": [
-                      "challenge"
-                    ]
-                  }
-                ],
-                "trace_format": "proverif-trace",
-                "trace_id": "attack-trace:3512d29a6b050778a0b86e226e97ed3d341126fabf13d17fb920abb4a3e17e4a"
-              },
-              "live_mutated_protocol": {
-                "claim_id": "claim:secrecy",
-                "raw_digest": "139252b7af5570d6f46c774d5c2b77cf809be4e34e1262ffa835dce93939bba7",
-                "replay": [
-                  "0:process:c:"
-                ],
-                "schema_version": "proverif-attack-trace/v1",
-                "steps": [
-                  {
-                    "action": "process",
-                    "label": "c",
-                    "step_index": 0,
-                    "terms": []
-                  }
-                ],
-                "trace_format": "proverif-trace",
-                "trace_id": "attack-trace:41b1ce579df86c7a8f0400705fce5e38edbd027013e354e0d6f2dd8204132c48"
-              }
-            }
-          },
+          "binding_keys": [
+            "assumptions",
+            "authority",
+            "bound",
+            "dependency",
+            "query",
+            "raw_output",
+            "source",
+            "tool",
+            "witnesses_traces"
+          ],
+          "bindings_digest": "570e5df27cfe50ee208db415fce7ccfbd1164e7a70f8b61a2541a2156fb9c3bb",
           "check_id": "proverif.live.bindings",
+          "detail": "",
           "expected": "tool,dependency,source,query,assumptions,bound,witnesses_traces,raw_output",
           "kind": "binding",
           "observed": "570e5df27cfe50ee",
+          "reason_codes": [],
           "status": "passed"
         }
       ],
       "download_attempted": false,
+      "fixture_or_parser_cannot_satisfy_live_goal": true,
       "global_opam_mutation_attempted": false,
       "goal_id": "FVT-G205",
       "install_attempted": false,
       "interface": "ProtocolLiveSemanticCertification@1",
       "lane_id": "protocol",
+      "live_execution": true,
       "live_semantic_certified": true,
       "locked_opam_version": "2.5.2",
       "locked_proverif_version": "2.05",
       "network_used": false,
       "notes": "Pinned ProVerif live semantic corpus certified.",
-      "opam_executable": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/opam",
+      "opam_executable": "<managed-tool-path-redacted>/opam",
       "opam_usable": true,
       "opam_version_string": "2.5.2",
       "parser_fixtures_are_non_production": true,
       "policy": {
         "cannot_substitute_tamarin": true,
         "engines_are_independent": true,
+        "fixture_or_parser_cannot_satisfy_live_goal": true,
         "live_binary_required_for_semantic_proof": true,
         "never_mutate_global_opam_switch": true,
         "no_download": true,
@@ -1666,11 +1182,23 @@
       "production_certified": true,
       "program": "formal-verification-tactician/protocol-live-semantics",
       "promotion_blocked": false,
-      "proverif_executable": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/proverif",
+      "proverif_executable": "<managed-tool-path-redacted>/proverif",
       "proverif_usable": true,
-      "proverif_version_string": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/proverif-2.05/proverif2.05/proverif: unknown option '--version'.",
-      "receipt_digest_sha256": "1935370c8f2e5c392d2faed97d4856d1eeabf68679928e151d84e133e9e9ae4e",
-      "repo_root": "/home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/live/worktrees/formal-verification-tactician-protocol-live-semantics/executions/f32cfa4891f508d320c8bd32619ba11ac4439fccf524c2665ac9309b20403b84/workspace-0002544bbf92-54fcb1ebee21",
+      "proverif_version_string": "<managed-tool-path-redacted>/proverif: unknown option '--version'.",
+      "public_evidence_policy": {
+        "failures": [],
+        "host_private_paths_forbidden": true,
+        "max_public_string_bytes": 8192,
+        "raw_process_output_forbidden": true,
+        "raw_secret_or_witness_forbidden": true,
+        "repo_root_paths_forbidden": true,
+        "safe": true,
+        "satisfied": true,
+        "violation_count": 0,
+        "violations": []
+      },
+      "receipt_digest_sha256": "47bb31b99ae99b43d83801583cbdbd4e202b40283c43c1cb560968c650cfc2d1",
+      "repair_task_id": "FVT-075",
       "schema_version": "protocol-live-semantic-certification/v1",
       "support_tool_id": "opam",
       "task_id": "FVT-058",
@@ -1699,7 +1227,7 @@
         },
         "dependency": {
           "can_promote_protocol_lane": false,
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/maude",
+          "executable_path": "<managed-tool-path-redacted>/maude",
           "identity_probed": true,
           "locked_version": "3.5.1",
           "pair_validated": true,
@@ -1710,7 +1238,7 @@
         },
         "query": "prove secrecy_claim + auth_claim",
         "raw_output": {
-          "output_digest": "5be83d0b51f2370a2ad6509172025c73ed9301237977ddcf04157c22802c3d9b",
+          "output_digest": "e9deecf478a4807d9da07ef1e6b3026ec61a4bccd98d2e797ff97331ebdb6cba",
           "raw_output_cap_bytes": 8192
         },
         "source": {
@@ -1719,7 +1247,7 @@
           "source_format": "spthy"
         },
         "tool": {
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/tamarin-prover",
+          "executable_path": "<managed-tool-path-redacted>/tamarin-prover",
           "identity_probed": true,
           "locked_version": "1.12.0",
           "tool_id": "tamarin",
@@ -1729,7 +1257,7 @@
         "witnesses_traces": {
           "live_attack_leak": {
             "claim_id": "claim:secrecy",
-            "raw_digest": "2bb641b9569a98838d0eed9e579a537c66ef3e7a8c911abb8741c061bde63637",
+            "raw_digest": "780ba92e41bd8c54267c33c15efbb1ac53a4470b4f305a0ac44c9bdc0d0c1430",
             "replay": [
               "0:marker:falsified:"
             ],
@@ -1743,11 +1271,11 @@
               }
             ],
             "trace_format": "tamarin-trace",
-            "trace_id": "attack-trace:18f1f6580916f3413cdb2d729ff32336edad010b79807a45421131d13d8f0ee7"
+            "trace_id": "attack-trace:4a6f1618e1d2b9a8ff7e3f7dfb5f10671294213438eac9686d9ffe97d8c0d4ab"
           },
           "live_disagreement": {
             "claim_id": "claim:secrecy",
-            "raw_digest": "bd9d81b38b2a6b736dfc8acb8ede4ce4e248e9e912e1e9220e4021421d9ca657",
+            "raw_digest": "d18e95931c7d032051b34cbc54902a530043a0620d9d41dac89acb377001c6d9",
             "replay": [
               "0:marker:falsified:"
             ],
@@ -1761,11 +1289,11 @@
               }
             ],
             "trace_format": "tamarin-trace",
-            "trace_id": "attack-trace:2e6fe3e5de7122febcb1913c4effef49f5b29d0c8eea4d83157b2da9fa4178f2"
+            "trace_id": "attack-trace:e9dbfb0a1cffe362c45cf6d05a269141bb7650af6298e558166dbae624f884d5"
           },
           "live_mutated_claim": {
             "claim_id": "claim:auth",
-            "raw_digest": "41978b172d9c9916b4a36b79a2b0102d9050564ee1bf3c3401b84fae797940a7",
+            "raw_digest": "7ea9c86f9b0e1e983b0d2854a59578dcf0419a7aace6f93cbaa0349b5406865f",
             "replay": [
               "0:marker:falsified:"
             ],
@@ -1779,11 +1307,11 @@
               }
             ],
             "trace_format": "tamarin-trace",
-            "trace_id": "attack-trace:367923f25160b0c89a3c9ce8e3d4e03fd9b84bb465aae3570282f823c138e3a8"
+            "trace_id": "attack-trace:82ef0f60c1e4d57b4d6bbeab4a35d5f03154c1b627d7dd713369e6c25d1c6d18"
           },
           "live_mutated_protocol": {
             "claim_id": "claim:secrecy",
-            "raw_digest": "19ce811336532ace303bec5d6a405614fff48d453a610fe86176fd7c54bb0f8c",
+            "raw_digest": "9965a7cd3d8995a54e25c637e922370102673464824f4cf8a41ba758c6302e9b",
             "replay": [
               "0:marker:falsified:"
             ],
@@ -1797,12 +1325,13 @@
               }
             ],
             "trace_format": "tamarin-trace",
-            "trace_id": "attack-trace:a37bb3bbe963780202d39834bea32b98239320fe80c1c16dca666f33adc9ce7b"
+            "trace_id": "attack-trace:03da5ecf228a52a7a783336e26473361b094f24be6751eb3942d63f596eb728b"
           }
         }
       },
       "block_reasons": [],
       "cannot_substitute_proverif": true,
+      "capability_gap": null,
       "cases": [
         {
           "assumptions": [
@@ -1832,24 +1361,22 @@
             }
           ],
           "detail": "Live secure secrecy and authentication lemmas",
-          "elapsed_ms": 142,
+          "elapsed_ms": 129,
           "evidence_class": "live",
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/tamarin-prover",
+          "executable_path": "<managed-tool-path-redacted>/tamarin-prover",
           "expect": "secure",
           "kind": "secure",
           "live_executed": true,
           "matched": true,
-          "output_digest": "5be83d0b51f2370a2ad6509172025c73ed9301237977ddcf04157c22802c3d9b",
+          "output_digest": "e9deecf478a4807d9da07ef1e6b3026ec61a4bccd98d2e797ff97331ebdb6cba",
           "query": "prove secrecy_claim + auth_claim",
-          "raw_output": "theory LiveSecureChallenge\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ St_Init( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Begin:\n   [ Fr( ~n ) ] --[ BeginChallenge( ~n ) ]-> [ Out( h(~n) ), St_Sent( ~n ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Accept:\n   [ In( h(n) ), St_Sent( n ) ] --[ AcceptChallenge( n ) ]-> [ ]\n\n  /* has exactly the trivial AC variant */\n\nlemma secrecy_claim:\n  all-traces \"\u2200 k #i. (Secret( k ) @ #i) \u21d2 (\u00ac(\u2203 #j. K( k ) @ #j))\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 k #i. (Secret( k ) @ #i) \u2227 \u2203 #j. (K( k ) @ #j)\"\n*/\nsimplify\nby solve( !KU( ~k ) @ #vk )\n\nlemma auth_claim:\n  all-traces\n  \"\u2200 n #i. (AcceptChallenge( n ) @ #i) \u21d2 (\u2203 #j. BeginChallenge( n ) @ #j)\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 n #i.\n  (AcceptChallenge( n ) @ #i) \u2227 \u2200 #j. (BeginChallenge( n ) @ #j) \u21d2 \u22a5\"\n*/\nsimplify\nsolve( St_Sent( n ) \u25b6\u2081 #i )\n  case Begin\n  by contradiction /* from formulas */\nqed\n\n/* All wellformedness checks were successful. */\n\n/*\nGenerated from:\nTamarin version 1.12.0\nMaude version 3.5.1\nGit revision: UNKNOWN, branch: UNKNOWN\nCompiled at: 2026-07-23 19:00:49.820030192 UTC\n*/\n\nend\n\n==============================================================================\nsummary of summaries:\n\nanalyzed: /tmp/tamarin-live-dnz85w_v/live_secure_secrecy_auth.spthy\n\n  processing time: 0.08s\n  \n  secrecy_claim (all-traces): verified (2 steps)\n  auth_claim (all-traces): verified (3 steps)\n\n==============================================================================\n\nmaude tool: 'maude'\n checking version: 3.5.1. OK.\n checking installation: OK.\n[Theory LiveSecureChallenge] Theory loaded\n[Theory LiveSecureChallenge] Theory translated\n[Theory LiveSecureChallenge] Derivation checks started\n[Theory LiveSecureChallenge] Derivation checks ended\n[Theory LiveSecureChallenge] Theory closed\n[Saturating Sources] Step 1 (Max 5)\n[Saturating Sources] Done\n",
+          "raw_output_preview": "theory LiveSecureChallenge\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ St_Init( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Begin:\n   [ Fr( ~n ) ] --[ BeginChallenge( ~n ) ]-> [ Out( ",
           "reason_codes": [],
           "returncode": 0,
-          "source": "theory LiveSecureChallenge\nbegin\nbuiltins: hashing\n\nrule Create_Secret:\n  [ Fr(~k) ]\n  --[ Secret(~k) ]->\n  [ St_Init(~k) ]\n\nrule Begin:\n  [ Fr(~n) ]\n  --[ BeginChallenge(~n) ]->\n  [ Out(h(~n)), St_Sent(~n) ]\n\nrule Accept:\n  [ In(h(n)), St_Sent(n) ]\n  --[ AcceptChallenge(n) ]->\n  [ ]\n\nlemma secrecy_claim:\n  \"All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)\"\n\nlemma auth_claim:\n  \"All n #i. AcceptChallenge(n) @ i ==> (Ex #j. BeginChallenge(n) @ j)\"\nend\n",
           "source_digest": "ebb363d1e4d58ea3d16a6a8f74ce42f26f776c884d7d3ebbe2414ffec91f031f",
           "source_format": "spthy",
+          "source_preview": "theory LiveSecureChallenge\nbegin\nbuiltins: hashing\n\nrule Create_Secret:\n  [ Fr(~k) ]\n  --[ Secret(~k) ]->\n  [ St_Init(~k) ]\n\nrule Begin:\n  [ Fr(~n) ]\n  --[ BeginChallenge(~n) ]->\n  [ Out(h(~n)), St_Sent(~n) ]\n\nrule Accept:\n  [ In(h(n)), St_Sent(n) ]\n  --[ AcceptChallenge(n) ]->\n  [ ]\n\nlemma secrecy_claim:\n  \"All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)\"\n\nlemma auth_claim:\n  \"All n #i. AcceptC",
           "status": "secure",
-          "stderr": "maude tool: 'maude'\n checking version: 3.5.1. OK.\n checking installation: OK.\n[Theory LiveSecureChallenge] Theory loaded\n[Theory LiveSecureChallenge] Theory translated\n[Theory LiveSecureChallenge] Derivation checks started\n[Theory LiveSecureChallenge] Derivation checks ended\n[Theory LiveSecureChallenge] Theory closed\n[Saturating Sources] Step 1 (Max 5)\n[Saturating Sources] Done\n",
-          "stdout": "theory LiveSecureChallenge\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ St_Init( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Begin:\n   [ Fr( ~n ) ] --[ BeginChallenge( ~n ) ]-> [ Out( h(~n) ), St_Sent( ~n ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Accept:\n   [ In( h(n) ), St_Sent( n ) ] --[ AcceptChallenge( n ) ]-> [ ]\n\n  /* has exactly the trivial AC variant */\n\nlemma secrecy_claim:\n  all-traces \"\u2200 k #i. (Secret( k ) @ #i) \u21d2 (\u00ac(\u2203 #j. K( k ) @ #j))\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 k #i. (Secret( k ) @ #i) \u2227 \u2203 #j. (K( k ) @ #j)\"\n*/\nsimplify\nby solve( !KU( ~k ) @ #vk )\n\nlemma auth_claim:\n  all-traces\n  \"\u2200 n #i. (AcceptChallenge( n ) @ #i) \u21d2 (\u2203 #j. BeginChallenge( n ) @ #j)\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 n #i.\n  (AcceptChallenge( n ) @ #i) \u2227 \u2200 #j. (BeginChallenge( n ) @ #j) \u21d2 \u22a5\"\n*/\nsimplify\nsolve( St_Sent( n ) \u25b6\u2081 #i )\n  case Begin\n  by contradiction /* from formulas */\nqed\n\n/* All wellformedness checks were successful. */\n\n/*\nGenerated from:\nTamarin version 1.12.0\nMaude version 3.5.1\nGit revision: UNKNOWN, branch: UNKNOWN\nCompiled at: 2026-07-23 19:00:49.820030192 UTC\n*/\n\nend\n\n==============================================================================\nsummary of summaries:\n\nanalyzed: /tmp/tamarin-live-dnz85w_v/live_secure_secrecy_auth.spthy\n\n  processing time: 0.08s\n  \n  secrecy_claim (all-traces): verified (2 steps)\n  auth_claim (all-traces): verified (3 steps)\n\n==============================================================================\n",
           "support_tool_id": "maude",
           "support_tool_version": "3.5.1",
           "tool_id": "tamarin",
@@ -1861,7 +1388,7 @@
           ],
           "attack_trace": {
             "claim_id": "claim:secrecy",
-            "raw_digest": "2bb641b9569a98838d0eed9e579a537c66ef3e7a8c911abb8741c061bde63637",
+            "raw_digest": "780ba92e41bd8c54267c33c15efbb1ac53a4470b4f305a0ac44c9bdc0d0c1430",
             "replay": [
               "0:marker:falsified:"
             ],
@@ -1875,7 +1402,7 @@
               }
             ],
             "trace_format": "tamarin-trace",
-            "trace_id": "attack-trace:18f1f6580916f3413cdb2d729ff32336edad010b79807a45421131d13d8f0ee7"
+            "trace_id": "attack-trace:4a6f1618e1d2b9a8ff7e3f7dfb5f10671294213438eac9686d9ffe97d8c0d4ab"
           },
           "bounds": {
             "timeout_seconds": 60.0
@@ -1885,7 +1412,7 @@
             {
               "attack_trace": {
                 "claim_id": "claim:secrecy",
-                "raw_digest": "2bb641b9569a98838d0eed9e579a537c66ef3e7a8c911abb8741c061bde63637",
+                "raw_digest": "780ba92e41bd8c54267c33c15efbb1ac53a4470b4f305a0ac44c9bdc0d0c1430",
                 "replay": [
                   "0:marker:falsified:"
                 ],
@@ -1899,7 +1426,7 @@
                   }
                 ],
                 "trace_format": "tamarin-trace",
-                "trace_id": "attack-trace:18f1f6580916f3413cdb2d729ff32336edad010b79807a45421131d13d8f0ee7"
+                "trace_id": "attack-trace:4a6f1618e1d2b9a8ff7e3f7dfb5f10671294213438eac9686d9ffe97d8c0d4ab"
               },
               "claim_id": "claim:secrecy",
               "lemma_name": "secrecy_claim",
@@ -1908,24 +1435,22 @@
             }
           ],
           "detail": "Live concrete attack: secret leaked on the network",
-          "elapsed_ms": 129,
+          "elapsed_ms": 128,
           "evidence_class": "live",
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/tamarin-prover",
+          "executable_path": "<managed-tool-path-redacted>/tamarin-prover",
           "expect": "attack",
           "kind": "attack",
           "live_executed": true,
           "matched": true,
-          "output_digest": "36c3779cb9e2169771f5164fdd81989cdaf2f512e8958864ea126a5b4ba38cc6",
+          "output_digest": "6975d6dc2bfb9750df7c37c344125185fd98521e6398381664171e13463d9867",
           "query": "prove secrecy_claim (expect attack)",
-          "raw_output": "theory LiveAttackChallenge\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ Out( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nlemma secrecy_claim:\n  all-traces \"\u2200 k #i. (Secret( k ) @ #i) \u21d2 (\u00ac(\u2203 #j. K( k ) @ #j))\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 k #i. (Secret( k ) @ #i) \u2227 \u2203 #j. (K( k ) @ #j)\"\n*/\nsimplify\nsolve( !KU( ~k ) @ #vk )\n  case Create_Secret\n  SOLVED // trace found\nqed\n\n/* All wellformedness checks were successful. */\n\n/*\nGenerated from:\nTamarin version 1.12.0\nMaude version 3.5.1\nGit revision: UNKNOWN, branch: UNKNOWN\nCompiled at: 2026-07-23 19:00:49.820030192 UTC\n*/\n\nend\n\n==============================================================================\nsummary of summaries:\n\nanalyzed: /tmp/tamarin-live-xdfy_cm7/live_attack_leak.spthy\n\n  processing time: 0.07s\n  \n  secrecy_claim (all-traces): falsified - found trace (3 steps)\n\n==============================================================================\n\nmaude tool: 'maude'\n checking version: 3.5.1. OK.\n checking installation: OK.\n[Theory LiveAttackChallenge] Theory loaded\n[Theory LiveAttackChallenge] Theory translated\n[Theory LiveAttackChallenge] Derivation checks started\n[Theory LiveAttackChallenge] Derivation checks ended\n[Theory LiveAttackChallenge] Theory closed\n[Saturating Sources] Step 1 (Max 5)\n[Saturating Sources] Done\n",
+          "raw_output_preview": "theory LiveAttackChallenge\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ Out( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nlemma secrecy_claim:\n  all-traces \"\u2200 k #i. (Secret( k ) @ #i) \u21d2 (\u00ac(\u2203 #j. K( k )",
           "reason_codes": [],
           "returncode": 0,
-          "source": "theory LiveAttackChallenge\nbegin\nbuiltins: hashing\n\nrule Create_Secret:\n  [ Fr(~k) ]\n  --[ Secret(~k) ]->\n  [ Out(~k) ]\n\nlemma secrecy_claim:\n  \"All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)\"\nend\n",
           "source_digest": "fe88fb2c779fb6caafecdc93c29e5a6040a577276507c649edee235d6bc5a65a",
           "source_format": "spthy",
+          "source_preview": "theory LiveAttackChallenge\nbegin\nbuiltins: hashing\n\nrule Create_Secret:\n  [ Fr(~k) ]\n  --[ Secret(~k) ]->\n  [ Out(~k) ]\n\nlemma secrecy_claim:\n  \"All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)\"\nend\n",
           "status": "attack",
-          "stderr": "maude tool: 'maude'\n checking version: 3.5.1. OK.\n checking installation: OK.\n[Theory LiveAttackChallenge] Theory loaded\n[Theory LiveAttackChallenge] Theory translated\n[Theory LiveAttackChallenge] Derivation checks started\n[Theory LiveAttackChallenge] Derivation checks ended\n[Theory LiveAttackChallenge] Theory closed\n[Saturating Sources] Step 1 (Max 5)\n[Saturating Sources] Done\n",
-          "stdout": "theory LiveAttackChallenge\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ Out( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nlemma secrecy_claim:\n  all-traces \"\u2200 k #i. (Secret( k ) @ #i) \u21d2 (\u00ac(\u2203 #j. K( k ) @ #j))\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 k #i. (Secret( k ) @ #i) \u2227 \u2203 #j. (K( k ) @ #j)\"\n*/\nsimplify\nsolve( !KU( ~k ) @ #vk )\n  case Create_Secret\n  SOLVED // trace found\nqed\n\n/* All wellformedness checks were successful. */\n\n/*\nGenerated from:\nTamarin version 1.12.0\nMaude version 3.5.1\nGit revision: UNKNOWN, branch: UNKNOWN\nCompiled at: 2026-07-23 19:00:49.820030192 UTC\n*/\n\nend\n\n==============================================================================\nsummary of summaries:\n\nanalyzed: /tmp/tamarin-live-xdfy_cm7/live_attack_leak.spthy\n\n  processing time: 0.07s\n  \n  secrecy_claim (all-traces): falsified - found trace (3 steps)\n\n==============================================================================\n",
           "support_tool_id": "maude",
           "support_tool_version": "3.5.1",
           "tool_id": "tamarin",
@@ -1938,7 +1463,7 @@
           ],
           "attack_trace": {
             "claim_id": "claim:auth",
-            "raw_digest": "41978b172d9c9916b4a36b79a2b0102d9050564ee1bf3c3401b84fae797940a7",
+            "raw_digest": "7ea9c86f9b0e1e983b0d2854a59578dcf0419a7aace6f93cbaa0349b5406865f",
             "replay": [
               "0:marker:falsified:"
             ],
@@ -1952,7 +1477,7 @@
               }
             ],
             "trace_format": "tamarin-trace",
-            "trace_id": "attack-trace:367923f25160b0c89a3c9ce8e3d4e03fd9b84bb465aae3570282f823c138e3a8"
+            "trace_id": "attack-trace:82ef0f60c1e4d57b4d6bbeab4a35d5f03154c1b627d7dd713369e6c25d1c6d18"
           },
           "bounds": {
             "timeout_seconds": 60.0
@@ -1969,7 +1494,7 @@
             {
               "attack_trace": {
                 "claim_id": "claim:auth",
-                "raw_digest": "41978b172d9c9916b4a36b79a2b0102d9050564ee1bf3c3401b84fae797940a7",
+                "raw_digest": "7ea9c86f9b0e1e983b0d2854a59578dcf0419a7aace6f93cbaa0349b5406865f",
                 "replay": [
                   "0:marker:falsified:"
                 ],
@@ -1983,7 +1508,7 @@
                   }
                 ],
                 "trace_format": "tamarin-trace",
-                "trace_id": "attack-trace:367923f25160b0c89a3c9ce8e3d4e03fd9b84bb465aae3570282f823c138e3a8"
+                "trace_id": "attack-trace:82ef0f60c1e4d57b4d6bbeab4a35d5f03154c1b627d7dd713369e6c25d1c6d18"
               },
               "claim_id": "claim:auth",
               "lemma_name": "auth_claim",
@@ -1992,26 +1517,24 @@
             }
           ],
           "detail": "Premise/conclusion mutation must not remain secure",
-          "elapsed_ms": 132,
+          "elapsed_ms": 119,
           "evidence_class": "live",
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/tamarin-prover",
+          "executable_path": "<managed-tool-path-redacted>/tamarin-prover",
           "expect": "rejected_or_quarantined",
           "kind": "mutation",
           "live_executed": true,
           "matched": true,
-          "output_digest": "5aa4f8c39260cc262487d39705b16e4482d92397a24efea52fd4faa6fd66be65",
+          "output_digest": "8ea4dd41abb0c73184dcd6008990badc81672b07e9d4c3b07ec42057d36db7a3",
           "query": "prove mutated auth conclusion",
-          "raw_output": "theory LiveMutatedClaim\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ St_Init( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Begin:\n   [ Fr( ~n ) ] --[ BeginChallenge( ~n ) ]-> [ Out( h(~n) ), St_Sent( ~n ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Accept:\n   [ In( h(n) ), St_Sent( n ) ] --[ AcceptChallenge( n ) ]-> [ ]\n\n  /* has exactly the trivial AC variant */\n\nlemma secrecy_claim:\n  all-traces \"\u2200 k #i. (Secret( k ) @ #i) \u21d2 (\u00ac(\u2203 #j. K( k ) @ #j))\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 k #i. (Secret( k ) @ #i) \u2227 \u2203 #j. (K( k ) @ #j)\"\n*/\nsimplify\nby solve( !KU( ~k ) @ #vk )\n\nlemma auth_claim:\n  all-traces\n  \"\u2200 n #i.\n    (AcceptChallenge( n ) @ #i) \u21d2 (\u00ac(\u2203 #j. BeginChallenge( n ) @ #j))\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 n #i. (AcceptChallenge( n ) @ #i) \u2227 \u2203 #j. (BeginChallenge( n ) @ #j)\"\n*/\nsimplify\nsolve( St_Sent( ~n ) \u25b6\u2081 #i )\n  case Begin\n  solve( !KU( h(~n) ) @ #vk )\n    case Begin\n    SOLVED // trace found\n  qed\nqed\n\n/* All wellformedness checks were successful. */\n\n/*\nGenerated from:\nTamarin version 1.12.0\nMaude version 3.5.1\nGit revision: UNKNOWN, branch: UNKNOWN\nCompiled at: 2026-07-23 19:00:49.820030192 UTC\n*/\n\nend\n\n==============================================================================\nsummary of summaries:\n\nanalyzed: /tmp/tamarin-live-9i7d3bxp/live_mutated_claim.spthy\n\n  processing time: 0.08s\n  \n  secrecy_claim (all-traces): verified (2 steps)\n  auth_claim (all-traces): falsified - found trace (4 steps)\n\n==============================================================================\n\nmaude tool: 'maude'\n checking version: 3.5.1. OK.\n checking installation: OK.\n[Theory LiveMutatedClaim] Theory loaded\n[Theory LiveMutatedClaim] Theory translated\n[Theory LiveMutatedClaim] Derivation checks started\n[Theory LiveMutatedClaim] Derivation checks ended\n[Theory LiveMutatedClaim] Theory closed\n[Saturating Sources] Step 1 (Max 5)\n[Saturating Sources] Done\n",
+          "raw_output_preview": "theory LiveMutatedClaim\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ St_Init( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Begin:\n   [ Fr( ~n ) ] --[ BeginChallenge( ~n ) ]-> [ Out( h(~",
           "reason_codes": [
             "disagreement"
           ],
           "returncode": 0,
-          "source": "theory LiveMutatedClaim\nbegin\nbuiltins: hashing\n\nrule Create_Secret:\n  [ Fr(~k) ]\n  --[ Secret(~k) ]->\n  [ St_Init(~k) ]\n\nrule Begin:\n  [ Fr(~n) ]\n  --[ BeginChallenge(~n) ]->\n  [ Out(h(~n)), St_Sent(~n) ]\n\nrule Accept:\n  [ In(h(n)), St_Sent(n) ]\n  --[ AcceptChallenge(n) ]->\n  [ ]\n\n// Premise/conclusion mutation: conclusion inverted so the auth claim fails.\nlemma secrecy_claim:\n  \"All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)\"\n\nlemma auth_claim:\n  \"All n #i. AcceptChallenge(n) @ i ==> not (Ex #j. BeginChallenge(n) @ j)\"\nend\n",
           "source_digest": "ad8f1de14abe39b2bf66afcfb2edd3f61184b5223c9c6f41ff5f83b62a51b412",
           "source_format": "spthy",
+          "source_preview": "theory LiveMutatedClaim\nbegin\nbuiltins: hashing\n\nrule Create_Secret:\n  [ Fr(~k) ]\n  --[ Secret(~k) ]->\n  [ St_Init(~k) ]\n\nrule Begin:\n  [ Fr(~n) ]\n  --[ BeginChallenge(~n) ]->\n  [ Out(h(~n)), St_Sent(~n) ]\n\nrule Accept:\n  [ In(h(n)), St_Sent(n) ]\n  --[ AcceptChallenge(n) ]->\n  [ ]\n\n// Premise/conclusion mutation: conclusion inverted so the auth claim fails.\nlemma secrecy_claim:\n  \"All k #i. Secret",
           "status": "quarantined",
-          "stderr": "maude tool: 'maude'\n checking version: 3.5.1. OK.\n checking installation: OK.\n[Theory LiveMutatedClaim] Theory loaded\n[Theory LiveMutatedClaim] Theory translated\n[Theory LiveMutatedClaim] Derivation checks started\n[Theory LiveMutatedClaim] Derivation checks ended\n[Theory LiveMutatedClaim] Theory closed\n[Saturating Sources] Step 1 (Max 5)\n[Saturating Sources] Done\n",
-          "stdout": "theory LiveMutatedClaim\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ St_Init( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Begin:\n   [ Fr( ~n ) ] --[ BeginChallenge( ~n ) ]-> [ Out( h(~n) ), St_Sent( ~n ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Accept:\n   [ In( h(n) ), St_Sent( n ) ] --[ AcceptChallenge( n ) ]-> [ ]\n\n  /* has exactly the trivial AC variant */\n\nlemma secrecy_claim:\n  all-traces \"\u2200 k #i. (Secret( k ) @ #i) \u21d2 (\u00ac(\u2203 #j. K( k ) @ #j))\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 k #i. (Secret( k ) @ #i) \u2227 \u2203 #j. (K( k ) @ #j)\"\n*/\nsimplify\nby solve( !KU( ~k ) @ #vk )\n\nlemma auth_claim:\n  all-traces\n  \"\u2200 n #i.\n    (AcceptChallenge( n ) @ #i) \u21d2 (\u00ac(\u2203 #j. BeginChallenge( n ) @ #j))\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 n #i. (AcceptChallenge( n ) @ #i) \u2227 \u2203 #j. (BeginChallenge( n ) @ #j)\"\n*/\nsimplify\nsolve( St_Sent( ~n ) \u25b6\u2081 #i )\n  case Begin\n  solve( !KU( h(~n) ) @ #vk )\n    case Begin\n    SOLVED // trace found\n  qed\nqed\n\n/* All wellformedness checks were successful. */\n\n/*\nGenerated from:\nTamarin version 1.12.0\nMaude version 3.5.1\nGit revision: UNKNOWN, branch: UNKNOWN\nCompiled at: 2026-07-23 19:00:49.820030192 UTC\n*/\n\nend\n\n==============================================================================\nsummary of summaries:\n\nanalyzed: /tmp/tamarin-live-9i7d3bxp/live_mutated_claim.spthy\n\n  processing time: 0.08s\n  \n  secrecy_claim (all-traces): verified (2 steps)\n  auth_claim (all-traces): falsified - found trace (4 steps)\n\n==============================================================================\n",
           "support_tool_id": "maude",
           "support_tool_version": "3.5.1",
           "tool_id": "tamarin",
@@ -2024,7 +1547,7 @@
           ],
           "attack_trace": {
             "claim_id": "claim:secrecy",
-            "raw_digest": "19ce811336532ace303bec5d6a405614fff48d453a610fe86176fd7c54bb0f8c",
+            "raw_digest": "9965a7cd3d8995a54e25c637e922370102673464824f4cf8a41ba758c6302e9b",
             "replay": [
               "0:marker:falsified:"
             ],
@@ -2038,7 +1561,7 @@
               }
             ],
             "trace_format": "tamarin-trace",
-            "trace_id": "attack-trace:a37bb3bbe963780202d39834bea32b98239320fe80c1c16dca666f33adc9ce7b"
+            "trace_id": "attack-trace:03da5ecf228a52a7a783336e26473361b094f24be6751eb3942d63f596eb728b"
           },
           "bounds": {
             "timeout_seconds": 60.0
@@ -2048,7 +1571,7 @@
             {
               "attack_trace": {
                 "claim_id": "claim:secrecy",
-                "raw_digest": "19ce811336532ace303bec5d6a405614fff48d453a610fe86176fd7c54bb0f8c",
+                "raw_digest": "9965a7cd3d8995a54e25c637e922370102673464824f4cf8a41ba758c6302e9b",
                 "replay": [
                   "0:marker:falsified:"
                 ],
@@ -2062,7 +1585,7 @@
                   }
                 ],
                 "trace_format": "tamarin-trace",
-                "trace_id": "attack-trace:a37bb3bbe963780202d39834bea32b98239320fe80c1c16dca666f33adc9ce7b"
+                "trace_id": "attack-trace:03da5ecf228a52a7a783336e26473361b094f24be6751eb3942d63f596eb728b"
               },
               "claim_id": "claim:secrecy",
               "lemma_name": "secrecy_claim",
@@ -2071,24 +1594,22 @@
             }
           ],
           "detail": "Protocol mutation yields an attack",
-          "elapsed_ms": 99,
+          "elapsed_ms": 107,
           "evidence_class": "live",
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/tamarin-prover",
+          "executable_path": "<managed-tool-path-redacted>/tamarin-prover",
           "expect": "attack",
           "kind": "mutation",
           "live_executed": true,
           "matched": true,
-          "output_digest": "1c9fa1f3877fc122d5d62e16225bf49c97b34182c750944a56e7ac17cf1024f5",
+          "output_digest": "534ce6607401762d630689e8bcc34bea38e5361236fb0edb1c6e456f809a6440",
           "query": "prove secrecy after protocol mutation",
-          "raw_output": "theory LiveMutatedProtocol\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ Out( ~k ), St_Init( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nlemma secrecy_claim:\n  all-traces \"\u2200 k #i. (Secret( k ) @ #i) \u21d2 (\u00ac(\u2203 #j. K( k ) @ #j))\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 k #i. (Secret( k ) @ #i) \u2227 \u2203 #j. (K( k ) @ #j)\"\n*/\nsimplify\nsolve( !KU( ~k ) @ #vk )\n  case Create_Secret\n  SOLVED // trace found\nqed\n\n/* All wellformedness checks were successful. */\n\n/*\nGenerated from:\nTamarin version 1.12.0\nMaude version 3.5.1\nGit revision: UNKNOWN, branch: UNKNOWN\nCompiled at: 2026-07-23 19:00:49.820030192 UTC\n*/\n\nend\n\n==============================================================================\nsummary of summaries:\n\nanalyzed: /tmp/tamarin-live-hf37_9w8/live_mutated_protocol.spthy\n\n  processing time: 0.06s\n  \n  secrecy_claim (all-traces): falsified - found trace (3 steps)\n\n==============================================================================\n\nmaude tool: 'maude'\n checking version: 3.5.1. OK.\n checking installation: OK.\n[Theory LiveMutatedProtocol] Theory loaded\n[Theory LiveMutatedProtocol] Theory translated\n[Theory LiveMutatedProtocol] Derivation checks started\n[Theory LiveMutatedProtocol] Derivation checks ended\n[Theory LiveMutatedProtocol] Theory closed\n[Saturating Sources] Step 1 (Max 5)\n[Saturating Sources] Done\n",
+          "raw_output_preview": "theory LiveMutatedProtocol\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ Out( ~k ), St_Init( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nlemma secrecy_claim:\n  all-traces \"\u2200 k #i. (Secret( k ) @ #i) \u21d2 ",
           "reason_codes": [],
           "returncode": 0,
-          "source": "theory LiveMutatedProtocol\nbegin\nbuiltins: hashing\n\nrule Create_Secret:\n  [ Fr(~k) ]\n  --[ Secret(~k) ]->\n  [ Out(~k), St_Init(~k) ]\n\nlemma secrecy_claim:\n  \"All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)\"\nend\n",
           "source_digest": "26d59a48797ccdd9f3d11f4838d47ce940aa86600b1e86e1b6ef240f1090c79d",
           "source_format": "spthy",
+          "source_preview": "theory LiveMutatedProtocol\nbegin\nbuiltins: hashing\n\nrule Create_Secret:\n  [ Fr(~k) ]\n  --[ Secret(~k) ]->\n  [ Out(~k), St_Init(~k) ]\n\nlemma secrecy_claim:\n  \"All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)\"\nend\n",
           "status": "attack",
-          "stderr": "maude tool: 'maude'\n checking version: 3.5.1. OK.\n checking installation: OK.\n[Theory LiveMutatedProtocol] Theory loaded\n[Theory LiveMutatedProtocol] Theory translated\n[Theory LiveMutatedProtocol] Derivation checks started\n[Theory LiveMutatedProtocol] Derivation checks ended\n[Theory LiveMutatedProtocol] Theory closed\n[Saturating Sources] Step 1 (Max 5)\n[Saturating Sources] Done\n",
-          "stdout": "theory LiveMutatedProtocol\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ Out( ~k ), St_Init( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nlemma secrecy_claim:\n  all-traces \"\u2200 k #i. (Secret( k ) @ #i) \u21d2 (\u00ac(\u2203 #j. K( k ) @ #j))\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 k #i. (Secret( k ) @ #i) \u2227 \u2203 #j. (K( k ) @ #j)\"\n*/\nsimplify\nsolve( !KU( ~k ) @ #vk )\n  case Create_Secret\n  SOLVED // trace found\nqed\n\n/* All wellformedness checks were successful. */\n\n/*\nGenerated from:\nTamarin version 1.12.0\nMaude version 3.5.1\nGit revision: UNKNOWN, branch: UNKNOWN\nCompiled at: 2026-07-23 19:00:49.820030192 UTC\n*/\n\nend\n\n==============================================================================\nsummary of summaries:\n\nanalyzed: /tmp/tamarin-live-hf37_9w8/live_mutated_protocol.spthy\n\n  processing time: 0.06s\n  \n  secrecy_claim (all-traces): falsified - found trace (3 steps)\n\n==============================================================================\n",
           "support_tool_id": "maude",
           "support_tool_version": "3.5.1",
           "tool_id": "tamarin",
@@ -2122,24 +1643,22 @@
             }
           ],
           "detail": "Deterministic live replay of the secure case",
-          "elapsed_ms": 118,
+          "elapsed_ms": 119,
           "evidence_class": "live",
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/tamarin-prover",
+          "executable_path": "<managed-tool-path-redacted>/tamarin-prover",
           "expect": "secure",
           "kind": "replay",
           "live_executed": true,
           "matched": true,
-          "output_digest": "5ecd1898c7114a8ec947a8a14d3173cfa5e3f6cb6acc0d32d63a12065247d2ed",
+          "output_digest": "25fc5bf84250021de0dcb1bb254b6a58cd1acf4b9011c51516276dbd1e1c8805",
           "query": "replay prove secrecy_claim + auth_claim",
-          "raw_output": "theory LiveSecureChallenge\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ St_Init( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Begin:\n   [ Fr( ~n ) ] --[ BeginChallenge( ~n ) ]-> [ Out( h(~n) ), St_Sent( ~n ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Accept:\n   [ In( h(n) ), St_Sent( n ) ] --[ AcceptChallenge( n ) ]-> [ ]\n\n  /* has exactly the trivial AC variant */\n\nlemma secrecy_claim:\n  all-traces \"\u2200 k #i. (Secret( k ) @ #i) \u21d2 (\u00ac(\u2203 #j. K( k ) @ #j))\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 k #i. (Secret( k ) @ #i) \u2227 \u2203 #j. (K( k ) @ #j)\"\n*/\nsimplify\nby solve( !KU( ~k ) @ #vk )\n\nlemma auth_claim:\n  all-traces\n  \"\u2200 n #i. (AcceptChallenge( n ) @ #i) \u21d2 (\u2203 #j. BeginChallenge( n ) @ #j)\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 n #i.\n  (AcceptChallenge( n ) @ #i) \u2227 \u2200 #j. (BeginChallenge( n ) @ #j) \u21d2 \u22a5\"\n*/\nsimplify\nsolve( St_Sent( n ) \u25b6\u2081 #i )\n  case Begin\n  by contradiction /* from formulas */\nqed\n\n/* All wellformedness checks were successful. */\n\n/*\nGenerated from:\nTamarin version 1.12.0\nMaude version 3.5.1\nGit revision: UNKNOWN, branch: UNKNOWN\nCompiled at: 2026-07-23 19:00:49.820030192 UTC\n*/\n\nend\n\n==============================================================================\nsummary of summaries:\n\nanalyzed: /tmp/tamarin-live-w4pm1gv9/live_deterministic_replay.spthy\n\n  processing time: 0.07s\n  \n  secrecy_claim (all-traces): verified (2 steps)\n  auth_claim (all-traces): verified (3 steps)\n\n==============================================================================\n\nmaude tool: 'maude'\n checking version: 3.5.1. OK.\n checking installation: OK.\n[Theory LiveSecureChallenge] Theory loaded\n[Theory LiveSecureChallenge] Theory translated\n[Theory LiveSecureChallenge] Derivation checks started\n[Theory LiveSecureChallenge] Derivation checks ended\n[Theory LiveSecureChallenge] Theory closed\n[Saturating Sources] Step 1 (Max 5)\n[Saturating Sources] Done\n",
+          "raw_output_preview": "theory LiveSecureChallenge\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ St_Init( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Begin:\n   [ Fr( ~n ) ] --[ BeginChallenge( ~n ) ]-> [ Out( ",
           "reason_codes": [],
           "returncode": 0,
-          "source": "theory LiveSecureChallenge\nbegin\nbuiltins: hashing\n\nrule Create_Secret:\n  [ Fr(~k) ]\n  --[ Secret(~k) ]->\n  [ St_Init(~k) ]\n\nrule Begin:\n  [ Fr(~n) ]\n  --[ BeginChallenge(~n) ]->\n  [ Out(h(~n)), St_Sent(~n) ]\n\nrule Accept:\n  [ In(h(n)), St_Sent(n) ]\n  --[ AcceptChallenge(n) ]->\n  [ ]\n\nlemma secrecy_claim:\n  \"All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)\"\n\nlemma auth_claim:\n  \"All n #i. AcceptChallenge(n) @ i ==> (Ex #j. BeginChallenge(n) @ j)\"\nend\n",
           "source_digest": "ebb363d1e4d58ea3d16a6a8f74ce42f26f776c884d7d3ebbe2414ffec91f031f",
           "source_format": "spthy",
+          "source_preview": "theory LiveSecureChallenge\nbegin\nbuiltins: hashing\n\nrule Create_Secret:\n  [ Fr(~k) ]\n  --[ Secret(~k) ]->\n  [ St_Init(~k) ]\n\nrule Begin:\n  [ Fr(~n) ]\n  --[ BeginChallenge(~n) ]->\n  [ Out(h(~n)), St_Sent(~n) ]\n\nrule Accept:\n  [ In(h(n)), St_Sent(n) ]\n  --[ AcceptChallenge(n) ]->\n  [ ]\n\nlemma secrecy_claim:\n  \"All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)\"\n\nlemma auth_claim:\n  \"All n #i. AcceptC",
           "status": "secure",
-          "stderr": "maude tool: 'maude'\n checking version: 3.5.1. OK.\n checking installation: OK.\n[Theory LiveSecureChallenge] Theory loaded\n[Theory LiveSecureChallenge] Theory translated\n[Theory LiveSecureChallenge] Derivation checks started\n[Theory LiveSecureChallenge] Derivation checks ended\n[Theory LiveSecureChallenge] Theory closed\n[Saturating Sources] Step 1 (Max 5)\n[Saturating Sources] Done\n",
-          "stdout": "theory LiveSecureChallenge\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ St_Init( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Begin:\n   [ Fr( ~n ) ] --[ BeginChallenge( ~n ) ]-> [ Out( h(~n) ), St_Sent( ~n ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Accept:\n   [ In( h(n) ), St_Sent( n ) ] --[ AcceptChallenge( n ) ]-> [ ]\n\n  /* has exactly the trivial AC variant */\n\nlemma secrecy_claim:\n  all-traces \"\u2200 k #i. (Secret( k ) @ #i) \u21d2 (\u00ac(\u2203 #j. K( k ) @ #j))\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 k #i. (Secret( k ) @ #i) \u2227 \u2203 #j. (K( k ) @ #j)\"\n*/\nsimplify\nby solve( !KU( ~k ) @ #vk )\n\nlemma auth_claim:\n  all-traces\n  \"\u2200 n #i. (AcceptChallenge( n ) @ #i) \u21d2 (\u2203 #j. BeginChallenge( n ) @ #j)\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 n #i.\n  (AcceptChallenge( n ) @ #i) \u2227 \u2200 #j. (BeginChallenge( n ) @ #j) \u21d2 \u22a5\"\n*/\nsimplify\nsolve( St_Sent( n ) \u25b6\u2081 #i )\n  case Begin\n  by contradiction /* from formulas */\nqed\n\n/* All wellformedness checks were successful. */\n\n/*\nGenerated from:\nTamarin version 1.12.0\nMaude version 3.5.1\nGit revision: UNKNOWN, branch: UNKNOWN\nCompiled at: 2026-07-23 19:00:49.820030192 UTC\n*/\n\nend\n\n==============================================================================\nsummary of summaries:\n\nanalyzed: /tmp/tamarin-live-w4pm1gv9/live_deterministic_replay.spthy\n\n  processing time: 0.07s\n  \n  secrecy_claim (all-traces): verified (2 steps)\n  auth_claim (all-traces): verified (3 steps)\n\n==============================================================================\n",
           "support_tool_id": "maude",
           "support_tool_version": "3.5.1",
           "tool_id": "tamarin",
@@ -2162,26 +1681,24 @@
             }
           ],
           "detail": "Malformed model never reports SECURE",
-          "elapsed_ms": 44,
+          "elapsed_ms": 55,
           "evidence_class": "live",
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/tamarin-prover",
+          "executable_path": "<managed-tool-path-redacted>/tamarin-prover",
           "expect": "quarantined",
           "kind": "malformed",
           "live_executed": true,
           "matched": true,
-          "output_digest": "a5364c6be253cc3512451e0ce9b9ff1ae2a26179921d10d545d1364359d71355",
+          "output_digest": "b183bb06d048fb65fd6d4509096a777b1972c4165084323e9905f8b0820c6df7",
           "query": "parse/prove malformed model",
-          "raw_output": "\nmaude tool: 'maude'\n checking version: 3.5.1. OK.\n checking installation: OK.\n\"/tmp/tamarin-live-wz6ozpva/live_malformed_model.spthy\" (line 3, column 5):\nunexpected \" \"\nexpecting letter or \"{*\"\n",
+          "raw_output_preview": "\nmaude tool: 'maude'\n checking version: 3.5.1. OK.\n checking installation: OK.\n\"<host-path-redacted>/live_malformed_model.spthy\" (line 3, column 5):\nunexpected \" \"\nexpecting letter or \"{*\"\n",
           "reason_codes": [
             "inconclusive"
           ],
           "returncode": 1,
-          "source": "theory LiveMalformed\nbegin\nthis is not valid spthy !!!!\nlemma secrecy_claim:\n  \"True\"\nend\n",
           "source_digest": "6caa3b14d47caacfaaaaaf96561aae8717f92c4f59bbc138050f4b605c3a1da8",
           "source_format": "spthy",
+          "source_preview": "theory LiveMalformed\nbegin\nthis is not valid spthy !!!!\nlemma secrecy_claim:\n  \"True\"\nend\n",
           "status": "quarantined",
-          "stderr": "maude tool: 'maude'\n checking version: 3.5.1. OK.\n checking installation: OK.\n\"/tmp/tamarin-live-wz6ozpva/live_malformed_model.spthy\" (line 3, column 5):\nunexpected \" \"\nexpecting letter or \"{*\"\n",
-          "stdout": "",
           "support_tool_id": "maude",
           "support_tool_version": "3.5.1",
           "tool_id": "tamarin",
@@ -2198,26 +1715,24 @@
           "case_id": "live_timeout",
           "claim_outcomes": [],
           "detail": "Subprocess timeout quarantines rather than SECURE",
-          "elapsed_ms": 2,
+          "elapsed_ms": 1,
           "evidence_class": "live",
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/tamarin-prover",
+          "executable_path": "<managed-tool-path-redacted>/tamarin-prover",
           "expect": "quarantined",
           "kind": "timeout",
           "live_executed": true,
           "matched": true,
           "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
           "query": "prove under extreme timeout bound",
-          "raw_output": "\n",
+          "raw_output_preview": "\n",
           "reason_codes": [
             "timeout"
           ],
           "returncode": null,
-          "source": "theory LiveSecureChallenge\nbegin\nbuiltins: hashing\n\nrule Create_Secret:\n  [ Fr(~k) ]\n  --[ Secret(~k) ]->\n  [ St_Init(~k) ]\n\nrule Begin:\n  [ Fr(~n) ]\n  --[ BeginChallenge(~n) ]->\n  [ Out(h(~n)), St_Sent(~n) ]\n\nrule Accept:\n  [ In(h(n)), St_Sent(n) ]\n  --[ AcceptChallenge(n) ]->\n  [ ]\n\nlemma secrecy_claim:\n  \"All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)\"\n\nlemma auth_claim:\n  \"All n #i. AcceptChallenge(n) @ i ==> (Ex #j. BeginChallenge(n) @ j)\"\nend\n",
           "source_digest": "ebb363d1e4d58ea3d16a6a8f74ce42f26f776c884d7d3ebbe2414ffec91f031f",
           "source_format": "spthy",
+          "source_preview": "theory LiveSecureChallenge\nbegin\nbuiltins: hashing\n\nrule Create_Secret:\n  [ Fr(~k) ]\n  --[ Secret(~k) ]->\n  [ St_Init(~k) ]\n\nrule Begin:\n  [ Fr(~n) ]\n  --[ BeginChallenge(~n) ]->\n  [ Out(h(~n)), St_Sent(~n) ]\n\nrule Accept:\n  [ In(h(n)), St_Sent(n) ]\n  --[ AcceptChallenge(n) ]->\n  [ ]\n\nlemma secrecy_claim:\n  \"All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)\"\n\nlemma auth_claim:\n  \"All n #i. AcceptC",
           "status": "quarantined",
-          "stderr": "",
-          "stdout": "",
           "support_tool_id": "maude",
           "support_tool_version": "3.5.1",
           "tool_id": "tamarin",
@@ -2230,7 +1745,7 @@
           ],
           "attack_trace": {
             "claim_id": "claim:secrecy",
-            "raw_digest": "bd9d81b38b2a6b736dfc8acb8ede4ce4e248e9e912e1e9220e4021421d9ca657",
+            "raw_digest": "d18e95931c7d032051b34cbc54902a530043a0620d9d41dac89acb377001c6d9",
             "replay": [
               "0:marker:falsified:"
             ],
@@ -2244,7 +1759,7 @@
               }
             ],
             "trace_format": "tamarin-trace",
-            "trace_id": "attack-trace:2e6fe3e5de7122febcb1913c4effef49f5b29d0c8eea4d83157b2da9fa4178f2"
+            "trace_id": "attack-trace:e9dbfb0a1cffe362c45cf6d05a269141bb7650af6298e558166dbae624f884d5"
           },
           "bounds": {
             "timeout_seconds": 60.0
@@ -2254,7 +1769,7 @@
             {
               "attack_trace": {
                 "claim_id": "claim:secrecy",
-                "raw_digest": "bd9d81b38b2a6b736dfc8acb8ede4ce4e248e9e912e1e9220e4021421d9ca657",
+                "raw_digest": "d18e95931c7d032051b34cbc54902a530043a0620d9d41dac89acb377001c6d9",
                 "replay": [
                   "0:marker:falsified:"
                 ],
@@ -2268,7 +1783,7 @@
                   }
                 ],
                 "trace_format": "tamarin-trace",
-                "trace_id": "attack-trace:2e6fe3e5de7122febcb1913c4effef49f5b29d0c8eea4d83157b2da9fa4178f2"
+                "trace_id": "attack-trace:e9dbfb0a1cffe362c45cf6d05a269141bb7650af6298e558166dbae624f884d5"
               },
               "claim_id": "claim:secrecy",
               "lemma_name": "secrecy_claim",
@@ -2286,24 +1801,22 @@
           "detail": "Mixed verified/falsified claims quarantine",
           "elapsed_ms": 133,
           "evidence_class": "live",
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/tamarin-prover",
+          "executable_path": "<managed-tool-path-redacted>/tamarin-prover",
           "expect": "rejected_or_quarantined",
           "kind": "disagreement",
           "live_executed": true,
           "matched": true,
-          "output_digest": "d4a3c49eafdaf880767537d0fee17b17c335c07f9113da6909ff5903d038f5ca",
+          "output_digest": "4191ecf1e24f31b177d7716c7f817842bc5bf2a332722f80a286f1bf71bdd4fd",
           "query": "prove mixed secrecy(attack)+auth(secure)",
-          "raw_output": "theory LiveDisagreement\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ Out( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Begin:\n   [ Fr( ~n ) ] --[ BeginChallenge( ~n ) ]-> [ Out( h(~n) ), St_Sent( ~n ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Accept:\n   [ In( h(n) ), St_Sent( n ) ] --[ AcceptChallenge( n ) ]-> [ ]\n\n  /* has exactly the trivial AC variant */\n\nlemma secrecy_claim:\n  all-traces \"\u2200 k #i. (Secret( k ) @ #i) \u21d2 (\u00ac(\u2203 #j. K( k ) @ #j))\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 k #i. (Secret( k ) @ #i) \u2227 \u2203 #j. (K( k ) @ #j)\"\n*/\nsimplify\nsolve( !KU( ~k ) @ #vk )\n  case Create_Secret\n  SOLVED // trace found\nqed\n\nlemma auth_claim:\n  all-traces\n  \"\u2200 n #i. (AcceptChallenge( n ) @ #i) \u21d2 (\u2203 #j. BeginChallenge( n ) @ #j)\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 n #i.\n  (AcceptChallenge( n ) @ #i) \u2227 \u2200 #j. (BeginChallenge( n ) @ #j) \u21d2 \u22a5\"\n*/\nsimplify\nsolve( St_Sent( n ) \u25b6\u2081 #i )\n  case Begin\n  by contradiction /* from formulas */\nqed\n\n/* All wellformedness checks were successful. */\n\n/*\nGenerated from:\nTamarin version 1.12.0\nMaude version 3.5.1\nGit revision: UNKNOWN, branch: UNKNOWN\nCompiled at: 2026-07-23 19:00:49.820030192 UTC\n*/\n\nend\n\n==============================================================================\nsummary of summaries:\n\nanalyzed: /tmp/tamarin-live-6x8d9tvc/live_disagreement.spthy\n\n  processing time: 0.08s\n  \n  secrecy_claim (all-traces): falsified - found trace (3 steps)\n  auth_claim (all-traces): verified (3 steps)\n\n==============================================================================\n\nmaude tool: 'maude'\n checking version: 3.5.1. OK.\n checking installation: OK.\n[Theory LiveDisagreement] Theory loaded\n[Theory LiveDisagreement] Theory translated\n[Theory LiveDisagreement] Derivation checks started\n[Theory LiveDisagreement] Derivation checks ended\n[Theory LiveDisagreement] Theory closed\n[Saturating Sources] Step 1 (Max 5)\n[Saturating Sources] Done\n",
+          "raw_output_preview": "theory LiveDisagreement\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ Out( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Begin:\n   [ Fr( ~n ) ] --[ BeginChallenge( ~n ) ]-> [ Out( h(~n) )",
           "reason_codes": [
             "disagreement"
           ],
           "returncode": 0,
-          "source": "theory LiveDisagreement\nbegin\nbuiltins: hashing\n\nrule Create_Secret:\n  [ Fr(~k) ]\n  --[ Secret(~k) ]->\n  [ Out(~k) ]\n\nrule Begin:\n  [ Fr(~n) ]\n  --[ BeginChallenge(~n) ]->\n  [ Out(h(~n)), St_Sent(~n) ]\n\nrule Accept:\n  [ In(h(n)), St_Sent(n) ]\n  --[ AcceptChallenge(n) ]->\n  [ ]\n\nlemma secrecy_claim:\n  \"All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)\"\n\nlemma auth_claim:\n  \"All n #i. AcceptChallenge(n) @ i ==> (Ex #j. BeginChallenge(n) @ j)\"\nend\n",
           "source_digest": "cab79ec0b1bcc76895c2d71e2dd1e1a8c3d2da9db0ca4815f4cfe066cbd7555d",
           "source_format": "spthy",
+          "source_preview": "theory LiveDisagreement\nbegin\nbuiltins: hashing\n\nrule Create_Secret:\n  [ Fr(~k) ]\n  --[ Secret(~k) ]->\n  [ Out(~k) ]\n\nrule Begin:\n  [ Fr(~n) ]\n  --[ BeginChallenge(~n) ]->\n  [ Out(h(~n)), St_Sent(~n) ]\n\nrule Accept:\n  [ In(h(n)), St_Sent(n) ]\n  --[ AcceptChallenge(n) ]->\n  [ ]\n\nlemma secrecy_claim:\n  \"All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)\"\n\nlemma auth_claim:\n  \"All n #i. AcceptChalleng",
           "status": "quarantined",
-          "stderr": "maude tool: 'maude'\n checking version: 3.5.1. OK.\n checking installation: OK.\n[Theory LiveDisagreement] Theory loaded\n[Theory LiveDisagreement] Theory translated\n[Theory LiveDisagreement] Derivation checks started\n[Theory LiveDisagreement] Derivation checks ended\n[Theory LiveDisagreement] Theory closed\n[Saturating Sources] Step 1 (Max 5)\n[Saturating Sources] Done\n",
-          "stdout": "theory LiveDisagreement\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, h/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ Out( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Begin:\n   [ Fr( ~n ) ] --[ BeginChallenge( ~n ) ]-> [ Out( h(~n) ), St_Sent( ~n ) ]\n\n  /* has exactly the trivial AC variant */\n\nrule (modulo E) Accept:\n   [ In( h(n) ), St_Sent( n ) ] --[ AcceptChallenge( n ) ]-> [ ]\n\n  /* has exactly the trivial AC variant */\n\nlemma secrecy_claim:\n  all-traces \"\u2200 k #i. (Secret( k ) @ #i) \u21d2 (\u00ac(\u2203 #j. K( k ) @ #j))\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 k #i. (Secret( k ) @ #i) \u2227 \u2203 #j. (K( k ) @ #j)\"\n*/\nsimplify\nsolve( !KU( ~k ) @ #vk )\n  case Create_Secret\n  SOLVED // trace found\nqed\n\nlemma auth_claim:\n  all-traces\n  \"\u2200 n #i. (AcceptChallenge( n ) @ #i) \u21d2 (\u2203 #j. BeginChallenge( n ) @ #j)\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 n #i.\n  (AcceptChallenge( n ) @ #i) \u2227 \u2200 #j. (BeginChallenge( n ) @ #j) \u21d2 \u22a5\"\n*/\nsimplify\nsolve( St_Sent( n ) \u25b6\u2081 #i )\n  case Begin\n  by contradiction /* from formulas */\nqed\n\n/* All wellformedness checks were successful. */\n\n/*\nGenerated from:\nTamarin version 1.12.0\nMaude version 3.5.1\nGit revision: UNKNOWN, branch: UNKNOWN\nCompiled at: 2026-07-23 19:00:49.820030192 UTC\n*/\n\nend\n\n==============================================================================\nsummary of summaries:\n\nanalyzed: /tmp/tamarin-live-6x8d9tvc/live_disagreement.spthy\n\n  processing time: 0.08s\n  \n  secrecy_claim (all-traces): falsified - found trace (3 steps)\n  auth_claim (all-traces): verified (3 steps)\n\n==============================================================================\n",
           "support_tool_id": "maude",
           "support_tool_version": "3.5.1",
           "tool_id": "tamarin",
@@ -2332,30 +1845,29 @@
           "detail": "Bounded search incompleteness quarantines",
           "elapsed_ms": 97,
           "evidence_class": "live",
-          "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/tamarin-prover",
+          "executable_path": "<managed-tool-path-redacted>/tamarin-prover",
           "expect": "quarantined",
           "kind": "bounded_search",
           "live_executed": true,
           "matched": true,
-          "output_digest": "e14650bf864c15a090ec0a9cb9f9348bc1098c8cb89637dd435aabafb281d9bd",
+          "output_digest": "732c1601da56c9259707c9d315e908450dca1c86010fae7ff37a814935f52ad3",
           "query": "prove secrecy with --bound=0",
-          "raw_output": "theory LiveBoundedSearch\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ St( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nlemma secrecy_claim:\n  all-traces \"\u2200 k #i. (Secret( k ) @ #i) \u21d2 (\u00ac(\u2203 #j. K( k ) @ #j))\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 k #i. (Secret( k ) @ #i) \u2227 \u2203 #j. (K( k ) @ #j)\"\n*/\nby sorry /* bound 0 hit */\n\n/* All wellformedness checks were successful. */\n\n/*\nGenerated from:\nTamarin version 1.12.0\nMaude version 3.5.1\nGit revision: UNKNOWN, branch: UNKNOWN\nCompiled at: 2026-07-23 19:00:49.820030192 UTC\n*/\n\nend\n\n==============================================================================\nsummary of summaries:\n\nanalyzed: /tmp/tamarin-live-fv39b5qx/live_bounded_search.spthy\n\n  processing time: 0.05s\n  \n  secrecy_claim (all-traces): analysis incomplete (1 steps)\n\n==============================================================================\n\nmaude tool: 'maude'\n checking version: 3.5.1. OK.\n checking installation: OK.\n[Theory LiveBoundedSearch] Theory loaded\n[Theory LiveBoundedSearch] Theory translated\n[Theory LiveBoundedSearch] Derivation checks started\n[Theory LiveBoundedSearch] Derivation checks ended\n[Theory LiveBoundedSearch] Theory closed\n",
+          "raw_output_preview": "theory LiveBoundedSearch\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ St( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nlemma secrecy_claim:\n  all-traces \"\u2200 k #i. (Secret( k ) @ #i) \u21d2 (\u00ac(\u2203 #j. K( k ) @ #j))\"",
           "reason_codes": [
             "inconclusive"
           ],
           "returncode": 0,
-          "source": "theory LiveBoundedSearch\nbegin\nrule Create_Secret:\n  [ Fr(~k) ]\n  --[ Secret(~k) ]->\n  [ St(~k) ]\n\nlemma secrecy_claim:\n  \"All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)\"\nend\n",
           "source_digest": "74eb18a6b9dc68d642110d6abd8ca90f98e2e7120db4abe0c4fa80a1e93fc3cb",
           "source_format": "spthy",
+          "source_preview": "theory LiveBoundedSearch\nbegin\nrule Create_Secret:\n  [ Fr(~k) ]\n  --[ Secret(~k) ]->\n  [ St(~k) ]\n\nlemma secrecy_claim:\n  \"All k #i. Secret(k) @ i ==> not (Ex #j. K(k) @ j)\"\nend\n",
           "status": "quarantined",
-          "stderr": "maude tool: 'maude'\n checking version: 3.5.1. OK.\n checking installation: OK.\n[Theory LiveBoundedSearch] Theory loaded\n[Theory LiveBoundedSearch] Theory translated\n[Theory LiveBoundedSearch] Derivation checks started\n[Theory LiveBoundedSearch] Derivation checks ended\n[Theory LiveBoundedSearch] Theory closed\n",
-          "stdout": "theory LiveBoundedSearch\n\nbegin\n\n// Function signature and definition of the equational theory E\n\nfunctions: fst/1, pair/2, snd/1\nequations: fst(<x.1, x.2>) = x.1, snd(<x.1, x.2>) = x.2\n\nrule (modulo E) Create_Secret:\n   [ Fr( ~k ) ] --[ Secret( ~k ) ]-> [ St( ~k ) ]\n\n  /* has exactly the trivial AC variant */\n\nlemma secrecy_claim:\n  all-traces \"\u2200 k #i. (Secret( k ) @ #i) \u21d2 (\u00ac(\u2203 #j. K( k ) @ #j))\"\n/*\nguarded formula characterizing all counter-examples:\n\"\u2203 k #i. (Secret( k ) @ #i) \u2227 \u2203 #j. (K( k ) @ #j)\"\n*/\nby sorry /* bound 0 hit */\n\n/* All wellformedness checks were successful. */\n\n/*\nGenerated from:\nTamarin version 1.12.0\nMaude version 3.5.1\nGit revision: UNKNOWN, branch: UNKNOWN\nCompiled at: 2026-07-23 19:00:49.820030192 UTC\n*/\n\nend\n\n==============================================================================\nsummary of summaries:\n\nanalyzed: /tmp/tamarin-live-fv39b5qx/live_bounded_search.spthy\n\n  processing time: 0.05s\n  \n  secrecy_claim (all-traces): analysis incomplete (1 steps)\n\n==============================================================================\n",
           "support_tool_id": "maude",
           "support_tool_version": "3.5.1",
           "tool_id": "tamarin",
           "tool_version": "tamarin-prover 1.12.0, (C) David Basin, Cas Cremers, Jannik Dreier, Simon Meier, Ralf Sasse, Benedikt Schmidt, 2010-2023"
         }
       ],
+      "certificate_compact": true,
       "certification_surface": "tools.logic.certification.tamarin",
       "checks": [
         {
@@ -2364,6 +1876,7 @@
           "expected": "no_install_no_download_no_network",
           "kind": "policy",
           "observed": "offline_env",
+          "reason_codes": [],
           "status": "passed"
         },
         {
@@ -2372,64 +1885,51 @@
           "expected": "parser_fixture",
           "kind": "policy",
           "observed": "parser_fixture",
+          "reason_codes": [],
           "status": "passed"
         },
         {
-          "bindings": {
-            "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/tamarin-prover",
-            "version_string": "tamarin-prover 1.12.0, (C) David Basin, Cas Cremers, Jannik Dreier, Simon Meier, Ralf Sasse, Benedikt Schmidt, 2010-2023"
-          },
+          "binding_keys": [
+            "executable_path",
+            "version_string"
+          ],
+          "bindings_digest": "4c462047241dd310211a2cd0587ed3208593c039c6ad1e56e54c9b55dec13dae",
           "check_id": "tamarin.live.identity",
+          "detail": "",
           "expected": "1.12.0",
           "kind": "identity",
           "observed": "tamarin-prover 1.12.0, (C) David Basin, Cas Cremers, Jannik Dreier, Simon Meier, Ralf Sasse, Benedikt Schmidt, 2010-2023",
+          "reason_codes": [],
           "status": "passed"
         },
         {
-          "bindings": {
-            "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/maude",
-            "support_only": true,
-            "version_string": "3.5.1"
-          },
+          "binding_keys": [
+            "executable_path",
+            "support_only",
+            "version_string"
+          ],
+          "bindings_digest": "1c34dd5d5c0a548290f1c9eb215ba75a3017faff2bd727bfe5f9fb7c6e4f1f26",
           "check_id": "maude.live.identity",
+          "detail": "",
           "expected": "3.5.1",
           "kind": "identity",
           "observed": "3.5.1",
+          "reason_codes": [],
           "status": "passed"
         },
         {
-          "bindings": {
-            "assumptions": [
-              "dolev_yao_adversary",
-              "perfect_cryptography",
-              "hashing_equational_theory"
-            ],
-            "attack_trace": null,
-            "bounds": {
-              "timeout_seconds": 60.0
-            },
-            "claim_outcomes": [
-              {
-                "attack_trace": null,
-                "claim_id": "claim:secrecy",
-                "lemma_name": "secrecy_claim",
-                "reason": "",
-                "verdict": "verified"
-              },
-              {
-                "attack_trace": null,
-                "claim_id": "claim:auth",
-                "lemma_name": "auth_claim",
-                "reason": "",
-                "verdict": "verified"
-              }
-            ],
-            "evidence_class": "live",
-            "live_executed": true,
-            "output_digest": "5be83d0b51f2370a2ad6509172025c73ed9301237977ddcf04157c22802c3d9b",
-            "query": "prove secrecy_claim + auth_claim",
-            "source_digest": "ebb363d1e4d58ea3d16a6a8f74ce42f26f776c884d7d3ebbe2414ffec91f031f"
-          },
+          "binding_keys": [
+            "assumptions",
+            "attack_trace",
+            "bounds",
+            "claim_outcomes",
+            "evidence_class",
+            "live_executed",
+            "output_digest",
+            "query",
+            "source_digest"
+          ],
+          "bindings_digest": "73354b00afce54843c958fc24e9d4b01b1fde01f38a49f3361cfbb874bd54fe1",
           "check_id": "tamarin.live.live_secure_secrecy_auth",
           "detail": "Live secure secrecy and authentication lemmas",
           "expected": "secure",
@@ -2439,63 +1939,18 @@
           "status": "passed"
         },
         {
-          "bindings": {
-            "assumptions": [
-              "dolev_yao_adversary"
-            ],
-            "attack_trace": {
-              "claim_id": "claim:secrecy",
-              "raw_digest": "2bb641b9569a98838d0eed9e579a537c66ef3e7a8c911abb8741c061bde63637",
-              "replay": [
-                "0:marker:falsified:"
-              ],
-              "schema_version": "tamarin-attack-trace/v1",
-              "steps": [
-                {
-                  "action": "marker",
-                  "label": "falsified",
-                  "step_index": 0,
-                  "terms": []
-                }
-              ],
-              "trace_format": "tamarin-trace",
-              "trace_id": "attack-trace:18f1f6580916f3413cdb2d729ff32336edad010b79807a45421131d13d8f0ee7"
-            },
-            "bounds": {
-              "timeout_seconds": 60.0
-            },
-            "claim_outcomes": [
-              {
-                "attack_trace": {
-                  "claim_id": "claim:secrecy",
-                  "raw_digest": "2bb641b9569a98838d0eed9e579a537c66ef3e7a8c911abb8741c061bde63637",
-                  "replay": [
-                    "0:marker:falsified:"
-                  ],
-                  "schema_version": "tamarin-attack-trace/v1",
-                  "steps": [
-                    {
-                      "action": "marker",
-                      "label": "falsified",
-                      "step_index": 0,
-                      "terms": []
-                    }
-                  ],
-                  "trace_format": "tamarin-trace",
-                  "trace_id": "attack-trace:18f1f6580916f3413cdb2d729ff32336edad010b79807a45421131d13d8f0ee7"
-                },
-                "claim_id": "claim:secrecy",
-                "lemma_name": "secrecy_claim",
-                "reason": "",
-                "verdict": "falsified"
-              }
-            ],
-            "evidence_class": "live",
-            "live_executed": true,
-            "output_digest": "36c3779cb9e2169771f5164fdd81989cdaf2f512e8958864ea126a5b4ba38cc6",
-            "query": "prove secrecy_claim (expect attack)",
-            "source_digest": "fe88fb2c779fb6caafecdc93c29e5a6040a577276507c649edee235d6bc5a65a"
-          },
+          "binding_keys": [
+            "assumptions",
+            "attack_trace",
+            "bounds",
+            "claim_outcomes",
+            "evidence_class",
+            "live_executed",
+            "output_digest",
+            "query",
+            "source_digest"
+          ],
+          "bindings_digest": "7d5c75424ae0eac4647bbb3506b9ba0b1bbbbac030441f46777fa5b3598374f0",
           "check_id": "tamarin.live.live_attack_leak",
           "detail": "Live concrete attack: secret leaked on the network",
           "expected": "attack",
@@ -2505,71 +1960,18 @@
           "status": "passed"
         },
         {
-          "bindings": {
-            "assumptions": [
-              "dolev_yao_adversary",
-              "mutated_auth_conclusion"
-            ],
-            "attack_trace": {
-              "claim_id": "claim:auth",
-              "raw_digest": "41978b172d9c9916b4a36b79a2b0102d9050564ee1bf3c3401b84fae797940a7",
-              "replay": [
-                "0:marker:falsified:"
-              ],
-              "schema_version": "tamarin-attack-trace/v1",
-              "steps": [
-                {
-                  "action": "marker",
-                  "label": "falsified",
-                  "step_index": 0,
-                  "terms": []
-                }
-              ],
-              "trace_format": "tamarin-trace",
-              "trace_id": "attack-trace:367923f25160b0c89a3c9ce8e3d4e03fd9b84bb465aae3570282f823c138e3a8"
-            },
-            "bounds": {
-              "timeout_seconds": 60.0
-            },
-            "claim_outcomes": [
-              {
-                "attack_trace": null,
-                "claim_id": "claim:secrecy",
-                "lemma_name": "secrecy_claim",
-                "reason": "",
-                "verdict": "verified"
-              },
-              {
-                "attack_trace": {
-                  "claim_id": "claim:auth",
-                  "raw_digest": "41978b172d9c9916b4a36b79a2b0102d9050564ee1bf3c3401b84fae797940a7",
-                  "replay": [
-                    "0:marker:falsified:"
-                  ],
-                  "schema_version": "tamarin-attack-trace/v1",
-                  "steps": [
-                    {
-                      "action": "marker",
-                      "label": "falsified",
-                      "step_index": 0,
-                      "terms": []
-                    }
-                  ],
-                  "trace_format": "tamarin-trace",
-                  "trace_id": "attack-trace:367923f25160b0c89a3c9ce8e3d4e03fd9b84bb465aae3570282f823c138e3a8"
-                },
-                "claim_id": "claim:auth",
-                "lemma_name": "auth_claim",
-                "reason": "",
-                "verdict": "falsified"
-              }
-            ],
-            "evidence_class": "live",
-            "live_executed": true,
-            "output_digest": "5aa4f8c39260cc262487d39705b16e4482d92397a24efea52fd4faa6fd66be65",
-            "query": "prove mutated auth conclusion",
-            "source_digest": "ad8f1de14abe39b2bf66afcfb2edd3f61184b5223c9c6f41ff5f83b62a51b412"
-          },
+          "binding_keys": [
+            "assumptions",
+            "attack_trace",
+            "bounds",
+            "claim_outcomes",
+            "evidence_class",
+            "live_executed",
+            "output_digest",
+            "query",
+            "source_digest"
+          ],
+          "bindings_digest": "9b9fa1bdd735fdf9038121ee26109338c2abad4b1b48f5f8f74c8b24f8db3009",
           "check_id": "tamarin.live.live_mutated_claim",
           "detail": "Premise/conclusion mutation must not remain secure",
           "expected": "rejected_or_quarantined",
@@ -2581,64 +1983,18 @@
           "status": "passed"
         },
         {
-          "bindings": {
-            "assumptions": [
-              "dolev_yao_adversary",
-              "protocol_rule_mutated"
-            ],
-            "attack_trace": {
-              "claim_id": "claim:secrecy",
-              "raw_digest": "19ce811336532ace303bec5d6a405614fff48d453a610fe86176fd7c54bb0f8c",
-              "replay": [
-                "0:marker:falsified:"
-              ],
-              "schema_version": "tamarin-attack-trace/v1",
-              "steps": [
-                {
-                  "action": "marker",
-                  "label": "falsified",
-                  "step_index": 0,
-                  "terms": []
-                }
-              ],
-              "trace_format": "tamarin-trace",
-              "trace_id": "attack-trace:a37bb3bbe963780202d39834bea32b98239320fe80c1c16dca666f33adc9ce7b"
-            },
-            "bounds": {
-              "timeout_seconds": 60.0
-            },
-            "claim_outcomes": [
-              {
-                "attack_trace": {
-                  "claim_id": "claim:secrecy",
-                  "raw_digest": "19ce811336532ace303bec5d6a405614fff48d453a610fe86176fd7c54bb0f8c",
-                  "replay": [
-                    "0:marker:falsified:"
-                  ],
-                  "schema_version": "tamarin-attack-trace/v1",
-                  "steps": [
-                    {
-                      "action": "marker",
-                      "label": "falsified",
-                      "step_index": 0,
-                      "terms": []
-                    }
-                  ],
-                  "trace_format": "tamarin-trace",
-                  "trace_id": "attack-trace:a37bb3bbe963780202d39834bea32b98239320fe80c1c16dca666f33adc9ce7b"
-                },
-                "claim_id": "claim:secrecy",
-                "lemma_name": "secrecy_claim",
-                "reason": "",
-                "verdict": "falsified"
-              }
-            ],
-            "evidence_class": "live",
-            "live_executed": true,
-            "output_digest": "1c9fa1f3877fc122d5d62e16225bf49c97b34182c750944a56e7ac17cf1024f5",
-            "query": "prove secrecy after protocol mutation",
-            "source_digest": "26d59a48797ccdd9f3d11f4838d47ce940aa86600b1e86e1b6ef240f1090c79d"
-          },
+          "binding_keys": [
+            "assumptions",
+            "attack_trace",
+            "bounds",
+            "claim_outcomes",
+            "evidence_class",
+            "live_executed",
+            "output_digest",
+            "query",
+            "source_digest"
+          ],
+          "bindings_digest": "27dbe78c9f89b9c07b72e68b3a7ebb94a315e2add093b4c95b2b24ced197fae3",
           "check_id": "tamarin.live.live_mutated_protocol",
           "detail": "Protocol mutation yields an attack",
           "expected": "attack",
@@ -2648,38 +2004,18 @@
           "status": "passed"
         },
         {
-          "bindings": {
-            "assumptions": [
-              "dolev_yao_adversary",
-              "perfect_cryptography",
-              "hashing_equational_theory"
-            ],
-            "attack_trace": null,
-            "bounds": {
-              "timeout_seconds": 60.0
-            },
-            "claim_outcomes": [
-              {
-                "attack_trace": null,
-                "claim_id": "claim:secrecy",
-                "lemma_name": "secrecy_claim",
-                "reason": "",
-                "verdict": "verified"
-              },
-              {
-                "attack_trace": null,
-                "claim_id": "claim:auth",
-                "lemma_name": "auth_claim",
-                "reason": "",
-                "verdict": "verified"
-              }
-            ],
-            "evidence_class": "live",
-            "live_executed": true,
-            "output_digest": "5ecd1898c7114a8ec947a8a14d3173cfa5e3f6cb6acc0d32d63a12065247d2ed",
-            "query": "replay prove secrecy_claim + auth_claim",
-            "source_digest": "ebb363d1e4d58ea3d16a6a8f74ce42f26f776c884d7d3ebbe2414ffec91f031f"
-          },
+          "binding_keys": [
+            "assumptions",
+            "attack_trace",
+            "bounds",
+            "claim_outcomes",
+            "evidence_class",
+            "live_executed",
+            "output_digest",
+            "query",
+            "source_digest"
+          ],
+          "bindings_digest": "7f043a2fce4456df884a64d027b90f965acae0326c3458815640711b2e9d0204",
           "check_id": "tamarin.live.live_deterministic_replay",
           "detail": "Deterministic live replay of the secure case",
           "expected": "secure",
@@ -2689,27 +2025,18 @@
           "status": "passed"
         },
         {
-          "bindings": {
-            "assumptions": [],
-            "attack_trace": null,
-            "bounds": {
-              "timeout_seconds": 60.0
-            },
-            "claim_outcomes": [
-              {
-                "attack_trace": null,
-                "claim_id": "claim:secrecy",
-                "lemma_name": "secrecy_claim",
-                "reason": "lemma outcome missing from Tamarin output",
-                "verdict": "unknown"
-              }
-            ],
-            "evidence_class": "live",
-            "live_executed": true,
-            "output_digest": "a5364c6be253cc3512451e0ce9b9ff1ae2a26179921d10d545d1364359d71355",
-            "query": "parse/prove malformed model",
-            "source_digest": "6caa3b14d47caacfaaaaaf96561aae8717f92c4f59bbc138050f4b605c3a1da8"
-          },
+          "binding_keys": [
+            "assumptions",
+            "attack_trace",
+            "bounds",
+            "claim_outcomes",
+            "evidence_class",
+            "live_executed",
+            "output_digest",
+            "query",
+            "source_digest"
+          ],
+          "bindings_digest": "2b3b450c11512f281aa75c8cf47699ad30b25f096ee9d0c08275648da03a176e",
           "check_id": "tamarin.live.live_malformed_model",
           "detail": "Malformed model never reports SECURE",
           "expected": "quarantined",
@@ -2721,21 +2048,18 @@
           "status": "passed"
         },
         {
-          "bindings": {
-            "assumptions": [
-              "dolev_yao_adversary"
-            ],
-            "attack_trace": null,
-            "bounds": {
-              "timeout_seconds": 0.001
-            },
-            "claim_outcomes": [],
-            "evidence_class": "live",
-            "live_executed": true,
-            "output_digest": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
-            "query": "prove under extreme timeout bound",
-            "source_digest": "ebb363d1e4d58ea3d16a6a8f74ce42f26f776c884d7d3ebbe2414ffec91f031f"
-          },
+          "binding_keys": [
+            "assumptions",
+            "attack_trace",
+            "bounds",
+            "claim_outcomes",
+            "evidence_class",
+            "live_executed",
+            "output_digest",
+            "query",
+            "source_digest"
+          ],
+          "bindings_digest": "567d6ee7d10f851383700ba9891e9eff1864b7f7c8f44e0a88e2a1d8bb76ce40",
           "check_id": "tamarin.live.live_timeout",
           "detail": "Subprocess timeout quarantines rather than SECURE",
           "expected": "quarantined",
@@ -2747,71 +2071,18 @@
           "status": "passed"
         },
         {
-          "bindings": {
-            "assumptions": [
-              "dolev_yao_adversary",
-              "mixed_claim_batch"
-            ],
-            "attack_trace": {
-              "claim_id": "claim:secrecy",
-              "raw_digest": "bd9d81b38b2a6b736dfc8acb8ede4ce4e248e9e912e1e9220e4021421d9ca657",
-              "replay": [
-                "0:marker:falsified:"
-              ],
-              "schema_version": "tamarin-attack-trace/v1",
-              "steps": [
-                {
-                  "action": "marker",
-                  "label": "falsified",
-                  "step_index": 0,
-                  "terms": []
-                }
-              ],
-              "trace_format": "tamarin-trace",
-              "trace_id": "attack-trace:2e6fe3e5de7122febcb1913c4effef49f5b29d0c8eea4d83157b2da9fa4178f2"
-            },
-            "bounds": {
-              "timeout_seconds": 60.0
-            },
-            "claim_outcomes": [
-              {
-                "attack_trace": {
-                  "claim_id": "claim:secrecy",
-                  "raw_digest": "bd9d81b38b2a6b736dfc8acb8ede4ce4e248e9e912e1e9220e4021421d9ca657",
-                  "replay": [
-                    "0:marker:falsified:"
-                  ],
-                  "schema_version": "tamarin-attack-trace/v1",
-                  "steps": [
-                    {
-                      "action": "marker",
-                      "label": "falsified",
-                      "step_index": 0,
-                      "terms": []
-                    }
-                  ],
-                  "trace_format": "tamarin-trace",
-                  "trace_id": "attack-trace:2e6fe3e5de7122febcb1913c4effef49f5b29d0c8eea4d83157b2da9fa4178f2"
-                },
-                "claim_id": "claim:secrecy",
-                "lemma_name": "secrecy_claim",
-                "reason": "",
-                "verdict": "falsified"
-              },
-              {
-                "attack_trace": null,
-                "claim_id": "claim:auth",
-                "lemma_name": "auth_claim",
-                "reason": "",
-                "verdict": "verified"
-              }
-            ],
-            "evidence_class": "live",
-            "live_executed": true,
-            "output_digest": "d4a3c49eafdaf880767537d0fee17b17c335c07f9113da6909ff5903d038f5ca",
-            "query": "prove mixed secrecy(attack)+auth(secure)",
-            "source_digest": "cab79ec0b1bcc76895c2d71e2dd1e1a8c3d2da9db0ca4815f4cfe066cbd7555d"
-          },
+          "binding_keys": [
+            "assumptions",
+            "attack_trace",
+            "bounds",
+            "claim_outcomes",
+            "evidence_class",
+            "live_executed",
+            "output_digest",
+            "query",
+            "source_digest"
+          ],
+          "bindings_digest": "8e04f8b934b15dc4b21966cb8455579cc05e95836c5ad2591917b124856c7270",
           "check_id": "tamarin.live.live_disagreement",
           "detail": "Mixed verified/falsified claims quarantine",
           "expected": "rejected_or_quarantined",
@@ -2823,31 +2094,18 @@
           "status": "passed"
         },
         {
-          "bindings": {
-            "assumptions": [
-              "dolev_yao_adversary",
-              "proof_depth_bound"
-            ],
-            "attack_trace": null,
-            "bounds": {
-              "proof_depth_bound": 0,
-              "timeout_seconds": 60.0
-            },
-            "claim_outcomes": [
-              {
-                "attack_trace": null,
-                "claim_id": "claim:secrecy",
-                "lemma_name": "secrecy_claim",
-                "reason": "",
-                "verdict": "incomplete"
-              }
-            ],
-            "evidence_class": "live",
-            "live_executed": true,
-            "output_digest": "e14650bf864c15a090ec0a9cb9f9348bc1098c8cb89637dd435aabafb281d9bd",
-            "query": "prove secrecy with --bound=0",
-            "source_digest": "74eb18a6b9dc68d642110d6abd8ca90f98e2e7120db4abe0c4fa80a1e93fc3cb"
-          },
+          "binding_keys": [
+            "assumptions",
+            "attack_trace",
+            "bounds",
+            "claim_outcomes",
+            "evidence_class",
+            "live_executed",
+            "output_digest",
+            "query",
+            "source_digest"
+          ],
+          "bindings_digest": "2ab79ef0f7b8bd89223c6158a3abcd0f996dde207440ee7574ba635fcd760956",
           "check_id": "tamarin.live.live_bounded_search",
           "detail": "Bounded search incompleteness quarantines",
           "expected": "quarantined",
@@ -2859,190 +2117,76 @@
           "status": "passed"
         },
         {
-          "bindings": {
-            "replay_output_digest": "5ecd1898c7114a8ec947a8a14d3173cfa5e3f6cb6acc0d32d63a12065247d2ed",
-            "replay_source_digest": "ebb363d1e4d58ea3d16a6a8f74ce42f26f776c884d7d3ebbe2414ffec91f031f",
-            "secure_output_digest": "5be83d0b51f2370a2ad6509172025c73ed9301237977ddcf04157c22802c3d9b",
-            "secure_source_digest": "ebb363d1e4d58ea3d16a6a8f74ce42f26f776c884d7d3ebbe2414ffec91f031f"
-          },
+          "binding_keys": [
+            "replay_output_digest",
+            "replay_source_digest",
+            "secure_output_digest",
+            "secure_source_digest"
+          ],
+          "bindings_digest": "08b26e01f6dcba88838b5439447ca54913eb641fdd6ff73bb043392da3bb6a5e",
           "check_id": "tamarin.live.deterministic_replay_binding",
+          "detail": "",
           "expected": "identical secure source digests",
           "kind": "replay",
-          "observed": "secure=ebb363d1e4d5,replay=ebb363d1e4d5,out_secure=5be83d0b51f2,out_replay=5ecd1898c711",
+          "observed": "secure=ebb363d1e4d5,replay=ebb363d1e4d5,out_secure=e9deecf478a4,out_replay=25fc5bf84250",
+          "reason_codes": [],
           "status": "passed"
         },
         {
-          "bindings": {
-            "authority_ceiling": "none",
-            "blocks_alone": true,
-            "can_satisfy_certified_authority": false,
-            "can_satisfy_protocol_requirement": false,
-            "ceiling_is_none": true,
-            "promotion_allowed": false,
-            "promotion_decision": {
-              "allowed": false,
-              "authority_ceiling": "none",
-              "can_satisfy_certified_authority": false,
-              "interface": "RoleAwarePromotionPolicy@1",
-              "reason_codes": [
-                "role_support_cannot_certify",
-                "ceiling_none_cannot_certify",
-                "presence_alone_is_not_authority",
-                "usability_alone_is_not_authority",
-                "cannot_satisfy_certified_authority_requirement"
-              ],
-              "role": "support",
-              "schema_version": "role-aware-promotion-policy/v1",
-              "tool_id": "maude"
-            },
-            "role": "support",
-            "support_only": true,
-            "tool_id": "maude"
-          },
+          "binding_keys": [
+            "authority_ceiling",
+            "blocks_alone",
+            "can_satisfy_certified_authority",
+            "can_satisfy_protocol_requirement",
+            "ceiling_is_none",
+            "promotion_allowed",
+            "promotion_decision",
+            "role",
+            "support_only",
+            "tool_id"
+          ],
+          "bindings_digest": "94c7e26b795abed4328a82b0dc011295ae5653b30f18df3323b0198294efc094",
           "check_id": "maude.live.support_only_boundary",
+          "detail": "",
           "expected": "promotion_blocked",
           "kind": "authority",
           "observed": "allowed=False,can_satisfy=False",
+          "reason_codes": [],
           "status": "passed"
         },
         {
-          "bindings": {
-            "assumptions": [
-              "dolev_yao_adversary",
-              "perfect_cryptography",
-              "hashing_equational_theory"
-            ],
-            "authority": {
-              "backend_interface": "TamarinBackend@1",
-              "ceiling": "protocol",
-              "maude_is_support_only": true,
-              "not_proverif": true,
-              "parser_fixtures_are_non_production": true,
-              "scope": "protocol_verification_only"
-            },
-            "bound": {
-              "timeout_seconds": 60.0
-            },
-            "dependency": {
-              "can_promote_protocol_lane": false,
-              "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/maude",
-              "identity_probed": true,
-              "locked_version": "3.5.1",
-              "pair_validated": true,
-              "support_only": true,
-              "tool_id": "maude",
-              "version_match": true,
-              "version_string": "3.5.1"
-            },
-            "query": "prove secrecy_claim + auth_claim",
-            "raw_output": {
-              "output_digest": "5be83d0b51f2370a2ad6509172025c73ed9301237977ddcf04157c22802c3d9b",
-              "raw_output_cap_bytes": 8192
-            },
-            "source": {
-              "case_id": "live_secure_secrecy_auth",
-              "source_digest": "ebb363d1e4d58ea3d16a6a8f74ce42f26f776c884d7d3ebbe2414ffec91f031f",
-              "source_format": "spthy"
-            },
-            "tool": {
-              "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/tamarin-prover",
-              "identity_probed": true,
-              "locked_version": "1.12.0",
-              "tool_id": "tamarin",
-              "version_match": true,
-              "version_string": "tamarin-prover 1.12.0, (C) David Basin, Cas Cremers, Jannik Dreier, Simon Meier, Ralf Sasse, Benedikt Schmidt, 2010-2023"
-            },
-            "witnesses_traces": {
-              "live_attack_leak": {
-                "claim_id": "claim:secrecy",
-                "raw_digest": "2bb641b9569a98838d0eed9e579a537c66ef3e7a8c911abb8741c061bde63637",
-                "replay": [
-                  "0:marker:falsified:"
-                ],
-                "schema_version": "tamarin-attack-trace/v1",
-                "steps": [
-                  {
-                    "action": "marker",
-                    "label": "falsified",
-                    "step_index": 0,
-                    "terms": []
-                  }
-                ],
-                "trace_format": "tamarin-trace",
-                "trace_id": "attack-trace:18f1f6580916f3413cdb2d729ff32336edad010b79807a45421131d13d8f0ee7"
-              },
-              "live_disagreement": {
-                "claim_id": "claim:secrecy",
-                "raw_digest": "bd9d81b38b2a6b736dfc8acb8ede4ce4e248e9e912e1e9220e4021421d9ca657",
-                "replay": [
-                  "0:marker:falsified:"
-                ],
-                "schema_version": "tamarin-attack-trace/v1",
-                "steps": [
-                  {
-                    "action": "marker",
-                    "label": "falsified",
-                    "step_index": 0,
-                    "terms": []
-                  }
-                ],
-                "trace_format": "tamarin-trace",
-                "trace_id": "attack-trace:2e6fe3e5de7122febcb1913c4effef49f5b29d0c8eea4d83157b2da9fa4178f2"
-              },
-              "live_mutated_claim": {
-                "claim_id": "claim:auth",
-                "raw_digest": "41978b172d9c9916b4a36b79a2b0102d9050564ee1bf3c3401b84fae797940a7",
-                "replay": [
-                  "0:marker:falsified:"
-                ],
-                "schema_version": "tamarin-attack-trace/v1",
-                "steps": [
-                  {
-                    "action": "marker",
-                    "label": "falsified",
-                    "step_index": 0,
-                    "terms": []
-                  }
-                ],
-                "trace_format": "tamarin-trace",
-                "trace_id": "attack-trace:367923f25160b0c89a3c9ce8e3d4e03fd9b84bb465aae3570282f823c138e3a8"
-              },
-              "live_mutated_protocol": {
-                "claim_id": "claim:secrecy",
-                "raw_digest": "19ce811336532ace303bec5d6a405614fff48d453a610fe86176fd7c54bb0f8c",
-                "replay": [
-                  "0:marker:falsified:"
-                ],
-                "schema_version": "tamarin-attack-trace/v1",
-                "steps": [
-                  {
-                    "action": "marker",
-                    "label": "falsified",
-                    "step_index": 0,
-                    "terms": []
-                  }
-                ],
-                "trace_format": "tamarin-trace",
-                "trace_id": "attack-trace:a37bb3bbe963780202d39834bea32b98239320fe80c1c16dca666f33adc9ce7b"
-              }
-            }
-          },
+          "binding_keys": [
+            "assumptions",
+            "authority",
+            "bound",
+            "dependency",
+            "query",
+            "raw_output",
+            "source",
+            "tool",
+            "witnesses_traces"
+          ],
+          "bindings_digest": "bdabb33e31c7d6185105ef4ca5079e18cdbfcc9df68c5c3fde82df2c62437e69",
           "check_id": "tamarin.live.bindings",
+          "detail": "",
           "expected": "tool,dependency,source,query,assumptions,bound,witnesses_traces,raw_output",
           "kind": "binding",
-          "observed": "b83e189a13173d22",
+          "observed": "bdabb33e31c7d618",
+          "reason_codes": [],
           "status": "passed"
         }
       ],
       "download_attempted": false,
+      "fixture_or_parser_cannot_satisfy_live_goal": true,
       "goal_id": "FVT-G205",
       "install_attempted": false,
       "interface": "ProtocolLiveSemanticCertification@1",
       "lane_id": "protocol",
+      "live_execution": true,
       "live_semantic_certified": true,
       "locked_maude_version": "3.5.1",
       "locked_tamarin_version": "1.12.0",
-      "maude_executable": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/maude",
+      "maude_executable": "<managed-tool-path-redacted>/maude",
       "maude_usable": true,
       "maude_version_string": "3.5.1",
       "network_used": false,
@@ -3052,6 +2196,7 @@
       "policy": {
         "cannot_substitute_proverif": true,
         "engines_are_independent": true,
+        "fixture_or_parser_cannot_satisfy_live_goal": true,
         "live_binary_required_for_semantic_proof": true,
         "maude_is_support_only": true,
         "no_download": true,
@@ -3062,11 +2207,23 @@
       "production_certified": true,
       "program": "formal-verification-tactician/protocol-live-semantics",
       "promotion_blocked": false,
-      "receipt_digest_sha256": "bf66c715c3c9757ed9a14b7cfe21f86b7a62e4c2ea3cbbf134b6898798747db2",
-      "repo_root": "/home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/live/worktrees/formal-verification-tactician-protocol-live-semantics/executions/f32cfa4891f508d320c8bd32619ba11ac4439fccf524c2665ac9309b20403b84/workspace-0002544bbf92-54fcb1ebee21",
+      "public_evidence_policy": {
+        "failures": [],
+        "host_private_paths_forbidden": true,
+        "max_public_string_bytes": 8192,
+        "raw_process_output_forbidden": true,
+        "raw_secret_or_witness_forbidden": true,
+        "repo_root_paths_forbidden": true,
+        "safe": true,
+        "satisfied": true,
+        "violation_count": 0,
+        "violations": []
+      },
+      "receipt_digest_sha256": "d4a1e1efed23c05c1e9055ebcbb926fdf52a9a3815ef5907e718ccba1cabe219",
+      "repair_task_id": "FVT-075",
       "schema_version": "protocol-live-semantic-certification/v1",
       "support_tool_id": "maude",
-      "tamarin_executable": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/tamarin-prover",
+      "tamarin_executable": "<managed-tool-path-redacted>/tamarin-prover",
       "tamarin_usable": true,
       "tamarin_version_string": "tamarin-prover 1.12.0, (C) David Basin, Cas Cremers, Jannik Dreier, Simon Meier, Ralf Sasse, Benedikt Schmidt, 2010-2023",
       "task_id": "FVT-058",

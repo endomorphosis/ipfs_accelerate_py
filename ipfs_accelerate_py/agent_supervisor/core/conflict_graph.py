@@ -456,15 +456,44 @@ def _payload(value: Any) -> dict[str, Any]:
     return {}
 
 
+def _normalized_field_key(value: Any) -> str:
+    """Return the canonical lookup spelling for task metadata fields."""
+
+    return re.sub(
+        r"[^a-z0-9]+",
+        "_",
+        str(value or "").strip().casefold(),
+    ).strip("_")
+
+
+def _source_with_normalized_keys(source: Mapping[str, Any]) -> dict[str, Any]:
+    """Add non-destructive aliases for human-readable metadata keys.
+
+    Legacy Markdown task boards retain labels such as ``Goal id`` and
+    ``Allow concurrent with`` in their nested metadata mapping.  Conflict and
+    work-contract consumers use their wire spellings (``goal_id`` and
+    ``allow_concurrent_with``).  Preserve the producer's original mapping for
+    audit while making both representations equivalent at this boundary.
+    Explicit wire-format keys always win if a producer supplied both forms.
+    """
+
+    result = dict(source)
+    for key, value in source.items():
+        normalized = _normalized_field_key(key)
+        if normalized:
+            result.setdefault(normalized, value)
+    return result
+
+
 def _sources(value: Any) -> list[dict[str, Any]]:
     """Return top-level and common nested task metadata mappings."""
 
-    root = _payload(value)
+    root = _source_with_normalized_keys(_payload(value))
     found = [root]
     for key in ("finding", "metadata", "conflict_surface", "profile_g", "payload"):
         nested = root.get(key)
         if isinstance(nested, Mapping):
-            found.append(dict(nested))
+            found.append(_source_with_normalized_keys(nested))
     return found
 
 
@@ -936,8 +965,23 @@ class TaskWorkContract:
             if canonical_json_bytes(dict(explicit)) != canonical_json_bytes(
                 result.to_dict()
             ):
+                expected_binding = result.to_dict()
+                differing_fields = sorted(
+                    key
+                    for key in set(explicit) | set(expected_binding)
+                    if canonical_json_bytes(explicit.get(key))
+                    != canonical_json_bytes(expected_binding.get(key))
+                )
+                task_label = str(
+                    root.get("task_id")
+                    or root.get("canonical_task_cid")
+                    or root.get("task_cid")
+                    or "<unknown>"
+                ).strip()
                 raise ValueError(
-                    "task_work_contract does not match canonical task fields"
+                    "task_work_contract does not match canonical task fields "
+                    f"for {task_label}; differing fields: "
+                    f"{', '.join(differing_fields) or '<unknown>'}"
                 )
         supplied_id = str(
             root.get("work_contract_id") or ""
@@ -1016,8 +1060,12 @@ def rehydrate_task_work_contract_projection(task: Any) -> dict[str, Any]:
 
     # Remove every alias consumed by TaskWorkContract.from_task so omitted
     # conflict-surface values and scheduler-resolved dependency CIDs cannot be
-    # unioned with the contract-authoritative values below.
-    for key in (
+    # unioned with the contract-authoritative values below.  ``from_task``
+    # deliberately reads common nested producer projections as well as the
+    # root row.  Sanitising only the root therefore leaves stale aliases in a
+    # nested ``metadata``/``finding``/``conflict_surface`` mapping and makes a
+    # valid admitted contract fail incremental bundle-index regeneration.
+    contract_aliases = (
         "acceptance_subset",
         "acceptance_criteria",
         "acceptance",
@@ -1059,8 +1107,29 @@ def rehydrate_task_work_contract_projection(task: Any) -> dict[str, Any]:
         "goal_id",
         "resource_class",
         "token_class",
-    ):
+    )
+    for key in contract_aliases:
         projected.pop(key, None)
+    for source_key in (
+        "finding",
+        "metadata",
+        "conflict_surface",
+        "profile_g",
+        "payload",
+    ):
+        nested = projected.get(source_key)
+        if not isinstance(nested, Mapping):
+            continue
+        sanitized = dict(nested)
+        for key in contract_aliases:
+            sanitized.pop(key, None)
+            # Human-readable Markdown metadata keys are normalized by
+            # ``_sources``.  Remove those spellings as well or they can
+            # reintroduce a stale alias after normalization.
+            for existing_key in tuple(sanitized):
+                if _normalized_field_key(existing_key) == key:
+                    sanitized.pop(existing_key, None)
+        projected[source_key] = sanitized
 
     dependencies = list(execution_boundary.get("dependencies") or [])
     projected.update(
@@ -1272,8 +1341,21 @@ def build_conflict_surface(
     work_contract = build_task_work_contract(task)
     task_id = str(root.get("task_id") or root.get("id") or root.get("canonical_task_id") or "").strip()
     task_cid = str(
-        root.get("task_cid")
-        or root.get("canonical_task_cid")
+        # The content-addressed identity is authoritative.  ``task_cid`` is a
+        # compatibility projection and can legitimately lag after an
+        # evidence-bound task is reprojected.  Preferring that stale alias
+        # here makes the ConflictSurface disagree with the already-verified
+        # TaskWorkContract and blocks incremental bundle regeneration.
+        root.get("canonical_task_cid")
+        or root.get("task_cid")
+        or next(
+            (
+                source.get("canonical_task_cid")
+                for source in sources[1:]
+                if source.get("canonical_task_cid")
+            ),
+            "",
+        )
         or next((source.get("task_cid") for source in sources[1:] if source.get("task_cid")), "")
         or task_id
     ).strip()

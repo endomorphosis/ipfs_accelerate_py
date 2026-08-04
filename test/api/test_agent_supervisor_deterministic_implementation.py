@@ -109,6 +109,33 @@ def _daemon(
         "_record_task_queue_outcome",
         lambda *_args, **_kwargs: None,
     )
+    # These tests exercise the deterministic execution boundary directly with
+    # an in-memory task. Board-contract enforcement is covered separately, so
+    # resolve that task as the current contract instead of requiring a second
+    # Markdown representation that can drift from each test case.
+    monkeypatch.setattr(
+        daemon,
+        "_completion_tasks_for_declared_output_gate",
+        lambda _metadata, primary_task: ([primary_task], {}),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_declared_output_tracking_invariant",
+        lambda *_args, **_kwargs: {"passed": True, "test_double": True},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_todo_completion_is_durable",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "apply_post_merge_authoritative_acceptance",
+        lambda *_args, **_kwargs: {
+            "authoritatively_completed": True,
+            "todo_update_result": {"updated": True, "test_double": True},
+        },
+    )
     return repo, daemon
 
 
