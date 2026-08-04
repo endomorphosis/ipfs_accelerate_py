@@ -3607,18 +3607,31 @@ def dependency_satisfied_references(
     *,
     completed_task_ids: Iterable[str] = (),
     assumed_completed_references: Iterable[str] = (),
+    soft_completed_references: Iterable[str] = (),
+    auto_resolve_orphaned_references: bool = True,
 ) -> set[str]:
     """Return satisfied task and objective-goal dependency references.
 
     Generated objective boards use stable goal IDs as dependencies before a
     concrete task alias is always available. A goal dependency is satisfied
-    only after every task currently bound to that goal is complete, so a
-    completed historical task cannot prematurely unlock a newer continuation.
+    only after every task currently bound to that goal is complete (or soft
+    complete), so a completed historical task cannot prematurely unlock a
+    newer continuation.
+
+    Soft-completed references (merged / acceptance-pending / shared merge
+    receipts) unlock dependents without granting board completion authority
+    to the upstream task itself. Orphaned dependency references that match
+    neither a declared task id nor a bound goal id are auto-resolved so a
+    missing external alias cannot stall the board indefinitely.
     """
 
     satisfied_task_ids = {
         str(reference)
-        for reference in (*completed_task_ids, *assumed_completed_references)
+        for reference in (
+            *completed_task_ids,
+            *assumed_completed_references,
+            *soft_completed_references,
+        )
         if str(reference).strip()
     }
     satisfied = set(satisfied_task_ids)
@@ -3627,6 +3640,7 @@ def dependency_satisfied_references(
     for task in tasks:
         for goal_id in split_csv(task.metadata.get("goal id", "")):
             task_ids_by_goal.setdefault(goal_id, set()).add(task.task_id)
+    bound_goal_ids = set(task_ids_by_goal)
     for goal_id, task_ids in task_ids_by_goal.items():
         if (
             goal_id not in declared_task_ids
@@ -3634,7 +3648,62 @@ def dependency_satisfied_references(
             and task_ids.issubset(satisfied_task_ids)
         ):
             satisfied.add(goal_id)
+    if auto_resolve_orphaned_references:
+        for task in tasks:
+            for dependency in task.depends_on:
+                reference = str(dependency).strip()
+                if not reference or reference in satisfied:
+                    continue
+                if (
+                    reference not in declared_task_ids
+                    and reference not in bound_goal_ids
+                ):
+                    # Nothing on this board can ever complete the alias.
+                    satisfied.add(reference)
     return satisfied
+
+
+def downstream_unlock_counts(
+    tasks: Sequence[PortalTask],
+    *,
+    incomplete_task_ids: Iterable[str] | None = None,
+) -> dict[str, int]:
+    """Count incomplete tasks transitively unlocked by completing each task.
+
+    Used by ready-task selection so critical-path blockers (high fan-out
+    roots) are preferred over leaf work that does not free the cascade.
+    """
+
+    children: dict[str, list[str]] = {task.task_id: [] for task in tasks}
+    for task in tasks:
+        for dependency in task.depends_on:
+            dep = str(dependency).strip()
+            if dep in children:
+                children[dep].append(task.task_id)
+    if incomplete_task_ids is None:
+        incomplete = {
+            task.task_id
+            for task in tasks
+            if normalize_status(str(task.status or "")) != "completed"
+        }
+    else:
+        incomplete = {
+            str(task_id).strip()
+            for task_id in incomplete_task_ids
+            if str(task_id).strip()
+        }
+    counts: dict[str, int] = {}
+    for task in tasks:
+        seen: set[str] = set()
+        stack = list(children.get(task.task_id, ()))
+        while stack:
+            node = stack.pop()
+            if node in seen:
+                continue
+            seen.add(node)
+            stack.extend(children.get(node, ()))
+        counts[task.task_id] = len(seen & incomplete)
+    return counts
 
 
 class PortalImplementationDaemon:
@@ -9625,10 +9694,29 @@ class PortalImplementationDaemon:
             for task_id, conflicts in protected_path_conflicts_by_task.items()
             if conflicts
         }
+        # Soft-complete: integrated / acceptance-pending work unblocks
+        # dependents without marking the upstream task board-completed.
+        soft_completed_task_ids = set(acceptance_pending_merged_task_ids) | (
+            (successfully_merged_task_ids | shared_completed_task_ids)
+            - completed_set
+            - correction_ready_task_ids
+            - retry_budget_reopened_post_merge_task_ids
+        )
+        soft_completed_cids = {
+            self._canonical_ref(task)
+            for task in tasks
+            if task.task_id in soft_completed_task_ids
+        }
+        soft_completed_task_ids.update(
+            task.task_id
+            for task in tasks
+            if self._canonical_ref(task) in soft_completed_cids
+        )
         dependency_satisfied_task_ids = dependency_satisfied_references(
             tasks,
             completed_task_ids=completed_set,
             assumed_completed_references=self.assumed_completed_task_ids,
+            soft_completed_references=soft_completed_task_ids,
         )
         dependency_reopen_candidates = [
             task.task_id
@@ -9648,6 +9736,29 @@ class PortalImplementationDaemon:
             dependency_reopen_candidates,
             reason="dependencies_completed",
         )
+        soft_unlock_waiting = [
+            task.task_id
+            for task in tasks
+            if (
+                task.task_id not in completed_set
+                and bool(task.depends_on)
+                and any(dep in soft_completed_task_ids for dep in task.depends_on)
+                and all(
+                    dependency in dependency_satisfied_task_ids
+                    for dependency in task.depends_on
+                )
+            )
+        ]
+        if soft_completed_task_ids and soft_unlock_waiting:
+            self._record_event(
+                "dependency_soft_completed",
+                {
+                    "soft_completed_task_ids": sorted(soft_completed_task_ids)[:50],
+                    "soft_completed_count": len(soft_completed_task_ids),
+                    "unlocked_task_ids": soft_unlock_waiting[:50],
+                    "reason": "merged_or_acceptance_pending_unblocks_dependents",
+                },
+            )
         dependency_reopened_task_ids = {
             *dependency_reopen_result.get("updated_task_ids", []),
             *dependency_reopen_result.get("already_ready_task_ids", []),
@@ -9807,6 +9918,15 @@ class PortalImplementationDaemon:
                     "selection_idle_reason": attempt_limit_idle_reason,
                 },
             )
+        incomplete_for_unlock = {
+            task.task_id
+            for task in tasks
+            if resolved_statuses.get(task.task_id) != "completed"
+        }
+        unlock_counts = downstream_unlock_counts(
+            tasks,
+            incomplete_task_ids=incomplete_for_unlock,
+        )
         selection_provider_backoff = self._active_provider_capacity_backoff()
         if selection_provider_backoff:
             provider_independent_or_authorized_tasks = [
@@ -9844,6 +9964,8 @@ class PortalImplementationDaemon:
             strategy,
             unresolved_merge_failures,
             recent_outcomes,
+            all_tasks=tasks,
+            downstream_unlock_by_task=unlock_counts,
         )
         selection_scope = self._selection_scope(selectable_tasks, resolved_statuses, strategy)
         if selected is None and attempt_limit_idle_reason:
@@ -10164,6 +10286,16 @@ class PortalImplementationDaemon:
             ),
             "external_reserved_task_ids": sorted(external_task_reservations),
             "assumed_completed_task_ids": sorted(self.assumed_completed_task_ids),
+            "soft_completed_task_ids": sorted(soft_completed_task_ids),
+            "soft_completed_count": len(soft_completed_task_ids),
+            "dependency_satisfied_task_ids": sorted(
+                dependency_satisfied_task_ids
+            )[:200],
+            "downstream_unlock_counts": {
+                task_id: unlock_counts[task_id]
+                for task_id in sorted(unlock_counts)
+                if unlock_counts[task_id] > 0
+            },
             "execution_slice_task_ids": sorted(self.execution_slice_task_ids),
             "execution_slice_task_cids": sorted(self.execution_slice_task_cids),
             "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
@@ -46519,6 +46651,9 @@ class PortalImplementationDaemon:
         strategy: dict[str, Any],
         unresolved_merge_failures: dict[str, dict[str, Any]],
         recent_outcomes: dict[str, dict[str, Any]],
+        *,
+        all_tasks: Sequence[PortalTask] | None = None,
+        downstream_unlock_by_task: Mapping[str, int] | None = None,
     ) -> PortalTask | None:
         ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
         # The durable queue is authoritative across isolated lane state dirs.
@@ -46588,6 +46723,19 @@ class PortalImplementationDaemon:
         }
         deprioritized = {str(item) for item in strategy.get("deprioritized_tasks", [])}
         blocked_strategy_task_ids = {str(item) for item in strategy.get("blocked_tasks", [])}
+        if downstream_unlock_by_task is None:
+            graph_tasks = list(all_tasks) if all_tasks is not None else list(tasks)
+            incomplete_ids = {
+                task.task_id
+                for task in graph_tasks
+                if resolved_statuses.get(task.task_id, task.status) != "completed"
+            }
+            unlock_counts = downstream_unlock_counts(
+                graph_tasks,
+                incomplete_task_ids=incomplete_ids,
+            )
+        else:
+            unlock_counts = dict(downstream_unlock_by_task)
 
         def sort_key(task: PortalTask) -> tuple[Any, ...]:
             selection_penalty = self.task_queue.get_penalty(self._canonical_ref(task))
@@ -46598,9 +46746,12 @@ class PortalImplementationDaemon:
             retry_repair_source_id, _failure_kind = retry_budget_repair_source(task)
             vector_rank = self._todo_vector_selection_rank(task, vector_context)
             work_surface_rank = self._task_work_surface_rank(task)
+            # Prefer critical-path blockers: higher transitive unlock first.
+            critical_path_rank = -int(unlock_counts.get(task.task_id, 0))
             return (
                 selection_penalty,
                 PRIORITY_ORDER.get(task.priority, 99),
+                critical_path_rank,
                 0 if retry_repair_source_id in blocked_strategy_task_ids else 1,
                 1 if task.task_id in deprioritized else 0,
                 focus_order.get(task.track, len(focus_order)),
