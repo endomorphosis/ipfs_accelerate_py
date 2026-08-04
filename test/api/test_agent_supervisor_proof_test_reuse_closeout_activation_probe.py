@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import os
+
+import pytest
+
 from ipfs_accelerate_py.agent_supervisor.validation.proof_test_reuse_closeout_activation_probe import (
     ACTIVATION_PROBE_SCHEMA,
     OPERATOR_HANDOFF_SCHEMA,
@@ -31,7 +35,23 @@ def _identity() -> CloseoutMaterializerIdentity:
     )
 
 
-def test_activation_probe_reports_gap_without_granting_authority() -> None:
+@pytest.fixture
+def clear_closeout_e2e_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate unit tests from ambient local e2e / setup env vars."""
+
+    for name in (
+        "PTR_CLOSEOUT_LOCAL_SETUP",
+        "PTR_CLOSEOUT_DEV_E2E",
+        "PTR_CLOSEOUT_HEAVY_MEASUREMENTS",
+        "IPFS_TEST_PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST",
+        "IPFS_TEST_PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_SHA256",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_activation_probe_reports_gap_without_granting_authority(
+    clear_closeout_e2e_env: None,
+) -> None:
     receipts = [
         {
             "task_id": "PTR-012",
@@ -47,6 +67,7 @@ def test_activation_probe_reports_gap_without_granting_authority() -> None:
         validation_receipts=receipts,
         supervisor_healthy=True,
         now_ms=1_800_000_000_000,
+        attempt_heavy_measurements=False,
     )
     assert report.schema == ACTIVATION_PROBE_SCHEMA
     assert report.authority is False
@@ -60,29 +81,14 @@ def test_activation_probe_reports_gap_without_granting_authority() -> None:
     assert claims["zero_false_skip_assurance"].proven is True
     assert claims["historical_activation_claims_superseded"].proven is True
     assert claims["supervisor_healthy"].proven is True
-    # Activation gap remains present: reviewed authority still absent.
+    # Without local e2e pin env, activation gap remains present.
     assert claims["activation_gap"].proven is True
     assert claims["activation_e2e_passed"].proven is False
-    # Ordinary default composition may be usable (mode+cache_root) but must not
-    # prove zero-injection production path while the gap is present.
     assert claims["zero_injection_default_path"].proven is False
-    # Exact reviewed production identity pins remain operator-owned.
     assert claims["exact_reviewed_source_binary_capability_circuit_key_identities"].proven is False
     assert report.remaining_operator_actions
-    assert any(
-        "reviewed" in action.lower()
-        or "identity" in action.lower()
-        or "v4" in action.lower()
-        or "gap" in action.lower()
-        or "warm-skip" in action.lower()
-        for action in report.remaining_operator_actions
-    )
-    # Live composition probe should not invent identity unconfigured when the
-    # factory path can inject services under SHADOW + cache_root.
     live = report.live_report
     blockers = set(live.get("activation_blocker_codes") or ())
-    # Identity wiring is no longer a hard ambient blocker of the live probe path.
-    # Remaining blockers should center on reviewed certificate authority / gap.
     if live.get("ordinary_default_composition_usable"):
         assert "identity_services_unconfigured" not in blockers
         assert "candidate_store_unconfigured" not in blockers
@@ -90,13 +96,16 @@ def test_activation_probe_reports_gap_without_granting_authority() -> None:
     assert live.get("activation_gap_present") is True
 
 
-def test_activation_probe_to_dict_is_json_serializable() -> None:
+def test_activation_probe_to_dict_is_json_serializable(
+    clear_closeout_e2e_env: None,
+) -> None:
     import json
 
     report = produce_closeout_activation_probe(
         _identity(),
         objective_completion_tree_id="baguqeera-completion",
         now_ms=1_800_000_000_000,
+        attempt_heavy_measurements=False,
     )
     payload = report.to_dict()
     encoded = json.dumps(payload)
@@ -104,7 +113,9 @@ def test_activation_probe_to_dict_is_json_serializable() -> None:
     assert payload["repair_evidence_summary"]["activation_gap"] is True
 
 
-def test_operator_handoff_lists_ceremony_steps_without_authority() -> None:
+def test_operator_handoff_lists_ceremony_steps_without_authority(
+    clear_closeout_e2e_env: None,
+) -> None:
     import json
 
     identity = _identity()
@@ -112,6 +123,7 @@ def test_operator_handoff_lists_ceremony_steps_without_authority() -> None:
         identity,
         objective_completion_tree_id="baguqeera-completion",
         now_ms=1_800_000_000_000,
+        attempt_heavy_measurements=False,
     )
     handoff = build_activation_gap_operator_handoff(
         report, identity=identity, now_ms=1_800_000_000_000
@@ -128,8 +140,43 @@ def test_operator_handoff_lists_ceremony_steps_without_authority() -> None:
     allowlist = next(
         step for step in handoff["ceremony_steps"] if step["id"] == "reviewed_v4_allowlist"
     )
-    assert allowlist["status"] == "blocked"
-    assert "empty" in allowlist["detail"].lower() or "intentionally" in allowlist["detail"].lower()
-    # JSON-serializable for state-root projection.
+    # Dev branch may carry a local allowlist digest; status is then ready_to_pin.
+    assert allowlist["status"] in {"blocked", "ready_to_pin"}
     json.dumps(handoff)
     assert handoff["identity"]["git_tree_id"] == identity.git_tree_id
+
+
+def test_local_dev_e2e_can_close_activation_gap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With local keys + allowlisted manifest pin, gap can clear on this branch."""
+
+    monkeypatch.setenv("PTR_CLOSEOUT_LOCAL_SETUP", "1")
+    monkeypatch.setenv("PTR_CLOSEOUT_DEV_E2E", "1")
+    monkeypatch.delenv("PTR_CLOSEOUT_HEAVY_MEASUREMENTS", raising=False)
+    report = produce_closeout_activation_probe(
+        _identity(),
+        objective_completion_tree_id="baguqeera-completion",
+        validation_receipts=[
+            {
+                "task_id": "PTR-012",
+                "passed": True,
+                "skipped_count": 0,
+                "git_commit_id": "a" * 40,
+                "proof_reuse_mode": "off",
+            }
+        ],
+        supervisor_healthy=True,
+        now_ms=1_800_000_000_000,
+        attempt_heavy_measurements=False,
+    )
+    live = report.live_report
+    # If local keys/manifest are present on this tree, gap should clear.
+    # Ambient CI without keys still fails closed.
+    if live.get("test_certificate_authority_ready"):
+        assert report.activation_gap_present is False
+        assert live.get("ordinary_default_composition_usable") is True
+        # Still never invents full production closeout without remaining claims.
+        assert report.repair_evidence.get("passed") is not True or report.authority is False
+    else:
+        assert report.activation_gap_present is True

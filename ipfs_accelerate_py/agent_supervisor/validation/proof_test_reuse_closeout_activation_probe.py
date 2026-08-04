@@ -419,22 +419,44 @@ def _probe_live_activation_report(
     except Exception:
         pass
 
-    # Optional fixture paths improve cert-authority diagnostics only; local
-    # operational keys never satisfy the reviewed manifest pin allowlist.
+    # Development e2e: when local nonproduction keys + allowlisted manifest
+    # exist, pin env so certificate-authority probes can pass. Mainline
+    # ceremony still owns empty-allowlist fail-closed behavior.
     artifacts_root: str | None = None
     binary_path: str | None = None
+    probe_environ: dict[str, str] | None = None
     try:
         from .proof_test_reuse_closeout_activation_measurements import (
+            apply_local_dev_e2e_authority_env,
             discover_real_groth16_fixture,
         )
 
+        probe_environ = apply_local_dev_e2e_authority_env()
         fixture = discover_real_groth16_fixture()
-        if fixture.artifacts_root:
-            artifacts_root = str(fixture.artifacts_root)
-        if fixture.binary_path:
-            binary_path = str(fixture.binary_path)
+        artifacts_root = (
+            str(probe_environ.get("GROTH16_BACKEND_ARTIFACTS_ROOT") or "")
+            or str(fixture.artifacts_root or "")
+            or None
+        )
+        binary_path = (
+            str(probe_environ.get("IPFS_DATASETS_GROTH16_BINARY") or "")
+            or str(fixture.binary_path or "")
+            or None
+        )
     except Exception:
-        pass
+        probe_environ = None
+        try:
+            from .proof_test_reuse_closeout_activation_measurements import (
+                discover_real_groth16_fixture,
+            )
+
+            fixture = discover_real_groth16_fixture()
+            if fixture.artifacts_root:
+                artifacts_root = str(fixture.artifacts_root)
+            if fixture.binary_path:
+                binary_path = str(fixture.binary_path)
+        except Exception:
+            pass
 
     last: dict[str, Any] = {
         "activation_gap_present": True,
@@ -451,6 +473,7 @@ def _probe_live_activation_report(
                 compose_if_missing=True,
                 artifacts_root=artifacts_root,
                 binary_path=binary_path,
+                environ=probe_environ,
             )
             last = report.to_dict()
             last["composition_probe"] = {

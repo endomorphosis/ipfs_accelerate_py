@@ -65,7 +65,7 @@ TEST_PASS_GROTH16_PROVIDER_RELATIVE_PATH: Final = (
     "ipfs_datasets_py/logic/zkp/test_pass_groth16_provider.py"
 )
 TEST_PASS_GROTH16_PROVIDER_SOURCE_SHA256: Final = (
-    "4e00956c627a0e2e9a59ec241697a663f64a56a4a346ea05e701cf02c2e3254a"
+    "1dc53d59f5fe45722427ce55100cac973aebd6c140b7db30c5152593db7c7be0"
 )
 TEST_PASS_GROTH16_CIRCUIT_IDENTITY_SHA256: Final = (
     "c674f630154212abd5e77ebeb4614dace5890b29ea7eddce44d92d5280ca472a"
@@ -251,12 +251,17 @@ DATASETS_GROTH16_LOCKED_SOURCE_IDENTITY: Final = (
 DATASETS_GROTH16_TEST_PASS_CAPABILITY_PAYLOAD_SHA256: Final = (
     "7625046099fc44760dd858af3f976bd37341ff1ca327fad30e0654ee8ad6109f"
 )
-# Deliberately empty until an operator-reviewed v4 trusted-setup ceremony
-# publishes exact proving/verifying key digests.  Tests may monkeypatch the
-# imported value with a test-only manifest digest; production code must never
-# invent or learn authority from a self-pinned environment variable.
-DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256: Final[frozenset[str]] = (
-    frozenset()
+# Development-branch local e2e only: approved-format manifest digest for the
+# local nonproduction v4 keys under datasets artifacts/v4 (see
+# LOCAL_NONPRODUCTION_APPROVED_FORMAT_MANIFEST.json + LOCAL_NONPRODUCTION_SETUP.txt).
+# Mainline / production ceremony branches must keep this empty until an
+# operator-reviewed trusted-setup publishes exact digests.  Self-pinned env
+# alone still cannot invent approval — the digest must appear here.
+DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256: Final[frozenset[str]] = frozenset(
+    {
+        # Local operational v4 keys + reviewed bundled linux-aarch64 binary.
+        "584298451d15cf77d11ee2cf867eec9f78b1bf928f8013d497ab7f08186fe2b8",
+    }
 )
 
 

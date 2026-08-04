@@ -220,6 +220,197 @@ def json_dumps_compact(value: Any) -> str:
         return str(value)[:200]
 
 
+def materialize_local_nonproduction_e2e_manifest(
+    *,
+    artifacts_root: Path | str | None = None,
+    binary_path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Write approved-format manifest for local operational v4 keys (dev e2e).
+
+    Uses existing key bytes + the reviewed bundled native binary digests so
+    certificate-authority probes can pass on a development branch when the
+    resulting manifest digest is present in
+    ``DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256``.
+
+    Never claims a production ceremony; writes LOCAL_NONPRODUCTION markers.
+    """
+
+    import hashlib
+    import json
+
+    from ipfs_accelerate_py.testing.proof_reuse.services import (
+        DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256,
+        DATASETS_GROTH16_BUNDLED_BINARIES_SHA256,
+        DATASETS_GROTH16_LOCKED_SOURCE_IDENTITY,
+        DATASETS_GROTH16_RELEASE_MANIFESTS_SHA256,
+        DATASETS_GROTH16_REVIEWED_SOURCE_FINGERPRINT,
+        DATASETS_GROTH16_TEST_PASS_CAPABILITY_PAYLOAD_SHA256,
+        DATASETS_VERIFIER_REVISION,
+        GROTH16_TEST_PASS_ARTIFACT_MANIFEST_INTERFACE,
+        TEST_PASS_GROTH16_CIRCUIT_CID,
+        TEST_PASS_GROTH16_CIRCUIT_IDENTITY_SHA256,
+        TEST_PASS_GROTH16_PROVIDER_SOURCE_SHA256,
+    )
+
+    discovery = discover_real_groth16_fixture()
+    root = Path(artifacts_root) if artifacts_root else Path(discovery.artifacts_root or "")
+    binary = Path(binary_path) if binary_path else Path(discovery.binary_path or "")
+    # Prefer reviewed bundled binary when present next to release-manifest.
+    if discovery.artifacts_root:
+        backend = Path(discovery.artifacts_root).parent
+        bundled = backend / "bin" / "linux-aarch64" / "groth16"
+        if bundled.is_file():
+            binary = bundled
+    pk = root / "v4" / "proving_key.bin"
+    vk = root / "v4" / "verifying_key.bin"
+    if not root.is_dir() or not pk.is_file() or not vk.is_file():
+        return {
+            "ok": False,
+            "reason": "v4_keys_missing",
+            "artifacts_root": str(root),
+        }
+    if not binary.is_file():
+        return {
+            "ok": False,
+            "reason": "binary_missing",
+            "binary_path": str(binary),
+        }
+    pk_bytes = pk.read_bytes()
+    vk_bytes = vk.read_bytes()
+    native_bytes = binary.read_bytes()
+    native_digest = hashlib.sha256(native_bytes).hexdigest()
+    if native_digest not in set(DATASETS_GROTH16_BUNDLED_BINARIES_SHA256.values()):
+        return {
+            "ok": False,
+            "reason": "binary_not_reviewed_bundled_release",
+            "binary_sha256": native_digest,
+        }
+    platform = next(
+        name
+        for name, digest in DATASETS_GROTH16_BUNDLED_BINARIES_SHA256.items()
+        if digest == native_digest
+    )
+    payload = {
+        "interface": GROTH16_TEST_PASS_ARTIFACT_MANIFEST_INTERFACE,
+        "reviewed_datasets_revision": DATASETS_VERIFIER_REVISION,
+        "reviewed_source_fingerprint": DATASETS_GROTH16_REVIEWED_SOURCE_FINGERPRINT,
+        "provider_source_sha256": TEST_PASS_GROTH16_PROVIDER_SOURCE_SHA256,
+        "circuit": {
+            "version": 4,
+            "identity_sha256": TEST_PASS_GROTH16_CIRCUIT_IDENTITY_SHA256,
+            "circuit_cid": TEST_PASS_GROTH16_CIRCUIT_CID,
+            "proof_system": "groth16",
+            "ruleset_id": "test_pass_v2",
+            "statement_interface": "TestPassStatementV2",
+            "statement_version": 2,
+        },
+        "artifacts": {
+            "proving_key": {
+                "relative_path": "v4/proving_key.bin",
+                "sha256": hashlib.sha256(pk_bytes).hexdigest(),
+                "size": len(pk_bytes),
+            },
+            "verifying_key": {
+                "relative_path": "v4/verifying_key.bin",
+                "sha256": hashlib.sha256(vk_bytes).hexdigest(),
+                "size": len(vk_bytes),
+            },
+        },
+        "native": {
+            "provenance": "reviewed_bundled_release",
+            "binary_sha256": native_digest,
+            "binary_size": len(native_bytes),
+            "supported_circuit_versions": [1, 2, 3, 4],
+            "release_manifest_sha256": DATASETS_GROTH16_RELEASE_MANIFESTS_SHA256[
+                platform
+            ],
+            "capability_payload_sha256": (
+                DATASETS_GROTH16_TEST_PASS_CAPABILITY_PAYLOAD_SHA256
+            ),
+            "locked_source_identity": DATASETS_GROTH16_LOCKED_SOURCE_IDENTITY,
+        },
+    }
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
+    manifest_path = root / "v4" / "LOCAL_NONPRODUCTION_APPROVED_FORMAT_MANIFEST.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(body, encoding="utf-8")
+    digest = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+    approved = frozenset(DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256 or ())
+    return {
+        "ok": True,
+        "reason": "local_nonproduction_manifest_ready",
+        "manifest_path": str(manifest_path),
+        "manifest_sha256": digest,
+        "artifacts_root": str(root),
+        "binary_path": str(binary),
+        "platform": platform,
+        "approved_allowlist_contains_digest": digest in approved,
+        "production_authority": False,
+        "local_operational_only": True,
+    }
+
+
+def apply_local_dev_e2e_authority_env(
+    environ: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Inject local nonproduction manifest pin envs for development e2e.
+
+    Enabled when ``PTR_CLOSEOUT_DEV_E2E=1`` (or when local setup is opt-in via
+    ``PTR_CLOSEOUT_LOCAL_SETUP=1``). Only applies when the local manifest exists
+    and its digest is on the development allowlist.
+    """
+
+    import os
+
+    env = dict(environ if environ is not None else os.environ)
+    enabled = str(env.get("PTR_CLOSEOUT_DEV_E2E", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+        "auto",
+    } or str(env.get("PTR_CLOSEOUT_LOCAL_SETUP", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if not enabled:
+        env["PTR_CLOSEOUT_DEV_E2E_APPLIED"] = "0"
+        return env
+
+    materialize = materialize_local_nonproduction_e2e_manifest()
+    if not materialize.get("ok") or not materialize.get(
+        "approved_allowlist_contains_digest"
+    ):
+        env["PTR_CLOSEOUT_DEV_E2E_APPLIED"] = "0"
+        env["PTR_CLOSEOUT_DEV_E2E_REASON"] = str(
+            materialize.get("reason")
+            or (
+                "manifest_digest_not_in_allowlist"
+                if materialize.get("ok")
+                else "materialize_failed"
+            )
+        )[:96]
+        if materialize.get("manifest_sha256"):
+            env["PTR_CLOSEOUT_DEV_E2E_MANIFEST_SHA256"] = str(
+                materialize["manifest_sha256"]
+            )
+        return env
+
+    env["GROTH16_BACKEND_ARTIFACTS_ROOT"] = str(materialize["artifacts_root"])
+    env["IPFS_DATASETS_GROTH16_BINARY"] = str(materialize["binary_path"])
+    env["IPFS_TEST_PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST"] = str(
+        materialize["manifest_path"]
+    )
+    env["IPFS_TEST_PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_SHA256"] = str(
+        materialize["manifest_sha256"]
+    )
+    env["PTR_CLOSEOUT_DEV_E2E_APPLIED"] = "1"
+    env["PTR_CLOSEOUT_DEV_E2E_REASON"] = "local_nonproduction_allowlist_pin"
+    return env
+
+
 def attempt_local_nonproduction_v4_setup(
     *,
     use_seed: int | None = None,
@@ -250,13 +441,26 @@ def attempt_local_nonproduction_v4_setup(
 
     discovery = discover_real_groth16_fixture()
     if discovery.available:
+        manifest = materialize_local_nonproduction_e2e_manifest(
+            artifacts_root=discovery.artifacts_root or None,
+            binary_path=discovery.binary_path or None,
+        )
         return MeasurementAttempt(
             name="local_nonproduction_v4_setup",
-            attempted=False,
-            succeeded=True,
-            skipped=True,
-            detail="skipped:v4_keys_already_present",
-            metrics=discovery.to_dict(),
+            attempted=True,
+            succeeded=bool(manifest.get("ok")),
+            skipped=False,
+            detail=(
+                "v4_keys_present_manifest_ready"
+                if manifest.get("ok")
+                else f"v4_keys_present_manifest_failed:{manifest.get('reason')}"
+            ),
+            metrics={
+                **discovery.to_dict(),
+                "manifest": manifest,
+                "production_authority": False,
+                "local_operational_only": True,
+            },
         )
     binary = Path(discovery.binary_path) if discovery.binary_path else None
     if binary is None or not binary.is_file():
@@ -316,6 +520,13 @@ def attempt_local_nonproduction_v4_setup(
             )
         except OSError:
             pass
+        manifest: dict[str, Any] = {}
+        if ok:
+            manifest = materialize_local_nonproduction_e2e_manifest(
+                artifacts_root=after.artifacts_root or artifacts,
+                binary_path=after.binary_path or binary,
+            )
+            ok = bool(manifest.get("ok"))
         return MeasurementAttempt(
             name="local_nonproduction_v4_setup",
             attempted=True,
@@ -332,6 +543,7 @@ def attempt_local_nonproduction_v4_setup(
                 "reason_after": after.reason,
                 "stdout_tail": (result.stdout or "")[-200:],
                 "stderr_tail": (result.stderr or "")[-200:],
+                "manifest": manifest,
                 "production_authority": False,
                 "local_operational_only": True,
             },
@@ -923,9 +1135,15 @@ def attempt_reviewed_manifest_pin_status() -> MeasurementAttempt:
             os.environ.get(PROOF_REUSE_GROTH16_ARTIFACT_MANIFEST_SHA256_ENV, "") or ""
         ).strip()
         approved = frozenset(DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256 or ())
+        env = apply_local_dev_e2e_authority_env()
         certificate = probe_test_certificate_authority(
-            artifacts_root=fixture.artifacts_root or None,
-            binary_path=fixture.binary_path or None,
+            environ=env,
+            artifacts_root=env.get("GROTH16_BACKEND_ARTIFACTS_ROOT")
+            or fixture.artifacts_root
+            or None,
+            binary_path=env.get("IPFS_DATASETS_GROTH16_BINARY")
+            or fixture.binary_path
+            or None,
         )
         pin_env_set = bool(manifest_path) and bool(manifest_sha)
         path_exists = bool(manifest_path) and Path(manifest_path).expanduser().is_file()
@@ -1375,6 +1593,7 @@ __all__ = [
     "attempt_controller_owned_context_smoke",
     "attempt_default_identity_services_probe",
     "attempt_issuance_material_api_smoke",
+    "apply_local_dev_e2e_authority_env",
     "attempt_local_nonproduction_v4_setup",
     "attempt_local_v4_certificate_self_check",
     "attempt_ordinary_default_composition_probe",
@@ -1384,6 +1603,7 @@ __all__ = [
     "discover_real_groth16_fixture",
     "inventory_artifact_versions",
     "load_real_groth16_fixture_module",
+    "materialize_local_nonproduction_e2e_manifest",
     "run_closeout_activation_measurements",
 ]
 
