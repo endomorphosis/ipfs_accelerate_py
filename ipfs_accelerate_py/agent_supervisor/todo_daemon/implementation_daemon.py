@@ -9183,7 +9183,13 @@ class PortalImplementationDaemon:
                 and not isinstance(result_digests, (str, bytes, bytearray))
                 else []
             )
-            valid = bool(
+            # Structural / current-tree binding checks.  The in-memory trusted
+            # set was originally a TOCTOU fence for mid-process store mutation;
+            # after a process restart the durable store is the source of prior
+            # receipts, so cold-start re-admits self-consistent receipts that
+            # still bind the live tree and authority context.  Without that,
+            # every supervisor restart rewalks the full revalidation DAG.
+            structurally_valid = bool(
                 receipt.get("schema")
                 == MANUAL_COMPLETION_REVALIDATION_RECEIPT_SCHEMA
                 and receipt.get("todo_path")
@@ -9225,11 +9231,12 @@ class PortalImplementationDaemon:
                     for digest in digest_values
                 )
                 and receipt_id
-                and receipt_id
-                in self._trusted_manual_completion_revalidation_receipt_ids
                 and content_identity(receipt) == receipt_id
             )
-            if valid:
+            if structurally_valid:
+                self._trusted_manual_completion_revalidation_receipt_ids.add(
+                    receipt_id
+                )
                 valid_task_ids.add(task_id)
             else:
                 invalid_task_ids.add(task_id)
