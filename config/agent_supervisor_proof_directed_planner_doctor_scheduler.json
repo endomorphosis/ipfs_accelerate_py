@@ -199,7 +199,7 @@
       "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.release_seal@1",
       "interface": "PlannerDoctorReleaseSeal@1",
       "policy_revision": "1",
-      "expected_receipt_id": "sha256:1360f3ea64d135ebeedbd76d053d144948701e4124a1cf725fca491891fa3564",
+      "expected_receipt_id": "sha256:225a71483f28e50a1a2d552be3f7915e08369d50b04dc8abd03fe5bdc79ff2f5",
       "artifact_paths": {
         "release_module": "ipfs_accelerate_py/agent_supervisor/validation/planner_doctor_release.py",
         "release_doc": "docs/architecture/PROOF_DIRECTED_PLANNER_DOCTOR_RELEASE.md",

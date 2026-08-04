@@ -15,8 +15,8 @@
     {
       "path": "test/api/test_agent_supervisor_planner_doctor_release.py",
       "role": "release_test",
-      "sha256": "sha256:f6e61baf1e0a4ade436187abac88dcb714bc3ed923dfee02b25f1b6194e72954",
-      "size_bytes": 46683
+      "sha256": "sha256:76a956b1cdc8fe5de43dd71ee7e8246af8259578ce23d097e4f511da6b03badc",
+      "size_bytes": 47433
     }
   ],
   "board_namespace": "agent-supervisor-proof-directed-planner-doctor-v1",
@@ -44,13 +44,13 @@
     "model": false
   },
   "policy_revision": "1",
-  "receipt_id": "sha256:1360f3ea64d135ebeedbd76d053d144948701e4124a1cf725fca491891fa3564",
+  "receipt_id": "sha256:225a71483f28e50a1a2d552be3f7915e08369d50b04dc8abd03fe5bdc79ff2f5",
   "receipt_version": "1",
   "reviewed_base": {
-    "commit": "9f62cabbd04a3a701c9c29107119a0b5d71c9ad6",
+    "commit": "9bf6f60c8a3af8f9ca5e3d9c8ebf2adad2ecc750",
     "git_object_format": "sha1",
     "relation_to_activation_head": "equal_or_ancestor",
-    "tree": "a76a464416fef12bc57f3fae64af245e763d9daa"
+    "tree": "ecfc318be1f2323d7dfe4d6dd344f379efc8ae7b"
   },
   "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.release_seal@1",
   "task_id": "PDR-092"

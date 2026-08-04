@@ -942,8 +942,9 @@ def test_current_tree_release_fails_closed_on_pending_and_untrusted_evidence(
 
     After the board reaches 43/43 and seals land, ``canonical_board`` and
     ``task_vs_objective_completion`` may PASS.  External metrics/rollback/drain
-    evidence still fails closed until authenticated, and a dirty shared tree
-    keeps ``report_only_no_write`` FAIL.  The aggregate receipt remains invalid.
+    evidence still fails closed until authenticated.  ``report_only_no_write``
+    PASSes on a clean tree and FAILs when the shared checkout is dirty.  The
+    aggregate receipt remains invalid without authenticated external evidence.
     """
 
     report = honest_receipt.to_dict()
@@ -955,10 +956,18 @@ def test_current_tree_release_fails_closed_on_pending_and_untrusted_evidence(
         "zero_safety_floors",
         "exact_rollback",
         "six_lane_supervisor_drain",
-        "report_only_no_write",
     }
     for name in always_fail:
         assert report["checks"][name]["status"] == "fail", name
+
+    report_only = report["checks"]["report_only_no_write"]
+    tree_clean = report_only["evidence"].get("tree_clean_before") is True
+    if tree_clean:
+        assert report_only["status"] == "pass"
+        assert report_only["evidence"]["tree_unchanged"] is True
+    else:
+        assert report_only["status"] == "fail"
+        assert report_only["evidence"]["tree_clean_before"] is False
 
     # Board/objective gates pass only once every canonical task is completed
     # with verified seals; otherwise they must remain FAIL.
@@ -976,6 +985,7 @@ def test_current_tree_release_fails_closed_on_pending_and_untrusted_evidence(
     conditional_fail = {
         "canonical_board",
         "task_vs_objective_completion",
+        "report_only_no_write",
     }
     for name in REQUIRED_CHECKS - always_fail - conditional_fail:
         assert report["checks"][name]["status"] == "pass", name
@@ -1152,12 +1162,17 @@ def test_optional_capabilities_and_cold_imports_pass_while_dirty_tree_fails_clos
     assert cold["evidence"]["failed"] == []
     assert cold["evidence"]["optional_providers_not_required"] is True
     report_only = honest_receipt.checks["report_only_no_write"]
-    assert report_only["status"] == "fail"
     assert report_only["evidence"]["mode"] == "report_only"
     assert report_only["evidence"]["mutation_authorized"] is False
     assert report_only["evidence"]["tree_unchanged"] is True
-    assert report_only["evidence"]["tree_clean_before"] is False
-    assert report_only["evidence"]["tree_clean_after"] is False
+    # Clean terminal checkouts pass report-only; dirty shared trees fail closed.
+    if report_only["evidence"].get("tree_clean_before") is True:
+        assert report_only["status"] == "pass"
+        assert report_only["evidence"]["tree_clean_after"] is True
+    else:
+        assert report_only["status"] == "fail"
+        assert report_only["evidence"]["tree_clean_before"] is False
+        assert report_only["evidence"]["tree_clean_after"] is False
 
 
 def test_automatic_promotion_remains_gated(
