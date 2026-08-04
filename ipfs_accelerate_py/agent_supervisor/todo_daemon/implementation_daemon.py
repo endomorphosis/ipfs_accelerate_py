@@ -22967,6 +22967,33 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         "was not durably activated"
                     )
                 production_landed_guard = activated_landed_route
+            elif (
+                production_correction_feedback
+                and post_merge_correction_authority
+            ):
+                # Ordinary / fallthrough correction still charges the durable
+                # start CAS. Seal the process-local capability from that exact
+                # consumption so the private provider route has one claimable
+                # identity even when the landed-route preflight was skipped.
+                sealed_correction_route = (
+                    self._seal_post_merge_correction_route_after_start(
+                        task,
+                        attempt=attempt,
+                        authority=post_merge_correction_authority,
+                        started_event=implementation_started_event,
+                        complete_feedback_id=str(
+                            production_correction_feedback.get(
+                                "feedback_binding_id"
+                            )
+                            or ""
+                        ),
+                    )
+                )
+                if not sealed_correction_route:
+                    raise MergeQueueFenceError(
+                        "post-merge correction route reservation was not "
+                        "sealed after durable start"
+                    )
             with log_path.open("w", encoding="utf-8") as log_fh:
                 log_fh.write(f"Task: {task.task_id} {task.title}\n")
                 log_fh.write(f"Started: {started_at}\n")
@@ -34525,42 +34552,34 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "route_candidate_id": content_identity(material),
         }
 
-    def _activate_post_merge_correction_landed_route(
+    def _seal_post_merge_correction_route_after_start(
         self,
         task: PortalTask,
         *,
         attempt: int,
         authority: Mapping[str, Any],
-        candidate: Mapping[str, Any],
         started_event: Mapping[str, Any],
-        landed_guard: Mapping[str, Any],
+        complete_feedback_id: str,
     ) -> dict[str, Any]:
-        """Activate a bypass only after the strict start CAS is durable."""
+        """Seal one process-local capability after durable start consumption.
 
-        candidate_material = dict(candidate)
-        route_candidate_id = str(
-            candidate_material.pop("route_candidate_id", "") or ""
-        )
+        Landed-route activation is optional. Ordinary repair-grant / denial
+        corrections and landed-route fallthrough still require exactly one
+        sealed capability identity before the private provider route may run.
+        """
+
         authority_binding_id = str(
             authority.get("authority_binding_id") or ""
         )
+        denial_id = str(authority.get("durable_denial_id") or "")
+        expected_feedback_id = str(complete_feedback_id or "").strip()
         if (
-            not route_candidate_id
-            or content_identity(candidate_material) != route_candidate_id
-            or candidate_material.get("schema")
-            != POST_MERGE_CORRECTION_LANDED_ROUTE_SCHEMA
-            or candidate_material.get("authority_binding_id")
-            != authority_binding_id
+            not authority_binding_id
+            or not denial_id
+            or not expected_feedback_id
             or started_event.get("type") != "implementation_started"
             or str(started_event.get("task_id") or "") != task.task_id
             or int(started_event.get("attempt") or 0) != int(attempt)
-            or str(
-                started_event.get(
-                    "post_merge_correction_landed_route_candidate_id"
-                )
-                or ""
-            )
-            != route_candidate_id
             or str(
                 (
                     started_event.get("post_merge_correction_authority")
@@ -34575,7 +34594,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             != authority_binding_id
         ):
             return {}
-        denial_id = str(candidate.get("durable_denial_id") or "")
         chain_reader = getattr(
             self.merge_queue,
             "verified_post_merge_correction_chain",
@@ -34660,7 +34678,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if (
             not complete_feedback
             or str(complete_feedback.get("feedback_binding_id") or "")
-            != str(candidate.get("complete_denial_feedback_id") or "")
+            != expected_feedback_id
         ):
             return {}
         capability_material = {
@@ -34717,7 +34735,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 registry_entry
             )
         return {
-            **dict(landed_guard),
             "guarded": False,
             "action": "post_merge_correction_implementation_route_allowed",
             "invoke_grok_implementation": True,
@@ -34725,11 +34742,77 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "provider_review_pending": False,
             "legacy_fallback_counts_as_review": False,
             "reason": "exact_post_merge_correction_reservation",
-            "post_merge_correction_route": dict(candidate),
             "post_merge_correction_reservation": reservation,
             "fresh_independent_review_required": True,
             "completion_authoritative": False,
             "proof_authoritative": False,
+        }
+
+    def _activate_post_merge_correction_landed_route(
+        self,
+        task: PortalTask,
+        *,
+        attempt: int,
+        authority: Mapping[str, Any],
+        candidate: Mapping[str, Any],
+        started_event: Mapping[str, Any],
+        landed_guard: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Activate a bypass only after the strict start CAS is durable."""
+
+        candidate_material = dict(candidate)
+        route_candidate_id = str(
+            candidate_material.pop("route_candidate_id", "") or ""
+        )
+        authority_binding_id = str(
+            authority.get("authority_binding_id") or ""
+        )
+        if (
+            not route_candidate_id
+            or content_identity(candidate_material) != route_candidate_id
+            or candidate_material.get("schema")
+            != POST_MERGE_CORRECTION_LANDED_ROUTE_SCHEMA
+            or candidate_material.get("authority_binding_id")
+            != authority_binding_id
+            or started_event.get("type") != "implementation_started"
+            or str(started_event.get("task_id") or "") != task.task_id
+            or int(started_event.get("attempt") or 0) != int(attempt)
+            or str(
+                started_event.get(
+                    "post_merge_correction_landed_route_candidate_id"
+                )
+                or ""
+            )
+            != route_candidate_id
+            or str(
+                (
+                    started_event.get("post_merge_correction_authority")
+                    or {}
+                ).get("authority_binding_id")
+                if isinstance(
+                    started_event.get("post_merge_correction_authority"),
+                    Mapping,
+                )
+                else ""
+            )
+            != authority_binding_id
+        ):
+            return {}
+        sealed = self._seal_post_merge_correction_route_after_start(
+            task,
+            attempt=attempt,
+            authority=authority,
+            started_event=started_event,
+            complete_feedback_id=str(
+                candidate.get("complete_denial_feedback_id") or ""
+            ),
+        )
+        if not sealed:
+            return {}
+        return {
+            **dict(landed_guard),
+            **sealed,
+            "post_merge_correction_route": dict(candidate),
         }
 
     def _verified_post_merge_correction_route_reservation(
