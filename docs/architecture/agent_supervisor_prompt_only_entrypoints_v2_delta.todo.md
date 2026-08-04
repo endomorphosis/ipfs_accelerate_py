@@ -27,7 +27,7 @@ Wave 3:            ASE2-008 validation, materialization, and staged cutover
 
 ## ASE2-001 Collect trusted ambient evidence and orchestrate prompt-only resolution
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -75,7 +75,7 @@ Wave 3:            ASE2-008 validation, materialization, and staged cutover
 
 ## ASE2-003 Add one-time signed local-development profile initialization
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -99,7 +99,7 @@ Wave 3:            ASE2-008 validation, materialization, and staged cutover
 
 ## ASE2-004 Converge mutable run registry state on DuckDB with immutable IPLD history
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -123,7 +123,7 @@ Wave 3:            ASE2-008 validation, materialization, and staged cutover
 
 ## ASE2-005 Implement transport-specific trusted invocation-context adapters
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -147,7 +147,7 @@ Wave 3:            ASE2-008 validation, materialization, and staged cutover
 
 ## ASE2-006 Require a complete revalidated LaunchPlan at every effect boundary
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
