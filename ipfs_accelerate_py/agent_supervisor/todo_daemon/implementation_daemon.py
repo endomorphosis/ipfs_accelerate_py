@@ -328,6 +328,13 @@ WORKTREE_LIFECYCLE_STARTUP_GRACE_ENV = (
 WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV = (
     "IPFS_ACCELERATE_AGENT_RECLAIM_DEAD_WORKTREE_LEASES_ON_STARTUP"
 )
+WORKTREE_LIFECYCLE_RECLAIM_EXPIRED_ON_PASS_ENV = (
+    "IPFS_ACCELERATE_AGENT_RECLAIM_EXPIRED_WORKTREE_LEASES_ON_PASS"
+)
+WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS_ENV = (
+    "IPFS_ACCELERATE_AGENT_WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS"
+)
+DEFAULT_WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS = 60.0
 WORKTREE_LIFECYCLE_RACE_BACKOFF_SECONDS = 30
 IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND = "implementation_resource_claim"
 IMPLEMENTATION_RESOURCE_CLAIM_LOCK_DIRNAME = "implementation-resource-claims"
@@ -3600,18 +3607,31 @@ def dependency_satisfied_references(
     *,
     completed_task_ids: Iterable[str] = (),
     assumed_completed_references: Iterable[str] = (),
+    soft_completed_references: Iterable[str] = (),
+    auto_resolve_orphaned_references: bool = True,
 ) -> set[str]:
     """Return satisfied task and objective-goal dependency references.
 
     Generated objective boards use stable goal IDs as dependencies before a
     concrete task alias is always available. A goal dependency is satisfied
-    only after every task currently bound to that goal is complete, so a
-    completed historical task cannot prematurely unlock a newer continuation.
+    only after every task currently bound to that goal is complete (or soft
+    complete), so a completed historical task cannot prematurely unlock a
+    newer continuation.
+
+    Soft-completed references (merged / acceptance-pending / shared merge
+    receipts) unlock dependents without granting board completion authority
+    to the upstream task itself. Orphaned dependency references that match
+    neither a declared task id nor a bound goal id are auto-resolved so a
+    missing external alias cannot stall the board indefinitely.
     """
 
     satisfied_task_ids = {
         str(reference)
-        for reference in (*completed_task_ids, *assumed_completed_references)
+        for reference in (
+            *completed_task_ids,
+            *assumed_completed_references,
+            *soft_completed_references,
+        )
         if str(reference).strip()
     }
     satisfied = set(satisfied_task_ids)
@@ -3620,6 +3640,7 @@ def dependency_satisfied_references(
     for task in tasks:
         for goal_id in split_csv(task.metadata.get("goal id", "")):
             task_ids_by_goal.setdefault(goal_id, set()).add(task.task_id)
+    bound_goal_ids = set(task_ids_by_goal)
     for goal_id, task_ids in task_ids_by_goal.items():
         if (
             goal_id not in declared_task_ids
@@ -3627,7 +3648,62 @@ def dependency_satisfied_references(
             and task_ids.issubset(satisfied_task_ids)
         ):
             satisfied.add(goal_id)
+    if auto_resolve_orphaned_references:
+        for task in tasks:
+            for dependency in task.depends_on:
+                reference = str(dependency).strip()
+                if not reference or reference in satisfied:
+                    continue
+                if (
+                    reference not in declared_task_ids
+                    and reference not in bound_goal_ids
+                ):
+                    # Nothing on this board can ever complete the alias.
+                    satisfied.add(reference)
     return satisfied
+
+
+def downstream_unlock_counts(
+    tasks: Sequence[PortalTask],
+    *,
+    incomplete_task_ids: Iterable[str] | None = None,
+) -> dict[str, int]:
+    """Count incomplete tasks transitively unlocked by completing each task.
+
+    Used by ready-task selection so critical-path blockers (high fan-out
+    roots) are preferred over leaf work that does not free the cascade.
+    """
+
+    children: dict[str, list[str]] = {task.task_id: [] for task in tasks}
+    for task in tasks:
+        for dependency in task.depends_on:
+            dep = str(dependency).strip()
+            if dep in children:
+                children[dep].append(task.task_id)
+    if incomplete_task_ids is None:
+        incomplete = {
+            task.task_id
+            for task in tasks
+            if normalize_status(str(task.status or "")) != "completed"
+        }
+    else:
+        incomplete = {
+            str(task_id).strip()
+            for task_id in incomplete_task_ids
+            if str(task_id).strip()
+        }
+    counts: dict[str, int] = {}
+    for task in tasks:
+        seen: set[str] = set()
+        stack = list(children.get(task.task_id, ()))
+        while stack:
+            node = stack.pop()
+            if node in seen:
+                continue
+            seen.add(node)
+            stack.extend(children.get(node, ()))
+        counts[task.task_id] = len(seen & incomplete)
+    return counts
 
 
 class PortalImplementationDaemon:
@@ -3888,20 +3964,46 @@ class PortalImplementationDaemon:
             ),
         )
         self.worktree_lifecycle_restart_recovery = []
+        self._worktree_lifecycle_reclaim_on_pass = _env_bool(
+            WORKTREE_LIFECYCLE_RECLAIM_EXPIRED_ON_PASS_ENV,
+            True,
+        )
+        reclaim_interval = float(
+            os.environ.get(WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS_ENV, "")
+            or 0
+        )
+        self._worktree_lifecycle_reclaim_interval_seconds = (
+            reclaim_interval
+            if reclaim_interval > 0
+            else DEFAULT_WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS
+        )
+        self._last_worktree_lifecycle_reclaim_monotonic = 0.0
+        # Always reclaim expired nonterminal claims on startup so abandoned
+        # attempts (daemon PID still alive, lease not renewed) cannot stall
+        # the board for hours.  Dead-owner controlled restart remains opt-in.
+        startup_reclaim = self._reclaim_expired_worktree_lifecycle_claims(
+            reason="daemon_startup_expired_lease_auto_reclaim",
+            force=True,
+        )
+        if startup_reclaim.get("reclaimed_count", 0):
+            self.worktree_lifecycle_restart_recovery.extend(
+                list(startup_reclaim.get("records") or [])
+            )
         if _env_bool(
             WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV,
-            False,
+            True,
         ):
-            self.worktree_lifecycle_restart_recovery = (
+            dead_reclaimed = (
                 self.worktree_lifecycle.reclaim_dead_owners_for_controlled_restart(
                     expected_state_dir=self.state_path.parent.resolve(),
                 )
             )
-            if self.worktree_lifecycle_restart_recovery:
+            self.worktree_lifecycle_restart_recovery.extend(dead_reclaimed)
+            if dead_reclaimed:
                 logger.warning(
                     "Controlled restart fenced %d dead worktree lifecycle "
                     "owner(s) for state directory %s",
-                    len(self.worktree_lifecycle_restart_recovery),
+                    len(dead_reclaimed),
                     self.state_path.parent.resolve(),
                 )
         # Active attempt's fenced workspace claim (if any).  Cleanup paths
@@ -9356,6 +9458,13 @@ class PortalImplementationDaemon:
                     wake_kinds=wake_kinds,
                 )
         self._last_safety_reconciliation_monotonic = time.monotonic()
+        # Supervisor-native auto-unstick: reclaim abandoned worktree claims
+        # every pass interval so boards do not depend on external companions.
+        worktree_lifecycle_reclaim = (
+            self._reclaim_expired_worktree_lifecycle_claims(
+                reason="daemon_pass_expired_lease_auto_reclaim",
+            )
+        )
         event_log_repair = self.ensure_event_log_file()
         state_file_repair = self.ensure_state_file()
         protected_path_reconciliation = (
@@ -9585,10 +9694,29 @@ class PortalImplementationDaemon:
             for task_id, conflicts in protected_path_conflicts_by_task.items()
             if conflicts
         }
+        # Soft-complete: integrated / acceptance-pending work unblocks
+        # dependents without marking the upstream task board-completed.
+        soft_completed_task_ids = set(acceptance_pending_merged_task_ids) | (
+            (successfully_merged_task_ids | shared_completed_task_ids)
+            - completed_set
+            - correction_ready_task_ids
+            - retry_budget_reopened_post_merge_task_ids
+        )
+        soft_completed_cids = {
+            self._canonical_ref(task)
+            for task in tasks
+            if task.task_id in soft_completed_task_ids
+        }
+        soft_completed_task_ids.update(
+            task.task_id
+            for task in tasks
+            if self._canonical_ref(task) in soft_completed_cids
+        )
         dependency_satisfied_task_ids = dependency_satisfied_references(
             tasks,
             completed_task_ids=completed_set,
             assumed_completed_references=self.assumed_completed_task_ids,
+            soft_completed_references=soft_completed_task_ids,
         )
         dependency_reopen_candidates = [
             task.task_id
@@ -9608,6 +9736,29 @@ class PortalImplementationDaemon:
             dependency_reopen_candidates,
             reason="dependencies_completed",
         )
+        soft_unlock_waiting = [
+            task.task_id
+            for task in tasks
+            if (
+                task.task_id not in completed_set
+                and bool(task.depends_on)
+                and any(dep in soft_completed_task_ids for dep in task.depends_on)
+                and all(
+                    dependency in dependency_satisfied_task_ids
+                    for dependency in task.depends_on
+                )
+            )
+        ]
+        if soft_completed_task_ids and soft_unlock_waiting:
+            self._record_event(
+                "dependency_soft_completed",
+                {
+                    "soft_completed_task_ids": sorted(soft_completed_task_ids)[:50],
+                    "soft_completed_count": len(soft_completed_task_ids),
+                    "unlocked_task_ids": soft_unlock_waiting[:50],
+                    "reason": "merged_or_acceptance_pending_unblocks_dependents",
+                },
+            )
         dependency_reopened_task_ids = {
             *dependency_reopen_result.get("updated_task_ids", []),
             *dependency_reopen_result.get("already_ready_task_ids", []),
@@ -9767,6 +9918,15 @@ class PortalImplementationDaemon:
                     "selection_idle_reason": attempt_limit_idle_reason,
                 },
             )
+        incomplete_for_unlock = {
+            task.task_id
+            for task in tasks
+            if resolved_statuses.get(task.task_id) != "completed"
+        }
+        unlock_counts = downstream_unlock_counts(
+            tasks,
+            incomplete_task_ids=incomplete_for_unlock,
+        )
         selection_provider_backoff = self._active_provider_capacity_backoff()
         if selection_provider_backoff:
             provider_independent_or_authorized_tasks = [
@@ -9804,6 +9964,8 @@ class PortalImplementationDaemon:
             strategy,
             unresolved_merge_failures,
             recent_outcomes,
+            all_tasks=tasks,
+            downstream_unlock_by_task=unlock_counts,
         )
         selection_scope = self._selection_scope(selectable_tasks, resolved_statuses, strategy)
         if selected is None and attempt_limit_idle_reason:
@@ -10124,6 +10286,16 @@ class PortalImplementationDaemon:
             ),
             "external_reserved_task_ids": sorted(external_task_reservations),
             "assumed_completed_task_ids": sorted(self.assumed_completed_task_ids),
+            "soft_completed_task_ids": sorted(soft_completed_task_ids),
+            "soft_completed_count": len(soft_completed_task_ids),
+            "dependency_satisfied_task_ids": sorted(
+                dependency_satisfied_task_ids
+            )[:200],
+            "downstream_unlock_counts": {
+                task_id: unlock_counts[task_id]
+                for task_id in sorted(unlock_counts)
+                if unlock_counts[task_id] > 0
+            },
             "execution_slice_task_ids": sorted(self.execution_slice_task_ids),
             "execution_slice_task_cids": sorted(self.execution_slice_task_cids),
             "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
@@ -19232,15 +19404,11 @@ class PortalImplementationDaemon:
             # target checkout as already-merged while the owner is still mid
             # setup (ASI-171 / AICAT-025 prerequisite).
             try:
-                lifecycle_record = self.worktree_lifecycle.begin_preparing(
-                    task_id=task.task_id,
-                    canonical_task_cid=self._canonical_ref(task),
+                lifecycle_record = self._begin_worktree_lifecycle_preparing(
+                    task=task,
                     attempt=attempt,
-                    lane_id=self._worktree_lifecycle_lane_id(),
-                    workspace_path=worktree_path,
-                    branch=branch_name,
-                    merge_target=self._main_branch_name(),
-                    state_dir=str(self.state_path.parent.resolve()),
+                    worktree_path=worktree_path,
+                    branch_name=branch_name,
                 )
                 self._active_worktree_lifecycle = lifecycle_record
             except DuplicateAttemptError as exc:
@@ -36140,6 +36308,152 @@ class PortalImplementationDaemon:
         shard = f"{self.task_shard_index}/{self.task_shard_count}"
         return f"{state_dir}:{shard}:{os.getpid()}"
 
+    def _reclaim_expired_worktree_lifecycle_claims(
+        self,
+        *,
+        reason: str = "daemon_pass_expired_lease_auto_reclaim",
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """Terminalize abandoned worktree lifecycle claims (supervisor auto-unstick).
+
+        Integrated into the agent supervisor so boards do not require an
+        external companion to recover from expired nonterminal claims.  Safe
+        to call periodically: unexpired live claims are left alone.
+        """
+
+        if not force and not getattr(
+            self, "_worktree_lifecycle_reclaim_on_pass", True
+        ):
+            return {
+                "reclaimed_count": 0,
+                "skipped": True,
+                "reason": "reclaim_on_pass_disabled",
+                "records": [],
+            }
+        interval = float(
+            getattr(
+                self,
+                "_worktree_lifecycle_reclaim_interval_seconds",
+                DEFAULT_WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS,
+            )
+            or DEFAULT_WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS
+        )
+        now_mono = time.monotonic()
+        last = float(
+            getattr(self, "_last_worktree_lifecycle_reclaim_monotonic", 0.0) or 0.0
+        )
+        if not force and last > 0.0 and (now_mono - last) < interval:
+            return {
+                "reclaimed_count": 0,
+                "skipped": True,
+                "reason": "reclaim_interval_not_elapsed",
+                "records": [],
+                "interval_seconds": interval,
+            }
+        try:
+            recovered = self.worktree_lifecycle.reclaim_expired_nonterminal(
+                reason=reason,
+            )
+        except Exception as exc:  # pragma: no cover - recovery best-effort
+            logger.warning(
+                "Failed expired worktree lifecycle reclaim (%s): %s",
+                reason,
+                exc,
+            )
+            return {
+                "reclaimed_count": 0,
+                "skipped": False,
+                "reason": "reclaim_failed",
+                "error": str(exc)[-1000:],
+                "records": [],
+            }
+        self._last_worktree_lifecycle_reclaim_monotonic = now_mono
+        result: dict[str, Any] = {
+            "reclaimed_count": len(recovered),
+            "skipped": False,
+            "reason": reason,
+            "records": recovered,
+            "task_ids": sorted(
+                {
+                    str(getattr(record, "task_id", "") or "")
+                    for record in recovered
+                    if str(getattr(record, "task_id", "") or "")
+                }
+            ),
+        }
+        if recovered:
+            logger.warning(
+                "Auto-reclaimed %d expired worktree lifecycle claim(s) "
+                "(%s) for state directory %s",
+                len(recovered),
+                reason,
+                self.state_path.parent.resolve(),
+            )
+            try:
+                self._record_event(
+                    "worktree_lifecycle_expired_claims_reclaimed",
+                    {
+                        "reclaimed_count": len(recovered),
+                        "reason": reason,
+                        "task_ids": result["task_ids"],
+                        "requirement_id": FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID,
+                    },
+                )
+            except Exception:
+                # Event recording is best-effort during early init.
+                pass
+        return result
+
+    def _begin_worktree_lifecycle_preparing(
+        self,
+        *,
+        task: Any,
+        attempt: int,
+        worktree_path: Path,
+        branch_name: str,
+    ) -> Any:
+        """Acquire a preparing lifecycle claim, reclaiming expired blockers once."""
+
+        kwargs = {
+            "task_id": task.task_id,
+            "canonical_task_cid": self._canonical_ref(task),
+            "attempt": attempt,
+            "lane_id": self._worktree_lifecycle_lane_id(),
+            "workspace_path": worktree_path,
+            "branch": branch_name,
+            "merge_target": self._main_branch_name(),
+            "state_dir": str(self.state_path.parent.resolve()),
+        }
+        try:
+            return self.worktree_lifecycle.begin_preparing(**kwargs)
+        except DuplicateAttemptError:
+            # Integrated unstick: reclaim expired claims then retry once so a
+            # stale lease cannot burn the entire implement pass.
+            reclaim = self._reclaim_expired_worktree_lifecycle_claims(
+                reason="pre_acquire_expired_lease_reclaim",
+                force=True,
+            )
+            try:
+                self.worktree_lifecycle.reclaim_stale(
+                    worktree_path,
+                    reason="pre_acquire_workspace_expired_reclaim",
+                )
+            except Exception:
+                pass
+            try:
+                record = self.worktree_lifecycle.begin_preparing(**kwargs)
+            except DuplicateAttemptError as retry_exc:
+                raise retry_exc
+            if reclaim.get("reclaimed_count"):
+                logger.info(
+                    "Retrying worktree lifecycle acquire for %s attempt %s "
+                    "after reclaiming %s expired claim(s)",
+                    task.task_id,
+                    attempt,
+                    reclaim.get("reclaimed_count"),
+                )
+            return record
+
     def _active_worktree_lifecycle_lease_id(self) -> str:
         record = self._active_worktree_lifecycle
         if record is None:
@@ -46337,6 +46651,9 @@ class PortalImplementationDaemon:
         strategy: dict[str, Any],
         unresolved_merge_failures: dict[str, dict[str, Any]],
         recent_outcomes: dict[str, dict[str, Any]],
+        *,
+        all_tasks: Sequence[PortalTask] | None = None,
+        downstream_unlock_by_task: Mapping[str, int] | None = None,
     ) -> PortalTask | None:
         ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
         # The durable queue is authoritative across isolated lane state dirs.
@@ -46406,6 +46723,19 @@ class PortalImplementationDaemon:
         }
         deprioritized = {str(item) for item in strategy.get("deprioritized_tasks", [])}
         blocked_strategy_task_ids = {str(item) for item in strategy.get("blocked_tasks", [])}
+        if downstream_unlock_by_task is None:
+            graph_tasks = list(all_tasks) if all_tasks is not None else list(tasks)
+            incomplete_ids = {
+                task.task_id
+                for task in graph_tasks
+                if resolved_statuses.get(task.task_id, task.status) != "completed"
+            }
+            unlock_counts = downstream_unlock_counts(
+                graph_tasks,
+                incomplete_task_ids=incomplete_ids,
+            )
+        else:
+            unlock_counts = dict(downstream_unlock_by_task)
 
         def sort_key(task: PortalTask) -> tuple[Any, ...]:
             selection_penalty = self.task_queue.get_penalty(self._canonical_ref(task))
@@ -46416,9 +46746,12 @@ class PortalImplementationDaemon:
             retry_repair_source_id, _failure_kind = retry_budget_repair_source(task)
             vector_rank = self._todo_vector_selection_rank(task, vector_context)
             work_surface_rank = self._task_work_surface_rank(task)
+            # Prefer critical-path blockers: higher transitive unlock first.
+            critical_path_rank = -int(unlock_counts.get(task.task_id, 0))
             return (
                 selection_penalty,
                 PRIORITY_ORDER.get(task.priority, 99),
+                critical_path_rank,
                 0 if retry_repair_source_id in blocked_strategy_task_ids else 1,
                 1 if task.task_id in deprioritized else 0,
                 focus_order.get(task.track, len(focus_order)),
