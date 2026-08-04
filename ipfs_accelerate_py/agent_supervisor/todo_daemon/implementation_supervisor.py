@@ -615,6 +615,21 @@ def load_supervisor_scheduler_config(
                 "operator seal configuration"
             )
         try:
+            from ..control.delegated_operator_completion import (
+                DelegatedOperatorCompletionPolicy,
+            )
+
+            delegated_policy = DelegatedOperatorCompletionPolicy.from_mapping(
+                payload.get("delegated_operator_completion")
+                if isinstance(payload, Mapping)
+                else None
+            )
+        except Exception:
+            delegated_policy = None
+        allow_delegated = bool(
+            delegated_policy is not None and delegated_policy.allows(task_id)
+        )
+        try:
             verified = verify_manual_completion_seal(
                 str(seal["receipt_path"]),
                 repo_root=root,
@@ -629,6 +644,7 @@ def load_supervisor_scheduler_config(
                 grant_action=str(seal["grant_action"]),
                 reviewed_base_claims=seal["reviewed_base_claims"],
                 grant_claims=seal["grant_claims"],
+                allow_delegated_operator=allow_delegated,
             )
         except ManualCompletionSealError as exc:
             raise SupervisorSchedulerConfigError(
@@ -652,6 +668,29 @@ def load_supervisor_scheduler_config(
             "manual_completion_seals tasks must also declare staged protection: "
             f"{sorted(orphaned_seal_configs)!r}"
         )
+
+    try:
+        from ..control.delegated_operator_completion import (
+            DelegatedOperatorCompletionPolicy,
+        )
+
+        delegated_policy = DelegatedOperatorCompletionPolicy.from_mapping(
+            payload.get("delegated_operator_completion")
+            if isinstance(payload, Mapping)
+            else None
+        )
+    except Exception as exc:
+        raise SupervisorSchedulerConfigError(
+            f"delegated_operator_completion is invalid: {exc}"
+        ) from exc
+    normalized["delegated_operator_completion"] = {
+        "enabled": delegated_policy.enabled,
+        "allowed_task_ids": sorted(delegated_policy.allowed_task_ids),
+        "require_validation": delegated_policy.require_validation,
+        "validation_timeout_seconds": (
+            delegated_policy.validation_timeout_seconds
+        ),
+    }
 
     normalized["protected_after_manual_completion"] = staged_protected_paths
     normalized["manual_completion_seals"] = manual_seals

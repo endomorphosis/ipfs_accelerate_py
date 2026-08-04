@@ -898,7 +898,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-060 Bind receipt lineage and gate optional ZKP to an approved threat model
 
-- Status: pending
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -976,7 +976,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 
 ## PDR-072 Add protected hidden quality oracles, adversarial cases, and ablations
 
-- Status: pending
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1062,7 +1062,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 - Track: rollout
 - Depends on: PDR-002, PDR-003, PDR-080, PDR-081
 - Goal id: PDR-G090
-- Outputs: ipfs_accelerate_py/agent_supervisor/self_improvement/planner_doctor_rollout.py, test/api/test_agent_supervisor_planner_doctor_rollout.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/self_improvement/planner_doctor_rollout.py, test/api/test_agent_supervisor_planner_doctor_rollout.py, config/agent_supervisor_planner_doctor_rollout.seal.json
 - Validation: python -m pytest test/api/test_agent_supervisor_planner_doctor_rollout.py -q
 - Board namespace: agent-supervisor-proof-directed-planner-doctor-v1
 - Bundle: agent-supervisor/proof-directed-planner-doctor/rollout
@@ -1114,7 +1114,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 - Track: operations
 - Depends on: PDR-032, PDR-033, PDR-040, PDR-080, PDR-082, PDR-090
 - Goal id: PDR-G100
-- Outputs: scripts/ops/agent_supervisor/proof_directed_planner_doctor.py, docs/guides/PROOF_DIRECTED_PLANNER_DOCTOR_GUIDE.md, test/api/test_agent_supervisor_planner_doctor_operations.py
+- Outputs: scripts/ops/agent_supervisor/proof_directed_planner_doctor.py, docs/guides/PROOF_DIRECTED_PLANNER_DOCTOR_GUIDE.md, test/api/test_agent_supervisor_planner_doctor_operations.py, config/agent_supervisor_planner_doctor_operations.seal.json
 - Validation: python -m pytest test/api/test_agent_supervisor_planner_doctor_operations.py -q
 - Board namespace: agent-supervisor-proof-directed-planner-doctor-v1
 - Bundle: agent-supervisor/proof-directed-planner-doctor/operations
@@ -1140,7 +1140,7 @@ Consumable by `ipfs_accelerate_py.agent_supervisor` with task prefix
 - Track: release
 - Depends on: PDR-027, PDR-033, PDR-053, PDR-060, PDR-070, PDR-071, PDR-072, PDR-080, PDR-081, PDR-082, PDR-090, PDR-091
 - Goal id: PDR-G100
-- Outputs: ipfs_accelerate_py/agent_supervisor/validation/planner_doctor_release.py, docs/architecture/PROOF_DIRECTED_PLANNER_DOCTOR_RELEASE.md, test/api/test_agent_supervisor_planner_doctor_release.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/validation/planner_doctor_release.py, docs/architecture/PROOF_DIRECTED_PLANNER_DOCTOR_RELEASE.md, test/api/test_agent_supervisor_planner_doctor_release.py, config/agent_supervisor_planner_doctor_release.seal.json
 - Validation: python -m pytest test/api/test_agent_supervisor_planner_doctor_release.py test/integration/test_agent_supervisor_planner_doctor_e2e.py -q
 - Board namespace: agent-supervisor-proof-directed-planner-doctor-v1
 - Bundle: agent-supervisor/proof-directed-planner-doctor/release

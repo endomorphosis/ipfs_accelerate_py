@@ -54,17 +54,20 @@
     ],
     "PDR-082": [
       "ipfs_accelerate_py/agent_supervisor/self_improvement/planner_doctor_rollout.py",
-      "test/api/test_agent_supervisor_planner_doctor_rollout.py"
+      "test/api/test_agent_supervisor_planner_doctor_rollout.py",
+      "config/agent_supervisor_planner_doctor_rollout.seal.json"
     ],
     "PDR-091": [
       "scripts/ops/agent_supervisor/proof_directed_planner_doctor.py",
       "docs/guides/PROOF_DIRECTED_PLANNER_DOCTOR_GUIDE.md",
-      "test/api/test_agent_supervisor_planner_doctor_operations.py"
+      "test/api/test_agent_supervisor_planner_doctor_operations.py",
+      "config/agent_supervisor_planner_doctor_operations.seal.json"
     ],
     "PDR-092": [
       "ipfs_accelerate_py/agent_supervisor/validation/planner_doctor_release.py",
       "docs/architecture/PROOF_DIRECTED_PLANNER_DOCTOR_RELEASE.md",
-      "test/api/test_agent_supervisor_planner_doctor_release.py"
+      "test/api/test_agent_supervisor_planner_doctor_release.py",
+      "config/agent_supervisor_planner_doctor_release.seal.json"
     ]
   },
   "manual_completion_seals": {
@@ -124,7 +127,7 @@
       "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.attestation_seal@1",
       "interface": "PlannerDoctorAttestationSeal@1",
       "policy_revision": "1",
-      "expected_receipt_id": "sha256:f912b4f608d00745f6e6d2a5d8a946c1dba512fdc91767e6bef7b59e80a89c8d",
+      "expected_receipt_id": "sha256:4cdce4121c0af3797226c125684d1d11e9c5df6a9b3c184d9bed31f8a5e80414",
       "artifact_paths": {
         "attestation_module": "ipfs_accelerate_py/agent_supervisor/proof/planner_doctor_attestation.py",
         "zkp_threat_model": "docs/architecture/agent_supervisor_planner_doctor_zkp_threat_model.md",
@@ -140,7 +143,7 @@
       "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.quality_oracle_seal@1",
       "interface": "PlannerDoctorQualityOracleSeal@1",
       "policy_revision": "1",
-      "expected_receipt_id": "sha256:fc1661f3dac033231be2827f5edf65d9d335b600204e953bc8a775125dbb9901",
+      "expected_receipt_id": "sha256:677b76d7f141c0b5df7bc098224bd38c169101aacb40e9eaa3216bea43f6ce5d",
       "artifact_paths": {
         "quality_oracle": "ipfs_accelerate_py/agent_supervisor/validation/planner_doctor_quality_oracle.py",
         "oracle_manifest": "test/fixtures/agent_supervisor/planner_doctor_holdout/oracle.manifest.json",
@@ -157,6 +160,55 @@
         "operator_seal_handle": "opaque:operator-seal/planner-doctor-quality-oracle-pdr-072@1",
         "corpus_authority": "operator-owned-holdout-judge"
       }
+    },
+    "PDR-082": {
+      "receipt_path": "config/agent_supervisor_planner_doctor_rollout.seal.json",
+      "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.rollout_seal@1",
+      "interface": "PlannerDoctorRolloutSeal@1",
+      "policy_revision": "1",
+      "expected_receipt_id": "sha256:29fbbb08897ed7f21f3bd833ac3a9151142ae5b14e05ec61593df70fa6f462ca",
+      "artifact_paths": {
+        "rollout_module": "ipfs_accelerate_py/agent_supervisor/self_improvement/planner_doctor_rollout.py",
+        "rollout_test": "test/api/test_agent_supervisor_planner_doctor_rollout.py"
+      },
+      "grant_type": "rollout_activation",
+      "grant_action": "activate_rollout_gate",
+      "grant_claims": {
+        "automatic_promotion": false
+      },
+      "reviewed_base_claims": {}
+    },
+    "PDR-091": {
+      "receipt_path": "config/agent_supervisor_planner_doctor_operations.seal.json",
+      "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.operations_seal@1",
+      "interface": "PlannerDoctorOperationsSeal@1",
+      "policy_revision": "1",
+      "expected_receipt_id": "sha256:ca3786b65df93d521f981765b01c0edd1098eca544050677882596cc6be487e7",
+      "artifact_paths": {
+        "operations_script": "scripts/ops/agent_supervisor/proof_directed_planner_doctor.py",
+        "operations_guide": "docs/guides/PROOF_DIRECTED_PLANNER_DOCTOR_GUIDE.md",
+        "operations_test": "test/api/test_agent_supervisor_planner_doctor_operations.py"
+      },
+      "grant_type": "operations_activation",
+      "grant_action": "activate_operations_surface",
+      "grant_claims": {},
+      "reviewed_base_claims": {}
+    },
+    "PDR-092": {
+      "receipt_path": "config/agent_supervisor_planner_doctor_release.seal.json",
+      "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.release_seal@1",
+      "interface": "PlannerDoctorReleaseSeal@1",
+      "policy_revision": "1",
+      "expected_receipt_id": "sha256:71051a9dba502300eb865b1466d9133904f35cd3cbed851cd459ca5ffdec6986",
+      "artifact_paths": {
+        "release_module": "ipfs_accelerate_py/agent_supervisor/validation/planner_doctor_release.py",
+        "release_doc": "docs/architecture/PROOF_DIRECTED_PLANNER_DOCTOR_RELEASE.md",
+        "release_test": "test/api/test_agent_supervisor_planner_doctor_release.py"
+      },
+      "grant_type": "release_activation",
+      "grant_action": "activate_release_receipt",
+      "grant_claims": {},
+      "reviewed_base_claims": {}
     }
   },
   "derived_refill": {
@@ -255,5 +307,17 @@
     "pdr-telemetry": "cpu-medium",
     "pdr-self-improvement": "cpu-medium",
     "pdr-release": "cpu-large"
+  },
+  "delegated_operator_completion": {
+    "enabled": true,
+    "allowed_task_ids": [
+      "PDR-060",
+      "PDR-072",
+      "PDR-082",
+      "PDR-091",
+      "PDR-092"
+    ],
+    "require_validation": true,
+    "validation_timeout_seconds": 1800
   }
 }

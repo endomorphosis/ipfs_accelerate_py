@@ -43,13 +43,24 @@ _REVIEWED_BASE_FIELDS = {
     "tree",
 }
 _ARTIFACT_FIELDS = {"path", "role", "sha256", "size_bytes"}
-_OPERATOR = {
+INTERACTIVE_OPERATOR = {
     "identity": "interactive_user",
     "authority_basis": "interactive_user_delegation",
     "candidate": False,
     "model": False,
     "automatic_controller": False,
 }
+# Explicit scheduler-delegated completion: honest automatic controller, not a
+# forged interactive-user identity.  Callers must opt in via
+# ``allow_delegated_operator`` / scheduler policy.
+DELEGATED_SUPERVISOR_OPERATOR = {
+    "identity": "delegated_supervisor",
+    "authority_basis": "scheduler_delegated_operator_completion@1",
+    "candidate": False,
+    "model": False,
+    "automatic_controller": True,
+}
+_OPERATOR = INTERACTIVE_OPERATOR
 _SHA256_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
 _GIT_SHA1_PATTERN = re.compile(r"[0-9a-f]{40}")
 
@@ -173,6 +184,126 @@ def load_strict_manual_completion_seal(path: Path) -> dict[str, Any]:
     return payload
 
 
+def build_manual_completion_seal(
+    *,
+    repo_root: Path,
+    task_id: str,
+    board_namespace: str,
+    schema: str,
+    interface: str,
+    policy_revision: str,
+    artifact_paths: Mapping[str, str],
+    grant_type: str,
+    grant_action: str,
+    reviewed_base_claims: Mapping[str, Any] | None = None,
+    grant_claims: Mapping[str, Any] | None = None,
+    operator: Mapping[str, Any] | None = None,
+    commit: str | None = None,
+    tree: str | None = None,
+) -> dict[str, Any]:
+    """Build one activation-only seal for the current repository tree."""
+
+    root = repo_root.resolve()
+    if commit is None or tree is None:
+        head = _git(root, "rev-parse", "HEAD")
+        head_tree = _git(root, "rev-parse", "HEAD^{tree}")
+        if head.returncode != 0 or head_tree.returncode != 0:
+            raise ManualCompletionSealError(
+                "cannot resolve HEAD for manual completion seal"
+            )
+        commit = head.stdout.strip()
+        tree = head_tree.stdout.strip()
+    if (
+        not isinstance(commit, str)
+        or not _GIT_SHA1_PATTERN.fullmatch(commit)
+        or not isinstance(tree, str)
+        or not _GIT_SHA1_PATTERN.fullmatch(tree)
+    ):
+        raise ManualCompletionSealError(
+            "manual completion seal reviewed Git IDs are malformed"
+        )
+    artifacts: list[dict[str, Any]] = []
+    for role, relative in artifact_paths.items():
+        payload = _safe_file(
+            root,
+            relative,
+            label=f"sealed artifact {role}",
+        ).read_bytes()
+        artifacts.append(
+            {
+                "role": role,
+                "path": relative,
+                "sha256": "sha256:" + hashlib.sha256(payload).hexdigest(),
+                "size_bytes": len(payload),
+            }
+        )
+    extra_grant_claims = dict(grant_claims or {})
+    operator_payload = dict(operator or INTERACTIVE_OPERATOR)
+    receipt: dict[str, Any] = {
+        "schema": schema,
+        "interface": interface,
+        "receipt_version": "1",
+        "task_id": task_id,
+        "board_namespace": board_namespace,
+        "decision": "sealed",
+        "policy_revision": policy_revision,
+        "reviewed_base": {
+            "commit": commit,
+            "tree": tree,
+            "git_object_format": "sha1",
+            "relation_to_activation_head": "equal_or_ancestor",
+            **dict(reviewed_base_claims or {}),
+        },
+        "artifacts": artifacts,
+        "operator": operator_payload,
+        "grant": {
+            "type": grant_type,
+            "allowed_actions": [grant_action],
+            **extra_grant_claims,
+            "board_namespace": board_namespace,
+            "policy_revision": policy_revision,
+            "delegable": False,
+            "mutation_authority": False,
+            "completion_authority": False,
+            "promotion_authority": False,
+            "task_status_authority": False,
+            "protected_anchor_write_authority": False,
+        },
+    }
+    receipt["receipt_id"] = _receipt_identity(receipt)
+    return receipt
+
+
+def write_manual_completion_seal(
+    receipt_path: str,
+    receipt: Mapping[str, Any],
+    *,
+    repo_root: Path,
+) -> Path:
+    """Atomically write one seal object as canonical sorted JSON."""
+
+    root = repo_root.resolve()
+    relative = str(receipt_path)
+    if (
+        not relative
+        or relative.startswith(("/", "\\"))
+        or ".." in Path(relative).parts
+    ):
+        raise ManualCompletionSealError(
+            "manual completion seal path must be a safe repository-relative file"
+        )
+    target = root / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    text = (
+        json.dumps(dict(receipt), indent=2, sort_keys=True, ensure_ascii=False)
+        + "\n"
+    )
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(target)
+    return target
+
+
 def verify_manual_completion_seal(
     receipt_path: str,
     *,
@@ -188,6 +319,7 @@ def verify_manual_completion_seal(
     grant_action: str,
     reviewed_base_claims: Mapping[str, Any] | None = None,
     grant_claims: Mapping[str, Any] | None = None,
+    allow_delegated_operator: bool = False,
 ) -> dict[str, Any]:
     """Reconstruct an activation-only operator receipt from current bytes."""
 
@@ -351,7 +483,10 @@ def verify_manual_completion_seal(
                 f"sealed artifact byte count mismatch for {relative}"
             )
 
-    if receipt.get("operator") != _OPERATOR:
+    allowed_operators = [INTERACTIVE_OPERATOR]
+    if allow_delegated_operator:
+        allowed_operators.append(DELEGATED_SUPERVISOR_OPERATOR)
+    if receipt.get("operator") not in allowed_operators:
         raise ManualCompletionSealError(
             "manual completion seal operator or delegation basis mismatch"
         )
@@ -393,7 +528,11 @@ def verify_manual_completion_seal(
 
 
 __all__ = [
+    "DELEGATED_SUPERVISOR_OPERATOR",
+    "INTERACTIVE_OPERATOR",
     "ManualCompletionSealError",
+    "build_manual_completion_seal",
     "load_strict_manual_completion_seal",
     "verify_manual_completion_seal",
+    "write_manual_completion_seal",
 ]
