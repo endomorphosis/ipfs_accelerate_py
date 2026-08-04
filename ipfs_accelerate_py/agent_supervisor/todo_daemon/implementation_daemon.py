@@ -8385,6 +8385,57 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         return resets, deferred
 
+
+    def _block_task_for_repair_budget_exhaustion(
+        self,
+        task: PortalTask,
+    ) -> dict[str, Any]:
+        """Persist a strategy block so exhausted repair tasks stop thrashing.
+
+        Retry-budget guardrails already append a follow-up repair task and
+        intend to park the source in ``strategy.blocked_tasks``. When that
+        block is missing or not yet projected, selection keeps re-picking the
+        exhausted source every pass. Write the block durably and cool the
+        queue so other ready work can proceed.
+        """
+
+        task_id = str(task.task_id or "").strip()
+        if not task_id:
+            return {"blocked": False, "reason": "task_id_missing"}
+        strategy = self.load_strategy()
+        blocked = [
+            str(item)
+            for item in strategy.get("blocked_tasks", [])
+            if str(item).strip()
+        ]
+        already = task_id in set(blocked)
+        if not already:
+            blocked.append(task_id)
+            strategy["blocked_tasks"] = blocked
+            write_json_atomic(self.strategy_path, strategy)
+        try:
+            self.task_queue.defer(
+                self._canonical_ref(task),
+                3600,
+                reason="implementation_repair_round_budget_exhausted",
+            )
+            self.task_queue.save()
+        except Exception:
+            pass
+        payload = {
+            "task_id": task_id,
+            "blocked": True,
+            "already_blocked": already,
+            "strategy_path": str(self.strategy_path),
+            "reason": "implementation_repair_round_budget_exhausted",
+            "backoff_seconds": 3600,
+        }
+        self._record_event(
+            "implementation_repair_budget_exhausted_blocked",
+            payload,
+        )
+        return payload
+
     def _release_completed_retry_budget_strategy_blocks(
         self,
         strategy: dict[str, Any],
@@ -12024,19 +12075,24 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 prompt = self._build_implementation_prompt(task, attempt)
         except ImplementationRetryDeferred as exc:
             canonical_task_cid = self._canonical_ref(task)
-            if exc.backoff_seconds > 0:
+            reason_key = exc.reason.replace(" ", "_")
+            backoff_seconds = int(exc.backoff_seconds or 0)
+            if reason_key == "implementation_repair_round_budget_exhausted":
+                self._block_task_for_repair_budget_exhaustion(task)
+                backoff_seconds = max(backoff_seconds, 3600)
+            if backoff_seconds > 0:
                 self.task_queue.defer(
                     canonical_task_cid,
-                    exc.backoff_seconds,
+                    backoff_seconds,
                     reason=exc.reason,
                 )
                 self.task_queue.save()
             result = {
                 "skipped": True,
-                "reason": exc.reason.replace(" ", "_"),
+                "reason": reason_key,
                 "task_id": task.task_id,
                 "attempt": attempt,
-                "backoff_seconds": exc.backoff_seconds,
+                "backoff_seconds": backoff_seconds,
                 "diagnostic_receipt_id": (
                     self._implementation_diagnostics[
                         self._canonical_ref(task)
@@ -48250,8 +48306,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             raise ValueError("retry context requires attempt greater than one")
         repair_round = attempt - 1
         if repair_round > self.implementation_max_repair_rounds:
+            # Without a long cooldown the task is selected every daemon pass,
+            # immediately deferred, and starves the rest of the ready queue.
+            self._block_task_for_repair_budget_exhaustion(task)
             raise ImplementationRetryDeferred(
-                "implementation repair round budget exhausted"
+                "implementation repair round budget exhausted",
+                backoff_seconds=3600,
             )
         if self._implementation_cancel_requested():
             raise ImplementationRetryDeferred(
@@ -49502,6 +49562,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if not self.merge_queue.has_pending_for_task(self._canonical_ref(task))
             and not self.merge_queue.has_pending_for_task(task.task_id)
         ]
+        blocked_strategy_task_ids = {
+            str(item) for item in strategy.get("blocked_tasks", []) if str(item)
+        }
+        if blocked_strategy_task_ids:
+            ready = [
+                task
+                for task in ready
+                if task.task_id not in blocked_strategy_task_ids
+            ]
         strict_deprioritized = self._strict_off_mission_deprioritized_task_ids(strategy)
         if strict_deprioritized:
             ready = [task for task in ready if task.task_id not in strict_deprioritized]
