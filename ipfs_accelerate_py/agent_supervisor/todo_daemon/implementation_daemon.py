@@ -9270,7 +9270,15 @@ class PortalImplementationDaemon:
         self,
         identity: Mapping[str, Any],
     ) -> bool:
-        """Verify durable tree evidence still names real repository ancestry."""
+        """Verify durable tree evidence still names real repository ancestry.
+
+        Receipts bind a concrete commit/tree at validation time.  They remain
+        current when that commit is still present and is equal to **or an
+        ancestor of** the live merge-target HEAD.  Requiring exact HEAD equality
+        reopens the entire revalidation DAG on every ordinary forward commit
+        (seal pins, supervisor fixes, docs), which defeats durable receipts.
+        Authority-package changes still rotate the seal epoch separately.
+        """
 
         target_commit = str(identity.get("target_commit") or "")
         if target_commit == "uncommitted":
@@ -9293,7 +9301,29 @@ class PortalImplementationDaemon:
             ).stdout.strip()
         except (OSError, RuntimeError):
             return False
-        return bool(current_target and current_target == target_commit)
+        if not current_target:
+            return False
+        if current_target == target_commit:
+            return True
+        # merge-base --is-ancestor returns 1 when not an ancestor; do not use
+        # _run_git (it raises on any non-zero).
+        try:
+            ancestry = subprocess.run(
+                [
+                    "git",
+                    "merge-base",
+                    "--is-ancestor",
+                    target_commit,
+                    current_target,
+                ],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError:
+            return False
+        return ancestry.returncode == 0
 
     def _persist_manual_completion_revalidation_receipts(
         self,

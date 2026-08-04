@@ -2820,3 +2820,40 @@ def test_revalidation_only_constructor_rejects_custom_decision_runtime(
             manual_completion_authority_revalidation_only=True,
             **{runtime_field: runtime_value},
         )
+
+
+def test_validated_tree_identity_accepts_ancestor_of_current_head(
+    tmp_path: Path,
+) -> None:
+    """Ordinary forward commits must not invalidate durable revalidation receipts."""
+
+    repo, board = _git_revalidation_repo(
+        tmp_path,
+        descendants=[("TEST-002", "completed", "TEST-001")],
+    )
+    daemon = _implementation_revalidation_daemon(
+        tmp_path, repo, board, suffix="tree-ancestry"
+    )
+    base = _git(repo, "rev-parse", "HEAD")
+    base_tree = _git(repo, "rev-parse", "HEAD^{tree}")
+    identity = {
+        "target_commit": base,
+        "repository_tree_id": f"git-tree:{base_tree}",
+    }
+    assert daemon._manual_completion_validated_tree_is_current(identity) is True
+
+    (repo / "forward.txt").write_text("forward\n", encoding="utf-8")
+    _git(repo, "add", "forward.txt")
+    _git(repo, "commit", "-m", "forward progress")
+    assert _git(repo, "rev-parse", "HEAD") != base
+    assert daemon._manual_completion_validated_tree_is_current(identity) is True
+
+    # Rewrite the merge-target branch onto an unrelated root so the validated
+    # commit is no longer an ancestor of current HEAD.
+    _git(repo, "checkout", "--orphan", "divergent")
+    (repo / "other.txt").write_text("other\n", encoding="utf-8")
+    _git(repo, "add", "other.txt")
+    _git(repo, "commit", "-m", "divergent root")
+    main_branch = daemon._main_branch_name()
+    _git(repo, "branch", "-M", main_branch)
+    assert daemon._manual_completion_validated_tree_is_current(identity) is False

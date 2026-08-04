@@ -1644,6 +1644,77 @@ class PortalImplementationSupervisor:
             if not failed:
                 finish_maintenance("completed")
 
+    def _maybe_reload_scheduler_authority_profile(self) -> dict[str, Any]:
+        """Hot-reload seal/epoch authority fields from the scheduler profile.
+
+        The managed daemon is started with a frozen ``--manual-completion-
+        authority-epoch-id``.  When delegated completion verifies new seals or
+        the profile's protected package changes, the live epoch diverges from
+        the child command line and durable receipts stop matching.  Reloading
+        the profile and recycling the child keeps autonomous drains unblocked.
+        """
+
+        scheduler_path = self.config.scheduler_config_path
+        if scheduler_path is None:
+            return {"reloaded": False, "reason": "scheduler_config_path_unset"}
+        try:
+            profile = load_supervisor_scheduler_config(
+                scheduler_path,
+                repo_root=REPO_ROOT,
+            )
+        except Exception as exc:  # noqa: BLE001 - fail closed without recycle
+            return {
+                "reloaded": False,
+                "reason": "scheduler_profile_load_failed",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+        new_epoch = str(profile.get("manual_completion_authority_epoch_id") or "")
+        new_task_ids = tuple(
+            str(item)
+            for item in (profile.get("manual_completion_authority_task_ids") or ())
+        )
+        new_required = tuple(
+            str(item)
+            for item in (
+                profile.get("manual_completion_authority_required_task_ids") or ()
+            )
+        )
+        new_protected = tuple(
+            str(item) for item in (profile.get("protected_paths") or ())
+        )
+
+        before = {
+            "epoch_id": self.config.manual_completion_authority_epoch_id,
+            "task_ids": self.config.manual_completion_authority_task_ids,
+            "required_task_ids": (
+                self.config.manual_completion_authority_required_task_ids
+            ),
+            "protected_paths": self.config.implementation_protected_paths,
+        }
+        after = {
+            "epoch_id": new_epoch,
+            "task_ids": new_task_ids,
+            "required_task_ids": new_required,
+            "protected_paths": new_protected,
+        }
+        if before == after:
+            return {"reloaded": False, "reason": "authority_profile_unchanged"}
+
+        self.config.manual_completion_authority_epoch_id = new_epoch
+        self.config.manual_completion_authority_task_ids = new_task_ids
+        self.config.manual_completion_authority_required_task_ids = new_required
+        self.config.implementation_protected_paths = new_protected
+        payload = {
+            "reloaded": True,
+            "reason": "authority_profile_changed",
+            "before": before,
+            "after": after,
+            "recycle_required": True,
+        }
+        self._record_event("scheduler_authority_profile_reloaded", payload)
+        return payload
+
     def _maybe_run_delegated_operator_completion(self) -> dict[str, Any]:
         """Complete seal-gated manuals when the scheduler policy allows it.
 
@@ -3072,6 +3143,10 @@ class PortalImplementationSupervisor:
                 ),
             },
         )
+        update_maintenance_phase("scheduler_authority_profile_reload")
+        scheduler_authority_profile_reload = (
+            self._maybe_reload_scheduler_authority_profile()
+        )
         update_maintenance_phase("delegated_operator_completion")
         delegated_operator_completion = (
             self._maybe_run_delegated_operator_completion()
@@ -3096,6 +3171,9 @@ class PortalImplementationSupervisor:
             "codebase_deferred_reason": codebase_deferred_reason,
             "objective_scan": objective_scan,
             "codebase_scan": codebase_scan,
+            "scheduler_authority_profile_reload": (
+                scheduler_authority_profile_reload
+            ),
             "delegated_operator_completion": delegated_operator_completion,
             "event_log_repair": event_log_repair,
             "strategy_file_repair": strategy_file_repair,
@@ -3416,6 +3494,14 @@ class PortalImplementationSupervisor:
             return SupervisorLoopDecision.recycle(
                 str(result.get("reason") or "stuck_progress"),
                 detail={"active_task_id": result.get("active_task_id") or ""},
+            )
+        authority_reload = dict(
+            result.get("scheduler_authority_profile_reload") or {}
+        )
+        if authority_reload.get("recycle_required"):
+            return SupervisorLoopDecision.recycle(
+                "scheduler_authority_profile_changed",
+                detail=authority_reload,
             )
         return SupervisorLoopDecision.keep_running()
 
