@@ -2061,12 +2061,14 @@ def merge_task_metadata_value(
         metadata[storage_key] = rendered_value
 
 
+# Task ids may be multi-segment (VOICE-ACTION-027) not only PREFIX-123.
+_RETRY_BUDGET_TASK_ID = r"[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+"
 RETRY_BUDGET_REPAIR_TITLE_RE = re.compile(
-    r"^Resolve\s+(?P<kind>validation|implementation|merge)\s+retry-budget\s+failure\s+for\s+(?P<source>[A-Z][A-Z0-9]*-\d+)\b",
+    rf"^Resolve\s+(?P<kind>validation|implementation|merge)\s+retry-budget\s+failure\s+for\s+(?P<source>{_RETRY_BUDGET_TASK_ID})\b",
     re.IGNORECASE,
 )
 RETRY_BUDGET_REPAIR_ACCEPTANCE_RE = re.compile(
-    r"\b(?:release|remove)\s+(?P<source>[A-Z][A-Z0-9]*-\d+)\s+from\s+(?:the\s+)?strategy\s+blocked_tasks\b",
+    rf"\b(?:release|remove)\s+(?P<source>{_RETRY_BUDGET_TASK_ID})\s+from\s+(?:the\s+)?strategy\s+blocked_tasks\b",
     re.IGNORECASE,
 )
 RETRY_BUDGET_REPAIR_SCHEMA = (
