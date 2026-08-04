@@ -8799,6 +8799,138 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         return completed_ids
 
+    def _retry_budget_finding_is_protected_path_mutated_stall(
+        self,
+        finding: Mapping[str, Any],
+    ) -> bool:
+        """True when the retry park is peer protected-board thrash, not product.
+
+        Multi-lane supervisors rewrite the shared ``*.todo.md`` board while
+        another attempt runs. That latches ``implementation_protected_path_mutated``
+        and spawns a retry-budget repair even though the mid-attempt admit path
+        now treats those mutations as non-fatal. Auto-complete the generated
+        repair and re-open the source.
+        """
+
+        if str(finding.get("failure_kind") or "").strip().lower() not in {
+            "validation",
+            "retry",
+            "",
+        }:
+            return False
+        haystack = " ".join(
+            str(finding.get(key) or "")
+            for key in (
+                "failed_command",
+                "validation_error",
+                "validation_reason",
+                "error",
+                "reason",
+                "discovery_path",
+            )
+        ).lower()
+        markers = (
+            "implementation_protected_path_mutated",
+            "protected_path_mutated",
+            "validation_pre_dispatch:validation_gate_failed:implementation_protected",
+        )
+        if any(marker in haystack for marker in markers):
+            return True
+        discovery = str(finding.get("discovery_path") or "").strip()
+        if not discovery:
+            return False
+        try:
+            path = Path(discovery)
+            if not path.is_file():
+                return False
+            text = path.read_text(encoding="utf-8", errors="replace")[:12000]
+        except OSError:
+            return False
+        lowered = text.lower()
+        return any(marker in lowered for marker in markers)
+
+    def _apply_retry_budget_infra_release(
+        self,
+        strategy: dict[str, Any],
+        tasks: Sequence[PortalTask],
+        *,
+        findings: Sequence[Mapping[str, Any]],
+        to_complete: Sequence[str],
+        release_sources: Sequence[str],
+        reason: str,
+        extra_receipt: Mapping[str, Any] | None = None,
+        event_type: str,
+    ) -> list[dict[str, str]]:
+        """Shared path: complete generated repairs, drop strategy blocks, emit event."""
+
+        completed_ids = self._auto_complete_generated_repair_tasks(
+            to_complete,
+            reason=reason,
+        )
+        if not completed_ids and not release_sources:
+            return []
+
+        blocked = [
+            str(item)
+            for item in strategy.get("blocked_tasks", [])
+            if str(item).strip()
+        ]
+        release_set = set(release_sources)
+        for task in tasks:
+            if task.task_id in completed_ids:
+                source_task_id, _kind = retry_budget_repair_source(task)
+                if source_task_id:
+                    release_set.add(source_task_id)
+        for finding in findings:
+            repair_id = str(finding.get("follow_up_task_id") or "").strip()
+            source_id = str(finding.get("source_task_id") or "").strip()
+            if repair_id in completed_ids and source_id:
+                release_set.add(source_id)
+
+        new_blocked = [task_id for task_id in blocked if task_id not in release_set]
+        if new_blocked != blocked:
+            strategy["blocked_tasks"] = new_blocked
+        strategy.setdefault("auto_unblock_receipts", [])
+        receipt: dict[str, Any] = {
+            "at": utc_now(),
+            "reason": reason,
+            "completed_repair_task_ids": completed_ids,
+            "released_source_task_ids": sorted(release_set),
+        }
+        if extra_receipt:
+            receipt.update(dict(extra_receipt))
+        strategy["auto_unblock_receipts"] = [
+            *list(strategy.get("auto_unblock_receipts") or [])[-20:],
+            receipt,
+        ]
+        write_json_atomic(self.strategy_path, strategy)
+        payload = [
+            {
+                "source_task_id": source_id,
+                "repair_task_id": next(
+                    (
+                        str(item.get("follow_up_task_id") or "")
+                        for item in findings
+                        if str(item.get("source_task_id") or "") == source_id
+                    ),
+                    "",
+                ),
+                "failure_kind": "validation",
+                "reason": reason,
+            }
+            for source_id in sorted(release_set)
+        ]
+        self._record_event(
+            event_type,
+            {
+                "release_count": len(payload),
+                "released": payload,
+                "completed_repair_task_ids": completed_ids,
+                **dict(extra_receipt or {}),
+            },
+        )
+        return payload
+
     def _auto_unblock_playwright_infra_repairs(
         self,
         strategy: dict[str, Any],
@@ -8848,75 +8980,73 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             to_complete.append(repair_task_id)
             release_sources.append(source_task_id)
 
-        completed_ids = self._auto_complete_generated_repair_tasks(
-            to_complete,
+        return self._apply_retry_budget_infra_release(
+            strategy,
+            tasks,
+            findings=findings,
+            to_complete=to_complete,
+            release_sources=release_sources,
             reason="validation_playwright_infra_ready",
+            extra_receipt={"browsers_path": infra.get("browsers_path", "")},
+            event_type="auto_unblock_playwright_infra",
         )
-        if not completed_ids and not release_sources:
-            return []
 
-        # Refresh strategy blocks using completed repairs + explicit release list.
-        blocked = [
-            str(item)
-            for item in strategy.get("blocked_tasks", [])
-            if str(item).strip()
+    def _auto_unblock_protected_path_mutated_repairs(
+        self,
+        strategy: dict[str, Any],
+        tasks: Sequence[PortalTask],
+    ) -> list[dict[str, str]]:
+        """Finish retry repairs that only exist because of protected-board thrash.
+
+        Mid-attempt admission already treats peer ``*.todo.md`` rewrites as
+        non-fatal. Generated retry-budget cards filed for that stall class
+        would otherwise keep the source permanently in ``blocked_tasks``.
+        """
+
+        findings = [
+            dict(item)
+            for item in strategy.get("retry_budget_findings", [])
+            if isinstance(item, Mapping)
         ]
-        release_set = set(release_sources)
-        for task in tasks:
-            if task.task_id in completed_ids:
-                source_task_id, _kind = retry_budget_repair_source(task)
-                if source_task_id:
-                    release_set.add(source_task_id)
-        # Re-parse sources from completed list via findings when tasks stale.
+        tasks_by_id = {task.task_id: task for task in tasks}
+        to_complete: list[str] = []
+        release_sources: list[str] = []
         for finding in findings:
-            repair_id = str(finding.get("follow_up_task_id") or "").strip()
-            source_id = str(finding.get("source_task_id") or "").strip()
-            if repair_id in completed_ids and source_id:
-                release_set.add(source_id)
+            if not self._retry_budget_finding_is_protected_path_mutated_stall(
+                finding
+            ):
+                continue
+            source_task_id = str(finding.get("source_task_id") or "").strip()
+            repair_task_id = str(finding.get("follow_up_task_id") or "").strip()
+            if not source_task_id or not repair_task_id:
+                continue
+            repair_task = tasks_by_id.get(repair_task_id)
+            if repair_task is None:
+                continue
+            if normalize_status(repair_task.status) == "completed":
+                release_sources.append(source_task_id)
+                continue
+            if not is_retry_budget_repair_task(repair_task):
+                continue
+            source_task = tasks_by_id.get(source_task_id)
+            if (
+                source_task is not None
+                and normalize_status(source_task.status) == "completed"
+            ):
+                to_complete.append(repair_task_id)
+                continue
+            to_complete.append(repair_task_id)
+            release_sources.append(source_task_id)
 
-        new_blocked = [task_id for task_id in blocked if task_id not in release_set]
-        released = sorted(release_set.intersection(blocked) | release_set)
-        if new_blocked != blocked:
-            strategy["blocked_tasks"] = new_blocked
-        strategy.setdefault("auto_unblock_receipts", [])
-        receipt = {
-            "at": utc_now(),
-            "reason": "validation_playwright_infra_ready",
-            "browsers_path": infra.get("browsers_path", ""),
-            "completed_repair_task_ids": completed_ids,
-            "released_source_task_ids": sorted(release_set),
-        }
-        strategy["auto_unblock_receipts"] = [
-            *list(strategy.get("auto_unblock_receipts") or [])[-20:],
-            receipt,
-        ]
-        write_json_atomic(self.strategy_path, strategy)
-        payload = [
-            {
-                "source_task_id": source_id,
-                "repair_task_id": next(
-                    (
-                        str(item.get("follow_up_task_id") or "")
-                        for item in findings
-                        if str(item.get("source_task_id") or "") == source_id
-                    ),
-                    "",
-                ),
-                "failure_kind": "validation",
-                "reason": "validation_playwright_infra_ready",
-            }
-            for source_id in sorted(release_set)
-        ]
-        self._record_event(
-            "auto_unblock_playwright_infra",
-            {
-                "release_count": len(payload),
-                "released": payload,
-                "completed_repair_task_ids": completed_ids,
-                "browsers_path": infra.get("browsers_path", ""),
-            },
+        return self._apply_retry_budget_infra_release(
+            strategy,
+            tasks,
+            findings=findings,
+            to_complete=to_complete,
+            release_sources=release_sources,
+            reason="protected_path_mutated_stall_resolved",
+            event_type="auto_unblock_protected_path_mutated_repairs",
         )
-        return payload
 
     def _auto_release_orphan_strategy_blocks(
         self,
@@ -9713,6 +9843,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         result: dict[str, Any] = {
             "playwright_infra_releases": [],
+            "protected_path_mutated_releases": [],
             "completed_repair_releases": [],
             "orphan_strategy_releases": [],
             "merge_quarantines_cleared": [],
@@ -9748,6 +9879,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         except Exception as exc:
             result["playwright_infra_error"] = f"{type(exc).__name__}: {exc}"[-300:]
+        try:
+            strategy.update(self.load_strategy())
+            result["protected_path_mutated_releases"] = (
+                self._auto_unblock_protected_path_mutated_repairs(strategy, tasks)
+            )
+        except Exception as exc:
+            result["protected_path_mutated_error"] = (
+                f"{type(exc).__name__}: {exc}"[-300:]
+            )
         try:
             # Re-load strategy after infra mutations.
             strategy.update(self.load_strategy())
@@ -9797,6 +9937,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             # reset sees completed repairs.
             if (
                 result["playwright_infra_releases"]
+                or result["protected_path_mutated_releases"]
                 or result["completed_repair_releases"]
                 or result["stale_reconciliation_retired"]
             ):
@@ -9826,6 +9967,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             result.get(key)
             for key in (
                 "playwright_infra_releases",
+                "protected_path_mutated_releases",
                 "completed_repair_releases",
                 "orphan_strategy_releases",
                 "merge_quarantines_cleared",
@@ -10804,10 +10946,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         # Infra-fixed releases must not stay fenced by a just-completed repair
         # that peers have not yet projected as completed in this task list.
-        for item in auto_unblock.get("playwright_infra_releases") or []:
-            source_id = str(item.get("source_task_id") or "").strip()
-            if source_id:
-                pending_retry_repair_source_ids.discard(source_id)
+        for key in (
+            "playwright_infra_releases",
+            "protected_path_mutated_releases",
+        ):
+            for item in auto_unblock.get(key) or []:
+                source_id = str(item.get("source_task_id") or "").strip()
+                if source_id:
+                    pending_retry_repair_source_ids.discard(source_id)
         strategy_blocked_task_ids = {
             str(task_id) for task_id in strategy.get("blocked_tasks", [])
         } | pending_retry_repair_source_ids
