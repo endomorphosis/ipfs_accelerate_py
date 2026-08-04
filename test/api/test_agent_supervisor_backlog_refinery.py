@@ -3651,7 +3651,11 @@ def test_backlog_refinery_zero_candidate_reconciliation_proof_fails_closed():
         reconciliation_result=reconciliation,
         replay_result=replay,
         cleanup_result=cleanup,
-    ) == {"reconciliation_guardrail:main_checkout_dirty"}
+    ) == {
+        "reconciliation_guardrail:main_checkout_dirty",
+        "reconciliation_guardrail:preflight_merge_conflict",
+        "reconciliation_guardrail:dirty_backlogged_worktree",
+    }
 
     bad_proofs = [
         (

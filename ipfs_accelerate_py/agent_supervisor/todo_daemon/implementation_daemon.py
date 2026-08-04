@@ -8943,6 +8943,297 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         return cleared
 
+    @staticmethod
+    def _task_ids_referenced_in_text(text: str) -> set[str]:
+        """Extract multi-segment supervisor task ids from free-form evidence."""
+
+        pattern = re.compile(
+            r"\b([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+)\b"
+        )
+        return {match.group(1) for match in pattern.finditer(text or "")}
+
+    def _auto_cleanup_completed_task_rescue_worktrees(
+        self,
+        tasks: Sequence[PortalTask],
+    ) -> list[dict[str, str]]:
+        """Remove rescue/implementation worktrees whose board task is completed.
+
+        Stale rescue worktrees for already-landed tasks keep preflight merge
+        conflict guardrails alive forever even though there is no remaining
+        board work to integrate.  Only paths under this daemon's worktree root
+        are eligible, and only when the branch name embeds a completed task id.
+        """
+
+        completed_ids = {
+            task.task_id
+            for task in tasks
+            if normalize_status(task.status) == "completed"
+        }
+        if not completed_ids or not self.worktree_root.exists():
+            return []
+        cleaned: list[dict[str, str]] = []
+        try:
+            listed = subprocess.run(
+                ["git", "worktree", "list", "--porcelain"],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError:
+            return []
+        if listed.returncode != 0:
+            return []
+        current_path = ""
+        current_branch = ""
+        entries: list[tuple[str, str]] = []
+        for line in listed.stdout.splitlines():
+            if line.startswith("worktree "):
+                if current_path:
+                    entries.append((current_path, current_branch))
+                current_path = line[len("worktree ") :].strip()
+                current_branch = ""
+            elif line.startswith("branch "):
+                ref = line[len("branch ") :].strip()
+                current_branch = ref.removeprefix("refs/heads/")
+            elif line == "":
+                if current_path:
+                    entries.append((current_path, current_branch))
+                current_path = ""
+                current_branch = ""
+        if current_path:
+            entries.append((current_path, current_branch))
+
+        worktree_root = self.worktree_root.resolve()
+        for raw_path, branch in entries:
+            if not raw_path or not branch:
+                continue
+            try:
+                path = Path(raw_path).resolve()
+            except OSError:
+                continue
+            try:
+                path.relative_to(worktree_root)
+            except ValueError:
+                continue
+            if path == self.repo_root.resolve():
+                continue
+            branch_task_ids = self._task_ids_referenced_in_text(
+                branch.replace("_", "-")
+            )
+            # implementation/voice-action-021-... embeds voice-action-021
+            lowered = branch.lower()
+            for task_id in list(completed_ids):
+                slug = task_id.lower().replace("_", "-")
+                if slug in lowered or task_id in branch_task_ids:
+                    branch_task_ids.add(task_id)
+            if not branch_task_ids.intersection(completed_ids):
+                continue
+            if not (
+                branch.startswith("implementation/")
+                or branch.startswith("rescue/")
+            ):
+                continue
+            remove = subprocess.run(
+                ["git", "worktree", "remove", "--force", str(path)],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            cleaned.append(
+                {
+                    "path": str(path),
+                    "branch": branch,
+                    "task_ids": ",".join(sorted(branch_task_ids.intersection(completed_ids))),
+                    "removed": str(remove.returncode == 0).lower(),
+                    "error": (remove.stderr or remove.stdout or "")[-300:],
+                }
+            )
+        if cleaned:
+            self._record_event(
+                "auto_unblock_completed_task_worktrees_cleaned",
+                {
+                    "cleaned_count": len(cleaned),
+                    "cleaned": cleaned,
+                },
+            )
+        return cleaned
+
+    def _auto_retire_stale_reconciliation_guardrails(
+        self,
+        tasks: Sequence[PortalTask],
+    ) -> list[dict[str, str]]:
+        """Complete operator reconciliation cards whose sampled work is finished.
+
+        When a preflight/dirty-worktree guardrail only cites branches for board
+        tasks that are already completed (and typically already integrated),
+        the operator gate no longer protects real work — it only freezes the
+        board.  Retire those generated cards so remaining tasks can finish.
+        """
+
+        completed_ids = {
+            task.task_id
+            for task in tasks
+            if normalize_status(task.status) == "completed"
+        }
+        open_ids = {
+            task.task_id
+            for task in tasks
+            if normalize_status(task.status) not in {"completed", "blocked"}
+        }
+        retire: list[str] = []
+        details: list[dict[str, str]] = []
+        for task in tasks:
+            metadata = getattr(task, "metadata", {}) or {}
+            if not isinstance(metadata, Mapping):
+                continue
+            generated_by = str(
+                metadata.get("generated by")
+                or metadata.get("Generated by")
+                or ""
+            ).strip()
+            if RECONCILIATION_GUARDRAIL_SCHEMA not in generated_by:
+                continue
+            blocked_reason = str(
+                metadata.get("blocked reason")
+                or metadata.get("Blocked reason")
+                or ""
+            ).strip().lower()
+            if blocked_reason != "operator_reconciliation_required":
+                continue
+            if normalize_status(task.status) == "completed":
+                continue
+            discovery = str(
+                metadata.get("reconciliation discovery")
+                or metadata.get("Reconciliation discovery")
+                or ""
+            ).strip()
+            evidence = ""
+            if discovery:
+                try:
+                    evidence = Path(discovery).read_text(
+                        encoding="utf-8",
+                        errors="replace",
+                    )[:20000]
+                except OSError:
+                    evidence = ""
+            haystack = " ".join(
+                [
+                    task.title or "",
+                    task.acceptance or "",
+                    evidence,
+                    str(metadata.get("reconciliation kind") or ""),
+                    str(metadata.get("sample branches") or ""),
+                ]
+            )
+            referenced = self._task_ids_referenced_in_text(haystack)
+            # Branch slugs like voice-action-021 map back to VOICE-ACTION-021.
+            for open_or_done in completed_ids | open_ids:
+                slug = open_or_done.lower()
+                if slug in haystack.lower().replace("_", "-"):
+                    referenced.add(open_or_done)
+            if not referenced:
+                continue
+            incomplete_refs = sorted(referenced.intersection(open_ids))
+            if incomplete_refs:
+                continue
+            if not referenced.intersection(completed_ids):
+                continue
+            retire.append(task.task_id)
+            details.append(
+                {
+                    "task_id": task.task_id,
+                    "reason": "sampled_tasks_already_completed",
+                    "referenced_completed": ",".join(
+                        sorted(referenced.intersection(completed_ids))
+                    ),
+                }
+            )
+        if not retire:
+            return []
+        completed = self._auto_complete_generated_repair_tasks(
+            retire,
+            reason="stale_reconciliation_guardrail_samples_completed",
+        )
+        if completed:
+            self._record_event(
+                "auto_unblock_stale_reconciliation_guardrails",
+                {
+                    "completed_task_ids": completed,
+                    "details": details,
+                },
+            )
+        return details
+
+    def _auto_reset_attempt_limited_ready_tasks(
+        self,
+        tasks: Sequence[PortalTask],
+        state: PortalTaskState,
+        strategy: Mapping[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Reset attempt counters for ready tasks parked only by max-attempts.
+
+        When strategy blocks and retry repairs are gone, attempt-limited ready
+        work would otherwise idle the board forever.  Give each such task one
+        bounded reopen so finish-path selection can continue.
+        """
+
+        if self.max_task_attempts <= 0:
+            return []
+        blocked = {
+            str(item)
+            for item in strategy.get("blocked_tasks", [])
+            if str(item).strip()
+        }
+        pending_repairs = pending_retry_budget_repair_sources(tasks)
+        resets: list[dict[str, Any]] = []
+        queue_changed = False
+        for task in tasks:
+            if normalize_status(task.status) != "todo":
+                continue
+            if task.task_id in blocked or task.task_id in pending_repairs:
+                continue
+            attempt_count = self._task_attempt_count(state, task)
+            if attempt_count < self.max_task_attempts:
+                continue
+            # Only auto-reset once per task generation to avoid thrash.
+            receipt_key = f"auto_attempt_reset:{task.task_id}"
+            if state.retry_budget_repair_receipts.get(receipt_key):
+                continue
+            previous_display = int(
+                state.implementation_attempts.pop(task.task_id, 0) or 0
+            )
+            cid = self._canonical_ref(task)
+            previous_cid = int(
+                state.implementation_attempts_by_cid.pop(cid, 0) or 0
+            )
+            queue_changed = (
+                self.task_queue.reset_retry_state(cid) or queue_changed
+            )
+            state.retry_budget_repair_receipts[receipt_key] = utc_now()
+            resets.append(
+                {
+                    "task_id": task.task_id,
+                    "previous_display_attempt_count": previous_display,
+                    "previous_canonical_attempt_count": previous_cid,
+                    "reason": "auto_reset_attempt_limit_for_board_finish",
+                }
+            )
+        if not resets:
+            return []
+        state.save(self.state_path)
+        if queue_changed:
+            self.task_queue.save()
+        self._record_event(
+            "auto_unblock_attempt_limits_reset",
+            {
+                "reset_count": len(resets),
+                "resets": resets,
+            },
+        )
+        return resets
+
     def _auto_unblock_stalled_work(
         self,
         strategy: dict[str, Any],
@@ -8951,9 +9242,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     ) -> dict[str, Any]:
         """Automatically clear parks that would otherwise prevent board finish.
 
-        This is intentionally bounded and fail-closed: only infrastructure-fixed
-        validation thrash, completed/orphan strategy blocks, and reimplementable
-        merge quarantines are auto-cleared. Operator-owned dirty checkouts stay
+        Clears infrastructure thrash, completed/orphan strategy blocks,
+        reimplementable merge quarantines, stale reconciliation guardrails for
+        already-landed tasks, and attempt-limit parks with no open repair.
+        Unknown operator dirty checkouts that still cite open work remain
         blocked.
         """
 
@@ -8963,6 +9255,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "orphan_strategy_releases": [],
             "merge_quarantines_cleared": [],
             "attempt_budget_resets": [],
+            "completed_task_worktrees_cleaned": [],
+            "stale_reconciliation_retired": [],
+            "attempt_limit_resets": [],
         }
         try:
             result["playwright_infra_releases"] = (
@@ -8995,11 +9290,27 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         except Exception as exc:
             result["merge_quarantine_error"] = f"{type(exc).__name__}: {exc}"[-300:]
         try:
+            result["completed_task_worktrees_cleaned"] = (
+                self._auto_cleanup_completed_task_rescue_worktrees(tasks)
+            )
+        except Exception as exc:
+            result["worktree_cleanup_error"] = f"{type(exc).__name__}: {exc}"[-300:]
+        try:
+            result["stale_reconciliation_retired"] = (
+                self._auto_retire_stale_reconciliation_guardrails(tasks)
+            )
+        except Exception as exc:
+            result["reconciliation_retire_error"] = (
+                f"{type(exc).__name__}: {exc}"[-300:]
+            )
+        try:
             # Reload tasks after possible board mutations so attempt budget
             # reset sees completed repairs.
-            if result["playwright_infra_releases"] or result[
-                "completed_repair_releases"
-            ]:
+            if (
+                result["playwright_infra_releases"]
+                or result["completed_repair_releases"]
+                or result["stale_reconciliation_retired"]
+            ):
                 refreshed = self._load_tasks()
                 resets, _deferred = (
                     self._reset_attempt_budgets_for_completed_retry_repairs(
@@ -9008,8 +9319,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     )
                 )
                 result["attempt_budget_resets"] = resets
+                tasks = refreshed
+                strategy.update(self.load_strategy())
         except Exception as exc:
             result["attempt_budget_error"] = f"{type(exc).__name__}: {exc}"[-300:]
+        try:
+            result["attempt_limit_resets"] = (
+                self._auto_reset_attempt_limited_ready_tasks(
+                    tasks,
+                    state,
+                    strategy,
+                )
+            )
+        except Exception as exc:
+            result["attempt_limit_error"] = f"{type(exc).__name__}: {exc}"[-300:]
         acted = any(
             result.get(key)
             for key in (
@@ -9018,6 +9341,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "orphan_strategy_releases",
                 "merge_quarantines_cleared",
                 "attempt_budget_resets",
+                "completed_task_worktrees_cleaned",
+                "stale_reconciliation_retired",
+                "attempt_limit_resets",
             )
         )
         if acted:

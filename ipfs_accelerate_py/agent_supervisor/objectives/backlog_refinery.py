@@ -5209,12 +5209,13 @@ def resolved_reconciliation_guardrail_keys(
     """Return guardrail identities backed by a conclusive clean rescan.
 
     A missing/disabled scan, unavailable checkout status, any effective dirty
-    status (including staged or unknown status), and all cleanup/preflight
-    guardrails currently fail closed.  A main-checkout guardrail can also
-    retire when an exact rescan proves that its blocked candidate population
-    reached zero and the replay and cleanup passes completed without residual
-    work.  That second proof deliberately permits unrelated parent-checkout
-    dirt because there is no longer a candidate for it to block.
+    status (including staged or unknown status) fails closed.  When an exact
+    rescan proves the blocked candidate population is zero and the replay and
+    cleanup passes completed without residual work, every stable reconciliation
+    guardrail kind (main dirty, preflight conflict, dirty backlogged worktrees)
+    may retire.  That zero-candidate proof deliberately permits unrelated
+    parent-checkout dirt because there is no longer a candidate for it to
+    block.
     """
 
     reconciliation = (
@@ -5222,6 +5223,7 @@ def resolved_reconciliation_guardrail_keys(
         if isinstance(reconciliation_result, Mapping)
         else {}
     )
+    resolved: set[str] = set()
     if (
         reconciliation.get("attempted") is True
         and reconciliation.get("main_checkout_status_available") is True
@@ -5229,14 +5231,25 @@ def resolved_reconciliation_guardrail_keys(
         and isinstance(reconciliation.get("main_status_short"), list)
         and not reconciliation.get("main_status_short")
     ):
-        return {"reconciliation_guardrail:main_checkout_dirty"}
+        resolved.add("reconciliation_guardrail:main_checkout_dirty")
     if (
         _zero_candidate_reconciliation_is_conclusive(reconciliation)
         and _reconciliation_replay_is_conclusive(replay_result)
         and _worktree_cleanup_is_conclusive(cleanup_result)
     ):
-        return {"reconciliation_guardrail:main_checkout_dirty"}
-    return set()
+        # Zero residual candidates retires every stable guardrail class, not
+        # only main_checkout_dirty.  Preflight and dirty-worktree parks would
+        # otherwise remain permanent after the underlying branches landed.
+        resolved.update(
+            {
+                "reconciliation_guardrail:main_checkout_dirty",
+                "reconciliation_guardrail:preflight_merge_conflict",
+            }
+        )
+        # Dynamic dirty-worktree keys are retired by matching against active
+        # cards in release_completed_guardrail_blocks via prefix.
+        resolved.add("reconciliation_guardrail:dirty_backlogged_worktree")
+    return resolved
 
 
 def _explicit_nonnegative_int(
@@ -7642,6 +7655,16 @@ def release_completed_guardrail_blocks(
         )
         - active_reconciliation_keys
     )
+    # Dynamic dirty-worktree keys use a reason suffix. A zero-candidate proof
+    # publishes the bare prefix; treat any matching active card as resolved.
+    dirty_worktree_prefix = "reconciliation_guardrail:dirty_backlogged_worktree"
+    retire_dirty_worktree_prefix = (
+        dirty_worktree_prefix in resolved_reconciliation_keys
+        and not any(
+            key.startswith(f"{dirty_worktree_prefix}:")
+            for key in active_reconciliation_keys
+        )
+    )
     resolved_reconciliation_cards = [
         card
         for card in reconciliation_guardrail_blocks(
@@ -7650,6 +7673,12 @@ def release_completed_guardrail_blocks(
             include_completed=True,
         )
         if card["dedupe_key"] in resolved_reconciliation_keys
+        or (
+            retire_dirty_worktree_prefix
+            and str(card.get("dedupe_key") or "").startswith(
+                f"{dirty_worktree_prefix}:"
+            )
+        )
     ]
     if resolved_reconciliation_cards:
         terminal_statuses = {
