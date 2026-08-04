@@ -16,10 +16,11 @@ do not exist.
 [DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md](DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md);
 [DOCUMENTATION_VALIDATION_2026_08.md](DOCUMENTATION_VALIDATION_2026_08.md);
 `docs/README.md`; `docs/INDEX.md`; `pyproject.toml`; live package layout.
-**Last verified:** 2026-08-03; navigation and maintained-surface inventory
-revalidated after integrating `origin/main`, plus a post-closeout revalidation
-of the AI Service Catalog and HF model-server Reference pages and a fix for
-stale unified-CLI help examples. Exact merge identity and current test results:
+**Last verified:** 2026-08-04; navigation and maintained-surface inventory
+revalidated after integrating `origin/main`, plus post-closeout revalidation of
+the AI Service Catalog and HF model-server Reference pages, CLI help and
+version-pin fixes, and an allowlisted offline link checker for maintained
+surfaces. Exact merge identity for the earlier integrated matrix:
 [DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md](DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md).
 **Freshness triggers:** new Current guide; ADR accept/supersede; package or
 entrypoint renames; top-level navigation changes; packaging version
@@ -134,9 +135,9 @@ pages must **name both sides** until a code/test task reconciles them.
 | --- | --- | --- |
 | Optional capability stacks | CUDA, IPFS, P2P, external LLMs, provers may be absent after a successful import | subsystem maintainers; docs use capability language |
 | Nested product gitlinks | Submodule / gitlink trees may be empty offline | integration maintainers; [NESTED_PACKAGES.md](../NESTED_PACKAGES.md) |
-| No full-tree link CI gate | Weekly documentation-maintenance workflow is not a required PR link checker | documentation governance / CI (see [DOCUMENTATION_MAINTENANCE.md](DOCUMENTATION_MAINTENANCE.md)) |
+| Link checking not a required PR job | Local allowlisted checker exists (`scripts/docs/check_current_docs_links.py`); weekly documentation-maintenance workflow is still not a required PR merge gate | documentation governance / CI |
 
-**Resolved (2026-08-03 revalidation):**
+**Resolved (2026-08-03 / 2026-08-04 revalidation):**
 
 - Unified CLI module docstring and parser epilog no longer advertise
   unregistered `inference` / `queue` / `network` examples. Historical docs and
@@ -144,6 +145,8 @@ pages must **name both sides** until a code/test task reconciles them.
   rejects them.
 - Package version pin is `0.0.45` in `pyproject.toml` / `setup.py`, and
   `ipfs_accelerate_py.__version__` uses the same `_PACKAGING_VERSION` pin.
+- Allowlisted offline relative-link checker for maintained surfaces:
+  `python scripts/docs/check_current_docs_links.py`
 
 The second console script, `ipfs_accelerate`, intentionally uses the separate
 `ai_inference_cli:main` parser. That split is a documented interface boundary.
@@ -178,6 +181,9 @@ git diff --check
 
 # Primary agent-supervisor docs: no board-prefix ticket leakage
 python scripts/docs/check_agent_supervisor_docs.py
+
+# Maintained-surface relative links (allowlisted; not full-tree)
+python scripts/docs/check_current_docs_links.py
 
 # Navigation baseline markers (closeout contract)
 rg -q 'Documentation baseline' docs/INDEX.md
@@ -231,7 +237,8 @@ the following occur:
    list changes.
 4. The packaging version pin changes in `pyproject.toml` / `setup.py` (keep
    `_PACKAGING_VERSION` and Current install pages aligned).
-5. A dedicated allowlisted link checker is added under `scripts/docs/` or CI.
+5. The allowlisted link checker path set grows, or a required PR CI job is
+   wired to `scripts/docs/check_current_docs_links.py`.
 6. Nested product submodules become required for a Current journey.
 
 ---

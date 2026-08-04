@@ -102,7 +102,7 @@ Packaging metadata (`pyproject.toml` / `setup.py`) and the runtime
 `ipfs_accelerate_py.__version__` export can disagree on a given tree. Quote
 the source of any version string; do not invent a single “true” product version
 in prose. See
-[version sources](../getting-started/installation.md#version-sources-code-owned-disagreement).
+[version sources](../getting-started/installation.md#version-sources).
 
 ### Can I run it offline?
 

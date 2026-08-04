@@ -109,7 +109,7 @@ Notes:
   in some code paths and are **not** a substitute for a device or model smoke.
 - Packaging metadata (`pyproject.toml` / `setup.py`) and the runtime
   `__version__` export may disagree; quote the source of any version string.
-  See [installation](../getting-started/installation.md#version-sources-code-owned-disagreement).
+  See [installation](../getting-started/installation.md#version-sources).
 
 #### Full runtime capability snapshot has constructor side effects
 
