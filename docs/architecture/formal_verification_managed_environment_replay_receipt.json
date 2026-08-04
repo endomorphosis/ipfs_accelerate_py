@@ -1,0 +1,1525 @@
+{
+  "schema_version": "formal-verification-managed-environment-replay-receipt/v1",
+  "interface": "FormalVerificationManagedEnvironmentReplay@1",
+  "goal_id": "FVT-G226",
+  "task_id": "FVT-094",
+  "program": "formal-verification-tactician/managed-environment-replay",
+  "handler_id": "managed_environment_replay@1",
+  "certification_surface": "tools.logic.certify_formal_verification_managed_environment",
+  "host_platform": "linux-aarch64",
+  "managed_root": "<managed-tool-path-redacted>/fvt083-20260801-01/provers",
+  "managed_root_present": true,
+  "managed_root_approved_immutable": true,
+  "lock_path": "config/formal_verification_toolchains.lock.json",
+  "lock_digest_sha256": "sha256:b1d1bbad034fcc8d6189fa6eaa17555783720456ee01ca860a57a68fcce29ec2",
+  "deployment_identity": "334324a1cd2800052819b2bee6cb93432ff3aeb87f7b5708bc550a21eaa13470",
+  "deployment_identity_expected": "334324a1cd2800052819b2bee6cb93432ff3aeb87f7b5708bc550a21eaa13470",
+  "deployment_identity_matched": true,
+  "semantic_certification": false,
+  "installation_is_semantic_certification": false,
+  "certified": true,
+  "production_bindings_ready": true,
+  "acquisition_phase": {
+    "status": "not_run",
+    "authorized": false,
+    "installed": false,
+    "policy": {
+      "requires_explicit_authorization": true,
+      "requires_explicit_yes": true,
+      "user_local_only": true,
+      "single_flight": true,
+      "symlink_safe": true,
+      "atomic_publication": true,
+      "rollback_preserving": true,
+      "reviewed_immutable_urls_only": true,
+      "binds_versions": true,
+      "binds_sizes": true,
+      "binds_checksums": true,
+      "binds_publisher_evidence": true,
+      "binds_licenses": true,
+      "binds_os_architecture_pins": true,
+      "never_on_import": true,
+      "never_during_offline_certification": true,
+      "installation_is_not_semantic_certification": true
+    },
+    "install_root": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers",
+    "reason_codes": [
+      "acquisition_not_authorized"
+    ],
+    "messages": [
+      "Acquisition requires a separately invoked, explicitly authorized phase; offline certification never installs."
+    ]
+  },
+  "certification_phase": {
+    "status": "completed",
+    "offline": true,
+    "network": false,
+    "download": false,
+    "install": false,
+    "ambient_path_mutated": false,
+    "user_site_mutated": false,
+    "source_tree_mutated": false,
+    "system_package_mutated": false,
+    "axes": [
+      "dependency",
+      "capability",
+      "platform",
+      "freshness"
+    ],
+    "reason_codes": []
+  },
+  "policy": {
+    "offline_certification_forbids_network": true,
+    "offline_certification_forbids_download": true,
+    "offline_certification_forbids_install": true,
+    "offline_certification_forbids_ambient_path_mutation": true,
+    "offline_certification_forbids_user_site_mutation": true,
+    "offline_certification_forbids_source_tree_mutation": true,
+    "offline_certification_forbids_system_package_mutation": true,
+    "acquisition_is_separately_invoked": true,
+    "acquisition_requires_explicit_authorization": true,
+    "publication_user_local_single_flight_symlink_safe_atomic_rollback": true,
+    "installation_is_not_semantic_certification": true,
+    "support_dependencies_non_semantic": true,
+    "support_dependencies_non_authoritative": true,
+    "stale_receipts_cannot_repair_failures": true,
+    "axes_do_not_inherit_success": true,
+    "path_presence_is_not_usability": true,
+    "require_approved_immutable_root_for_production_replay": true,
+    "consumes_existing_installers_without_weakening_boundaries": true
+  },
+  "required_tool_ids": [
+    "apalache",
+    "autohyper",
+    "coq",
+    "eprover",
+    "hyperltl",
+    "isabelle",
+    "mchyper",
+    "proverif",
+    "souffle",
+    "tamarin",
+    "tlc",
+    "vampire",
+    "ergoai",
+    "runtime-mtl-external",
+    "maude",
+    "opam",
+    "stack",
+    "temurin-jdk"
+  ],
+  "primary_tool_ids": [
+    "apalache",
+    "autohyper",
+    "coq",
+    "eprover",
+    "hyperltl",
+    "isabelle",
+    "mchyper",
+    "proverif",
+    "souffle",
+    "tamarin",
+    "tlc",
+    "vampire",
+    "ergoai",
+    "runtime-mtl-external"
+  ],
+  "support_tool_ids": [
+    "maude",
+    "opam",
+    "stack",
+    "temurin-jdk"
+  ],
+  "replay_axes": [
+    "dependency",
+    "capability",
+    "platform",
+    "freshness"
+  ],
+  "failure_class_axes": {
+    "missing": "capability",
+    "partial": "capability",
+    "stale": "freshness",
+    "relocated_without_rebinding": "capability",
+    "wrong_architecture": "platform",
+    "byte_mutated": "freshness",
+    "dependency_mutated": "dependency"
+  },
+  "tools": {
+    "apalache": {
+      "tool_id": "apalache",
+      "display_name": "Apalache",
+      "support_only": false,
+      "authority_tool": true,
+      "non_semantic": false,
+      "non_authoritative": false,
+      "grants_semantic_certification": false,
+      "ready": true,
+      "reason_codes": [],
+      "axes": {
+        "dependency": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "identities": {
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/apalache-mc",
+        "executable_basename": "apalache-mc",
+        "executable_digest_sha256": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/apalache-0.58.3/apalache-0.58.3/bin/apalache-mc",
+        "artifact_digest_sha256": "bda52d2dbdbc7f6e95289a69dfe7ddeb162493ddd3501898d33ea7d1da3a8cd7",
+        "runtime": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/apalache-0.58.3/apalache-0.58.3/bin/apalache-mc",
+        "runtime_digest_sha256": "bda52d2dbdbc7f6e95289a69dfe7ddeb162493ddd3501898d33ea7d1da3a8cd7",
+        "lock_version": "0.58.3",
+        "lock_artifact_sha256": "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5",
+        "lock_platform": "any",
+        "lock_license": "Apache-2.0",
+        "host_platform": "linux-aarch64",
+        "artifact_kind": "script_launcher",
+        "under_managed_root": true,
+        "under_approved_immutable_root": true
+      }
+    },
+    "autohyper": {
+      "tool_id": "autohyper",
+      "display_name": "AutoHyper",
+      "support_only": false,
+      "authority_tool": true,
+      "non_semantic": false,
+      "non_authoritative": false,
+      "grants_semantic_certification": false,
+      "ready": true,
+      "reason_codes": [],
+      "axes": {
+        "dependency": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "identities": {
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/autohyper",
+        "executable_basename": "autohyper",
+        "executable_digest_sha256": "32779849378e309e60cbd3bc9bc18c06634af2d663b8f5c58e8c7ceeae3c69b5",
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/hyperproperty-vendor/autohyper/c94722d1/upstream/app/AutoHyper",
+        "artifact_digest_sha256": "0325981bad29fdf9278ddaf1169703110e9d1623694ae05f058e256d099e17e4",
+        "runtime": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/hyperproperty-vendor/autohyper/c94722d1/upstream/app/AutoHyper",
+        "runtime_digest_sha256": "0325981bad29fdf9278ddaf1169703110e9d1623694ae05f058e256d099e17e4",
+        "lock_version": "c94722d1",
+        "lock_artifact_sha256": "cebb08063fcfde162039273ed91c0f2df618bc0df26c8561fc388fe92c192837",
+        "lock_platform": "any",
+        "lock_license": "MIT",
+        "host_platform": "linux-aarch64",
+        "artifact_kind": "script_launcher",
+        "under_managed_root": true,
+        "under_approved_immutable_root": true
+      }
+    },
+    "coq": {
+      "tool_id": "coq",
+      "display_name": "Rocq/Coq",
+      "support_only": false,
+      "authority_tool": true,
+      "non_semantic": false,
+      "non_authoritative": false,
+      "grants_semantic_certification": false,
+      "ready": true,
+      "reason_codes": [],
+      "axes": {
+        "dependency": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "identities": {
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/coqc",
+        "executable_basename": "coqc",
+        "executable_digest_sha256": "9893704ee0c2eff3493c7244f23f39a018f392729de8a1dbc7e364622a8321b3",
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/opam/ipfs-datasets-coq/bin/rocq",
+        "artifact_digest_sha256": "1528f5b9402743109ffe798ac53fbdb080037d339bd4682cf5663d06052d391f",
+        "runtime": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/opam/ipfs-datasets-coq/bin/rocq",
+        "runtime_digest_sha256": "1528f5b9402743109ffe798ac53fbdb080037d339bd4682cf5663d06052d391f",
+        "lock_version": "9.1.1",
+        "lock_artifact_sha256": null,
+        "lock_platform": "any",
+        "lock_license": "LGPL-2.1-only",
+        "host_platform": "linux-aarch64",
+        "artifact_kind": "script_launcher",
+        "under_managed_root": true,
+        "under_approved_immutable_root": true
+      }
+    },
+    "eprover": {
+      "tool_id": "eprover",
+      "display_name": "E",
+      "support_only": false,
+      "authority_tool": true,
+      "non_semantic": false,
+      "non_authoritative": false,
+      "grants_semantic_certification": false,
+      "ready": true,
+      "reason_codes": [],
+      "axes": {
+        "dependency": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "identities": {
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/eprover",
+        "executable_basename": "eprover",
+        "executable_digest_sha256": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/eprover-3.2.5/bin/eprover",
+        "artifact_digest_sha256": "a5748ba4a6421b5b0198fa008fb58d1410292d52b302e9d5ab48c5961f3834c1",
+        "runtime": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/eprover-3.2.5/bin/eprover",
+        "runtime_digest_sha256": "a5748ba4a6421b5b0198fa008fb58d1410292d52b302e9d5ab48c5961f3834c1",
+        "lock_version": "3.2.5",
+        "lock_artifact_sha256": "074c8e5fc3062476341ce790fd15ad8004d322d6b6627844bd2768a8830bd4ae",
+        "lock_platform": "any",
+        "lock_license": "GPL-2.0-or-later",
+        "host_platform": "linux-aarch64",
+        "artifact_kind": "script_launcher",
+        "under_managed_root": true,
+        "under_approved_immutable_root": true
+      }
+    },
+    "hyperltl": {
+      "tool_id": "hyperltl",
+      "display_name": "HyperLTL",
+      "support_only": false,
+      "authority_tool": true,
+      "non_semantic": false,
+      "non_authoritative": false,
+      "grants_semantic_certification": false,
+      "ready": true,
+      "reason_codes": [],
+      "axes": {
+        "dependency": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "identities": {
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/hyperltl",
+        "executable_basename": "hyperltl",
+        "executable_digest_sha256": "5c8aab5c53d88bcd9effafda66d126373dd5fa50ac74ec08e1ff129d0b98221b",
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/hyperproperty-vendor/hyperltl/e3a41290/upstream/eahyper_src/eahyper.native",
+        "artifact_digest_sha256": "9fd58bd24bcde41d3ca4593a4584d7b3fdb776da10a4f398516e2f3f59c2ee7d",
+        "runtime": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/hyperproperty-vendor/hyperltl/e3a41290/upstream/eahyper_src/eahyper.native",
+        "runtime_digest_sha256": "9fd58bd24bcde41d3ca4593a4584d7b3fdb776da10a4f398516e2f3f59c2ee7d",
+        "lock_version": "e3a41290",
+        "lock_artifact_sha256": "1c5a41a650a887e40adc9338cac46b6f432dd7d06588c66a44c4b8b672e8444a",
+        "lock_platform": "any",
+        "lock_license": "MIT",
+        "host_platform": "linux-aarch64",
+        "artifact_kind": "script_launcher",
+        "under_managed_root": true,
+        "under_approved_immutable_root": true
+      }
+    },
+    "isabelle": {
+      "tool_id": "isabelle",
+      "display_name": "Isabelle",
+      "support_only": false,
+      "authority_tool": true,
+      "non_semantic": false,
+      "non_authoritative": false,
+      "grants_semantic_certification": false,
+      "ready": true,
+      "reason_codes": [],
+      "axes": {
+        "dependency": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "identities": {
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/isabelle",
+        "executable_basename": "isabelle",
+        "executable_digest_sha256": "b063848c17e1bb04fd93ab3cfda9993564ffc145c6fe104ddc43883d7d0a3050",
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/Isabelle2025-2-linux-aarch64/Isabelle2025-2/bin/isabelle",
+        "artifact_digest_sha256": "9fee030dddf4a6cb14e4e701d4885e6d12f67381e486ff6ce5d16af171ddedbc",
+        "runtime": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/Isabelle2025-2-linux-aarch64/Isabelle2025-2/bin/isabelle",
+        "runtime_digest_sha256": "9fee030dddf4a6cb14e4e701d4885e6d12f67381e486ff6ce5d16af171ddedbc",
+        "lock_version": "Isabelle2025-2",
+        "lock_artifact_sha256": "650a9669b4a087675afb34294d82ded2f0704d47d580dd9ed45cddc9f1764bdd",
+        "lock_platform": "linux-aarch64",
+        "lock_license": "BSD-3-Clause",
+        "host_platform": "linux-aarch64",
+        "artifact_kind": "script_launcher",
+        "under_managed_root": true,
+        "under_approved_immutable_root": true
+      }
+    },
+    "mchyper": {
+      "tool_id": "mchyper",
+      "display_name": "MCHyper",
+      "support_only": false,
+      "authority_tool": true,
+      "non_semantic": false,
+      "non_authoritative": false,
+      "grants_semantic_certification": false,
+      "ready": true,
+      "reason_codes": [],
+      "axes": {
+        "dependency": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "identities": {
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/mchyper",
+        "executable_basename": "mchyper",
+        "executable_digest_sha256": "27ae99f9e0739ec54c8de1dcf76c277313d4112f321c37bae82f1c9eb7d3bf84",
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/hyperproperty-vendor/mchyper/87f0f857/upstream/mchyper.py",
+        "artifact_digest_sha256": "ab420fe860aad3e47a5ee978b4c3a80a640b79e62d25c565bc63dd8413d469ab",
+        "runtime": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/hyperproperty-vendor/mchyper/87f0f857/upstream/mchyper.py",
+        "runtime_digest_sha256": "ab420fe860aad3e47a5ee978b4c3a80a640b79e62d25c565bc63dd8413d469ab",
+        "lock_version": "87f0f857",
+        "lock_artifact_sha256": "4c49f369ab04f48d93a4612a0b3259b361a7c3e3b22b3f99b240d0fdc46a7815",
+        "lock_platform": "any",
+        "lock_license": "MIT",
+        "host_platform": "linux-aarch64",
+        "artifact_kind": "script_launcher",
+        "under_managed_root": true,
+        "under_approved_immutable_root": true
+      }
+    },
+    "proverif": {
+      "tool_id": "proverif",
+      "display_name": "ProVerif",
+      "support_only": false,
+      "authority_tool": true,
+      "non_semantic": false,
+      "non_authoritative": false,
+      "grants_semantic_certification": false,
+      "ready": true,
+      "reason_codes": [],
+      "axes": {
+        "dependency": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "identities": {
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/proverif",
+        "executable_basename": "proverif",
+        "executable_digest_sha256": "718c75165618427680846715091f19ad8140775de2c1216ccb9db39e7278d52d",
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/proverif-2.05/proverif2.05/proverif",
+        "artifact_digest_sha256": "05392dcfe51b0f193cc86505f74e678df71018e924fda8bcd6398e7b9476403c",
+        "runtime": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/proverif-2.05/proverif2.05/proverif",
+        "runtime_digest_sha256": "05392dcfe51b0f193cc86505f74e678df71018e924fda8bcd6398e7b9476403c",
+        "lock_version": "2.05",
+        "lock_artifact_sha256": "4871f53c32ab4a04669a060c4886ba5d9080496963fb980a9a62d2c429ceabc4",
+        "lock_platform": "any",
+        "lock_license": "GPL-2.0-or-later",
+        "host_platform": "linux-aarch64",
+        "artifact_kind": "script_launcher",
+        "under_managed_root": true,
+        "under_approved_immutable_root": true
+      }
+    },
+    "souffle": {
+      "tool_id": "souffle",
+      "display_name": "Souffle",
+      "support_only": false,
+      "authority_tool": true,
+      "non_semantic": false,
+      "non_authoritative": false,
+      "grants_semantic_certification": false,
+      "ready": true,
+      "reason_codes": [],
+      "axes": {
+        "dependency": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "identities": {
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/souffle",
+        "executable_basename": "souffle",
+        "executable_digest_sha256": "f151edea05c5ae5dd92185abd7224c0c899fde3f0dcdef50923c8a674acae59f",
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/souffle-vendor/authorization-vendor/souffle/2.4.1/bin/souffle",
+        "artifact_digest_sha256": "064e4309de40862e484461e078a586acfa9b55a31d79e7b330e4b5b3d3e18e67",
+        "runtime": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/souffle-vendor/authorization-vendor/souffle/2.4.1/bin/souffle",
+        "runtime_digest_sha256": "064e4309de40862e484461e078a586acfa9b55a31d79e7b330e4b5b3d3e18e67",
+        "lock_version": "2.4.1",
+        "lock_artifact_sha256": "08d9b19cb4a8f570ac75dea73016b6a326d87ac28fccd4afeba217ace2071587",
+        "lock_platform": "any",
+        "lock_license": "UPL-1.0",
+        "host_platform": "linux-aarch64",
+        "artifact_kind": "script_launcher",
+        "under_managed_root": true,
+        "under_approved_immutable_root": true
+      }
+    },
+    "tamarin": {
+      "tool_id": "tamarin",
+      "display_name": "Tamarin",
+      "support_only": false,
+      "authority_tool": true,
+      "non_semantic": false,
+      "non_authoritative": false,
+      "grants_semantic_certification": false,
+      "ready": true,
+      "reason_codes": [],
+      "axes": {
+        "dependency": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "identities": {
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/tamarin-prover",
+        "executable_basename": "tamarin-prover",
+        "executable_digest_sha256": "9a9dc8636cd1dd871b5514840c49e746dbf9f4e8fcf6f8d18a095275bc565fd3",
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/tamarin-prover-1.12.0/bin/tamarin-prover",
+        "artifact_digest_sha256": "462e21b904a33dcf2618992dc88235bd28761af0abddde3f92d45c83c9d3db03",
+        "runtime": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/tamarin-prover-1.12.0/bin/tamarin-prover",
+        "runtime_digest_sha256": "462e21b904a33dcf2618992dc88235bd28761af0abddde3f92d45c83c9d3db03",
+        "lock_version": "1.12.0",
+        "lock_artifact_sha256": "35f0262e770db3632fcb297deb6ecc2d7c724c693fecfe97892e8224fa161956",
+        "lock_platform": "source",
+        "lock_license": "GPL-3.0-or-later",
+        "host_platform": "linux-aarch64",
+        "artifact_kind": "script_launcher",
+        "under_managed_root": true,
+        "under_approved_immutable_root": true
+      }
+    },
+    "tlc": {
+      "tool_id": "tlc",
+      "display_name": "TLC",
+      "support_only": false,
+      "authority_tool": true,
+      "non_semantic": false,
+      "non_authoritative": false,
+      "grants_semantic_certification": false,
+      "ready": true,
+      "reason_codes": [],
+      "axes": {
+        "dependency": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "identities": {
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/tlc",
+        "executable_basename": "tlc",
+        "executable_digest_sha256": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/Isabelle2025-2-linux-aarch64/Isabelle2025-2/contrib/jdk-21.0.9/arm64-linux/bin/java",
+        "artifact_digest_sha256": "29cd006b1db6557741e1c5c0a5d43370a25358a3b72780a2c9b1515833af89dc",
+        "runtime": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/Isabelle2025-2-linux-aarch64/Isabelle2025-2/contrib/jdk-21.0.9/arm64-linux/bin/java",
+        "runtime_digest_sha256": "29cd006b1db6557741e1c5c0a5d43370a25358a3b72780a2c9b1515833af89dc",
+        "lock_version": "1.8.0",
+        "lock_artifact_sha256": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5",
+        "lock_platform": "any",
+        "lock_license": "MIT",
+        "host_platform": "linux-aarch64",
+        "artifact_kind": "script_launcher",
+        "under_managed_root": true,
+        "under_approved_immutable_root": true
+      }
+    },
+    "vampire": {
+      "tool_id": "vampire",
+      "display_name": "Vampire",
+      "support_only": false,
+      "authority_tool": true,
+      "non_semantic": false,
+      "non_authoritative": false,
+      "grants_semantic_certification": false,
+      "ready": true,
+      "reason_codes": [],
+      "axes": {
+        "dependency": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "identities": {
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/vampire",
+        "executable_basename": "vampire",
+        "executable_digest_sha256": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/vampire-5.0.1-linux-aarch64/vampire",
+        "artifact_digest_sha256": "765c5aa84bf7333e3ed6e7936a5f44eec832777c00ac0ab5ee3b0aadf65c44de",
+        "runtime": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/vampire-5.0.1-linux-aarch64/vampire",
+        "runtime_digest_sha256": "765c5aa84bf7333e3ed6e7936a5f44eec832777c00ac0ab5ee3b0aadf65c44de",
+        "lock_version": "5.0.1",
+        "lock_artifact_sha256": "2fc419d3ac1eb075b4ceb6ce770242247507afd8c64f897799e479643f4b2c6b",
+        "lock_platform": "linux-aarch64",
+        "lock_license": "BSD-3-Clause",
+        "host_platform": "linux-aarch64",
+        "artifact_kind": "script_launcher",
+        "under_managed_root": true,
+        "under_approved_immutable_root": true
+      }
+    },
+    "ergoai": {
+      "tool_id": "ergoai",
+      "display_name": "ErgoAI",
+      "support_only": false,
+      "authority_tool": true,
+      "non_semantic": false,
+      "non_authoritative": false,
+      "grants_semantic_certification": false,
+      "ready": true,
+      "reason_codes": [],
+      "axes": {
+        "dependency": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "identities": {
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/ergoai",
+        "executable_basename": "ergoai",
+        "executable_digest_sha256": "cdd41e1fa4e1d5362c78c88319ade45a4c44ffb527905904c6710caaadf947f8",
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/advisors/ergoai/3.0/bin/ergoai",
+        "artifact_digest_sha256": "d4b037432d672aa3f178e3ba3411f8b0f50018b14a3b8bd52bb4c7fc349bcb03",
+        "runtime": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/advisors/ergoai/3.0/bin/ergoai",
+        "runtime_digest_sha256": "d4b037432d672aa3f178e3ba3411f8b0f50018b14a3b8bd52bb4c7fc349bcb03",
+        "lock_version": "3.0",
+        "lock_artifact_sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+        "lock_platform": "linux-aarch64",
+        "lock_license": "Apache-2.0",
+        "host_platform": "linux-aarch64",
+        "artifact_kind": "script_launcher",
+        "under_managed_root": true,
+        "under_approved_immutable_root": true
+      }
+    },
+    "runtime-mtl-external": {
+      "tool_id": "runtime-mtl-external",
+      "display_name": "external Runtime MTL",
+      "support_only": false,
+      "authority_tool": true,
+      "non_semantic": false,
+      "non_authoritative": false,
+      "grants_semantic_certification": false,
+      "ready": true,
+      "reason_codes": [],
+      "axes": {
+        "dependency": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "identities": {
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/runtime-mtl",
+        "executable_basename": "runtime-mtl",
+        "executable_digest_sha256": "4cf4d69570c49f6e0f8e2863583b3fd0a64f9b21dccc5d5d45847897268a6e32",
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/runtime-mtl",
+        "artifact_digest_sha256": "4cf4d69570c49f6e0f8e2863583b3fd0a64f9b21dccc5d5d45847897268a6e32",
+        "runtime": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/runtime-mtl",
+        "runtime_digest_sha256": "4cf4d69570c49f6e0f8e2863583b3fd0a64f9b21dccc5d5d45847897268a6e32",
+        "lock_version": "1.0.0-reviewed",
+        "lock_artifact_sha256": null,
+        "lock_platform": "any",
+        "lock_license": "Apache-2.0",
+        "host_platform": "linux-aarch64",
+        "artifact_kind": "script_launcher",
+        "under_managed_root": true,
+        "under_approved_immutable_root": true
+      }
+    },
+    "maude": {
+      "tool_id": "maude",
+      "display_name": "Maude",
+      "support_only": true,
+      "authority_tool": false,
+      "non_semantic": true,
+      "non_authoritative": true,
+      "grants_semantic_certification": false,
+      "ready": true,
+      "reason_codes": [],
+      "axes": {
+        "dependency": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "identities": {
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/maude",
+        "executable_basename": "maude",
+        "executable_digest_sha256": "0c5e35b459cca28bad912ea0246d8538934f9793477c120528b9eba65448d05f",
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/maude-distro/usr/bin/maude",
+        "artifact_digest_sha256": "ae049687825fbd1c5d62b94d272d7a8e49a4bfbd57ad8f0ee4af63ec3ff964d9",
+        "runtime": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/maude-distro/usr/bin/maude",
+        "runtime_digest_sha256": "ae049687825fbd1c5d62b94d272d7a8e49a4bfbd57ad8f0ee4af63ec3ff964d9",
+        "lock_version": "3.5.1",
+        "lock_artifact_sha256": "4ed71228ef698a6019ee011e54fbb04fe74145fce465e65838a6c92f743ef730",
+        "lock_platform": "linux-aarch64",
+        "lock_license": "GPL-3.0-or-later",
+        "host_platform": "linux-aarch64",
+        "artifact_kind": "script_launcher",
+        "under_managed_root": true,
+        "under_approved_immutable_root": true
+      }
+    },
+    "opam": {
+      "tool_id": "opam",
+      "display_name": "OPAM",
+      "support_only": true,
+      "authority_tool": false,
+      "non_semantic": true,
+      "non_authoritative": true,
+      "grants_semantic_certification": false,
+      "ready": true,
+      "reason_codes": [],
+      "axes": {
+        "dependency": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "identities": {
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/opam",
+        "executable_basename": "opam",
+        "executable_digest_sha256": "eee9f9f339308da7b7d54b3544e6ae51d06835c1111ddee57e1051504c907172",
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/opam-2.5.2/opam",
+        "artifact_digest_sha256": "c4106ece84bcb60c68342573d2d6b4f0d6770ee088015c2216adc83d8854dcf9",
+        "runtime": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/opam-2.5.2/opam",
+        "runtime_digest_sha256": "c4106ece84bcb60c68342573d2d6b4f0d6770ee088015c2216adc83d8854dcf9",
+        "lock_version": "2.5.2",
+        "lock_artifact_sha256": "c4106ece84bcb60c68342573d2d6b4f0d6770ee088015c2216adc83d8854dcf9",
+        "lock_platform": "linux-aarch64",
+        "lock_license": "LGPL-2.1-only",
+        "host_platform": "linux-aarch64",
+        "artifact_kind": "script_launcher",
+        "under_managed_root": true,
+        "under_approved_immutable_root": true
+      }
+    },
+    "stack": {
+      "tool_id": "stack",
+      "display_name": "Stack",
+      "support_only": true,
+      "authority_tool": false,
+      "non_semantic": true,
+      "non_authoritative": true,
+      "grants_semantic_certification": false,
+      "ready": true,
+      "reason_codes": [],
+      "axes": {
+        "dependency": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "identities": {
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/stack",
+        "executable_basename": "stack",
+        "executable_digest_sha256": "98fc0dbdfeb855219e3fbac28dcf8ce4eb24a1afb43979d72e08683a0d0af5e7",
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/stack-3.11.1-aarch64/stack-3.11.1-linux-aarch64/stack",
+        "artifact_digest_sha256": "5d6b37c99505e3003fe5462a0578a8f8a7d7154e713aa885e0e155d5d2089f42",
+        "runtime": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/stack-3.11.1-aarch64/stack-3.11.1-linux-aarch64/stack",
+        "runtime_digest_sha256": "5d6b37c99505e3003fe5462a0578a8f8a7d7154e713aa885e0e155d5d2089f42",
+        "lock_version": "3.11.1",
+        "lock_artifact_sha256": "1617ae9976a5cd38ad4daec583b026b589eb45d5482afb045cd4ca8c8d0de6d0",
+        "lock_platform": "linux-aarch64",
+        "lock_license": "BSD-3-Clause",
+        "host_platform": "linux-aarch64",
+        "artifact_kind": "script_launcher",
+        "under_managed_root": true,
+        "under_approved_immutable_root": true
+      }
+    },
+    "temurin-jdk": {
+      "tool_id": "temurin-jdk",
+      "display_name": "Temurin",
+      "support_only": true,
+      "authority_tool": false,
+      "non_semantic": true,
+      "non_authoritative": true,
+      "grants_semantic_certification": false,
+      "ready": true,
+      "reason_codes": [],
+      "axes": {
+        "dependency": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "required": true,
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "identities": {
+        "executable": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/Isabelle2025-2-linux-aarch64/Isabelle2025-2/contrib/jdk-21.0.9/arm64-linux/bin/java",
+        "executable_basename": "java",
+        "executable_digest_sha256": "29cd006b1db6557741e1c5c0a5d43370a25358a3b72780a2c9b1515833af89dc",
+        "artifact": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/Isabelle2025-2-linux-aarch64/Isabelle2025-2/contrib/jdk-21.0.9/arm64-linux/bin/java",
+        "artifact_digest_sha256": "29cd006b1db6557741e1c5c0a5d43370a25358a3b72780a2c9b1515833af89dc",
+        "runtime": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/Isabelle2025-2-linux-aarch64/Isabelle2025-2/contrib/jdk-21.0.9/arm64-linux/bin/java",
+        "runtime_digest_sha256": "29cd006b1db6557741e1c5c0a5d43370a25358a3b72780a2c9b1515833af89dc",
+        "lock_version": "17.0.20+8",
+        "lock_artifact_sha256": "d143936f473a4cb24e3b0e247d6d0775769d55ec9775c339540e753059a8d77a",
+        "lock_platform": "linux-aarch64",
+        "lock_license": "GPL-2.0-with-classpath-exception",
+        "host_platform": "linux-aarch64",
+        "artifact_kind": "native_binary",
+        "under_managed_root": true,
+        "under_approved_immutable_root": true
+      }
+    }
+  },
+  "failure_class_isolation": {
+    "missing": {
+      "failure_class": "missing",
+      "owned_axis": "capability",
+      "owned_axis_blocked": true,
+      "readiness_failed": true,
+      "blocked_axes": [
+        "capability"
+      ],
+      "non_owned_ready_preserved": true,
+      "stale_receipt_cannot_repair": true,
+      "baseline_ready": true,
+      "mutated_ready": false,
+      "mutated_axes": {
+        "dependency": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "blocked",
+          "reason_codes": [
+            "executable_missing"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "isolated": true
+    },
+    "partial": {
+      "failure_class": "partial",
+      "owned_axis": "capability",
+      "owned_axis_blocked": true,
+      "readiness_failed": true,
+      "blocked_axes": [
+        "capability"
+      ],
+      "non_owned_ready_preserved": true,
+      "stale_receipt_cannot_repair": true,
+      "baseline_ready": true,
+      "mutated_ready": false,
+      "mutated_axes": {
+        "dependency": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "blocked",
+          "reason_codes": [
+            "partial_tree"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "isolated": true
+    },
+    "stale": {
+      "failure_class": "stale",
+      "owned_axis": "freshness",
+      "owned_axis_blocked": true,
+      "readiness_failed": true,
+      "blocked_axes": [
+        "freshness"
+      ],
+      "non_owned_ready_preserved": true,
+      "stale_receipt_cannot_repair": true,
+      "baseline_ready": true,
+      "mutated_ready": false,
+      "mutated_axes": {
+        "dependency": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "blocked",
+          "reason_codes": [
+            "stale"
+          ]
+        }
+      },
+      "isolated": true
+    },
+    "relocated_without_rebinding": {
+      "failure_class": "relocated_without_rebinding",
+      "owned_axis": "capability",
+      "owned_axis_blocked": true,
+      "readiness_failed": true,
+      "blocked_axes": [
+        "capability"
+      ],
+      "non_owned_ready_preserved": true,
+      "stale_receipt_cannot_repair": true,
+      "baseline_ready": true,
+      "mutated_ready": false,
+      "mutated_axes": {
+        "dependency": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "blocked",
+          "reason_codes": [
+            "executable_outside_managed_root",
+            "relocated_without_rebinding"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "isolated": true
+    },
+    "wrong_architecture": {
+      "failure_class": "wrong_architecture",
+      "owned_axis": "platform",
+      "owned_axis_blocked": true,
+      "readiness_failed": true,
+      "blocked_axes": [
+        "platform"
+      ],
+      "non_owned_ready_preserved": true,
+      "stale_receipt_cannot_repair": true,
+      "baseline_ready": true,
+      "mutated_ready": false,
+      "mutated_axes": {
+        "dependency": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "blocked",
+          "reason_codes": [
+            "wrong_architecture"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "isolated": true
+    },
+    "byte_mutated": {
+      "failure_class": "byte_mutated",
+      "owned_axis": "freshness",
+      "owned_axis_blocked": true,
+      "readiness_failed": true,
+      "blocked_axes": [
+        "freshness"
+      ],
+      "non_owned_ready_preserved": true,
+      "stale_receipt_cannot_repair": true,
+      "baseline_ready": true,
+      "mutated_ready": false,
+      "mutated_axes": {
+        "dependency": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "blocked",
+          "reason_codes": [
+            "byte_mutated"
+          ]
+        }
+      },
+      "isolated": true
+    },
+    "dependency_mutated": {
+      "failure_class": "dependency_mutated",
+      "owned_axis": "dependency",
+      "owned_axis_blocked": true,
+      "readiness_failed": true,
+      "blocked_axes": [
+        "dependency"
+      ],
+      "non_owned_ready_preserved": true,
+      "stale_receipt_cannot_repair": true,
+      "baseline_ready": true,
+      "mutated_ready": false,
+      "mutated_axes": {
+        "dependency": {
+          "status": "blocked",
+          "reason_codes": [
+            "dependency_mutated"
+          ]
+        },
+        "capability": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "platform": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        },
+        "freshness": {
+          "status": "ready",
+          "reason_codes": [
+            "axis_bound"
+          ]
+        }
+      },
+      "isolated": true
+    }
+  },
+  "summary": {
+    "primary_ready": [
+      "apalache",
+      "autohyper",
+      "coq",
+      "eprover",
+      "hyperltl",
+      "isabelle",
+      "mchyper",
+      "proverif",
+      "souffle",
+      "tamarin",
+      "tlc",
+      "vampire",
+      "ergoai",
+      "runtime-mtl-external"
+    ],
+    "support_ready": [
+      "maude",
+      "opam",
+      "stack",
+      "temurin-jdk"
+    ],
+    "blocked_tools": [],
+    "primary_ready_count": 14,
+    "support_ready_count": 4,
+    "blocked_count": 0,
+    "required_count": 18,
+    "support_dependencies_non_semantic": true,
+    "support_dependencies_non_authoritative": true,
+    "semantic_certification": false
+  },
+  "acceptance": {
+    "goal_id": "FVT-G226",
+    "task_id": "FVT-094",
+    "separately_invoked_acquisition": true,
+    "explicit_authorization_required": true,
+    "reviewed_immutable_urls_versions_sizes_checksums_publisher_licenses_pins": true,
+    "publication_user_local_single_flight_symlink_safe_atomic_rollback": true,
+    "offline_certification_disables_network_download_install_ambient_path_user_site_source_tree_system_packages": true,
+    "binds_every_supported_external_tool": true,
+    "support_dependencies_non_semantic_non_authoritative": true,
+    "failure_classes_fail_only_owned_axes": true,
+    "stale_receipts_cannot_repair": true,
+    "installation_is_not_semantic_certification": true
+  },
+  "receipt_digest_sha256": "sha256:1e8838a1d2963c9b7caeaf20d89a55aed8b490a63aa597d47f98a83d3e568324",
+  "certificate_digest_sha256": "sha256:1e8838a1d2963c9b7caeaf20d89a55aed8b490a63aa597d47f98a83d3e568324"
+}

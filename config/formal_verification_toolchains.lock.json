@@ -102,7 +102,14 @@
         "souffle",
         "secpal"
       ],
-      "status": "replaced_by_deployment_contract"
+      "status": "replaced_by_deployment_contract",
+      "goal_id": "FVT-G217",
+      "task_id": "FVT-086",
+      "repair_task_id": "FVT-101",
+      "objective_validation_evidence": "objective validation repair",
+      "objective_validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_secpal_live_toolchain_contract.py test/integration/toolchains/test_external_authorization_vendor_certification.py test/integration/toolchains/test_external_authorization_toolchain_certification.py -q",
+      "interface": "SecPALLiveToolchainContract@1",
+      "notes": "FVT-101 is the objective validation repair that re-proves FVT-G217 and binds the synthetic discovery term objective validation repair. Genuine SecPAL artifact intake is transactional and non-executable; the live platform matrix remains empty and cannot promote operator compatibility or fixtures to a vendor engine."
     },
     "runtime_mtl_external": {
       "tool_ids": [
@@ -1841,7 +1848,7 @@
       ],
       "installer_entry": "ensure_secpal",
       "installer_plugin": "authorization",
-      "license": "MS-PL",
+      "license": "Microsoft SecPAL Research Release EULA",
       "source": "https://www.microsoft.com/en-us/research/project/secpal/",
       "identity_kind": "operator_bound_artifact",
       "pins": [
@@ -1852,9 +1859,9 @@
           "artifact_url": "",
           "sha256": "",
           "platform": "any",
-          "notes": "Reviewed external SecPAL operator-bound identity. Deployment-contract supported_platforms is the support ceiling: linux-aarch64 is a narrow unsupported-platform exception and never counts as installed, complete, authoritative, or production-certified.",
+          "notes": "Compatibility identity for the retired SecPAL line. The recovered official MSI has ProductVersion 1.0.0; this managed-pin label is not an executable version claim. Deployment-contract supported_platforms is the live execution matrix and is intentionally empty; platform-neutral artifact intake is modeled separately.",
           "is_checksummed": false,
-          "license": "MS-PL",
+          "license": "Microsoft SecPAL Research Release EULA",
           "source": "https://www.microsoft.com/en-us/research/project/secpal/"
         }
       ],
@@ -1879,10 +1886,17 @@
         "artifact_kind": "operator_bound",
         "requires_checksum_at_install": true,
         "unsupported_platforms_fail_closed": true,
-        "supported_platforms": [
-          "linux-x86_64"
-        ],
+        "supported_platforms": [],
         "platform_exceptions": {
+          "linux-x86_64": {
+            "classification": "unsupported_here",
+            "narrow_scope": true,
+            "installed": false,
+            "complete": false,
+            "authoritative": false,
+            "production_certified": false,
+            "notes": "The recovered official MSI establishes artifact provenance only. It supplies no reviewed general policy CLI or Linux execution-support contract, so linux-x86_64 cannot install, certify, or count as complete."
+          },
           "linux-aarch64": {
             "classification": "unsupported_here",
             "narrow_scope": true,
@@ -1896,7 +1910,130 @@
         "vendor_install": {
           "mode": "operator_bound_platform_matrix",
           "hermetic_shadows_are_differential_only": true,
-          "never_promote_hermetic_shadow_as_vendor": true
+          "never_promote_hermetic_shadow_as_vendor": true,
+          "upstream_distribution_status": "retired",
+          "installer_implemented": false,
+          "artifact_intake_implemented": true,
+          "operator_artifact": {
+            "schema_version": "secpal-reviewed-operator-artifact/v1",
+            "status": "reviewed_restricted_artifact",
+            "evidence_class": "reviewed_official_artifact",
+            "artifact_provisioning": "explicit_local_path_only",
+            "artifact_format": "msi",
+            "artifact_filename": "SecPal_Research_Release.msi",
+            "artifact_sha256": "c1988b9f1f6a2fb602bac4fc777a1765e59e74126285a095684a4743ea683159",
+            "artifact_size_bytes": 2458624,
+            "publisher": "Microsoft Research",
+            "release_version": "1.0.0",
+            "product_name": "Microsoft SecPAL Research Release",
+            "product_code": "{957BD905-629C-45B0-AA93-EC1AAD218115}",
+            "upgrade_code": "{7CCC29E2-7A1E-4222-B286-1469B0810D19}",
+            "package_revision": "{50E0C48B-84D3-4256-B6A7-5CDF0FC2EE7B}",
+            "original_download_url": "http://ftp.research.microsoft.com/downloads/81e28b29-10be-4551-9ede-1690f32e1581/SecPal_Research_Release.msi",
+            "archived_project_metadata_url": "https://web.archive.org/web/20090803173817id_/http://research.microsoft.com/en-us/downloads/81e28b29-10be-4551-9ede-1690f32e1581/default.aspx",
+            "archived_binary_evidence_url": "https://web.archive.org/web/20151206102411id_/ftp://ftp.research.microsoft.com/downloads/81e28b29-10be-4551-9ede-1690f32e1581/SecPal_Research_Release.msi",
+            "archive_is_acquisition_authority": false,
+            "provenance_evidence_sha256": "",
+            "authenticode_evidence": {
+              "verified": true,
+              "signer": "Microsoft Corporation",
+              "description": "Microsoft.Research.Secpal",
+              "timestamp": "2007-06-09T03:54:32Z",
+              "sha1": "4e09b091fb6d770867fdbf3cb2fa7a8c2c53b002",
+              "calculated_message_digest_sha1": "0cd8cfb8b6cfb5de07df9c466090f5bc93e53c6b",
+              "signer_serial": "610751c700000000000e",
+              "timestamp_serial": "614752ba000000000004",
+              "signature_verification_succeeded": true,
+              "signature_crl_verification_succeeded_at_review": true,
+              "verified_signatures": 1,
+              "offline_tests_require_current_crl": false
+            },
+            "license_evidence": {
+              "identifier": "Microsoft SecPAL Research Release EULA",
+              "embedded_path": "EULA.rtf",
+              "sha256": "de075e7848fb737b9da3cfec5ce7c906742f4767fa04ed2bc38e69e2dd5e4fad",
+              "reviewed": true,
+              "acceptance_required": true,
+              "redistribution_terms": "prohibited_third_parties_must_obtain_from_microsoft",
+              "execution_terms": "design_develop_test_or_research_only_not_intended_for_live_environment"
+            },
+            "runtime_contract": {
+              "kind": "dotnet-framework-assembly",
+              "version_constraint": "CLR v2.0.50727",
+              "binary_format": "PE32",
+              "launcher_candidates": [],
+              "runtime_validated": false
+            },
+            "executable_contract": {
+              "interface": "",
+              "entrypoint": "",
+              "version_probe_argv": [],
+              "semantic_argv": [],
+              "semantic_probe": "",
+              "cli_available": false,
+              "reviewed_payloads": [
+                "Microsoft.Research.SecPal.Dll",
+                "AuditLogViewer.exe",
+                "SecPalSamples.exe"
+              ],
+              "notes": "The official MSI contains a library, viewer, samples, documentation, and source; it contains no reviewed policy-file command-line interface."
+            },
+            "platform_matrix_evidence": {
+              "sha256": "",
+              "reviewed": true,
+              "msi_summary_template": ";1033",
+              "payload_binary_format": "PE32 CLR IL",
+              "artifact_platforms": [],
+              "artifact_intake_platforms": [
+                "any-user-local-host"
+              ],
+              "live_execution_supported_platforms": [],
+              "linux_execution_supported": false
+            },
+            "operator_compatibility_probe": {
+              "schema_version": "secpal-operator-compatibility-probe/v1",
+              "status": "observed_unbound",
+              "evidence_class": "operator_compatibility_probe",
+              "host_platform": "linux-aarch64",
+              "runtime": "mono-sgen",
+              "runtime_version": "6.8.0.105",
+              "runtime_package_identity_bound": false,
+              "authentic_core_loaded": true,
+              "core_dll_sha256": "2afacfc4121332c7fec5df32911e9a8b8d9926807af15d8c71b41a2928ee8b0a",
+              "samples_executable_sha256": "9a46e3bbf7bc58f0b9964814def3dd1224cd3893bfc34c72c13f3b8190599a07",
+              "sample_scenarios_executed": 18,
+              "sample_scenarios_exit_zero": true,
+              "representative_scenarios_observed": [
+                "DelegationScenario",
+                "TwoLevelDelegationScenario",
+                "ExclusionScenario",
+                "RoleExclusionScenario",
+                "CanActAs",
+                "Capability"
+              ],
+              "arbitrary_policy_interface_verified": false,
+              "contract_complete": false,
+              "block_reasons": [
+                "runtime_package_identity_unbound",
+                "replayable_evidence_unbound",
+                "operator_sample_semantics_incomplete",
+                "arbitrary_policy_interface_missing"
+              ],
+              "evidence_sha256": "",
+              "vendor_supported_platform": false,
+              "production_use_permitted": false,
+              "live_certification_eligible": false,
+              "notes": "Authentic Microsoft SecPalSamples.exe and Microsoft.Research.SecPal.Dll were observed under an isolated Mono runtime. This is operator compatibility evidence only; the Mono package identity and replayable evidence are not yet bound, and the result supplies neither a general policy CLI nor vendor platform support."
+            },
+            "transactional_install": true,
+            "rollback_required": true,
+            "fixtures_can_promote": false,
+            "downloads_permitted": false,
+            "redistribution_permitted": false,
+            "production_use_permitted": false,
+            "artifact_intake_only": true,
+            "live_certification_eligible": false
+          }
         }
       }
     },

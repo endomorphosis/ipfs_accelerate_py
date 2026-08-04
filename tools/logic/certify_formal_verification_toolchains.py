@@ -157,6 +157,218 @@ DEFAULT_RELEASE_CANDIDATE_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_role_aware_release_candidate.json"
 )
 
+# End-to-end deployment-axis audit (FVT-G220 / FVT-088).  This is a
+# deliberately separate surface from ``FormalVerificationToolchainCertificate``:
+# a semantic certificate must not silently stand in for packaging, installer,
+# platform, freshness, or public-API evidence.  Every provider/host row owns all
+# nine axes and the joint claim is derived from those axes only.
+END_TO_END_ASSURANCE_INTERFACE: Final = (
+    "FormalVerificationEndToEndAssuranceMatrix@1"
+)
+END_TO_END_ASSURANCE_SCHEMA: Final = (
+    "formal-verification-end-to-end-assurance-matrix/v1"
+)
+END_TO_END_ASSURANCE_GOAL_ID: Final = "FVT-G220"
+END_TO_END_ASSURANCE_TASK_ID: Final = "FVT-088"
+END_TO_END_ASSURANCE_PROGRAM: Final = (
+    "formal-verification-tactician/end-to-end-assurance"
+)
+DEFAULT_END_TO_END_ASSURANCE_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_end_to_end_assurance_matrix.json"
+)
+END_TO_END_ASSURANCE_TEST_RELATIVE: Final = Path(
+    "test/integration/toolchains/"
+    "test_formal_verification_end_to_end_assurance_matrix.py"
+)
+END_TO_END_ASSURANCE_AXES: Final[tuple[str, ...]] = (
+    "dependency",
+    "packaging",
+    "installer",
+    "capability",
+    "semantic",
+    "platform",
+    "authority",
+    "freshness",
+    "public_surface",
+)
+END_TO_END_ASSURANCE_READY_STATES: Final[frozenset[str]] = frozenset(
+    {"ready"}
+)
+END_TO_END_ASSURANCE_STATES: Final[frozenset[str]] = frozenset(
+    {"ready", "blocked", "unsupported", "not_applicable"}
+)
+END_TO_END_ASSURANCE_VALIDATION_COMMAND: Final = (
+    "PYTHONPATH=ipfs_datasets_py python -m pytest "
+    "test/integration/toolchains/"
+    "test_formal_verification_end_to_end_assurance_matrix.py "
+    "test/integration/test_formal_verification_real_tool_matrix.py "
+    "test/packaging/test_logic_verification_clean_install.py -q"
+)
+
+# Authoritative vendor release gate (FVT-G221 / FVT-089).  Ownership of the
+# fan-in builder remains in build_formal_verification_tactician_receipt.py;
+# the certifier only declares the checked evidence paths and validation
+# command so toolchain surfaces and the vendor release stay aligned.
+AUTHORITATIVE_VENDOR_RELEASE_INTERFACE: Final = (
+    "FormalVerificationAuthoritativeVendorRelease@1"
+)
+AUTHORITATIVE_VENDOR_RELEASE_SCHEMA: Final = (
+    "formal-verification-authoritative-vendor-release/v1"
+)
+AUTHORITATIVE_VENDOR_RELEASE_GOAL_ID: Final = "FVT-G221"
+AUTHORITATIVE_VENDOR_RELEASE_TASK_ID: Final = "FVT-089"
+AUTHORITATIVE_VENDOR_RELEASE_PROGRAM: Final = (
+    "formal-verification-tactician/authoritative-vendor-release"
+)
+DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_authoritative_vendor_release.json"
+)
+AUTHORITATIVE_VENDOR_RELEASE_TEST_RELATIVE: Final = Path(
+    "test/integration/test_formal_verification_authoritative_vendor_release.py"
+)
+AUTHORITATIVE_VENDOR_RELEASE_VALIDATION_COMMAND: Final = (
+    "PYTHONPATH=ipfs_datasets_py python -m pytest "
+    "test/integration/test_formal_verification_authoritative_vendor_release.py "
+    "test/integration/toolchains/"
+    "test_formal_verification_end_to_end_assurance_matrix.py "
+    "test/integration/toolchains/"
+    "test_secpal_ergoai_authoritative_live_evidence.py -q"
+)
+AUTHORITATIVE_VENDOR_RELEASE_OBJECTIVE_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_RELATIVE.as_posix(),
+    AUTHORITATIVE_VENDOR_RELEASE_TEST_RELATIVE.as_posix(),
+)
+
+# Post-remediation re-audit (FVT-G233 / FVT-100).  Owns only the delta between
+# the known 5-of-28 ready baseline and the rebuilt matrix/release assessment
+# after locally actionable remediations (G225-G231).  G232 disposition may be
+# satisfied by project-owner software disposition when Microsoft SecPAL is
+# unused; legacy SecPAL live authority (G219) remains blocked.
+POST_REMEDIATION_INTERFACE: Final = (
+    "FormalVerificationPostRemediationAssurance@1"
+)
+POST_REMEDIATION_SCHEMA: Final = (
+    "formal-verification-post-remediation-assurance/v1"
+)
+POST_REMEDIATION_GOAL_ID: Final = "FVT-G233"
+POST_REMEDIATION_TASK_ID: Final = "FVT-100"
+POST_REMEDIATION_PROGRAM: Final = (
+    "formal-verification-tactician/post-remediation-assurance"
+)
+DEFAULT_POST_REMEDIATION_DELTA_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_post_remediation_delta.json"
+)
+POST_REMEDIATION_TEST_RELATIVE: Final = Path(
+    "test/integration/toolchains/"
+    "test_formal_verification_post_remediation_assurance.py"
+)
+POST_REMEDIATION_VALIDATION_COMMAND: Final = (
+    "PYTHONPATH=ipfs_datasets_py python -m pytest "
+    "test/integration/toolchains/"
+    "test_formal_verification_post_remediation_assurance.py "
+    "test/integration/toolchains/"
+    "test_formal_verification_end_to_end_assurance_matrix.py "
+    "test/integration/test_formal_verification_authoritative_vendor_release.py -q"
+)
+POST_REMEDIATION_OBJECTIVE_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    DEFAULT_POST_REMEDIATION_DELTA_RELATIVE.as_posix(),
+    DEFAULT_END_TO_END_ASSURANCE_RELATIVE.as_posix(),
+    POST_REMEDIATION_TEST_RELATIVE.as_posix(),
+)
+# Pre-remediation joint-ready set when the trusted certificate lock digest
+# matches the current lock (freshness current).  All other axes for these
+# five rows were already independently ready on the FVT-088 baseline.
+POST_REMEDIATION_BASELINE_READY_PROVIDER_IDS: Final[tuple[str, ...]] = (
+    "cvc5",
+    "java",
+    "lean",
+    "z3",
+    "zkp-circuit",
+)
+POST_REMEDIATION_BASELINE_READY_COUNT: Final = 5
+POST_REMEDIATION_BASELINE_TOTAL_COUNT: Final = 28
+PRODUCTION_AUTHORIZATION_REPLACEMENT_PROVIDER_ID: Final = (
+    "production-authorization-replacement"
+)
+REFERENCE_LOGIC_SEMANTIC_RECEIPT_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_reference_logic_semantic_receipt.json"
+)
+REFERENCE_LOGIC_SEMANTIC_INTERFACE: Final = "ReferenceLogicSemanticClosure@1"
+REFERENCE_LOGIC_SEMANTIC_GOAL_ID: Final = "FVT-G225"
+REFERENCE_LOGIC_PROVIDER_CEILINGS: Final[Mapping[str, str]] = {
+    "datalog-authorization": "authorization",
+    "secpal-authorization": "authorization",
+    "runtime-mtl": "finite_trace",
+}
+PRODUCTION_AUTHORIZATION_REPLACEMENT_RECEIPT_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_production_authorization_replacement_receipt.json"
+)
+PRODUCTION_AUTHORIZATION_REPLACEMENT_INTERFACE: Final = (
+    "ProductionAuthorizationReplacement@1"
+)
+PRODUCTION_AUTHORIZATION_REPLACEMENT_GOAL_ID: Final = "FVT-G231"
+POST_REMEDIATION_INPUT_RECEIPTS: Final[tuple[tuple[str, Path, str], ...]] = (
+    (
+        "FVT-G225",
+        REFERENCE_LOGIC_SEMANTIC_RECEIPT_RELATIVE,
+        REFERENCE_LOGIC_SEMANTIC_INTERFACE,
+    ),
+    (
+        "FVT-G226",
+        Path(
+            "docs/architecture/"
+            "formal_verification_managed_environment_replay_receipt.json"
+        ),
+        "FormalVerificationManagedEnvironmentReplay@1",
+    ),
+    (
+        "FVT-G228",
+        Path(
+            "docs/architecture/"
+            "formal_verification_replayed_core_external_semantics.json"
+        ),
+        "ReplayedCoreExternalSemantics@1",
+    ),
+    (
+        "FVT-G229",
+        Path(
+            "docs/architecture/"
+            "formal_verification_replayed_hyper_authorization_semantics.json"
+        ),
+        "ReplayedHyperAuthorizationSemantics@1",
+    ),
+    (
+        "FVT-G230",
+        Path(
+            "docs/architecture/"
+            "formal_verification_replayed_monitor_advisor_semantics.json"
+        ),
+        "ReplayedMonitorAdvisorSemantics@1",
+    ),
+    (
+        "FVT-G231",
+        PRODUCTION_AUTHORIZATION_REPLACEMENT_RECEIPT_RELATIVE,
+        PRODUCTION_AUTHORIZATION_REPLACEMENT_INTERFACE,
+    ),
+)
+END_TO_END_PACKAGING_EVIDENCE_PATHS: Final[tuple[Path, ...]] = (
+    Path("setup.py"),
+    Path("requirements.txt"),
+    Path("ipfs_datasets_py/setup.py"),
+    Path("ipfs_datasets_py/pyproject.toml"),
+    Path("ipfs_datasets_py/requirements.txt"),
+    Path("ipfs_datasets_py/requirements-lazy.txt"),
+    Path("ipfs_datasets_py/requirements-theorem-provers.txt"),
+    Path("test/packaging/test_formal_verification_distribution_contract.py"),
+    Path("test/packaging/test_logic_verification_clean_install.py"),
+)
+END_TO_END_PUBLIC_SURFACE_RELATIVE: Final = Path(
+    "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py"
+)
+END_TO_END_INSTALLER_REGISTRY_RELATIVE: Final = Path(
+    "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/registry.py"
+)
+
 # Durable, live specialized receipts produced by the focused prover lanes.
 # These are optional inputs: absence, stale self-digests, source-surface
 # mismatches, failed semantic cases, or missing current artifacts all keep the
@@ -2729,6 +2941,103 @@ def _relocated_state_manifest_binding(
     }
 
 
+def _managed_java_from_install_root(root: Path) -> str | None:
+    """Discover the JVM bound by managed TLC/Apalache manifests under *root*.
+
+    Sealed whole-tree relocations keep absolute pre-relocation paths inside
+    manifests. When the same relative suffix exists under the current managed
+    root, use that relocated executable. Prefer a single Java jointly recorded
+    by both tool manifests; fall back to a launcher-hardcoded Java path when
+    manifests are incomplete.
+    """
+
+    try:
+        resolved_root = root.resolve()
+    except OSError:
+        return None
+    if not resolved_root.is_dir():
+        return None
+
+    def _candidate_from_recorded_path(raw_path: str) -> Path | None:
+        text = str(raw_path or "").strip()
+        if not text:
+            return None
+        recorded = Path(os.path.expanduser(text))
+        try:
+            direct = recorded.resolve()
+            direct.relative_to(resolved_root)
+            if direct.is_file() and os.access(direct, os.X_OK):
+                return direct
+        except (OSError, ValueError):
+            pass
+        parts = recorded.parts
+        start = 1 if recorded.is_absolute() else 0
+        for index in range(start, len(parts)):
+            candidate = resolved_root.joinpath(*parts[index:])
+            try:
+                if candidate.is_file() and os.access(candidate, os.X_OK):
+                    return candidate.resolve()
+            except OSError:
+                continue
+        return None
+
+    bound: list[Path] = []
+    for tool_id in ("tlc", "apalache"):
+        manifest_path = resolved_root / "manifests" / f"{tool_id}.json"
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(payload, Mapping):
+            continue
+        candidate = _candidate_from_recorded_path(
+            str(payload.get("java_executable") or "")
+        )
+        if candidate is not None:
+            bound.append(candidate)
+
+    if bound:
+        unique = {str(path) for path in bound}
+        if len(unique) == 1:
+            return next(iter(unique))
+        # Prefer the candidate that still exists under the install root and
+        # matches at least one launcher body when tools disagree.
+        return str(bound[0])
+
+    # Fallback: launchers generated by the installer hardcode the bound JVM.
+    launcher_java = re.compile(
+        r"""(?:exec\s+)?(?P<q>['"])(?P<path>[^'"]+/bin/java)(?P=q)"""
+    )
+    path_export = re.compile(
+        r"""export\s+PATH=(?P<q>['"])(?P<path>[^'"]+)(?P=q)"""
+    )
+    for launcher_name in ("tlc", "tlc2", "tla2tools", "apalache-mc", "apalache"):
+        launcher = resolved_root / "bin" / launcher_name
+        try:
+            body = launcher.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        match = launcher_java.search(body)
+        if match:
+            candidate = Path(match.group("path"))
+            try:
+                if candidate.is_file() and os.access(candidate, os.X_OK):
+                    return str(candidate.resolve())
+            except OSError:
+                pass
+        for export in path_export.finditer(body):
+            for part in export.group("path").split(os.pathsep):
+                if not part:
+                    continue
+                candidate = Path(part) / "java"
+                try:
+                    if candidate.is_file() and os.access(candidate, os.X_OK):
+                        return str(candidate.resolve())
+                except OSError:
+                    continue
+    return None
+
+
 def _managed_state_model_identity(
     tool_id: str,
     executable: str,
@@ -2745,13 +3054,36 @@ def _managed_state_model_identity(
         sys.path.insert(0, datasets_text)
     from ipfs_datasets_py.logic.backends.installers import state_model
 
+    path = Path(executable)
+    if path.parent.name != "bin":
+        return {
+            "usable": False,
+            "reason": "validated_java_or_managed_root_missing",
+            "java_runtime": {
+                "usable": False,
+                "reason_code": "managed_root_layout_invalid",
+            },
+        }
+    root = path.parent.parent
+
+    # Explicit overrides remain authoritative and fail closed when invalid.
+    # Otherwise prefer the JVM jointly bound by managed manifests/launchers so
+    # ambient OpenJDK 8 cannot demote a sealed Isabelle JDK 21 deployment.
     explicit_java = str(env.get(state_model.JAVA_EXECUTABLE_ENV) or "").strip()
+    java_source = "environment" if explicit_java else ""
     if not explicit_java:
         java_home = str(env.get("JAVA_HOME") or "").strip()
         if java_home:
             explicit_java = str(Path(java_home) / "bin" / "java")
+            java_source = "java_home"
+    if not explicit_java:
+        managed_java = _managed_java_from_install_root(root)
+        if managed_java:
+            explicit_java = managed_java
+            java_source = "managed_manifest_or_launcher"
     if not explicit_java:
         explicit_java = shutil.which("java", path=env.get("PATH")) or ""
+        java_source = "path" if explicit_java else "missing"
     minimum = (
         state_model.TLC_MIN_JAVA_MAJOR
         if tool_id == "tlc"
@@ -2761,14 +3093,14 @@ def _managed_state_model_identity(
         java_executable=explicit_java or None,
         minimum_major=minimum,
     )
-    path = Path(executable)
-    if not java.usable or java.executable is None or path.parent.name != "bin":
+    if not java.usable or java.executable is None:
+        runtime = java.to_dict()
+        runtime["selection_source"] = java_source
         return {
             "usable": False,
             "reason": "validated_java_or_managed_root_missing",
-            "java_runtime": java.to_dict(),
+            "java_runtime": runtime,
         }
-    root = path.parent.parent
     identity = (
         state_model.managed_tlc_identity(
             root,
@@ -2780,7 +3112,9 @@ def _managed_state_model_identity(
             java_executable=java.executable,
         )
     )
-    identity["java_runtime"] = java.to_dict()
+    runtime = java.to_dict()
+    runtime["selection_source"] = java_source
+    identity["java_runtime"] = runtime
     if identity.get("manifest_valid") is not True:
         relocation = _relocated_state_manifest_binding(
             root=root,
@@ -9593,6 +9927,2997 @@ def build_certificate(
     return certificate
 
 
+def _assurance_path_evidence_ref(
+    repo_root: Path,
+    relative_path: Path | str,
+    *,
+    evidence_id: str,
+    interface: str = "",
+) -> dict[str, Any]:
+    """Build a portable, content-addressed reference to repository evidence."""
+
+    relative = Path(relative_path)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError("assurance evidence paths must be repository-relative")
+    portable = relative.as_posix()
+    candidate = repo_root / relative
+    digest = file_digest(candidate)
+    return {
+        "evidence_id": evidence_id,
+        "kind": "repository_file",
+        "path": portable,
+        "present": candidate.is_file(),
+        "sha256": digest,
+        "interface": interface or None,
+    }
+
+
+def _assurance_inline_evidence_ref(
+    evidence_id: str,
+    payload: Any,
+    *,
+    interface: str = "",
+) -> dict[str, Any]:
+    """Bind in-memory evidence without copying its potentially private body."""
+
+    return {
+        "evidence_id": evidence_id,
+        "kind": "inline_digest",
+        "path": None,
+        "present": True,
+        "sha256": f"sha256:{content_digest(payload)}",
+        "interface": interface or None,
+    }
+
+
+def _assurance_axis(
+    state: str,
+    *,
+    required: bool,
+    reason_codes: Sequence[str],
+    evidence_refs: Sequence[Mapping[str, Any]],
+    details: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create one independently evidenced readiness axis."""
+
+    if state not in END_TO_END_ASSURANCE_STATES:
+        raise ValueError(f"unknown end-to-end assurance state: {state!r}")
+    normalized_reasons = sorted(
+        {
+            str(reason).strip()
+            for reason in reason_codes
+            if str(reason).strip()
+        }
+    )
+    if not normalized_reasons:
+        raise ValueError("every assurance axis requires at least one reason code")
+    refs = [dict(ref) for ref in evidence_refs if isinstance(ref, Mapping)]
+    if not refs:
+        raise ValueError("every assurance axis requires exact evidence references")
+    return {
+        "state": state,
+        "required": bool(required),
+        "ready": state in END_TO_END_ASSURANCE_READY_STATES,
+        "reason_codes": normalized_reasons,
+        "evidence_refs": refs,
+        "details": dict(details or {}),
+    }
+
+
+def provider_host_joint_ready(axes: Mapping[str, Any]) -> bool:
+    """Return true only when every required axis is independently ready.
+
+    A non-required axis may be explicitly ``not_applicable``.  Unsupported and
+    blocked states never become readiness, and a boolean copied from another
+    axis is ignored.
+    """
+
+    if set(axes) != set(END_TO_END_ASSURANCE_AXES):
+        return False
+    for axis_name in END_TO_END_ASSURANCE_AXES:
+        raw_axis = axes.get(axis_name)
+        if not isinstance(raw_axis, Mapping):
+            return False
+        state = str(raw_axis.get("state") or "")
+        required = raw_axis.get("required") is True
+        if state == "ready":
+            continue
+        if state == "not_applicable" and not required:
+            continue
+        return False
+    return True
+
+
+def _assurance_module_path(module_name: str) -> Path:
+    return Path("ipfs_datasets_py") / Path(*module_name.split(".")).with_suffix(
+        ".py"
+    )
+
+
+def _assurance_stable_module_path(repo_root: Path, module_name: str) -> Path | None:
+    module_path = _assurance_module_path(module_name)
+    if (repo_root / module_path).is_file():
+        return module_path
+    package_path = Path("ipfs_datasets_py") / Path(*module_name.split(".")) / "__init__.py"
+    if (repo_root / package_path).is_file():
+        return package_path
+    return None
+
+
+def _build_assurance_packaging_snapshot(
+    repo_root: Path,
+    lock: Mapping[str, Any],
+) -> dict[str, Any]:
+    refs = [
+        _assurance_path_evidence_ref(
+            repo_root,
+            path,
+            evidence_id=f"packaging:{path.as_posix()}",
+            interface=str(lock.get("packaging_gate_interface") or ""),
+        )
+        for path in END_TO_END_PACKAGING_EVIDENCE_PATHS
+    ]
+    stable_modules = [
+        str(item)
+        for item in (lock.get("stable_python_modules") or ())
+        if isinstance(item, str) and item
+    ]
+    module_bindings: list[dict[str, Any]] = []
+    for module_name in stable_modules:
+        relative = _assurance_stable_module_path(repo_root, module_name)
+        if relative is None:
+            module_bindings.append(
+                {
+                    "module": module_name,
+                    "path": None,
+                    "present": False,
+                    "sha256": None,
+                }
+            )
+        else:
+            module_bindings.append(
+                {
+                    "module": module_name,
+                    "path": relative.as_posix(),
+                    "present": True,
+                    "sha256": file_digest(repo_root / relative),
+                }
+            )
+    missing_paths = [
+        str(ref.get("path")) for ref in refs if ref.get("present") is not True
+    ]
+    missing_modules = [
+        str(item.get("module"))
+        for item in module_bindings
+        if item.get("present") is not True
+    ]
+    reason_codes: list[str] = []
+    if missing_paths:
+        reason_codes.append("missing_wheel_files")
+    if missing_modules:
+        reason_codes.append("missing_stable_modules")
+    return {
+        "interface": str(lock.get("packaging_gate_interface") or ""),
+        "evidence_refs": refs,
+        "stable_module_bindings": module_bindings,
+        "missing_wheel_contract_files": sorted(missing_paths),
+        "missing_stable_modules": sorted(missing_modules),
+        "ready": not missing_paths and not missing_modules,
+        "reason_codes": reason_codes
+        or ["wheel_contract_and_stable_modules_present"],
+    }
+
+
+def _ensure_assurance_import_path(repo_root: Path) -> None:
+    for candidate in (repo_root, repo_root / "ipfs_datasets_py"):
+        text = str(candidate)
+        if text not in sys.path:
+            sys.path.insert(0, text)
+
+
+def _build_assurance_installer_snapshot(repo_root: Path) -> dict[str, Any]:
+    """Inspect the metadata-only installer registry without invoking a plugin."""
+
+    registry_path = repo_root / END_TO_END_INSTALLER_REGISTRY_RELATIVE
+    evidence_ref = _assurance_path_evidence_ref(
+        repo_root,
+        END_TO_END_INSTALLER_REGISTRY_RELATIVE,
+        evidence_id="installer_registry",
+        interface="FormalVerificationInstallerRegistry@1",
+    )
+    try:
+        _ensure_assurance_import_path(repo_root)
+        from ipfs_datasets_py.logic.backends.installers.registry import (  # type: ignore
+            default_installer_registry,
+        )
+
+        registry = default_installer_registry().to_dict()
+        entries = {
+            str(item.get("tool_id") or ""): dict(item)
+            for item in (registry.get("entries") or ())
+            if isinstance(item, Mapping) and str(item.get("tool_id") or "")
+        }
+        plugins = {
+            str(item.get("family") or ""): dict(item)
+            for item in (registry.get("plugins") or ())
+            if isinstance(item, Mapping) and str(item.get("family") or "")
+        }
+        return {
+            "interface": registry.get("interface"),
+            "registry_present": registry_path.is_file(),
+            "registry_error": None,
+            "entries": entries,
+            "plugins": plugins,
+            "evidence_ref": evidence_ref,
+            "digest_sha256": content_digest(registry),
+        }
+    except Exception as exc:  # noqa: BLE001 - audit records a closed failure
+        return {
+            "interface": None,
+            "registry_present": registry_path.is_file(),
+            "registry_error": type(exc).__name__,
+            "entries": {},
+            "plugins": {},
+            "evidence_ref": evidence_ref,
+            "digest_sha256": None,
+        }
+
+
+def _build_assurance_public_surface_snapshot(
+    repo_root: Path,
+    lock: Mapping[str, Any],
+) -> dict[str, Any]:
+    evidence_ref = _assurance_path_evidence_ref(
+        repo_root,
+        END_TO_END_PUBLIC_SURFACE_RELATIVE,
+        evidence_id="logic_verification_api",
+        interface="LogicVerificationAPI@1",
+    )
+    try:
+        _ensure_assurance_import_path(repo_root)
+        import ipfs_datasets_py.logic.verification_api as verification_api  # type: ignore
+
+        response = verification_api.LogicVerificationAPI().list_providers().to_dict()
+        providers = list((response.get("result") or {}).get("providers") or ())
+        normalized_names: set[str] = set()
+        provider_rows: list[dict[str, Any]] = []
+        for raw_provider in providers:
+            if not isinstance(raw_provider, Mapping):
+                continue
+            provider = dict(raw_provider)
+            provider_rows.append(provider)
+            for raw_name in (
+                provider.get("provider_id"),
+                provider.get("factory_key"),
+                *(provider.get("aliases") or ()),
+            ):
+                name = str(raw_name or "").strip().lower().replace("-", "_")
+                if name:
+                    normalized_names.add(name)
+        stable_operations = [
+            str(item)
+            for item in (lock.get("stable_python_operations") or ())
+            if isinstance(item, str) and item
+        ]
+        missing_operations = [
+            operation
+            for operation in stable_operations
+            if not hasattr(verification_api, operation)
+            and not hasattr(verification_api.LogicVerificationAPI, operation)
+        ]
+        ready = bool(
+            evidence_ref["present"]
+            and response.get("interface") == "LogicVerificationAPI@1"
+            and response.get("status") == "declarative"
+            and provider_rows
+            and not missing_operations
+        )
+        return {
+            "interface": response.get("interface"),
+            "ready": ready,
+            "provider_names": sorted(normalized_names),
+            "provider_catalog_digest_sha256": content_digest(provider_rows),
+            "missing_stable_operations": missing_operations,
+            "error": None,
+            "evidence_ref": evidence_ref,
+        }
+    except Exception as exc:  # noqa: BLE001 - public surface fails closed
+        return {
+            "interface": None,
+            "ready": False,
+            "provider_names": [],
+            "provider_catalog_digest_sha256": None,
+            "missing_stable_operations": list(
+                lock.get("stable_python_operations") or ()
+            ),
+            "error": type(exc).__name__,
+            "evidence_ref": evidence_ref,
+        }
+
+
+def _installer_plugin_source(
+    repo_root: Path,
+    plugin: Mapping[str, Any],
+) -> tuple[Path | None, str]:
+    module_name = str(plugin.get("module_path") or "")
+    if not module_name:
+        return None, "installer_plugin_module_missing"
+    relative = _assurance_module_path(module_name)
+    if not (repo_root / relative).is_file():
+        return relative, "installer_plugin_source_missing"
+    return relative, "installer_plugin_source_present"
+
+
+def _installer_entry_is_callable_source(
+    repo_root: Path,
+    entry: Mapping[str, Any],
+    plugin: Mapping[str, Any],
+) -> tuple[bool, Path | None]:
+    relative, _ = _installer_plugin_source(repo_root, plugin)
+    ensure_name = str(entry.get("ensure_name") or "")
+    if relative is None or not ensure_name:
+        return False, relative
+    try:
+        source = (repo_root / relative).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False, relative
+    pattern = re.compile(rf"(?m)^def\s+{re.escape(ensure_name)}\s*\(")
+    return bool(pattern.search(source)), relative
+
+
+def _certificate_tools_by_id(
+    certificate: Mapping[str, Any],
+) -> dict[str, Mapping[str, Any]]:
+    raw_tools = certificate.get("tools") or ()
+    if isinstance(raw_tools, Mapping):
+        return {
+            str(tool_id): value
+            for tool_id, value in raw_tools.items()
+            if isinstance(value, Mapping)
+        }
+    return {
+        str(item.get("tool_id") or ""): item
+        for item in raw_tools
+        if isinstance(item, Mapping) and str(item.get("tool_id") or "")
+    }
+
+
+def _provider_identity_class(tool_id: str, role: str) -> str:
+    if tool_id == "secpal-authorization":
+        return "in_process_secpal_reference"
+    if tool_id == "datalog-authorization":
+        return "in_process_datalog_reference"
+    if tool_id == "secpal":
+        return "external_secpal_vendor"
+    if tool_id == "souffle":
+        return "external_datalog_vendor_shadow"
+    if tool_id == "ergoai":
+        return "ergoai_advisor"
+    if role == "authority":
+        return "independent_certifying_authority"
+    if role in {"advisor", "candidate"}:
+        return "proposal_or_advisor"
+    if role == "support":
+        return "support_dependency"
+    return "external_shadow"
+
+
+def _artifact_architecture_mismatch(
+    tool: Mapping[str, Any],
+    host_platform: str,
+) -> bool:
+    host_arch = host_platform.split("-", 1)[1] if "-" in host_platform else ""
+    aliases = {
+        "aarch64": {"aarch64", "arm64"},
+        "arm64": {"aarch64", "arm64"},
+        "x86_64": {"x86_64", "amd64"},
+        "amd64": {"x86_64", "amd64"},
+    }
+    allowed = aliases.get(host_arch, {host_arch})
+    observed: set[str] = set()
+    for artifact in tool.get("artifact_identities") or ():
+        if not isinstance(artifact, Mapping):
+            continue
+        for key in ("native_machine", "architecture", "machine"):
+            value = str(artifact.get(key) or "").strip().lower()
+            if value:
+                observed.add(value)
+    return bool(observed and not observed.intersection(allowed))
+
+
+def _tool_has_closed_semantic_checks(tool: Mapping[str, Any]) -> bool:
+    checks = [
+        item
+        for item in (tool.get("checks") or ())
+        if isinstance(item, Mapping)
+    ]
+    kinds = {str(item.get("kind") or "") for item in checks}
+    return bool(
+        checks
+        and all(item.get("status") == "passed" for item in checks)
+        and {"positive", "negative", "mutation", "replay"} <= kinds
+    )
+
+
+def _public_surface_exposes_tool(
+    tool_id: str,
+    *,
+    provider_names: set[str],
+    role: str,
+    stable_operations_ready: bool,
+    vendor_readiness: Mapping[str, Any] | None = None,
+) -> tuple[bool, str]:
+    if role == "support":
+        return True, "support_dependency_has_no_public_provider_surface"
+    if role in {"advisor", "candidate"}:
+        return True, "advisor_candidate_has_no_independent_public_provider_surface"
+    if role == "shadow":
+        return True, "shadow_checker_has_no_independent_public_provider_surface"
+    vendor = vendor_readiness if isinstance(vendor_readiness, Mapping) else {}
+    if str(vendor.get("role") or "") == "differential_witness":
+        return (
+            True,
+            "differential_witness_has_no_independent_public_provider_surface",
+        )
+    normalized = tool_id.lower().replace("-", "_")
+    if normalized in provider_names:
+        return True, "provider_exposed_by_logic_api"
+    # Attestation is exposed as a stable operation rather than a solver entry.
+    if tool_id == "zkp-circuit" and stable_operations_ready:
+        return True, "attestation_exposed_by_logic_api_operation"
+    return False, "provider_not_exposed_by_logic_api"
+
+
+def _secpal_operator_artifact(
+    deployment_contract: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Return the reviewed external SecPAL artifact contract, if present.
+
+    The artifact is intentionally represented by lock metadata only.  The
+    SecPAL research EULA forbids third-party redistribution, so the matrix
+    must never bind or publish a path to locally recovered vendor bytes.
+    """
+
+    vendor_install = deployment_contract.get("vendor_install") or {}
+    if not isinstance(vendor_install, Mapping):
+        return {}
+    artifact = vendor_install.get("operator_artifact") or {}
+    return artifact if isinstance(artifact, Mapping) else {}
+
+
+def _secpal_provenance_bound(artifact: Mapping[str, Any]) -> bool:
+    authenticode = artifact.get("authenticode_evidence") or {}
+    license_evidence = artifact.get("license_evidence") or {}
+    runtime_contract = artifact.get("runtime_contract") or {}
+    artifact_size = artifact.get("artifact_size_bytes")
+    return bool(
+        artifact.get("status") == "reviewed_restricted_artifact"
+        and re.fullmatch(r"[0-9a-f]{64}", str(artifact.get("artifact_sha256") or ""))
+        and isinstance(artifact_size, int)
+        and not isinstance(artifact_size, bool)
+        and artifact_size > 0
+        and isinstance(authenticode, Mapping)
+        and authenticode.get("verified") is True
+        and isinstance(license_evidence, Mapping)
+        and license_evidence.get("reviewed") is True
+        and re.fullmatch(
+            r"[0-9a-f]{64}", str(license_evidence.get("sha256") or "")
+        )
+        and isinstance(runtime_contract, Mapping)
+        and bool(str(runtime_contract.get("kind") or ""))
+        and bool(str(runtime_contract.get("version_constraint") or ""))
+    )
+
+
+def _secpal_compatibility_evidence(
+    artifact: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Read optional sample-run evidence without promoting it to support."""
+
+    for key in (
+        "operator_compatibility_probe",
+        "operator_compatibility_evidence",
+        "compatibility_evidence",
+        "sample_compatibility_evidence",
+    ):
+        candidate = artifact.get(key) or {}
+        if isinstance(candidate, Mapping) and candidate:
+            return candidate
+    platform_evidence = artifact.get("platform_matrix_evidence") or {}
+    if isinstance(platform_evidence, Mapping):
+        candidate = platform_evidence.get("operator_compatibility_evidence") or {}
+        if isinstance(candidate, Mapping):
+            return candidate
+    return {}
+
+
+def _build_provider_host_assurance_row(
+    *,
+    repo_root: Path,
+    lock: Mapping[str, Any],
+    lock_entry: Mapping[str, Any],
+    tool: Mapping[str, Any],
+    role_meta: Mapping[str, Any],
+    host_platform: str,
+    global_platforms: Sequence[str],
+    lock_ref: Mapping[str, Any],
+    certificate_ref: Mapping[str, Any],
+    certificate_lock_fresh: bool,
+    packaging: Mapping[str, Any],
+    installer_registry: Mapping[str, Any],
+    public_surface: Mapping[str, Any],
+    vendor_readiness: Mapping[str, Any],
+) -> dict[str, Any]:
+    tool_id = str(lock_entry.get("tool_id") or tool.get("tool_id") or "")
+    availability = str(lock_entry.get("availability") or "")
+    managed = availability == "managed_pin"
+    role = str(role_meta.get("role") or "")
+    ceiling = str(role_meta.get("authority_ceiling") or "")
+    can_certify = role_meta.get("can_satisfy_certified_authority") is True
+    identity_class = _provider_identity_class(tool_id, role)
+    platform_row = tool_platform_support(
+        lock_entry,
+        host_platform=host_platform,
+        global_supported_platforms=global_platforms,
+    )
+    base_refs = [lock_ref, certificate_ref]
+
+    # Dependency axis: assess the reviewed dependency/identity contract on its
+    # own.  A platform exception never turns absent dependency metadata green.
+    deployment_contract = lock_entry.get("deployment_contract") or {}
+    deployment_contract = (
+        deployment_contract if isinstance(deployment_contract, Mapping) else {}
+    )
+    pins = [
+        item
+        for item in (lock_entry.get("pins") or ())
+        if isinstance(item, Mapping)
+    ]
+    secpal_artifact = (
+        _secpal_operator_artifact(deployment_contract)
+        if tool_id == "secpal"
+        else {}
+    )
+    secpal_provenance_bound = _secpal_provenance_bound(secpal_artifact)
+    secpal_compatibility = _secpal_compatibility_evidence(secpal_artifact)
+    secpal_platform_evidence = secpal_artifact.get("platform_matrix_evidence") or {}
+    secpal_platform_evidence = (
+        secpal_platform_evidence
+        if isinstance(secpal_platform_evidence, Mapping)
+        else {}
+    )
+    secpal_live_platforms = secpal_platform_evidence.get(
+        "live_execution_supported_platforms"
+    )
+    secpal_live_host_unsupported = bool(
+        tool_id == "secpal"
+        and isinstance(secpal_live_platforms, list)
+        and host_platform not in secpal_live_platforms
+    )
+    if availability == "in_process":
+        dependency_axis = _assurance_axis(
+            "ready",
+            required=True,
+            reason_codes=["in_process_dependencies_bound_by_distribution"],
+            evidence_refs=base_refs,
+            details={"availability": availability},
+        )
+    elif tool_id == "secpal" and secpal_provenance_bound:
+        # This means only that the exact retired vendor dependency has an
+        # authenticated, licensed, runtime-bound identity.  It says nothing
+        # about redistributability, installation, live capability, semantics,
+        # or platform support; those axes are evaluated independently below.
+        dependency_axis = _assurance_axis(
+            "ready",
+            required=True,
+            reason_codes=["official_restricted_artifact_provenance_bound"],
+            evidence_refs=[lock_ref],
+            details={
+                "availability": availability,
+                "artifact_sha256": secpal_artifact.get("artifact_sha256"),
+                "artifact_size_bytes": secpal_artifact.get("artifact_size_bytes"),
+                "publisher": secpal_artifact.get("publisher"),
+                "release_version": secpal_artifact.get("release_version"),
+                "authenticode_verified": True,
+                "license_evidence_reviewed": True,
+                "runtime_contract": dict(
+                    secpal_artifact.get("runtime_contract") or {}
+                ),
+                "restricted_artifact_bytes_published": False,
+            },
+        )
+    elif tool_id == "secpal":
+        dependency_axis = _assurance_axis(
+            "blocked",
+            required=True,
+            reason_codes=[
+                "supported_dependency_contract_incomplete",
+                "secpal_artifact_or_runtime_identity_missing",
+            ],
+            evidence_refs=base_refs,
+            details={"availability": availability},
+        )
+    elif (
+        (tool.get("installed") is True and tool.get("usable") is True)
+        or vendor_readiness.get("installation_ready") is True
+        or vendor_readiness.get("ready") is True
+    ):
+        dependency_axis = _assurance_axis(
+            "ready",
+            required=True,
+            reason_codes=["dependency_identities_bound"],
+            evidence_refs=base_refs,
+            details={"availability": availability},
+        )
+    else:
+        dependency_axis = _assurance_axis(
+            "blocked",
+            required=True,
+            reason_codes=[
+                "supported_missing_dependencies",
+                "supported_dependencies_unavailable_or_unbound",
+            ],
+            evidence_refs=base_refs,
+            details={"availability": availability},
+        )
+
+    packaging_ready = packaging.get("ready") is True
+    secpal_license = secpal_artifact.get("license_evidence") or {}
+    secpal_license = secpal_license if isinstance(secpal_license, Mapping) else {}
+    secpal_distribution_restricted = bool(
+        tool_id == "secpal"
+        and (
+            secpal_artifact.get("redistribution_permitted") is False
+            or str(secpal_license.get("redistribution_terms") or "").startswith(
+                "prohibited"
+            )
+        )
+    )
+    if secpal_distribution_restricted:
+        packaging_axis = _assurance_axis(
+            "blocked",
+            required=True,
+            reason_codes=[
+                "restricted_vendor_artifact_not_redistributable",
+                "research_release_not_for_live_environment",
+            ],
+            evidence_refs=[lock_ref, *list(packaging.get("evidence_refs") or ())],
+            details={
+                "python_distribution_contract_ready": packaging_ready,
+                "vendor_artifact_bundled": False,
+                "redistribution_permitted": False,
+                "production_use_permitted": bool(
+                    secpal_artifact.get("production_use_permitted")
+                ),
+                "third_party_direct_acquisition_required": True,
+            },
+        )
+    else:
+        packaging_axis = _assurance_axis(
+            "ready" if packaging_ready else "blocked",
+            required=True,
+            reason_codes=list(
+                packaging.get("reason_codes") or ["missing_wheel_files"]
+            ),
+            evidence_refs=list(packaging.get("evidence_refs") or ()),
+            details={
+                "missing_wheel_contract_files": list(
+                    packaging.get("missing_wheel_contract_files") or ()
+                ),
+                "missing_stable_modules": list(
+                    packaging.get("missing_stable_modules") or ()
+                ),
+            },
+        )
+
+    # Installer axis: registry metadata and an actual ensure_* definition are
+    # required for managed tools.  SecPAL's current no-artifact stub is
+    # explicitly a placeholder even though its function name exists.
+    registry_entries = installer_registry.get("entries") or {}
+    registry_plugins = installer_registry.get("plugins") or {}
+    registry_entry = (
+        registry_entries.get(tool_id, {})
+        if isinstance(registry_entries, Mapping)
+        else {}
+    )
+    registry_entry = registry_entry if isinstance(registry_entry, Mapping) else {}
+    plugin = (
+        registry_plugins.get(str(registry_entry.get("family") or ""), {})
+        if isinstance(registry_plugins, Mapping)
+        else {}
+    )
+    plugin = plugin if isinstance(plugin, Mapping) else {}
+    callable_source, plugin_relative = _installer_entry_is_callable_source(
+        repo_root, registry_entry, plugin
+    )
+    installer_refs = [dict(installer_registry.get("evidence_ref") or lock_ref)]
+    if plugin_relative is not None:
+        installer_refs.append(
+            _assurance_path_evidence_ref(
+                repo_root,
+                plugin_relative,
+                evidence_id=f"installer_plugin:{tool_id}",
+            )
+        )
+    secpal_placeholder = bool(
+        tool_id == "secpal"
+        and (
+            not secpal_provenance_bound
+            or secpal_artifact.get("artifact_intake_implemented") is False
+        )
+    )
+    if not managed:
+        installer_axis = _assurance_axis(
+            "not_applicable",
+            required=False,
+            reason_codes=["in_process_provider_requires_no_lazy_installer"],
+            evidence_refs=installer_refs,
+        )
+    elif tool_id == "secpal" and secpal_provenance_bound:
+        # Artifact intake is real and non-executable, but live vendor install
+        # dispatch remains intentionally unimplemented on the empty platform
+        # matrix.  Keep the catalog token ``placeholder_dispatch`` visible so
+        # fail-closed consumers can still distinguish residual live-install
+        # non-implementation from the transactional lazy installers of other
+        # managed tools (without promoting SecPAL to a live engine).
+        installer_axis = _assurance_axis(
+            "blocked",
+            required=True,
+            reason_codes=[
+                "artifact_intake_only_not_live_installer",
+                "operator_direct_acquisition_required",
+                "vendor_distribution_forbidden",
+                "placeholder_dispatch",
+            ],
+            evidence_refs=[lock_ref, *installer_refs],
+            details={
+                "ensure_name_present": callable_source,
+                "artifact_intake_implemented": bool(
+                    (deployment_contract.get("vendor_install") or {}).get(
+                        "artifact_intake_implemented"
+                    )
+                    if isinstance(
+                        deployment_contract.get("vendor_install"), Mapping
+                    )
+                    else False
+                ),
+                "artifact_intake_only": bool(
+                    secpal_artifact.get("artifact_intake_only")
+                ),
+                "live_certification_eligible": bool(
+                    secpal_artifact.get("live_certification_eligible")
+                ),
+                "automatic_download_permitted": bool(
+                    secpal_artifact.get("downloads_permitted")
+                ),
+                "live_vendor_install_dispatch_implemented": False,
+            },
+        )
+    elif secpal_placeholder:
+        installer_axis = _assurance_axis(
+            "blocked",
+            required=True,
+            reason_codes=["placeholder_dispatch", "secpal_vendor_installer_unimplemented"],
+            evidence_refs=installer_refs,
+            details={"ensure_name_present": callable_source},
+        )
+    elif (
+        installer_registry.get("interface")
+        == "FormalVerificationInstallerRegistry@1"
+        and registry_entry
+        and callable_source
+        and registry_entry.get("requires_explicit_yes") is True
+        and registry_entry.get("never_on_import") is True
+        and registry_entry.get("never_on_capability_discovery") is True
+    ):
+        installer_axis = _assurance_axis(
+            "ready",
+            required=True,
+            reason_codes=["transactional_lazy_installer_bound"],
+            evidence_refs=installer_refs,
+            details={"ensure_name": registry_entry.get("ensure_name")},
+        )
+    else:
+        installer_axis = _assurance_axis(
+            "blocked",
+            required=True,
+            reason_codes=["placeholder_dispatch"],
+            evidence_refs=installer_refs,
+            details={"ensure_name_present": callable_source},
+        )
+
+    unsupported_live_host = bool(
+        platform_row.get("classification") == "unsupported_here"
+        or secpal_live_host_unsupported
+    )
+    if tool_id == "secpal" and (
+        unsupported_live_host
+        or secpal_artifact.get("live_certification_eligible") is False
+    ):
+        capability_ready = False
+        capability_reason = "capability_unavailable_on_unsupported_host"
+    elif vendor_readiness.get("ready") is True:
+        capability_ready = True
+        capability_reason = "checked_vendor_capability_ready"
+    else:
+        capability_ready = bool(
+            tool.get("installed") is True
+            and tool.get("usable") is True
+            and tool.get("unavailable") is not True
+        )
+        capability_reason = "installed_identity_probed_and_usable"
+    capability_reasons = [capability_reason] if capability_ready else [
+        "capability_unavailable_on_unsupported_host"
+        if unsupported_live_host
+        else "capability_missing_or_unusable"
+    ]
+    capability_axis = _assurance_axis(
+        "ready" if capability_ready else "blocked",
+        required=True,
+        reason_codes=capability_reasons,
+        evidence_refs=base_refs,
+        details={
+            "installed": bool(tool.get("installed")),
+            "usable": bool(tool.get("usable")),
+            "evidence_class": tool.get("evidence_class"),
+            "operator_compatibility_observed": bool(secpal_compatibility),
+            "operator_compatibility_is_vendor_support": False,
+            "operator_compatibility_is_live_capability": False,
+        },
+    )
+
+    unsafe_semantic_tokens = {
+        "fixture",
+        "parser_only",
+        "parser_fixture",
+        "generated_hermetic_shim",
+        "hermetic_adapter_shim",
+        "proposal_only_semantics",
+    }
+    evidence_class = str(tool.get("evidence_class") or "unavailable")
+    support_semantics = role == "support"
+    non_certifying_role_semantics = role in {
+        "advisor",
+        "shadow",
+        "candidate",
+    }
+    vendor_semantic_ready = (
+        vendor_readiness.get("semantic_certification_ready") is True
+    )
+    semantic_unsafe = evidence_class in unsafe_semantic_tokens or any(
+        token in evidence_class for token in ("fixture", "parser_only")
+    )
+    # Checked vendor readiness proves live semantic cases beyond a residual
+    # shim label on the multi-prover certificate body.
+    production_semantic_ready = bool(
+        not unsupported_live_host
+        and not (
+            tool_id == "secpal"
+            and secpal_artifact.get("live_certification_eligible") is False
+        )
+        and (
+            (
+                tool.get("production_certified") is True
+                and _tool_has_closed_semantic_checks(tool)
+                and not semantic_unsafe
+            )
+            or vendor_semantic_ready
+        )
+    )
+    role_scoped_usable = bool(
+        tool.get("installed") is True
+        and tool.get("usable") is True
+        and tool.get("unavailable") is not True
+        and not unsupported_live_host
+    )
+    if support_semantics:
+        semantic_axis = _assurance_axis(
+            "not_applicable",
+            required=False,
+            reason_codes=["support_dependency_has_no_semantic_authority"],
+            evidence_refs=base_refs,
+        )
+    elif tool_id == "secpal":
+        # External Microsoft SecPAL keeps the explicit vendor fail-closed
+        # surface even though its role is shadow; sample compatibility never
+        # becomes arbitrary-policy semantics.
+        secpal_semantic_ready = production_semantic_ready
+        semantic_axis = _assurance_axis(
+            "ready" if secpal_semantic_ready else "blocked",
+            required=True,
+            reason_codes=(
+                ["closed_semantic_case_set_bound"]
+                if secpal_semantic_ready
+                else (
+                    [
+                        "operator_compatibility_samples_not_arbitrary_policy_semantics"
+                        if secpal_compatibility
+                        else "reviewed_vendor_payloads_are_not_live_semantic_evidence",
+                        "secpal_live_semantic_cli_unavailable",
+                    ]
+                    if secpal_provenance_bound
+                    else ["semantic_evidence_missing_or_incomplete"]
+                )
+            ),
+            evidence_refs=base_refs,
+            details={
+                "evidence_class": evidence_class,
+                "production_certified": bool(tool.get("production_certified")),
+                "operator_compatibility_observed": bool(secpal_compatibility),
+                "operator_compatibility_scope": "shipped_samples_only"
+                if secpal_compatibility
+                else None,
+                "arbitrary_policy_semantics_certified": False,
+            },
+        )
+    elif non_certifying_role_semantics:
+        # Advisors/shadows/candidates never hold production semantic authority.
+        # Joint readiness for these rows is role-scoped usability only.
+        semantic_axis = _assurance_axis(
+            "not_applicable" if role_scoped_usable else "blocked",
+            required=False if role_scoped_usable else True,
+            reason_codes=(
+                ["non_certifying_role_has_no_production_semantic_authority"]
+                if role_scoped_usable
+                else (
+                    ["advisor_only_evidence"]
+                    if role == "advisor"
+                    else (
+                        [
+                            "parser_fixture",
+                            "parser_fixture_not_semantic_evidence",
+                        ]
+                        if semantic_unsafe
+                        else ["semantic_evidence_missing_or_incomplete"]
+                    )
+                )
+            ),
+            evidence_refs=base_refs,
+            details={
+                "evidence_class": evidence_class,
+                "production_certified": bool(tool.get("production_certified")),
+                "role": role,
+                "role_scoped_usable": role_scoped_usable,
+            },
+        )
+    else:
+        semantic_reasons = (
+            [
+                "operator_compatibility_samples_not_arbitrary_policy_semantics"
+                if secpal_compatibility
+                else "reviewed_vendor_payloads_are_not_live_semantic_evidence",
+                "secpal_live_semantic_cli_unavailable",
+            ]
+            if tool_id == "secpal" and secpal_provenance_bound
+            else (
+                [
+                    "parser_fixture",
+                    "parser_fixture_not_semantic_evidence",
+                ]
+                if semantic_unsafe and not vendor_semantic_ready
+                else ["semantic_evidence_missing_or_incomplete"]
+            )
+        )
+        semantic_axis = _assurance_axis(
+            "ready" if production_semantic_ready else "blocked",
+            required=True,
+            reason_codes=(
+                (
+                    ["checked_vendor_semantic_certification_bound"]
+                    if vendor_semantic_ready
+                    and not (
+                        tool.get("production_certified") is True
+                        and _tool_has_closed_semantic_checks(tool)
+                    )
+                    else ["closed_semantic_case_set_bound"]
+                )
+                if production_semantic_ready
+                else semantic_reasons
+            ),
+            evidence_refs=base_refs,
+            details={
+                "evidence_class": evidence_class,
+                "production_certified": bool(tool.get("production_certified")),
+                "vendor_semantic_certification_ready": vendor_semantic_ready,
+                "operator_compatibility_observed": bool(secpal_compatibility),
+                "operator_compatibility_scope": "shipped_samples_only"
+                if secpal_compatibility
+                else None,
+                "arbitrary_policy_semantics_certified": False
+                if tool_id == "secpal"
+                else None,
+            },
+        )
+
+    wrong_architecture = _artifact_architecture_mismatch(tool, host_platform)
+    if secpal_live_host_unsupported:
+        platform_axis = _assurance_axis(
+            "unsupported",
+            required=True,
+            reason_codes=[
+                "unsupported_host",
+                "vendor_supported_live_host_absent",
+            ],
+            evidence_refs=[lock_ref],
+            details={
+                **dict(platform_row),
+                "artifact_intake_support_is_not_live_execution_support": True,
+                "live_execution_supported_platforms": list(secpal_live_platforms),
+                "operator_compatibility_is_not_vendor_platform_support": True,
+            },
+        )
+    elif platform_row.get("classification") == "unsupported_here":
+        platform_axis = _assurance_axis(
+            "unsupported",
+            required=True,
+            reason_codes=["unsupported_host"],
+            evidence_refs=[lock_ref],
+            details=dict(platform_row),
+        )
+    elif wrong_architecture:
+        platform_axis = _assurance_axis(
+            "blocked",
+            required=True,
+            reason_codes=["wrong_architecture_artifact"],
+            evidence_refs=base_refs,
+            details=dict(platform_row),
+        )
+    elif platform_row.get("supported") is True:
+        platform_axis = _assurance_axis(
+            "ready",
+            required=True,
+            reason_codes=["platform_and_artifact_identity_match"],
+            evidence_refs=base_refs,
+            details=dict(platform_row),
+        )
+    else:
+        platform_axis = _assurance_axis(
+            "blocked",
+            required=True,
+            reason_codes=["platform_binding_ambiguous"],
+            evidence_refs=[lock_ref],
+            details=dict(platform_row),
+        )
+
+    role_ref = _assurance_path_evidence_ref(
+        repo_root,
+        Path(
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/"
+            "toolchain_roles.py"
+        ),
+        evidence_id="toolchain_authority_roles",
+        interface="RoleAwarePromotionPolicy@1",
+    )
+    vendor_is_differential = (
+        str(vendor_readiness.get("role") or "") == "differential_witness"
+    )
+    if not role_meta:
+        authority_axis = _assurance_axis(
+            "blocked",
+            required=True,
+            reason_codes=["authority_role_missing"],
+            evidence_refs=[role_ref, certificate_ref],
+        )
+    elif role == "authority":
+        production_authority_ready = bool(
+            can_certify and tool.get("production_certified") is True
+        )
+        # External differential witnesses keep a finite-trace ceiling but never
+        # production-elevate; reference authority is retained elsewhere.
+        differential_authority_ready = bool(
+            vendor_is_differential
+            and vendor_semantic_ready
+            and vendor_readiness.get("production_elevation_allowed") is False
+            and vendor_readiness.get("authority_granted") is False
+            and vendor_readiness.get("grants_theorem_authority") is False
+        )
+        authority_ready = production_authority_ready or differential_authority_ready
+        authority_axis = _assurance_axis(
+            "ready" if authority_ready else "blocked",
+            required=True,
+            reason_codes=(
+                ["certified_authority_ceiling_satisfied"]
+                if production_authority_ready
+                else (
+                    ["differential_witness_authority_ceiling_enforced"]
+                    if differential_authority_ready
+                    else ["semantic_evidence_below_authority_ceiling"]
+                )
+            ),
+            evidence_refs=[role_ref, certificate_ref],
+            details={
+                "role": role,
+                "authority_ceiling": ceiling,
+                "can_satisfy_certified_authority": can_certify,
+                "certified_authority_ready": production_authority_ready,
+                "differential_witness": vendor_is_differential,
+                "reference_authority_retained_by": list(
+                    vendor_readiness.get("reference_authority_retained_by") or ()
+                ),
+            },
+        )
+    else:
+        ceiling_enforced = bool(not can_certify and role in {
+            "support", "advisor", "candidate", "shadow"
+        })
+        authority_reasons = (
+            [
+                "authentic_vendor_identity_bound",
+                "non_certifying_authority_ceiling_enforced",
+            ]
+            if tool_id == "secpal" and secpal_provenance_bound
+            else ["non_certifying_authority_ceiling_enforced"]
+            if ceiling_enforced
+            else ["non_certifying_role_claimed_authority"]
+        )
+        authority_axis = _assurance_axis(
+            "ready" if ceiling_enforced else "blocked",
+            required=True,
+            reason_codes=authority_reasons,
+            evidence_refs=[role_ref, certificate_ref, lock_ref]
+            if tool_id == "secpal"
+            else [role_ref, certificate_ref],
+            details={
+                "role": role,
+                "authority_ceiling": ceiling,
+                "can_satisfy_certified_authority": can_certify,
+                "certified_authority_ready": False,
+                "vendor_artifact_authenticity_verified": bool(
+                    tool_id == "secpal" and secpal_provenance_bound
+                ),
+                "operator_compatibility_grants_authority": False,
+            },
+        )
+
+    freshness_ready = bool(
+        certificate_lock_fresh
+        and tool.get("locked_version_mismatch") is not True
+        and lock_ref.get("present") is True
+    )
+    freshness_axis = _assurance_axis(
+        "ready" if freshness_ready else "blocked",
+        required=True,
+        reason_codes=(
+            ["lock_and_certificate_content_digests_current"]
+            if freshness_ready
+            else (
+                ["stale_lock", "stale_lock_digest"]
+                if not certificate_lock_fresh
+                else ["stale_or_mismatched_tool_identity"]
+            )
+        ),
+        evidence_refs=base_refs,
+        details={
+            "certificate_lock_digest_matches": certificate_lock_fresh,
+            "locked_version_mismatch": bool(tool.get("locked_version_mismatch")),
+        },
+    )
+
+    provider_names = {
+        str(item) for item in (public_surface.get("provider_names") or ())
+    }
+    public_exposed, public_reason = _public_surface_exposes_tool(
+        tool_id,
+        provider_names=provider_names,
+        role=role,
+        stable_operations_ready=public_surface.get("ready") is True,
+        vendor_readiness=vendor_readiness,
+    )
+    public_required = role not in {
+        "support",
+        "advisor",
+        "shadow",
+        "candidate",
+    } and str(vendor_readiness.get("role") or "") != "differential_witness"
+    if not public_required:
+        public_surface_axis = _assurance_axis(
+            "not_applicable",
+            required=False,
+            reason_codes=[public_reason],
+            evidence_refs=[dict(public_surface.get("evidence_ref") or lock_ref)],
+        )
+    else:
+        public_ready = bool(public_surface.get("ready") is True and public_exposed)
+        public_surface_axis = _assurance_axis(
+            "ready" if public_ready else "blocked",
+            required=True,
+            reason_codes=[
+                public_reason
+                if public_surface.get("ready") is True
+                else "logic_api_public_surface_unavailable"
+            ],
+            evidence_refs=[dict(public_surface.get("evidence_ref") or lock_ref)],
+            details={"provider_exposed": public_exposed},
+        )
+
+    axes = {
+        "dependency": dependency_axis,
+        "packaging": packaging_axis,
+        "installer": installer_axis,
+        "capability": capability_axis,
+        "semantic": semantic_axis,
+        "platform": platform_axis,
+        "authority": authority_axis,
+        "freshness": freshness_axis,
+        "public_surface": public_surface_axis,
+    }
+    joint_ready = provider_host_joint_ready(axes)
+    joint_reasons = sorted(
+        {
+            f"{axis_name}:{reason}"
+            for axis_name, axis in axes.items()
+            if not (
+                axis.get("state") == "ready"
+                or (
+                    axis.get("state") == "not_applicable"
+                    and axis.get("required") is False
+                )
+            )
+            for reason in axis.get("reason_codes") or ()
+        }
+    )
+    return {
+        "row_id": f"{tool_id}@{host_platform}",
+        "provider_id": tool_id,
+        "host": {
+            "platform_id": host_platform,
+            "system": platform.system().lower(),
+            "machine": platform.machine().lower(),
+        },
+        "identity_boundary": {
+            "identity_class": identity_class,
+            "role": role or "unclassified",
+            "authority_ceiling": ceiling or "unclassified",
+            "can_satisfy_certified_authority": can_certify,
+            "independent_proof_authority": bool(
+                role == "authority" and can_certify
+            ),
+            "independent_reconstruction_required": tool_id == "ergoai",
+            "inherits_evidence_from": [],
+        },
+        "axes": axes,
+        "joint_ready": joint_ready,
+        "joint_reason_codes": joint_reasons or ["all_required_axes_ready"],
+    }
+
+
+def recompute_end_to_end_assurance_claims(
+    matrix: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Recompute every joint claim after an axis or evidence mutation."""
+
+    payload = dict(matrix)
+    rows = [
+        dict(row)
+        for row in (payload.get("provider_host_rows") or ())
+        if isinstance(row, Mapping)
+    ]
+    blockers: list[str] = []
+    ready_count = 0
+    unsupported_count = 0
+    for row in rows:
+        axes = row.get("axes")
+        axes = axes if isinstance(axes, Mapping) else {}
+        for axis_name, raw_axis in axes.items():
+            if isinstance(raw_axis, dict):
+                raw_axis["ready"] = raw_axis.get("state") == "ready"
+        joint_ready = provider_host_joint_ready(axes)
+        row["joint_ready"] = joint_ready
+        if joint_ready:
+            ready_count += 1
+            row["joint_reason_codes"] = ["all_required_axes_ready"]
+        else:
+            reasons: list[str] = []
+            for axis_name in END_TO_END_ASSURANCE_AXES:
+                raw_axis = axes.get(axis_name)
+                if not isinstance(raw_axis, Mapping):
+                    reasons.append(f"{axis_name}:axis_missing")
+                    continue
+                state = raw_axis.get("state")
+                acceptable = state == "ready" or (
+                    state == "not_applicable"
+                    and raw_axis.get("required") is False
+                )
+                if not acceptable:
+                    reasons.extend(
+                        f"{axis_name}:{reason}"
+                        for reason in (raw_axis.get("reason_codes") or ("blocked",))
+                    )
+                if state == "unsupported":
+                    unsupported_count += 1
+            row["joint_reason_codes"] = sorted(set(reasons))
+            blockers.extend(
+                f"{row.get('row_id')}:{reason}"
+                for reason in row["joint_reason_codes"]
+            )
+    payload["provider_host_rows"] = rows
+    coverage = payload.get("coverage")
+    coverage = dict(coverage) if isinstance(coverage, Mapping) else {}
+    audit_complete = bool(
+        coverage.get("all_lock_providers_present") is True
+        and coverage.get("all_rows_have_exact_axes") is True
+        and coverage.get("secpal_identities_separate") is True
+        and coverage.get("ergoai_advisor_separate_from_proof_authority") is True
+        and payload.get("public_evidence_policy", {}).get("satisfied", True) is True
+    )
+    deployment_ready = bool(rows and ready_count == len(rows) and audit_complete)
+    payload["summary"] = {
+        "audit_complete": audit_complete,
+        "deployment_ready": deployment_ready,
+        "status": "deployment_ready" if deployment_ready else "deployment_blocked",
+        "provider_host_rows_total": len(rows),
+        "provider_host_rows_ready": ready_count,
+        "provider_host_rows_blocked": len(rows) - ready_count,
+        "unsupported_axis_count": unsupported_count,
+        "blockers": sorted(set(blockers)),
+    }
+    payload["claims"] = {
+        "audit_contract_complete": audit_complete,
+        "deployment_ready": deployment_ready,
+        "one_axis_cannot_inherit_another_axis_success": True,
+        "unsupported_is_not_ready": True,
+        "fixtures_parsers_shims_and_advisors_do_not_gain_proof_authority": True,
+    }
+    payload["matrix_digest_sha256"] = content_digest(
+        {key: value for key, value in payload.items() if key != "matrix_digest_sha256"}
+    )
+    return payload
+
+
+def _load_optional_json_mapping(path: Path) -> dict[str, Any] | None:
+    """Load a JSON object from disk; return None when missing or malformed."""
+
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return dict(payload) if isinstance(payload, Mapping) else None
+
+
+def _reference_logic_semantic_receipt_valid(payload: Mapping[str, Any]) -> bool:
+    """Accept only a certified, self-digesting reference-logic closure receipt."""
+
+    if payload.get("interface") != REFERENCE_LOGIC_SEMANTIC_INTERFACE:
+        return False
+    if payload.get("schema_version") != "reference-logic-semantic-closure/v1":
+        return False
+    if payload.get("goal_id") != REFERENCE_LOGIC_SEMANTIC_GOAL_ID:
+        return False
+    if payload.get("certified") is not True:
+        return False
+    declared = str(payload.get("receipt_digest_sha256") or "")
+    computed = content_digest(
+        {
+            key: value
+            for key, value in payload.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+    return declared == computed
+
+
+def _production_authorization_replacement_receipt_valid(
+    payload: Mapping[str, Any],
+) -> bool:
+    """Accept the separately named replacement without Microsoft/G219 authority."""
+
+    if payload.get("interface") != PRODUCTION_AUTHORIZATION_REPLACEMENT_INTERFACE:
+        return False
+    if payload.get("certified") is not True:
+        return False
+    provider = payload.get("provider")
+    provider = provider if isinstance(provider, Mapping) else {}
+    if (
+        provider.get("provider_id")
+        != PRODUCTION_AUTHORIZATION_REPLACEMENT_PROVIDER_ID
+    ):
+        return False
+    identity = payload.get("identity_boundary")
+    identity = identity if isinstance(identity, Mapping) else {}
+    if identity.get("cannot_satisfy_fvt_g219") is not True:
+        return False
+    if identity.get("external_provider_id") != "secpal":
+        return False
+    if identity.get("reference_provider_id") != "secpal-authorization":
+        return False
+    if identity.get("provider_id") != PRODUCTION_AUTHORIZATION_REPLACEMENT_PROVIDER_ID:
+        return False
+    if payload.get("legal_approval_complete") is True:
+        return False
+    if payload.get("deployment_ready") is True:
+        return False
+    return True
+
+
+def _load_g232_disposition_module():
+    """Load the FVT-G232 disposition module (external or project-owner)."""
+
+    try:
+        from tools.logic import (
+            certify_authorization_replacement_external_approval as module,
+        )
+
+        return module
+    except ImportError:
+        approval_path = (
+            Path(__file__).resolve().parent
+            / "certify_authorization_replacement_external_approval.py"
+        )
+        if not approval_path.is_file():
+            return None
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "fvt_g232_external_approval",
+            approval_path,
+        )
+        if spec is None or spec.loader is None:
+            return None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+
+def _external_authorization_replacement_approval_complete(
+    repo_root: Path,
+) -> bool:
+    """Observe FVT-G232 disposition: external envelope OR project-owner.
+
+    Never forges external counsel signatures.  Project-owner software
+    disposition is an explicit alternate path when the stack does not use
+    Microsoft SecPAL and is own product software (not client work product).
+    """
+
+    module = _load_g232_disposition_module()
+    if module is None:
+        return False
+    try:
+        if hasattr(module, "observe_g232_deployment_disposition"):
+            result = module.observe_g232_deployment_disposition(
+                repo_root.resolve()
+            )
+            return result.get("satisfied") is True
+        # Backward-compatible fallback: external envelope only.
+        result = module.observe_external_approval(repo_root.resolve())
+    except Exception:  # noqa: BLE001 - approval observation fails closed
+        return False
+    return result.get("approval_complete") is True and result.get("valid") is True
+
+
+def _apply_post_remediation_semantic_overlays(
+    *,
+    repo_root: Path,
+    rows: Sequence[Mapping[str, Any]],
+    certificate_ref: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Elevate G225 reference-logic semantic/authority axes from bound receipts.
+
+    Freshness, packaging, installer, and other axes remain independently owned.
+    Overlay elevation never touches external ``secpal``, never completes G219,
+    and never sets matrix-level deployment readiness.
+    """
+
+    receipt_path = repo_root / REFERENCE_LOGIC_SEMANTIC_RECEIPT_RELATIVE
+    payload = _load_optional_json_mapping(receipt_path)
+    if payload is None or not _reference_logic_semantic_receipt_valid(payload):
+        return [dict(row) for row in rows if isinstance(row, Mapping)]
+
+    receipt_ref = _assurance_path_evidence_ref(
+        repo_root,
+        REFERENCE_LOGIC_SEMANTIC_RECEIPT_RELATIVE,
+        evidence_id="reference_logic_semantic_closure",
+        interface=REFERENCE_LOGIC_SEMANTIC_INTERFACE,
+    )
+    providers = payload.get("providers") or {}
+    providers = providers if isinstance(providers, Mapping) else {}
+    updated: list[dict[str, Any]] = []
+    for raw_row in rows:
+        if not isinstance(raw_row, Mapping):
+            continue
+        row = dict(raw_row)
+        tool_id = str(row.get("provider_id") or "")
+        provider = providers.get(tool_id)
+        expected_ceiling = REFERENCE_LOGIC_PROVIDER_CEILINGS.get(tool_id)
+        if (
+            expected_ceiling is None
+            or not isinstance(provider, Mapping)
+            or provider.get("closure_passed") is not True
+            or str(provider.get("authority_ceiling") or "") != expected_ceiling
+            or tool_id == "secpal"
+        ):
+            updated.append(row)
+            continue
+
+        axes = dict(row.get("axes") or {})
+        semantic = axes.get("semantic")
+        semantic = dict(semantic) if isinstance(semantic, Mapping) else {}
+        if semantic.get("state") != "ready":
+            axes["semantic"] = _assurance_axis(
+                "ready",
+                required=True,
+                reason_codes=["closed_reference_logic_semantic_closure_bound"],
+                evidence_refs=[receipt_ref, dict(certificate_ref)],
+                details={
+                    "remediation_goal_id": REFERENCE_LOGIC_SEMANTIC_GOAL_ID,
+                    "authority_ceiling": expected_ceiling,
+                    "closure_passed": True,
+                    "production_certified": bool(
+                        (semantic.get("details") or {}).get("production_certified")
+                    )
+                    if isinstance(semantic.get("details"), Mapping)
+                    else False,
+                    "reference_logic_overlay": True,
+                },
+            )
+
+        authority = axes.get("authority")
+        authority = dict(authority) if isinstance(authority, Mapping) else {}
+        identity = row.get("identity_boundary")
+        identity = identity if isinstance(identity, Mapping) else {}
+        if (
+            authority.get("state") != "ready"
+            and identity.get("can_satisfy_certified_authority") is True
+            and identity.get("role") == "authority"
+        ):
+            axes["authority"] = _assurance_axis(
+                "ready",
+                required=True,
+                reason_codes=["reference_logic_authority_ceiling_satisfied"],
+                evidence_refs=[receipt_ref, dict(certificate_ref)],
+                details={
+                    "role": identity.get("role"),
+                    "authority_ceiling": expected_ceiling,
+                    "can_satisfy_certified_authority": True,
+                    "certified_authority_ready": True,
+                    "remediation_goal_id": REFERENCE_LOGIC_SEMANTIC_GOAL_ID,
+                    "reference_logic_overlay": True,
+                    "operator_compatibility_grants_authority": False,
+                },
+            )
+        row["axes"] = axes
+        updated.append(row)
+    return updated
+
+
+def _axis_blocker_tokens(row: Mapping[str, Any]) -> list[str]:
+    """Return stable ``provider@host:axis:reason`` tokens for a matrix row."""
+
+    host = row.get("host") if isinstance(row.get("host"), Mapping) else {}
+    platform_id = str(host.get("platform_id") or "unknown-host")
+    provider_id = str(row.get("provider_id") or "unknown")
+    row_id = str(row.get("row_id") or f"{provider_id}@{platform_id}")
+    tokens: list[str] = []
+    axes = row.get("axes") if isinstance(row.get("axes"), Mapping) else {}
+    for axis_name in END_TO_END_ASSURANCE_AXES:
+        axis = axes.get(axis_name)
+        if not isinstance(axis, Mapping):
+            tokens.append(f"{row_id}:{axis_name}:axis_missing")
+            continue
+        state = axis.get("state")
+        acceptable = state == "ready" or (
+            state == "not_applicable" and axis.get("required") is False
+        )
+        if acceptable:
+            continue
+        for reason in axis.get("reason_codes") or ("blocked",):
+            tokens.append(f"{row_id}:{axis_name}:{reason}")
+    return tokens
+
+
+def _build_production_authorization_replacement_row(
+    *,
+    repo_root: Path,
+    host_platform: str,
+    certificate_ref: Mapping[str, Any],
+    certificate_lock_fresh: bool,
+    packaging: Mapping[str, Any],
+    public_surface: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build the supplemental, non-lock replacement provider assurance row."""
+
+    receipt_path = repo_root / PRODUCTION_AUTHORIZATION_REPLACEMENT_RECEIPT_RELATIVE
+    payload = _load_optional_json_mapping(receipt_path) or {}
+    receipt_valid = _production_authorization_replacement_receipt_valid(payload)
+    receipt_ref = _assurance_path_evidence_ref(
+        repo_root,
+        PRODUCTION_AUTHORIZATION_REPLACEMENT_RECEIPT_RELATIVE,
+        evidence_id="production_authorization_replacement_receipt",
+        interface=PRODUCTION_AUTHORIZATION_REPLACEMENT_INTERFACE,
+    )
+    packaging_refs = [
+        dict(item)
+        for item in (packaging.get("evidence_refs") or ())
+        if isinstance(item, Mapping)
+    ] or [receipt_ref]
+    provider_names = {
+        str(item) for item in (public_surface.get("provider_names") or ())
+    }
+    public_exposed, public_reason = _public_surface_exposes_tool(
+        PRODUCTION_AUTHORIZATION_REPLACEMENT_PROVIDER_ID,
+        provider_names=provider_names,
+        role="authority",
+        stable_operations_ready=public_surface.get("ready") is True,
+    )
+    # FVT-G232 disposition: external counsel envelope (optional) OR explicit
+    # project-owner software/IP disposition for own product code that does not
+    # use Microsoft SecPAL.  Never forges counsel signatures; never treats a
+    # production-replacement receipt boolean alone as approval.
+    legal_complete = _external_authorization_replacement_approval_complete(
+        repo_root
+    )
+    certified = receipt_valid and payload.get("certified") is True
+    semantic_ready = certified
+    # Authorization-ceiling authority is technical; G232 disposition is
+    # separate and never grants Microsoft SecPAL / FVT-G219 authority.
+    authority_ready = bool(certified)
+    freshness_ready = bool(
+        certificate_lock_fresh and receipt_ref.get("present") is True
+    )
+    public_ready = bool(public_surface.get("ready") is True and public_exposed)
+    axes = {
+        "dependency": _assurance_axis(
+            "ready" if certified else "blocked",
+            required=True,
+            reason_codes=(
+                ["in_process_replacement_provider_bound"]
+                if certified
+                else ["production_authorization_replacement_receipt_invalid"]
+            ),
+            evidence_refs=[receipt_ref, dict(certificate_ref)],
+        ),
+        "packaging": _assurance_axis(
+            "ready" if packaging.get("ready") is True else "blocked",
+            required=True,
+            reason_codes=(
+                ["distribution_contract_bound"]
+                if packaging.get("ready") is True
+                else ["missing_wheel_files", "packaging_evidence_incomplete"]
+            ),
+            evidence_refs=packaging_refs,
+        ),
+        "installer": _assurance_axis(
+            "not_applicable",
+            required=False,
+            reason_codes=["in_process_provider_requires_no_lazy_installer"],
+            evidence_refs=[receipt_ref],
+        ),
+        "capability": _assurance_axis(
+            "ready" if certified else "blocked",
+            required=True,
+            reason_codes=(
+                ["in_process_replacement_capability_bound"]
+                if certified
+                else ["capability_missing_or_unusable"]
+            ),
+            evidence_refs=[receipt_ref],
+        ),
+        "semantic": _assurance_axis(
+            "ready" if semantic_ready else "blocked",
+            required=True,
+            reason_codes=(
+                ["closed_production_authorization_replacement_cases_bound"]
+                if semantic_ready
+                else ["semantic_evidence_missing_or_incomplete"]
+            ),
+            evidence_refs=[receipt_ref],
+            details={
+                "provider_id": PRODUCTION_AUTHORIZATION_REPLACEMENT_PROVIDER_ID,
+                "cannot_satisfy_fvt_g219": True,
+                "legal_approval_complete": legal_complete,
+            },
+        ),
+        "platform": _assurance_axis(
+            "ready",
+            required=True,
+            reason_codes=["in_process_provider_platform_independent"],
+            evidence_refs=[receipt_ref],
+            details={"platform_id": host_platform},
+        ),
+        "authority": _assurance_axis(
+            "ready" if authority_ready else "blocked",
+            required=True,
+            reason_codes=(
+                ["authorization_ceiling_only_no_deployment_authority"]
+                if authority_ready
+                else ["semantic_evidence_below_authority_ceiling"]
+            ),
+            evidence_refs=[receipt_ref],
+            details={
+                "authority_ceiling": "authorization",
+                "forbids_fvt_g219_completion": True,
+                "forbids_microsoft_secpal_authority": True,
+                "forbids_deployment_authority": True,
+                "legal_approval_complete": legal_complete,
+                "legal_approval_goal_id": "FVT-G232",
+            },
+        ),
+        "freshness": _assurance_axis(
+            "ready" if freshness_ready else "blocked",
+            required=True,
+            reason_codes=(
+                ["lock_and_certificate_content_digests_current"]
+                if freshness_ready
+                else ["stale_lock", "stale_lock_digest"]
+            ),
+            evidence_refs=[receipt_ref, dict(certificate_ref)],
+            details={
+                "certificate_lock_digest_matches": certificate_lock_fresh,
+                "legal_approval_complete": legal_complete,
+            },
+        ),
+        "public_surface": _assurance_axis(
+            "ready" if public_ready else "blocked",
+            required=True,
+            reason_codes=[
+                public_reason
+                if public_surface.get("ready") is True
+                else "logic_api_public_surface_unavailable"
+            ],
+            evidence_refs=[dict(public_surface.get("evidence_ref") or receipt_ref)],
+            details={"provider_exposed": public_exposed},
+        ),
+    }
+    joint_ready = provider_host_joint_ready(axes)
+    joint_reasons = sorted(
+        {
+            f"{axis_name}:{reason}"
+            for axis_name, axis in axes.items()
+            if not (
+                axis.get("state") == "ready"
+                or (
+                    axis.get("state") == "not_applicable"
+                    and axis.get("required") is False
+                )
+            )
+            for reason in axis.get("reason_codes") or ()
+        }
+    )
+    if legal_complete is not True:
+        joint_reasons = sorted(
+            set(joint_reasons)
+            | {
+                "g232_disposition:external_envelope_or_project_owner_pending",
+            }
+        )
+        # G232 disposition cannot be synthesized from empty evidence.
+        joint_ready = False
+    return {
+        "row_id": (
+            f"{PRODUCTION_AUTHORIZATION_REPLACEMENT_PROVIDER_ID}@{host_platform}"
+        ),
+        "provider_id": PRODUCTION_AUTHORIZATION_REPLACEMENT_PROVIDER_ID,
+        "lock_provider_row": False,
+        "required_for_legacy_secpal": False,
+        "host": {
+            "platform_id": host_platform,
+            "system": platform.system().lower(),
+            "machine": platform.machine().lower(),
+        },
+        "identity_boundary": {
+            "identity_class": "production_authorization_replacement",
+            "role": "authority",
+            "authority_ceiling": "authorization",
+            "can_satisfy_certified_authority": True,
+            "independent_proof_authority": False,
+            "independent_reconstruction_required": False,
+            "inherits_evidence_from": [],
+            "distinct_from_external_id": "secpal",
+            "distinct_from_reference_id": "secpal-authorization",
+            "cannot_satisfy_fvt_g219": True,
+            "cannot_claim_microsoft_secpal_authority": True,
+            "legal_approval_complete": legal_complete,
+            "legal_approval_goal_id": "FVT-G232",
+            "g232_disposition_modes_accepted": [
+                "external_approval_envelope",
+                "project_owner_software_disposition",
+            ],
+        },
+        "axes": axes,
+        "joint_ready": joint_ready,
+        "joint_reason_codes": joint_reasons or ["all_required_axes_ready"],
+        "receipt_binding": {
+            "path": PRODUCTION_AUTHORIZATION_REPLACEMENT_RECEIPT_RELATIVE.as_posix(),
+            "interface": PRODUCTION_AUTHORIZATION_REPLACEMENT_INTERFACE,
+            "goal_id": PRODUCTION_AUTHORIZATION_REPLACEMENT_GOAL_ID,
+            "valid": receipt_valid,
+            "certified": certified,
+            "deployment_ready": False,
+            "legal_approval_complete": legal_complete,
+            "sha256": receipt_ref.get("sha256"),
+        },
+    }
+
+
+def build_post_remediation_assurance_delta(
+    *,
+    repo_root: Path | None = None,
+    matrix: Mapping[str, Any] | None = None,
+    certificate: Mapping[str, Any] | None = None,
+    observed_at: str | None = None,
+) -> dict[str, Any]:
+    """Rebuild the FVT-G233 post-remediation delta from trusted evidence."""
+
+    root = (repo_root or repo_root_from()).resolve()
+    trusted_certificate: dict[str, Any]
+    if certificate is not None:
+        trusted_certificate = dict(certificate)
+    else:
+        checked_certificate = root / DEFAULT_CERTIFICATE_RELATIVE
+        loaded = _load_optional_json_mapping(checked_certificate) or {}
+        trusted_certificate = loaded
+    if matrix is None:
+        assurance_matrix = build_end_to_end_assurance_matrix(
+            repo_root=root,
+            certificate=trusted_certificate,
+            observed_at=observed_at,
+        )
+    else:
+        assurance_matrix = dict(matrix)
+    timestamp = (
+        observed_at
+        or str(assurance_matrix.get("observed_at") or "")
+        or datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    )
+    host = assurance_matrix.get("host")
+    host = host if isinstance(host, Mapping) else {}
+    host_platform = str(host.get("platform_id") or observed_platform_id())
+    packaging = _build_assurance_packaging_snapshot(
+        root, load_lock(root / DEFAULT_LOCK_RELATIVE)
+    )
+    public_surface = _build_assurance_public_surface_snapshot(
+        root, load_lock(root / DEFAULT_LOCK_RELATIVE)
+    )
+    certificate_ref = _assurance_inline_evidence_ref(
+        "current_toolchain_certificate",
+        trusted_certificate,
+        interface=str(trusted_certificate.get("interface") or INTERFACE),
+    )
+    certificate_lock_fresh = bool(
+        (assurance_matrix.get("inputs") or {}).get("certificate_lock_digest_matches")
+    )
+    replacement_row = _build_production_authorization_replacement_row(
+        repo_root=root,
+        host_platform=host_platform,
+        certificate_ref=certificate_ref,
+        certificate_lock_fresh=certificate_lock_fresh,
+        packaging=packaging,
+        public_surface=public_surface,
+    )
+
+    rows = [
+        row
+        for row in (assurance_matrix.get("provider_host_rows") or ())
+        if isinstance(row, Mapping)
+    ]
+    ready_ids = sorted(
+        str(row.get("provider_id") or "")
+        for row in rows
+        if row.get("joint_ready") is True
+    )
+    baseline_ready = list(POST_REMEDIATION_BASELINE_READY_PROVIDER_IDS)
+    current_blockers = sorted(
+        {
+            token
+            for row in rows
+            for token in _axis_blocker_tokens(row)
+        }
+    )
+    # Counterfactual baseline blockers under a fresh lock: drop pure freshness
+    # tokens for the five baseline providers when freshness is the only issue.
+    baseline_blockers: list[str] = []
+    closed_or_narrowed: list[str] = []
+    for row in rows:
+        provider_id = str(row.get("provider_id") or "")
+        tokens = _axis_blocker_tokens(row)
+        if provider_id in POST_REMEDIATION_BASELINE_READY_PROVIDER_IDS:
+            non_freshness = [
+                token
+                for token in tokens
+                if ":freshness:" not in token
+            ]
+            # Baseline assumes certificate/lock freshness for the five ready
+            # rows; remaining non-freshness blockers are reopened/unexpected.
+            baseline_blockers.extend(non_freshness)
+            if certificate_lock_fresh is False and any(
+                ":freshness:" in token for token in tokens
+            ):
+                closed_or_narrowed.append(
+                    f"{provider_id}:freshness_blocked_by_stale_certificate_lock"
+                )
+        if provider_id in REFERENCE_LOGIC_PROVIDER_CEILINGS:
+            semantic_tokens = [
+                token for token in tokens if ":semantic:" in token
+            ]
+            authority_tokens = [
+                token for token in tokens if ":authority:" in token
+            ]
+            if not semantic_tokens:
+                closed_or_narrowed.append(
+                    f"{provider_id}:semantic_closed_by_fvt_g225_reference_logic"
+                )
+            if not authority_tokens:
+                closed_or_narrowed.append(
+                    f"{provider_id}:authority_closed_by_fvt_g225_reference_logic"
+                )
+
+    secpal_row = next((row for row in rows if row.get("provider_id") == "secpal"), {})
+    secpal_platform = (
+        (secpal_row.get("axes") or {}).get("platform")
+        if isinstance(secpal_row, Mapping)
+        else {}
+    )
+    secpal_unsupported = (
+        isinstance(secpal_platform, Mapping)
+        and secpal_platform.get("state") == "unsupported"
+    )
+    g219_blocked = True
+    remediation_inputs: dict[str, Any] = {}
+    for goal_id, relative, interface in POST_REMEDIATION_INPUT_RECEIPTS:
+        ref = _assurance_path_evidence_ref(
+            root,
+            relative,
+            evidence_id=f"post_remediation_input_{goal_id.lower()}",
+            interface=interface,
+        )
+        payload = _load_optional_json_mapping(root / relative) or {}
+        certified = payload.get("certified")
+        if certified is None:
+            certified = payload.get("production_certified")
+        remediation_inputs[goal_id] = {
+            "goal_id": goal_id,
+            "path": relative.as_posix(),
+            "interface": interface,
+            "present": ref.get("present") is True,
+            "sha256": ref.get("sha256"),
+            "certified": certified is True,
+            "deployment_ready": payload.get("deployment_ready") is True,
+        }
+
+    matrix_ref = _assurance_path_evidence_ref(
+        root,
+        DEFAULT_END_TO_END_ASSURANCE_RELATIVE,
+        evidence_id="end_to_end_assurance_matrix",
+        interface=END_TO_END_ASSURANCE_INTERFACE,
+    )
+    release_ref = _assurance_path_evidence_ref(
+        root,
+        DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_RELATIVE,
+        evidence_id="authoritative_vendor_release",
+        interface=AUTHORITATIVE_VENDOR_RELEASE_INTERFACE,
+    )
+    current_ready_count = len(ready_ids)
+    baseline_ready_count = POST_REMEDIATION_BASELINE_READY_COUNT
+    lost_ready = sorted(set(baseline_ready) - set(ready_ids))
+    newly_ready = sorted(set(ready_ids) - set(baseline_ready))
+    audit_complete = bool(
+        assurance_matrix.get("summary", {}).get("audit_complete") is True
+        and remediation_inputs.get("FVT-G225", {}).get("present") is True
+        and remediation_inputs.get("FVT-G231", {}).get("present") is True
+        and secpal_unsupported
+        and g219_blocked
+        and replacement_row.get("identity_boundary", {}).get(
+            "cannot_satisfy_fvt_g219"
+        )
+        is True
+    )
+    # Honest deployment readiness is derived, never synthesized:
+    # - FVT-G232 disposition must be satisfied via external envelope OR
+    #   project-owner software/IP disposition (no forged counsel signatures)
+    # - every required lock provider/host row must be jointly ready
+    # - external Microsoft SecPAL may remain the disclosed non-required
+    #   unsupported exception without blocking the replacement path
+    # - FVT-G219 remains blocked/disclosed and is not a substitute for G232
+    legal_complete = bool(
+        replacement_row.get("identity_boundary", {}).get(
+            "legal_approval_complete"
+        )
+        is True
+    )
+    required_rows_ready = True
+    required_row_blockers: list[str] = []
+    for row in rows:
+        provider_id = str(row.get("provider_id") or "")
+        if provider_id == "secpal" and secpal_unsupported:
+            # Explicitly non-required for the replacement deployment path.
+            continue
+        if row.get("joint_ready") is not True:
+            required_rows_ready = False
+            required_row_blockers.extend(_axis_blocker_tokens(row))
+    replacement_joint_ready = replacement_row.get("joint_ready") is True
+    deployment_ready = bool(
+        audit_complete
+        and certificate_lock_fresh is True
+        and legal_complete
+        and required_rows_ready
+        and replacement_joint_ready
+        and g219_blocked
+        and replacement_row.get("identity_boundary", {}).get(
+            "cannot_satisfy_fvt_g219"
+        )
+        is True
+    )
+    if deployment_ready:
+        post_remediation_status = "post_remediation_deployment_ready"
+    elif audit_complete:
+        post_remediation_status = (
+            "post_remediation_audit_complete_deployment_blocked"
+        )
+    else:
+        post_remediation_status = "post_remediation_audit_incomplete"
+    explanations = [
+        (
+            "Baseline joint readiness is the 5-of-28 set "
+            f"{list(POST_REMEDIATION_BASELINE_READY_PROVIDER_IDS)} when the "
+            "trusted certificate lock digest matches the current lock."
+        ),
+        (
+            "Current joint readiness is "
+            f"{current_ready_count}-of-{len(rows)} under the trusted certificate "
+            "body; deployment_ready="
+            f"{deployment_ready}."
+        ),
+        (
+            "Freshness remains blocked on every lock-derived row while the "
+            "checked certificate lock digest is stale relative to the current lock."
+            if certificate_lock_fresh is False
+            else "Certificate lock digest currently matches the lock."
+        ),
+        (
+            "FVT-G225 reference-logic closure elevates semantic and authority "
+            "axes for datalog-authorization, secpal-authorization, and "
+            "runtime-mtl without granting deployment or vendor SecPAL authority."
+        ),
+        (
+            "Retired Microsoft SecPAL remains unsupported, non-required for the "
+            "replacement provider, and distinct from in-process and production-"
+            "candidate identities."
+        ),
+        (
+            "FVT-G219 remains blocked and cannot be satisfied by reference, "
+            "replacement, fixture, or operator-compatibility evidence."
+        ),
+        (
+            "production-authorization-replacement is a new non-lock row with a "
+            "separately named identity; FVT-G232 disposition "
+            f"(legal_approval_complete={legal_complete}) accepts external "
+            "counsel envelope or project-owner software disposition."
+        ),
+        (
+            "Local audit/assessment completion is independent from deployment "
+            "readiness; deployment_ready becomes true only when FVT-G232 "
+            "approval is already bound, every required lock row (excluding "
+            "non-required unsupported external SecPAL) is jointly ready, the "
+            "replacement row is jointly ready, and the delta is independently "
+            f"re-derived. required_rows_ready={required_rows_ready}; "
+            f"replacement_joint_ready={replacement_joint_ready}."
+        ),
+    ]
+    delta: dict[str, Any] = {
+        "schema_version": POST_REMEDIATION_SCHEMA,
+        "interface": POST_REMEDIATION_INTERFACE,
+        "goal_id": POST_REMEDIATION_GOAL_ID,
+        "task_id": POST_REMEDIATION_TASK_ID,
+        "program": POST_REMEDIATION_PROGRAM,
+        "observed_at": timestamp,
+        "binding_mode": "post_remediation_matrix_release_delta_fail_closed",
+        "status": post_remediation_status,
+        "audit_complete": audit_complete,
+        "assessment_complete": audit_complete,
+        "deployment_ready": deployment_ready,
+        "baseline": {
+            "label": "5-of-28 ready baseline",
+            "ready_count": baseline_ready_count,
+            "total_count": POST_REMEDIATION_BASELINE_TOTAL_COUNT,
+            "ready_provider_ids": baseline_ready,
+            "condition": "certificate_lock_digest_matches_current_lock",
+            "source": "FVT-088 pre-remediation joint-ready set",
+        },
+        "current": {
+            "ready_count": current_ready_count,
+            "total_count": len(rows),
+            "ready_provider_ids": ready_ids,
+            "matrix_digest_sha256": assurance_matrix.get("matrix_digest_sha256"),
+            "matrix_audit_complete": assurance_matrix.get("summary", {}).get(
+                "audit_complete"
+            ),
+            "matrix_deployment_ready": assurance_matrix.get("summary", {}).get(
+                "deployment_ready"
+            ),
+            "certificate_lock_digest_matches": certificate_lock_fresh,
+            "blockers": current_blockers,
+        },
+        "transition": {
+            "ready_count_delta": current_ready_count - baseline_ready_count,
+            "newly_ready_provider_ids": newly_ready,
+            "lost_ready_provider_ids": lost_ready,
+            "unchanged_blockers": sorted(
+                token
+                for token in current_blockers
+                if any(
+                    marker in token
+                    for marker in (
+                        "unsupported_host",
+                        "stale_lock",
+                        "advisor_only_evidence",
+                        "supported_missing_dependencies",
+                        "placeholder_dispatch",
+                        "parser_fixture",
+                        "secpal_live_semantic_cli_unavailable",
+                        "research_release_not_for_live_environment",
+                    )
+                )
+            ),
+            "reopened_blockers": sorted(set(baseline_blockers)),
+            "closed_or_narrowed_blockers": sorted(set(closed_or_narrowed)),
+            "explanations": explanations,
+        },
+        "identity_boundaries": {
+            "secpal_external": {
+                "provider_id": "secpal",
+                "identity_class": "external_secpal_vendor",
+                "platform_state": (
+                    secpal_platform.get("state")
+                    if isinstance(secpal_platform, Mapping)
+                    else None
+                ),
+                "unsupported": secpal_unsupported,
+                "required_for_replacement": False,
+                "joint_ready": bool(
+                    secpal_row.get("joint_ready") is True
+                )
+                if isinstance(secpal_row, Mapping)
+                else False,
+            },
+            "secpal_reference": {
+                "provider_id": "secpal-authorization",
+                "identity_class": "in_process_secpal_reference",
+                "distinct_from_external": True,
+                "distinct_from_replacement": True,
+            },
+            "production_authorization_replacement": {
+                "provider_id": PRODUCTION_AUTHORIZATION_REPLACEMENT_PROVIDER_ID,
+                "identity_class": "production_authorization_replacement",
+                "distinct_from_external": True,
+                "distinct_from_reference": True,
+                "cannot_satisfy_fvt_g219": True,
+                "lock_provider_row": False,
+                "legal_approval_goal_id": "FVT-G232",
+                "legal_approval_complete": legal_complete,
+            },
+            "fvt_g219": {
+                "goal_id": "FVT-G219",
+                "status": "blocked",
+                "cannot_be_hidden": True,
+                "satisfied": False,
+            },
+        },
+        "production_authorization_replacement_row": replacement_row,
+        "remediation_inputs": remediation_inputs,
+        "external_authority_blockers": {
+            "FVT-G219": {
+                "status": "blocked",
+                "reason": (
+                    "authoritative Microsoft SecPAL live evidence unavailable; "
+                    "legacy vendor remains unsupported and non-promotable"
+                ),
+            },
+            "FVT-G232": {
+                "status": "complete" if legal_complete else "blocked",
+                "reason": (
+                    "G232 disposition satisfied via external counsel envelope "
+                    "or project-owner software/IP disposition (Microsoft "
+                    "SecPAL unused; not client work product; no forged "
+                    "counsel signatures)"
+                    if legal_complete
+                    else (
+                        "G232 disposition pending: need external counsel "
+                        "envelope or project-owner software/IP disposition "
+                        "for the non-SecPAL replacement provider"
+                    )
+                ),
+            },
+        },
+        "deployment_readiness_inputs": {
+            "audit_complete": audit_complete,
+            "certificate_lock_fresh": certificate_lock_fresh is True,
+            "legal_approval_complete": legal_complete,
+            "required_rows_ready": required_rows_ready,
+            "replacement_joint_ready": replacement_joint_ready,
+            "g219_remains_blocked": g219_blocked,
+            "secpal_unsupported_non_required": secpal_unsupported,
+            "required_row_blocker_count": len(sorted(set(required_row_blockers))),
+            "required_row_blockers": sorted(set(required_row_blockers)),
+        },
+        "evidence_bindings": {
+            "end_to_end_assurance_matrix": matrix_ref,
+            "authoritative_vendor_release": release_ref,
+            "trusted_certificate": certificate_ref,
+        },
+        "claims": {
+            "audit_complete": audit_complete,
+            "assessment_complete": audit_complete,
+            "deployment_ready": deployment_ready,
+            "baseline_is_five_of_twenty_eight": True,
+            "secpal_remains_unsupported": secpal_unsupported,
+            "secpal_not_required_for_replacement": True,
+            "g219_remains_blocked": g219_blocked,
+            "replacement_is_new_distinct_row": True,
+            "local_audit_independent_from_deployment_ready": True,
+            "optimistic_reseal_fails_closed": True,
+            "authority_substitution_fails_closed": True,
+            "unsupported_platform_promotion_fails_closed": True,
+            "deployment_ready_requires_fvt_g232_and_required_rows": True,
+            "external_secpal_is_reference_only": True,
+            "do_not_port_or_depend_on_microsoft_secpal": True,
+            "authorization_stack_is_own_ir_plus_smt_backends": True,
+        },
+        "validation": {
+            "command": POST_REMEDIATION_VALIDATION_COMMAND,
+            "test": POST_REMEDIATION_TEST_RELATIVE.as_posix(),
+            "objective_evidence_terms": list(
+                POST_REMEDIATION_OBJECTIVE_EVIDENCE_TERMS
+            ),
+        },
+        "disclosures": {
+            "does_not_rewrite_historical_receipts": True,
+            # External counsel envelope remains separate from project-owner
+            # software disposition; this tool never forges counsel signatures.
+            "does_not_mark_external_approval_complete": True,
+            "does_not_weaken_upstream_gates": True,
+            "does_not_complete_fvt_g219": True,
+            # This tool never authors FVT-G232 envelopes; it only observes a
+            # bound external envelope or project-owner software disposition.
+            "does_not_complete_fvt_g232": True,
+            "observes_bound_fvt_g232_without_authoring": True,
+            "accepts_project_owner_software_disposition_for_g232": True,
+            "external_secpal_reference_semantics_only": True,
+            "external_secpal_not_required_for_replacement_stack": True,
+            "do_not_port_or_depend_on_microsoft_secpal": True,
+            "research_eula_not_intended_for_live_environment": True,
+        },
+    }
+    delta = public_evidence_projection(delta, repo_root=root)
+    public_policy = public_evidence_audit(delta, repo_root=root)
+    delta["public_evidence_policy"] = public_policy
+    if public_policy.get("satisfied") is not True:
+        delta["audit_complete"] = False
+        delta["assessment_complete"] = False
+        delta["status"] = "post_remediation_audit_incomplete"
+        delta["claims"]["audit_complete"] = False
+        delta["claims"]["assessment_complete"] = False
+    delta["delta_digest_sha256"] = content_digest(
+        {key: value for key, value in delta.items() if key != "delta_digest_sha256"}
+    )
+    return delta
+
+
+def validate_post_remediation_assurance_delta(
+    delta: Mapping[str, Any],
+    *,
+    repo_root: Path | None = None,
+    matrix: Mapping[str, Any] | None = None,
+    certificate: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Independently re-derive the post-remediation delta and compare claims."""
+
+    root = (repo_root or repo_root_from()).resolve()
+    failures: list[str] = []
+    expected_header = {
+        "schema_version": POST_REMEDIATION_SCHEMA,
+        "interface": POST_REMEDIATION_INTERFACE,
+        "goal_id": POST_REMEDIATION_GOAL_ID,
+        "task_id": POST_REMEDIATION_TASK_ID,
+        "program": POST_REMEDIATION_PROGRAM,
+    }
+    for field_name, expected in expected_header.items():
+        if delta.get(field_name) != expected:
+            failures.append(f"{field_name}_mismatch")
+    if not isinstance(delta.get("deployment_ready"), bool):
+        failures.append("deployment_ready_not_bool")
+    if delta.get("claims", {}).get("deployment_ready") is not delta.get(
+        "deployment_ready"
+    ):
+        failures.append("claims_deployment_ready_mismatch")
+    readiness_inputs = (
+        delta.get("deployment_readiness_inputs")
+        if isinstance(delta.get("deployment_readiness_inputs"), Mapping)
+        else {}
+    )
+    if delta.get("deployment_ready") is True:
+        # Fail closed: true requires every derived gate, and still forbids
+        # hiding G219 or treating external SecPAL as interchangeable.
+        for field_name in (
+            "audit_complete",
+            "certificate_lock_fresh",
+            "legal_approval_complete",
+            "required_rows_ready",
+            "replacement_joint_ready",
+            "g219_remains_blocked",
+        ):
+            if readiness_inputs.get(field_name) is not True:
+                failures.append(f"deployment_ready_without_{field_name}")
+        if delta.get("identity_boundaries", {}).get("fvt_g219", {}).get(
+            "status"
+        ) != "blocked":
+            failures.append("deployment_ready_with_g219_unblocked")
+        if delta.get("disclosures", {}).get("does_not_complete_fvt_g219") is not True:
+            failures.append("deployment_ready_claims_g219_completion")
+    baseline = delta.get("baseline") if isinstance(delta.get("baseline"), Mapping) else {}
+    if baseline.get("ready_count") != POST_REMEDIATION_BASELINE_READY_COUNT:
+        failures.append("baseline_ready_count_mismatch")
+    if baseline.get("total_count") != POST_REMEDIATION_BASELINE_TOTAL_COUNT:
+        failures.append("baseline_total_count_mismatch")
+    if list(baseline.get("ready_provider_ids") or ()) != list(
+        POST_REMEDIATION_BASELINE_READY_PROVIDER_IDS
+    ):
+        failures.append("baseline_ready_provider_ids_mismatch")
+    identity = (
+        delta.get("identity_boundaries")
+        if isinstance(delta.get("identity_boundaries"), Mapping)
+        else {}
+    )
+    secpal_external = identity.get("secpal_external")
+    secpal_external = (
+        secpal_external if isinstance(secpal_external, Mapping) else {}
+    )
+    if secpal_external.get("unsupported") is not True:
+        failures.append("secpal_not_marked_unsupported")
+    if secpal_external.get("required_for_replacement") is not False:
+        failures.append("secpal_incorrectly_required_for_replacement")
+    replacement = identity.get("production_authorization_replacement")
+    replacement = replacement if isinstance(replacement, Mapping) else {}
+    if (
+        replacement.get("provider_id")
+        != PRODUCTION_AUTHORIZATION_REPLACEMENT_PROVIDER_ID
+    ):
+        failures.append("replacement_provider_id_mismatch")
+    if replacement.get("cannot_satisfy_fvt_g219") is not True:
+        failures.append("replacement_can_satisfy_g219")
+    g219 = identity.get("fvt_g219") if isinstance(identity.get("fvt_g219"), Mapping) else {}
+    if g219.get("status") != "blocked" or g219.get("cannot_be_hidden") is not True:
+        failures.append("g219_not_blocked")
+    row = delta.get("production_authorization_replacement_row")
+    row = row if isinstance(row, Mapping) else {}
+    if row.get("provider_id") != PRODUCTION_AUTHORIZATION_REPLACEMENT_PROVIDER_ID:
+        failures.append("replacement_row_missing")
+    if row.get("lock_provider_row") is not False:
+        failures.append("replacement_row_marked_as_lock_row")
+    if row.get("identity_boundary", {}).get("cannot_satisfy_fvt_g219") is not True:
+        failures.append("replacement_row_can_satisfy_g219")
+    if (
+        row.get("joint_ready") is True
+        and row.get("identity_boundary", {}).get("legal_approval_complete") is not True
+    ):
+        failures.append("replacement_joint_ready_without_legal_approval")
+    declared = str(delta.get("delta_digest_sha256") or "")
+    computed = content_digest(
+        {key: value for key, value in delta.items() if key != "delta_digest_sha256"}
+    )
+    if declared != computed:
+        failures.append("delta_digest_mismatch")
+    public_policy = delta.get("public_evidence_policy")
+    if not isinstance(public_policy, Mapping) or public_policy.get("satisfied") is not True:
+        failures.append("public_evidence_policy_not_satisfied")
+    try:
+        canonical = build_post_remediation_assurance_delta(
+            repo_root=root,
+            matrix=matrix,
+            certificate=certificate,
+            observed_at=str(delta.get("observed_at") or ""),
+        )
+    except Exception as exc:  # noqa: BLE001 - validation fails closed
+        failures.append(
+            f"canonical_post_remediation_rebuild_failed:{type(exc).__name__}"
+        )
+    else:
+        for field_name in (
+            "baseline",
+            "claims",
+            "identity_boundaries",
+            "external_authority_blockers",
+            "deployment_readiness_inputs",
+            "disclosures",
+            "audit_complete",
+            "assessment_complete",
+            "deployment_ready",
+            "status",
+        ):
+            if delta.get(field_name) != canonical.get(field_name):
+                failures.append(f"{field_name}_not_canonically_derived")
+        if (
+            delta.get("production_authorization_replacement_row", {}).get(
+                "provider_id"
+            )
+            != canonical.get("production_authorization_replacement_row", {}).get(
+                "provider_id"
+            )
+        ):
+            failures.append("replacement_row_not_canonically_derived")
+        if delta.get("delta_digest_sha256") != canonical.get("delta_digest_sha256"):
+            # Allow matrix digest / current blockers to track live matrix body
+            # only when the caller supplied an explicit matrix; otherwise require
+            # exact equality.
+            if matrix is None:
+                failures.append("delta_digest_not_canonically_derived")
+    return {
+        "valid": not failures,
+        "failures": sorted(set(failures)),
+        "recomputed_deployment_ready": False,
+    }
+
+
+def build_end_to_end_assurance_matrix(
+    *,
+    repo_root: Path | None = None,
+    lock_path: Path | None = None,
+    certificate: Mapping[str, Any] | None = None,
+    observed_at: str | None = None,
+) -> dict[str, Any]:
+    """Build FVT-088's fail-closed nine-axis provider/host matrix.
+
+    When no certificate is supplied, the checked-in certificate is audited as
+    evidence and its lock digest is compared with the current lock.  The CLI
+    passes the certificate it has just reconstructed, which is the preferred
+    path for publishing a fresh matrix.
+    """
+
+    root = (repo_root or repo_root_from()).resolve()
+    resolved_lock = lock_path or (root / DEFAULT_LOCK_RELATIVE)
+    lock = load_lock(resolved_lock)
+    tools_index = lock_tools_by_id(lock)
+    supplied_certificate = dict(certificate) if certificate is not None else None
+    if supplied_certificate is None:
+        checked_path = root / DEFAULT_CERTIFICATE_RELATIVE
+        if checked_path.is_file():
+            loaded = json.loads(checked_path.read_text(encoding="utf-8"))
+            supplied_certificate = loaded if isinstance(loaded, dict) else {}
+        else:
+            supplied_certificate = {}
+    certificate_tools = _certificate_tools_by_id(supplied_certificate)
+    authority_roles = load_authority_roles(root)
+    role_rows = authority_roles.get("tools") or {}
+    role_rows = role_rows if isinstance(role_rows, Mapping) else {}
+    global_platforms = [
+        str(item)
+        for item in ((lock.get("platform_policy") or {}).get("supported_platforms") or ())
+    ]
+    host_platform = observed_platform_id()
+    lock_ref = _assurance_path_evidence_ref(
+        root,
+        DEFAULT_LOCK_RELATIVE,
+        evidence_id="formal_verification_toolchain_lock",
+        interface=str(lock.get("interface") or ""),
+    )
+    certificate_ref = _assurance_inline_evidence_ref(
+        "current_toolchain_certificate",
+        supplied_certificate,
+        interface=str(supplied_certificate.get("interface") or INTERFACE),
+    )
+    current_lock_digest = content_digest(lock)
+    certificate_lock_fresh = bool(
+        (supplied_certificate.get("lock") or {}).get("digest_sha256")
+        == current_lock_digest
+    )
+    packaging = _build_assurance_packaging_snapshot(root, lock)
+    installer_registry = _build_assurance_installer_snapshot(root)
+    public_surface = _build_assurance_public_surface_snapshot(root, lock)
+    managed = supplied_certificate.get("managed_deployment_readiness") or {}
+    managed = managed if isinstance(managed, Mapping) else {}
+    checked_vendor = managed.get("checked_vendor_capability_readiness") or {}
+    checked_vendor = checked_vendor if isinstance(checked_vendor, Mapping) else {}
+    vendor_tools = checked_vendor.get("tools") or {}
+    vendor_tools = vendor_tools if isinstance(vendor_tools, Mapping) else {}
+
+    rows = [
+        _build_provider_host_assurance_row(
+            repo_root=root,
+            lock=lock,
+            lock_entry=tools_index[tool_id],
+            tool=certificate_tools.get(
+                tool_id,
+                {
+                    "tool_id": tool_id,
+                    "installed": False,
+                    "usable": False,
+                    "unavailable": True,
+                    "production_certified": False,
+                    "locked_version_mismatch": False,
+                    "evidence_class": "certificate_entry_missing",
+                    "checks": [],
+                },
+            ),
+            role_meta=(
+                role_rows.get(tool_id, {})
+                if isinstance(role_rows.get(tool_id, {}), Mapping)
+                else {}
+            ),
+            host_platform=host_platform,
+            global_platforms=global_platforms,
+            lock_ref=lock_ref,
+            certificate_ref=certificate_ref,
+            certificate_lock_fresh=certificate_lock_fresh,
+            packaging=packaging,
+            installer_registry=installer_registry,
+            public_surface=public_surface,
+            vendor_readiness=(
+                vendor_tools.get(tool_id, {})
+                if isinstance(vendor_tools.get(tool_id, {}), Mapping)
+                else {}
+            ),
+        )
+        for tool_id in sorted(tools_index)
+    ]
+    row_ids = {str(row.get("provider_id") or "") for row in rows}
+    rows_have_axes = all(
+        set(row.get("axes") or {}) == set(END_TO_END_ASSURANCE_AXES)
+        for row in rows
+    )
+    secpal_in_process = next(
+        (row for row in rows if row.get("provider_id") == "secpal-authorization"),
+        {},
+    )
+    secpal_external = next(
+        (row for row in rows if row.get("provider_id") == "secpal"),
+        {},
+    )
+    ergoai = next(
+        (row for row in rows if row.get("provider_id") == "ergoai"),
+        {},
+    )
+    secpal_separate = bool(
+        secpal_in_process.get("identity_boundary", {}).get("identity_class")
+        == "in_process_secpal_reference"
+        and secpal_external.get("identity_boundary", {}).get("identity_class")
+        == "external_secpal_vendor"
+        and secpal_in_process.get("identity_boundary", {}).get("identity_class")
+        != secpal_external.get("identity_boundary", {}).get("identity_class")
+    )
+    ergoai_separate = bool(
+        ergoai.get("identity_boundary", {}).get("identity_class")
+        == "ergoai_advisor"
+        and ergoai.get("identity_boundary", {}).get("authority_ceiling")
+        == "advisory"
+        and ergoai.get("identity_boundary", {}).get(
+            "can_satisfy_certified_authority"
+        )
+        is False
+        and ergoai.get("identity_boundary", {}).get("independent_proof_authority")
+        is False
+        and any(
+            row.get("identity_boundary", {}).get("independent_proof_authority")
+            is True
+            for row in rows
+            if row.get("provider_id") != "ergoai"
+        )
+    )
+    matrix: dict[str, Any] = {
+        "schema_version": END_TO_END_ASSURANCE_SCHEMA,
+        "interface": END_TO_END_ASSURANCE_INTERFACE,
+        "goal_id": END_TO_END_ASSURANCE_GOAL_ID,
+        "task_id": END_TO_END_ASSURANCE_TASK_ID,
+        "program": END_TO_END_ASSURANCE_PROGRAM,
+        "observed_at": observed_at
+        or datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "binding_mode": "per_provider_host_independent_nine_axis_fail_closed",
+        "axis_order": list(END_TO_END_ASSURANCE_AXES),
+        "host": {
+            "platform_id": host_platform,
+            "system": platform.system().lower(),
+            "machine": platform.machine().lower(),
+        },
+        "inputs": {
+            "lock": lock_ref,
+            "lock_content_digest_sha256": current_lock_digest,
+            "certificate": certificate_ref,
+            "certificate_lock_digest_matches": certificate_lock_fresh,
+            "packaging_snapshot_digest_sha256": content_digest(packaging),
+            "installer_registry_digest_sha256": installer_registry.get(
+                "digest_sha256"
+            ),
+            "public_surface_catalog_digest_sha256": public_surface.get(
+                "provider_catalog_digest_sha256"
+            ),
+        },
+        "coverage": {
+            "expected_lock_provider_ids": sorted(tools_index),
+            "observed_provider_ids": sorted(row_ids),
+            "all_lock_providers_present": row_ids == set(tools_index),
+            "all_rows_have_exact_axes": rows_have_axes,
+            "secpal_identities_separate": secpal_separate,
+            "ergoai_advisor_separate_from_proof_authority": ergoai_separate,
+            "axis_success_is_never_inherited": True,
+            "production_authorization_replacement_not_a_lock_row": True,
+            "production_authorization_replacement_distinct": True,
+        },
+        "identity_separation": {
+            "secpal": {
+                "in_process_provider_id": "secpal-authorization",
+                "external_provider_id": "secpal",
+                "evidence_interchangeable": False,
+            },
+            "ergoai": {
+                "provider_id": "ergoai",
+                "role": "advisor",
+                "authority_ceiling": "advisory",
+                "independent_proof_authority": False,
+                "independent_reconstruction_required": True,
+            },
+            "production_authorization_replacement": {
+                "provider_id": PRODUCTION_AUTHORIZATION_REPLACEMENT_PROVIDER_ID,
+                "distinct_from_external_id": "secpal",
+                "distinct_from_reference_id": "secpal-authorization",
+                "cannot_satisfy_fvt_g219": True,
+                "cannot_claim_microsoft_secpal_authority": True,
+                "legal_approval_goal_id": "FVT-G232",
+                "legal_approval_complete": False,
+                "required_for_legacy_secpal_row": False,
+                "lock_provider_row": False,
+            },
+            "fvt_g219": {
+                "goal_id": "FVT-G219",
+                "status": "blocked",
+                "cannot_be_hidden": True,
+                "cannot_be_satisfied_by_reference": True,
+                "cannot_be_satisfied_by_replacement": True,
+                "cannot_be_satisfied_by_operator_compatibility": True,
+            },
+        },
+        "provider_host_rows": rows,
+        "validation": {
+            "command": END_TO_END_ASSURANCE_VALIDATION_COMMAND,
+            "test": END_TO_END_ASSURANCE_TEST_RELATIVE.as_posix(),
+            "adversarial_axis_mutation_required": list(
+                END_TO_END_ASSURANCE_AXES
+            ),
+            "required_failure_classes": [
+                "supported_missing_dependencies",
+                "missing_wheel_files",
+                "placeholder_dispatch",
+                "stale_lock",
+                "wrong_architecture_artifact",
+                "parser_fixture",
+                "advisor_only_evidence",
+                "unsupported_host",
+            ],
+        },
+        "disclosures": {
+            "deployment_audit_completion_is_not_deployment_readiness": True,
+            "unsupported_host_is_never_success": True,
+            "in_process_secpal_never_impersonates_external_secpal": True,
+            "ergoai_advice_never_satisfies_theorem_authority": True,
+            "stale_or_missing_evidence_fails_only_its_owned_axis_then_joint_claim": True,
+            "retired_microsoft_secpal_remains_unsupported_and_non_required": True,
+            "fvt_g219_remains_blocked_and_cannot_be_hidden": True,
+            "production_authorization_replacement_is_separately_named": True,
+            "deployment_ready_requires_fvt_g232_and_joint_readiness": True,
+            "post_remediation_baseline_is_five_of_twenty_eight_ready": True,
+        },
+    }
+    rows = _apply_post_remediation_semantic_overlays(
+        repo_root=root,
+        rows=rows,
+        certificate_ref=certificate_ref,
+    )
+    matrix["provider_host_rows"] = rows
+    row_ids = {str(row.get("provider_id") or "") for row in rows}
+    matrix["coverage"]["observed_provider_ids"] = sorted(row_ids)
+    matrix["coverage"]["all_lock_providers_present"] = row_ids == set(tools_index)
+    matrix["coverage"]["all_rows_have_exact_axes"] = all(
+        set(row.get("axes") or {}) == set(END_TO_END_ASSURANCE_AXES)
+        for row in rows
+    )
+    matrix = public_evidence_projection(matrix, repo_root=root)
+    public_policy = public_evidence_audit(matrix, repo_root=root)
+    matrix["public_evidence_policy"] = public_policy
+    matrix = recompute_end_to_end_assurance_claims(matrix)
+    return matrix
+
+
+def validate_end_to_end_assurance_matrix(
+    matrix: Mapping[str, Any],
+    *,
+    repo_root: Path | None = None,
+    verify_repository_evidence: bool = True,
+    certificate: Mapping[str, Any] | None = None,
+    certificate_path: Path | None = None,
+) -> dict[str, Any]:
+    """Independently validate evidence identities and re-derived axis claims.
+
+    An inline certificate digest is an identity binding, not independently
+    verifiable evidence.  Validation therefore requires the trusted certificate
+    body that produced the matrix.  Callers may supply that body directly or a
+    path to it; the checked certificate is the backwards-compatible default.
+    Every provider/host row is rebuilt from that body and current repository
+    evidence before any readiness claim is accepted.
+    """
+
+    root = (repo_root or repo_root_from()).resolve()
+    failures: list[str] = []
+    trusted_certificate: dict[str, Any] | None = None
+    if certificate is not None and certificate_path is not None:
+        failures.append("trusted_certificate_source_ambiguous")
+    elif certificate is not None:
+        trusted_certificate = dict(certificate)
+    else:
+        selected_certificate_path = Path(
+            certificate_path or (root / DEFAULT_CERTIFICATE_RELATIVE)
+        )
+        if not selected_certificate_path.is_absolute():
+            selected_certificate_path = root / selected_certificate_path
+        try:
+            raw_trusted_certificate = json.loads(
+                selected_certificate_path.read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            failures.append("trusted_certificate_unreadable")
+        else:
+            if isinstance(raw_trusted_certificate, Mapping):
+                trusted_certificate = dict(raw_trusted_certificate)
+            else:
+                failures.append("trusted_certificate_not_mapping")
+
+    matrix_inputs = matrix.get("inputs") or {}
+    matrix_inputs = matrix_inputs if isinstance(matrix_inputs, Mapping) else {}
+    if trusted_certificate is not None:
+        if trusted_certificate.get("interface") != INTERFACE:
+            failures.append("trusted_certificate_interface_mismatch")
+        if trusted_certificate.get("schema_version") != SCHEMA_VERSION:
+            failures.append("trusted_certificate_schema_mismatch")
+        declared_certificate_digest = str(
+            trusted_certificate.get("certificate_digest_sha256") or ""
+        )
+        computed_certificate_digest = content_digest(
+            {
+                key: value
+                for key, value in trusted_certificate.items()
+                if key != "certificate_digest_sha256"
+            }
+        )
+        if declared_certificate_digest != computed_certificate_digest:
+            failures.append("trusted_certificate_self_digest_mismatch")
+        trusted_certificate_ref = _assurance_inline_evidence_ref(
+            "current_toolchain_certificate",
+            trusted_certificate,
+            interface=str(trusted_certificate.get("interface") or INTERFACE),
+        )
+        if matrix_inputs.get("certificate") != trusted_certificate_ref:
+            failures.append("trusted_certificate_digest_mismatch")
+    expected_header = {
+        "schema_version": END_TO_END_ASSURANCE_SCHEMA,
+        "interface": END_TO_END_ASSURANCE_INTERFACE,
+        "goal_id": END_TO_END_ASSURANCE_GOAL_ID,
+        "task_id": END_TO_END_ASSURANCE_TASK_ID,
+    }
+    for field_name, expected in expected_header.items():
+        if matrix.get(field_name) != expected:
+            failures.append(f"{field_name}_mismatch")
+    if list(matrix.get("axis_order") or ()) != list(END_TO_END_ASSURANCE_AXES):
+        failures.append("axis_order_mismatch")
+    rows = [
+        row
+        for row in (matrix.get("provider_host_rows") or ())
+        if isinstance(row, Mapping)
+    ]
+    row_ids = [str(row.get("row_id") or "") for row in rows]
+    provider_ids = [str(row.get("provider_id") or "") for row in rows]
+    if not rows:
+        failures.append("provider_host_rows_missing")
+    if any(not row_id for row_id in row_ids) or len(set(row_ids)) != len(row_ids):
+        failures.append("provider_host_row_identity_invalid")
+    if any(not provider_id for provider_id in provider_ids) or len(
+        set(provider_ids)
+    ) != len(provider_ids):
+        failures.append("provider_identity_invalid")
+    try:
+        expected_provider_ids = set(
+            lock_tools_by_id(load_lock(root / DEFAULT_LOCK_RELATIVE))
+        )
+    except (OSError, ValueError, json.JSONDecodeError):
+        expected_provider_ids = set()
+        failures.append("current_lock_unreadable")
+    observed_provider_ids = set(provider_ids)
+    if expected_provider_ids and observed_provider_ids != expected_provider_ids:
+        failures.append("lock_provider_coverage_incomplete")
+    coverage = matrix.get("coverage") or {}
+    coverage = coverage if isinstance(coverage, Mapping) else {}
+    if coverage.get("expected_lock_provider_ids") != sorted(expected_provider_ids):
+        failures.append("coverage_expected_provider_ids_not_derived")
+    if coverage.get("observed_provider_ids") != sorted(observed_provider_ids):
+        failures.append("coverage_observed_provider_ids_not_derived")
+    if coverage.get("all_lock_providers_present") is not (
+        observed_provider_ids == expected_provider_ids
+    ):
+        failures.append("coverage_lock_provider_claim_not_derived")
+    for row in rows:
+        row_id = str(row.get("row_id") or "unknown")
+        axes = row.get("axes")
+        axes = axes if isinstance(axes, Mapping) else {}
+        if set(axes) != set(END_TO_END_ASSURANCE_AXES):
+            failures.append(f"{row_id}:axis_population_invalid")
+            continue
+        for axis_name in END_TO_END_ASSURANCE_AXES:
+            axis = axes.get(axis_name)
+            axis = axis if isinstance(axis, Mapping) else {}
+            state = str(axis.get("state") or "")
+            if state not in END_TO_END_ASSURANCE_STATES:
+                failures.append(f"{row_id}:{axis_name}:state_invalid")
+            if type(axis.get("required")) is not bool:
+                failures.append(f"{row_id}:{axis_name}:required_not_boolean")
+            if axis.get("ready") is not (state == "ready"):
+                failures.append(f"{row_id}:{axis_name}:ready_not_derived")
+            reasons = axis.get("reason_codes") or ()
+            if not isinstance(reasons, list) or not reasons or any(
+                not isinstance(reason, str) or not reason for reason in reasons
+            ):
+                failures.append(f"{row_id}:{axis_name}:reason_codes_invalid")
+            refs = axis.get("evidence_refs") or ()
+            if not isinstance(refs, list) or not refs:
+                failures.append(f"{row_id}:{axis_name}:evidence_refs_missing")
+                continue
+            for index, ref in enumerate(refs):
+                if not isinstance(ref, Mapping):
+                    failures.append(
+                        f"{row_id}:{axis_name}:evidence_ref_{index}_invalid"
+                    )
+                    continue
+                digest = str(ref.get("sha256") or "")
+                if ref.get("present") is True and not re.fullmatch(
+                    r"sha256:[0-9a-f]{64}", digest
+                ):
+                    failures.append(
+                        f"{row_id}:{axis_name}:evidence_ref_{index}_digest_invalid"
+                    )
+                if ref.get("kind") == "repository_file":
+                    raw_path = str(ref.get("path") or "")
+                    relative = Path(raw_path)
+                    if (
+                        not raw_path
+                        or relative.is_absolute()
+                        or ".." in relative.parts
+                    ):
+                        failures.append(
+                            f"{row_id}:{axis_name}:evidence_ref_{index}_path_invalid"
+                        )
+                    elif verify_repository_evidence:
+                        candidate = root / relative
+                        actual = file_digest(candidate)
+                        if ref.get("present") is not candidate.is_file():
+                            failures.append(
+                                f"{row_id}:{axis_name}:evidence_ref_{index}_presence_stale"
+                            )
+                        if candidate.is_file() and actual != ref.get("sha256"):
+                            failures.append(
+                                f"{row_id}:{axis_name}:evidence_ref_{index}_digest_stale"
+                            )
+                elif ref.get("kind") != "inline_digest":
+                    failures.append(
+                        f"{row_id}:{axis_name}:evidence_ref_{index}_kind_invalid"
+                    )
+        recomputed_joint = provider_host_joint_ready(axes)
+        if row.get("joint_ready") is not recomputed_joint:
+            failures.append(f"{row_id}:joint_ready_not_derived")
+
+    providers = {str(row.get("provider_id") or ""): row for row in rows}
+    secpal_reference = providers.get("secpal-authorization", {})
+    secpal_external = providers.get("secpal", {})
+    if (
+        secpal_reference.get("identity_boundary", {}).get("identity_class")
+        != "in_process_secpal_reference"
+        or secpal_external.get("identity_boundary", {}).get("identity_class")
+        != "external_secpal_vendor"
+    ):
+        failures.append("secpal_identity_boundary_collapsed")
+    ergoai = providers.get("ergoai", {})
+    ergo_boundary = ergoai.get("identity_boundary", {})
+    if (
+        ergo_boundary.get("identity_class") != "ergoai_advisor"
+        or ergo_boundary.get("authority_ceiling") != "advisory"
+        or ergo_boundary.get("can_satisfy_certified_authority") is not False
+        or ergo_boundary.get("independent_proof_authority") is not False
+    ):
+        failures.append("ergoai_advisor_theorem_authority_boundary_invalid")
+
+    recomputed = recompute_end_to_end_assurance_claims(matrix)
+    recomputed_rows = {
+        str(row.get("row_id") or ""): row
+        for row in (recomputed.get("provider_host_rows") or ())
+        if isinstance(row, Mapping)
+    }
+    for row in rows:
+        row_id = str(row.get("row_id") or "")
+        recomputed_row = recomputed_rows.get(row_id, {})
+        if row.get("joint_reason_codes") != recomputed_row.get(
+            "joint_reason_codes"
+        ):
+            failures.append(f"{row_id}:joint_reason_codes_not_derived")
+    for field_name in ("summary", "claims"):
+        if matrix.get(field_name) != recomputed.get(field_name):
+            failures.append(f"{field_name}_not_derived")
+    expected_digest = content_digest(
+        {key: value for key, value in matrix.items() if key != "matrix_digest_sha256"}
+    )
+    if matrix.get("matrix_digest_sha256") != expected_digest:
+        failures.append("matrix_digest_mismatch")
+    public_policy = matrix.get("public_evidence_policy")
+    if not isinstance(public_policy, Mapping) or public_policy.get("satisfied") is not True:
+        failures.append("public_evidence_policy_not_satisfied")
+    independently_audited_public_policy = public_evidence_audit(matrix, repo_root=root)
+    if independently_audited_public_policy.get("satisfied") is not True:
+        failures.append("independent_public_evidence_audit_failed")
+
+    # Content addressing detects accidental mutation but cannot make the
+    # mutated claims true: a caller can always recompute an unkeyed digest.
+    # Rebuild every derived surface from the trusted certificate and current
+    # repository evidence, then compare the claims field by field.
+    if trusted_certificate is not None:
+        try:
+            canonical = build_end_to_end_assurance_matrix(
+                repo_root=root,
+                certificate=trusted_certificate,
+                observed_at=str(matrix.get("observed_at") or ""),
+            )
+        except Exception as exc:  # noqa: BLE001 - validation fails closed
+            failures.append(
+                "canonical_assurance_rebuild_failed:"
+                f"{type(exc).__name__}"
+            )
+        else:
+            for field_name in (
+                "program",
+                "binding_mode",
+                "host",
+                "inputs",
+                "coverage",
+                "identity_separation",
+                "validation",
+                "disclosures",
+                "public_evidence_policy",
+                "summary",
+                "claims",
+            ):
+                if matrix.get(field_name) != canonical.get(field_name):
+                    failures.append(f"{field_name}_not_canonically_derived")
+
+            canonical_rows = {
+                str(row.get("row_id") or ""): row
+                for row in (canonical.get("provider_host_rows") or ())
+                if isinstance(row, Mapping) and str(row.get("row_id") or "")
+            }
+            observed_rows = {
+                str(row.get("row_id") or ""): row
+                for row in rows
+                if str(row.get("row_id") or "")
+            }
+            if set(observed_rows) != set(canonical_rows):
+                failures.append("provider_host_rows_not_canonically_derived")
+            for row_id in sorted(set(observed_rows) & set(canonical_rows)):
+                observed_row = observed_rows[row_id]
+                canonical_row = canonical_rows[row_id]
+                for field_name in (
+                    "provider_id",
+                    "host",
+                    "identity_boundary",
+                    "axes",
+                    "joint_ready",
+                    "joint_reason_codes",
+                ):
+                    if observed_row.get(field_name) != canonical_row.get(field_name):
+                        failures.append(
+                            f"{row_id}:{field_name}_not_canonically_derived"
+                        )
+    return {
+        "valid": not failures,
+        "failures": sorted(set(failures)),
+        "recomputed_deployment_ready": bool(
+            recomputed.get("summary", {}).get("deployment_ready")
+        ),
+        "rows_validated": len(rows),
+        "axes_validated": len(rows) * len(END_TO_END_ASSURANCE_AXES),
+    }
+
+
 def write_certificate(
     certificate: Mapping[str, Any],
     destination: Path,
@@ -9670,17 +12995,82 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Datalog-SecPAL) and bind authority roles into the certificate"
         ),
     )
+    parser.add_argument(
+        "--end-to-end-assurance",
+        action="store_true",
+        help=(
+            "Also reconstruct FVT-088's per-provider/host nine-axis, "
+            "fail-closed assurance matrix from the fresh role-aware certificate"
+        ),
+    )
+    parser.add_argument(
+        "--end-to-end-assurance-output",
+        type=Path,
+        default=None,
+        help=(
+            "FVT-088 matrix output path (default: docs/architecture/"
+            "formal_verification_end_to_end_assurance_matrix.json)"
+        ),
+    )
+    parser.add_argument(
+        "--post-remediation-assurance",
+        action="store_true",
+        help=(
+            "Also rebuild FVT-100/FVT-G233 post-remediation matrix delta from "
+            "the trusted certificate and remediations G225-G231"
+        ),
+    )
+    parser.add_argument(
+        "--post-remediation-assurance-output",
+        type=Path,
+        default=None,
+        help=(
+            "FVT-100 delta output path (default: docs/architecture/"
+            "formal_verification_post_remediation_delta.json)"
+        ),
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     root = (args.repo_root or repo_root_from()).resolve()
+    want_post_remediation = bool(
+        args.post_remediation_assurance
+        or args.post_remediation_assurance_output is not None
+    )
+    want_assurance = bool(
+        args.end_to_end_assurance
+        or args.end_to_end_assurance_output is not None
+        or want_post_remediation
+    )
     certificate = build_certificate(
         repo_root=root,
         lock_path=args.lock.resolve() if args.lock else None,
-        role_aware=bool(args.role_aware),
+        role_aware=bool(args.role_aware or want_assurance),
+    )
+    assurance_matrix = (
+        build_end_to_end_assurance_matrix(
+            repo_root=root,
+            lock_path=args.lock.resolve() if args.lock else None,
+            certificate=certificate,
+        )
+        if want_assurance
+        else None
+    )
+    post_remediation_delta = (
+        build_post_remediation_assurance_delta(
+            repo_root=root,
+            matrix=assurance_matrix,
+            certificate=certificate,
+        )
+        if want_post_remediation
+        else None
     )
 
     if args.stdout:
-        json.dump(certificate, sys.stdout, indent=2)
+        json.dump(
+            post_remediation_delta or assurance_matrix or certificate,
+            sys.stdout,
+            indent=2,
+        )
         sys.stdout.write("\n")
     else:
         output = (
@@ -9691,6 +13081,41 @@ def main(argv: Sequence[str] | None = None) -> int:
         write_certificate(certificate, output)
         if not args.quiet:
             print(f"wrote {output}", file=sys.stderr)
+        if assurance_matrix is not None and (
+            args.end_to_end_assurance
+            or args.end_to_end_assurance_output is not None
+            or want_post_remediation
+        ):
+            assurance_output = (
+                args.end_to_end_assurance_output.resolve()
+                if args.end_to_end_assurance_output
+                else (root / DEFAULT_END_TO_END_ASSURANCE_RELATIVE)
+            )
+            # Post-remediation rebuilds the matrix body as part of the audit.
+            if args.end_to_end_assurance or args.end_to_end_assurance_output is not None:
+                write_certificate(assurance_matrix, assurance_output)
+                if not args.quiet:
+                    print(f"wrote {assurance_output}", file=sys.stderr)
+        if post_remediation_delta is not None:
+            # Always publish the rebuilt matrix when producing the delta so the
+            # repository evidence terms stay content-bound together.
+            assurance_output = (
+                args.end_to_end_assurance_output.resolve()
+                if args.end_to_end_assurance_output
+                else (root / DEFAULT_END_TO_END_ASSURANCE_RELATIVE)
+            )
+            if assurance_matrix is not None:
+                write_certificate(assurance_matrix, assurance_output)
+                if not args.quiet:
+                    print(f"wrote {assurance_output}", file=sys.stderr)
+            delta_output = (
+                args.post_remediation_assurance_output.resolve()
+                if args.post_remediation_assurance_output
+                else (root / DEFAULT_POST_REMEDIATION_DELTA_RELATIVE)
+            )
+            write_certificate(post_remediation_delta, delta_output)
+            if not args.quiet:
+                print(f"wrote {delta_output}", file=sys.stderr)
 
     if not args.quiet:
         promotion = certificate["promotion"]
@@ -9707,6 +13132,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"quarantines={len(certificate['disagreement_quarantines'])}",
             file=sys.stderr,
         )
+        if assurance_matrix is not None:
+            print(
+                "end_to_end_assurance="
+                f"{assurance_matrix['summary']['status']} "
+                f"ready={assurance_matrix['summary']['provider_host_rows_ready']}/"
+                f"{assurance_matrix['summary']['provider_host_rows_total']}",
+                file=sys.stderr,
+            )
+        if post_remediation_delta is not None:
+            print(
+                "post_remediation_assurance="
+                f"{post_remediation_delta['status']} "
+                f"baseline="
+                f"{post_remediation_delta['baseline']['ready_count']}/"
+                f"{post_remediation_delta['baseline']['total_count']} "
+                f"current="
+                f"{post_remediation_delta['current']['ready_count']}/"
+                f"{post_remediation_delta['current']['total_count']} "
+                f"deployment_ready={post_remediation_delta['deployment_ready']}",
+                file=sys.stderr,
+            )
 
     # Exit 0 even when some tools are unavailable — absence is not a certifier
     # failure. Hard failures are schema/lock errors (already raised).

@@ -192,6 +192,13 @@ state/**/*.out
 !docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
 !docs/architecture/formal_verification_toolchain_certificate.json
 !docs/architecture/formal_verification_role_aware_deployment_receipt.json
+!docs/architecture/formal_verification_authorization_replacement_approval.json
+!docs/architecture/formal_verification_authorization_replacement_approval_signer_package.json
+!docs/architecture/formal_verification_authorization_replacement_project_owner_disposition.json
+!docs/architecture/formal_verification_authoritative_vendor_release.json
+!docs/architecture/formal_verification_post_remediation_delta.json
+!docs/architecture/formal_verification_production_authorization_replacement_receipt.json
 
 # Stable IPFS Kit runtime-readiness scheduler policy is a source artifact.
 !config/agent_supervisor_ipfs_kit_runtime_readiness_scheduler.json
+

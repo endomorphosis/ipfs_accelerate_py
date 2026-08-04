@@ -5,15 +5,15 @@ import base64
 import fcntl
 import fnmatch
 import hashlib
-import hmac
 import json
 import logging
 import math
 import os
 import posixpath
 import re
-import signal
 import secrets
+import select
+import signal
 import shlex
 import shutil
 import stat as stat_module
@@ -33,6 +33,7 @@ from ..context.context_compiler import (
     ContextCompilationReceipt,
     ContextCompileResult,
     ContextCompiler,
+    ContextDeltaBudgetError,
     ContextDeltaResult,
     ContextExpansionCancelled,
     RequiredContextOverflowError,
@@ -45,6 +46,7 @@ from ..context.context_compiler import (
 from ..context.context_contracts import (
     ABSOLUTE_MAX_CONTEXT_BYTES,
     ContextBudget,
+    ContextBoundsError,
     ContextCapsule,
 )
 from ..proof.formal_verification_contracts import canonical_json, content_identity
@@ -55,7 +57,15 @@ from ..release_evidence import (
     EXPECTED_OUTPUT_IGNORED_OR_UNSTAGED,
     EXPECTED_OUTPUT_MISSING,
     MEMBER_COMPLETION_RECEIPT_SCHEMA,
+    # FVT-G212 / FVT-078: synthetic exact-text discovery key for objective
+    # validation repair.  Expected-output enforcement remains fail-closed;
+    # this import only anchors the validation-gate evidence phrase on a
+    # predicted G212 path without granting completion or proof authority.
+    OBJECTIVE_VALIDATION_REPAIR_EVIDENCE as _G212_OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
 )
+
+# Keep the G212 validation-gate discovery phrase bound to this module.
+assert _G212_OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
 from ..implementation_timeout import (
     DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
     effective_implementation_hard_timeout,
@@ -74,8 +84,6 @@ from ..merge.checkout_lock import (
     adopt_inactive_checkout_mutation_lease,
     acquire_checkout_mutation_lease,
     checkout_lock_metadata,
-    checkout_lock_owner_is_active,
-    checkout_lock_repository_matches,
     checkout_mutation_lock_path,
     checkout_repository_id,
     crash_fence_reconciliation_lock_path,
@@ -112,6 +120,21 @@ from ..runtime.event_log import (
     repair_jsonl_event_log,
     unique_backup_path,
 )
+from ..provider_command_environment import (
+    PROVIDER_COMMAND_ENV_DIGEST_ENV,
+    PROVIDER_COMMAND_ENV_WRAPPER_ENV,
+    project_provider_command_environment,
+    provider_command_environment_sha256,
+)
+from ..grok_cli_runner import (
+    GROK_QUOTA_EXHAUSTED_EXIT_CODE,
+    GROK_TERMINAL_RECEIPT_FD_ENV,
+    GROK_TERMINAL_RECEIPT_MAX_BYTES,
+    bind_grok_runner_command,
+    encode_grok_terminal_quota_receipt,
+    parse_grok_terminal_quota_receipt,
+    validate_grok_runner_command_binding,
+)
 from ..control.control_contracts import CursorReplayError
 from ..evidence_output_scope import (
     EVIDENCE_OUTPUTS_METADATA_KEY,
@@ -130,6 +153,7 @@ from ..task_sources.task_identity import (
     TaskIdentity,
     canonical_content_cid,
     canonical_task_identity,
+    normalize_exact_authorized_paths,
 )
 from ..task_sources.task_source import (
     MAX_QUERY_LIMIT as TASK_SOURCE_QUERY_LIMIT,
@@ -150,31 +174,25 @@ from ..task_sources.taskboard_store import (
 )
 from ..merge.git_gc import GitGarbageCollector
 from ..integrations.llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
-from ..grok_cli_runner import (
-    GROK_QUOTA_EXHAUSTED_EXIT_CODE,
-    GROK_QUOTA_RECEIPT_SCHEMA,
-    parse_grok_quota_error,
-)
 from ..merge.merge_checkpoint import MergeCheckpoint
 from ..merge.merge_queue import MERGE_TARGET_BINDING_SCHEMA, MergeQueue
-from ..validation.project_dependency_preflight import (
-    PROJECT_DEPENDENCY_PREFLIGHT_BACKOFF_SECONDS,
-    project_dependency_preflight_backoff_seconds,
-    project_dependency_preflight_error_receipt,
-    preflight_validation_project_dependencies,
-)
 from ..validation.validation_commands import (
     build_validation_commands,
     infer_validation_impact_paths,
     normalize_validation_command_text,
     split_validation_commands,
-    validation_command_repository_root,
 )
 from ..validation.validation_runtime import (
+    FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV,
     VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
+    VALIDATION_PYTHON_MODULE_PREFLIGHT_SCHEMA,
+    VALIDATION_PYTHON_MODULES_ENV,
     ValidationPythonLauncherReceipt,
     ValidationRuntimeError,
     canonical_validation_environment_contract,
+    formal_toolchain_deployment_manifest,
+    preflight_validation_python_modules,
+    private_validation_environment,
     sealed_validation_python_runner,
     validation_python_launcher_environment,
     validation_shell_command,
@@ -185,7 +203,7 @@ from ..validation.validation_scheduler import (
 )
 from .diagnostics import summarize_test_failure
 from .runner import TodoDaemonHooks, TodoDaemonRunner
-from .supervisor_runtime import ProcessGroupCancelled, run_process_group_stream
+from .supervisor_runtime import run_process_group_stream
 from .contract_packet_provider_router import (
     IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
     PROVIDER_EXECUTION_RECEIPT_INTERFACE,
@@ -209,7 +227,7 @@ from .task_execution_policy import (
     TaskExecutionRequest,
     TypedLocalOperation,
 )
-from .worktrees import WorktreeLease, WorktreePool
+from .worktrees import WORKTREE_POOL_SCHEMA, WorktreeLease, WorktreePool
 
 REPO_ROOT = Path.cwd()
 
@@ -315,10 +333,6 @@ TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 TRANSIENT_MERGE_RECONCILIATION_BACKOFF_SECONDS = 30.0
 IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
 IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME = "implementation-task-claims"
-IMPLEMENTATION_TASK_CLAIM_OWNER_LANE_BINDING_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "implementation-task-claim-owner-lane-binding@1"
-)
 WORKTREE_LIFECYCLE_LEASE_SECONDS_ENV = (
     "IPFS_ACCELERATE_AGENT_WORKTREE_LIFECYCLE_LEASE_SECONDS"
 )
@@ -328,13 +342,6 @@ WORKTREE_LIFECYCLE_STARTUP_GRACE_ENV = (
 WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV = (
     "IPFS_ACCELERATE_AGENT_RECLAIM_DEAD_WORKTREE_LEASES_ON_STARTUP"
 )
-WORKTREE_LIFECYCLE_RECLAIM_EXPIRED_ON_PASS_ENV = (
-    "IPFS_ACCELERATE_AGENT_RECLAIM_EXPIRED_WORKTREE_LEASES_ON_PASS"
-)
-WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS_ENV = (
-    "IPFS_ACCELERATE_AGENT_WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS"
-)
-DEFAULT_WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS = 60.0
 WORKTREE_LIFECYCLE_RACE_BACKOFF_SECONDS = 30
 IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND = "implementation_resource_claim"
 IMPLEMENTATION_RESOURCE_CLAIM_LOCK_DIRNAME = "implementation-resource-claims"
@@ -343,7 +350,9 @@ TASK_ATTEMPT_LIMIT_IDLE_REASON = (
 )
 VALIDATION_MAX_WORKERS_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_MAX_WORKERS"
 VALIDATION_RESOURCE_BUDGET_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_RESOURCE_BUDGET"
+VALIDATION_PYTHON_MODULES_METADATA_KEY = "validation python modules"
 DEFAULT_VALIDATION_MAX_WORKERS = 2
+VALIDATION_PYTHON_PREFLIGHT_BACKOFF_SECONDS = 300
 MAX_MERGE_PROOF_METADATA_ITEMS = 256
 MAX_MERGE_PROOF_METADATA_DEPTH = 8
 MAX_MERGE_PROOF_METADATA_TEXT = 4096
@@ -390,34 +399,6 @@ PROVIDER_CAPACITY_PATTERNS = (
         ),
     ),
 )
-GROK_QUOTA_OR_BALANCE_EXHAUSTION_PATTERN = re.compile(
-    r"(?:\binsufficient[_ ]quota\b|"
-    r"\bquota(?:[_ ]|\s+(?:is\s+|has\s+been\s+)?)"
-    r"(?:exceeded|exhausted)\b|"
-    r"\b(?:usage\s+)?balance(?:\s+(?:is|has\s+been))?\s+exhausted\b|"
-    r"\b(?:hit|reached|exceeded)\s+(?:your|the)\s+usage\s+limit\b)",
-    re.IGNORECASE,
-)
-GROK_FALLBACK_DISQUALIFY_PATTERN = re.compile(
-    r"(?:\b429\b|rate.?limit|too\s+many\s+requests|"
-    r"temporar(?:y|ily)|try\s+again\s+later|overload(?:ed)?|"
-    r"resource.?exhausted|service\s+unavailable|\bunavailable\b|"
-    r"timed?\s*out|\btimeout\b|auth(?:entication|orization)?|"
-    r"\bunauthorized\b|\bforbidden\b|\blogin\b|credential|api\s+key)",
-    re.IGNORECASE,
-)
-PRIMARY_QUOTA_EXHAUSTED_FALLBACK_TRIGGER = "primary_quota_exhausted"
-QUOTA_OR_BALANCE_EXHAUSTED_FAILURE_KIND = "quota_or_balance_exhausted"
-ORDERED_GROK_PROVIDER_ID = "grok_cli"
-ORDERED_GROK_MODEL_ID = "grok-4.5"
-ORDERED_CODEX_PROVIDER_ID = "codex"
-ORDERED_CODEX_MODEL_ID = "gpt-5.6-terra"
-ORDERED_CODEX_REASONING_EFFORT = "medium"
-GROK_QUOTA_FALLBACK_AUTHORITY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "grok-quota-fallback-authority@1"
-)
-MAX_GROK_QUOTA_FALLBACK_AUTHORITIES = 128
 PROVIDER_DECLARED_RETRY_AT_PATTERN = re.compile(
     r"\btry\s+again\s+at\s+"
     r"(?P<month>[A-Za-z]{3,9})\.?\s+"
@@ -445,24 +426,6 @@ PROVIDER_RETRY_MONTHS = {
     "dec": 12,
 }
 IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
-IMPLEMENTATION_FALLBACK_PROVIDER_ENV = (
-    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER"
-)
-IMPLEMENTATION_FALLBACK_TRIGGER_ENV = (
-    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER"
-)
-GROK_IMPLEMENTATION_PROVIDER_ALIASES = frozenset(
-    {
-        "grok",
-        "grok_cli",
-        "grok-cli",
-        "grok_build",
-        "grok-build",
-        "xai_cli",
-        "xai-cli",
-    }
-)
-CODEX_IMPLEMENTATION_PROVIDER_ALIASES = frozenset({"codex", "openai"})
 REQUIRE_TASK_EXECUTION_METADATA_ENV = (
     "IPFS_ACCELERATE_AGENT_REQUIRE_TASK_EXECUTION_METADATA"
 )
@@ -476,6 +439,91 @@ _GROK_BIN_ENV = "IPFS_ACCELERATE_AGENT_GROK_BIN"
 _GROK_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GROK_MODEL"
 _GROK_MAX_TURNS_ENV = "IPFS_ACCELERATE_AGENT_GROK_MAX_TURNS"
 _GROK_CONTEXT_WINDOW_ENV = "IPFS_ACCELERATE_AGENT_GROK_CONTEXT_WINDOW"
+DEFAULT_GROK_IMPLEMENTATION_MODEL = "grok-4.5"
+GROK_QUOTA_FALLBACK_CODEX_MODEL = "gpt-5.6-terra"
+GROK_QUOTA_FALLBACK_CODEX_REASONING_EFFORT = "medium"
+GROK_QUOTA_VERIFIER_COMMAND_ENV = (
+    "IPFS_ACCELERATE_AGENT_GROK_QUOTA_VERIFIER_COMMAND"
+)
+GROK_QUOTA_VERIFIER_PUBLIC_KEY_ENV = (
+    "IPFS_ACCELERATE_AGENT_GROK_QUOTA_VERIFIER_ED25519_PUBLIC_KEY"
+)
+GROK_QUOTA_VERIFIER_ACCOUNT_ID_ENV = (
+    "IPFS_ACCELERATE_AGENT_GROK_BUILD_ACCOUNT_ID"
+)
+GROK_QUOTA_VERIFIER_POOL_ID_ENV = (
+    "IPFS_ACCELERATE_AGENT_GROK_BUILD_QUOTA_POOL_ID"
+)
+GROK_QUOTA_VERIFIER_TIMEOUT_ENV = (
+    "IPFS_ACCELERATE_AGENT_GROK_QUOTA_VERIFIER_TIMEOUT_SECONDS"
+)
+GROK_QUOTA_VERIFIER_REQUEST_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "grok-quota-verifier-request@1"
+)
+GROK_QUOTA_VERIFIER_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "grok-quota-verifier-receipt@1"
+)
+GROK_QUOTA_VERIFIER_RECEIPT_PREFIX = (
+    "IPFS_ACCELERATE_GROK_QUOTA_VERIFIER_RECEIPT "
+)
+GROK_QUOTA_VERIFIER_MAX_REQUEST_BYTES = 256 * 1024
+GROK_QUOTA_VERIFIER_MAX_OUTPUT_BYTES = 16 * 1024
+GROK_QUOTA_VERIFIER_MAX_COMMAND_BYTES = 4096
+GROK_QUOTA_VERIFIER_MAX_COMMAND_ARGUMENTS = 32
+GROK_QUOTA_VERIFIER_MAX_COMMAND_ARGUMENT_BYTES = 1024
+GROK_QUOTA_VERIFIER_MAX_IDENTIFIER_BYTES = 256
+GROK_QUOTA_VERIFIER_MAX_LIFETIME_SECONDS = 300
+DEFAULT_GROK_QUOTA_VERIFIER_TIMEOUT_SECONDS = 15.0
+GROK_QUOTA_VERIFIER_RETRY_SECONDS = 60
+GROK_QUOTA_CODEX_PROVIDER_ALIASES = frozenset(
+    {
+        "grok_quota_codex",
+        "grok-quota-codex",
+        "grok_quota_codex_fallback",
+        "grok-quota-codex-fallback",
+    }
+)
+
+
+def _strict_urlsafe_base64_decode(value: str) -> bytes:
+    """Decode one canonical unpadded URL-safe base64 value."""
+
+    if not isinstance(value, str) or not re.fullmatch(
+        r"[A-Za-z0-9_-]+",
+        value,
+    ):
+        raise ValueError("noncanonical URL-safe base64")
+    encoded = value.encode("ascii")
+    decoded = base64.b64decode(
+        encoded + b"=" * (-len(encoded) % 4),
+        altchars=b"-_",
+        validate=True,
+    )
+    canonical = base64.urlsafe_b64encode(decoded).decode("ascii").rstrip("=")
+    if canonical != value:
+        raise ValueError("noncanonical URL-safe base64")
+    return decoded
+
+
+def _bounded_grok_quota_verifier_identifier(value: str) -> bool:
+    """Accept one bounded, printable, exact verifier identifier."""
+
+    if not isinstance(value, str) or not value or value != value.strip():
+        return False
+    if len(value) > GROK_QUOTA_VERIFIER_MAX_IDENTIFIER_BYTES:
+        return False
+    if any(
+        ord(character) < 0x20 or ord(character) == 0x7F
+        for character in value
+    ):
+        return False
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return len(encoded) <= GROK_QUOTA_VERIFIER_MAX_IDENTIFIER_BYTES
 IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE_ENV = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE"
 )
@@ -496,12 +544,6 @@ DEFAULT_IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE = 16_384
 DEFAULT_IMPLEMENTATION_CONTEXT_TOOL_RESERVE = 8_192
 PROPOSAL_VALIDATION_FAILURE_RETURN_CODE = 78
 MAX_PERSISTED_PROPOSAL_REASON_CODES = 16
-MAX_PERSISTED_VALIDATION_FAILED_TESTS = 12
-MAX_PERSISTED_VALIDATION_FAILED_TEST_PATHS = 12
-MAX_PERSISTED_VALIDATION_EXCEPTION_TYPES = 8
-MAX_PERSISTED_VALIDATION_IMPACT_PATHS = 16
-MAX_PERSISTED_VALIDATION_FAILURE_ITEM_CHARS = 512
-MAX_PERSISTED_VALIDATION_FAILURE_HEAD_CHARS = 2_000
 MAX_PENDING_SCOPE_ADJUDICATIONS = 256
 MAX_VALIDATION_GENERATED_ARTIFACT_RECEIPT_PATHS = 50
 SECRET_CHANGE_SCOPE_EXAMINATION_SCHEMA = (
@@ -536,9 +578,6 @@ PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA = (
 )
 PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@2"
-)
-PROPOSAL_BINARY_ARCHIVE_ARTIFACT_ENVELOPE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@3"
 )
 PROPOSAL_ARTIFACT_AUTHORITY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-artifact-authority@1"
@@ -630,15 +669,6 @@ class CrashFenceReconciler:
                 )
                 if trusted and trusted.get("cleared"):
                     return trusted
-                committed = (
-                    daemon._auto_clear_committed_shared_checkout_protected_mutations(
-                        incident,
-                        incident_path=incident_path,
-                        active_path=active_path,
-                    )
-                )
-                if committed and committed.get("cleared"):
-                    return committed
         fence_present = False
         try:
             fence_present = incident_path.exists() or active_path.exists()
@@ -1085,34 +1115,20 @@ RUNTIME_WAKE_KINDS = frozenset(
     }
 )
 DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS = 3600.0
-PROTECTED_INCIDENT_REEVALUATION_WAKE_KINDS = frozenset(
-    {"policy", "repository"}
-)
-LLM_MERGE_RESOLVER_DISABLED_VALUES = frozenset(
-    {"0", "disabled", "false", "none", "off"}
-)
-
-
-def normalize_llm_merge_resolver_command(value: Any) -> str:
-    """Normalize an explicit resolver command, including a disable sentinel."""
-
-    command = str(value or "").strip()
-    if command.lower() in LLM_MERGE_RESOLVER_DISABLED_VALUES:
-        return ""
-    return command
 
 
 def default_llm_merge_resolver_command() -> str:
     """Return the configured resolver or the packaged agent fallback.
 
-    The packaged route starts exact Grok 4.5 and permits exact Codex Terra at
-    medium effort only after that invocation proves quota/balance exhaustion.
-    Sealed ordered routes ignore configured command overrides at dispatch.
+    The fallback starts Codex in the conflicted workspace and uses Copilot only
+    when Codex cannot complete the repair. Keeping this as the daemon default
+    means semantic merge conflicts are actively repaired instead of merely
+    recorded for a later manual retry.
     """
 
     configured = os.environ.get(LLM_MERGE_RESOLVER_COMMAND_ENV, "").strip()
     if configured:
-        return normalize_llm_merge_resolver_command(configured)
+        return configured
     return llm_merge_resolver_fallback_command(python_executable=sys.executable)
 
 
@@ -1550,14 +1566,6 @@ def _goose_meta_spark_command(*, workspace_path: Path) -> list[str]:
 
 
 def _grok_binary() -> str | None:
-    try:
-        from ...llm_router import find_grok_cli
-
-        found = find_grok_cli()
-        if found:
-            return found
-    except Exception:
-        pass
     configured = os.environ.get(_GROK_BIN_ENV, "").strip()
     if configured:
         path = Path(configured).expanduser()
@@ -1566,30 +1574,42 @@ def _grok_binary() -> str | None:
         found = shutil.which(configured)
         if found:
             return found
+        return None
+    try:
+        from ...llm_router import find_grok_cli
+
+        found = find_grok_cli()
+        if found:
+            return found
+    except Exception:
+        pass
     return shutil.which("grok")
 
 
 def _grok_cli_available() -> bool:
-    """True when the resolved Grok CLI and headless auth are available.
+    """True when llm_router's grok_cli provider can be constructed."""
 
-    The implementation runner receives the exact path returned by
-    :func:`_grok_binary`, including the supported
-    ``IPFS_ACCELERATE_AGENT_GROK_BIN`` override.  Do not gate readiness on
-    constructing llm_router's single-shot provider: that provider performs its
-    own command lookup and can reject an otherwise valid supervisor override.
-    """
-
-    if not _grok_binary():
-        return False
     try:
-        from ...llm_router import _grok_cli_auth_available
+        from ...llm_router import get_llm_provider
 
-        return bool(_grok_cli_auth_available())
+        return get_llm_provider("grok_cli") is not None
     except Exception:
-        return False
+        if not _grok_binary():
+            return False
+        try:
+            from ...llm_router import _grok_cli_auth_available
+
+            return bool(_grok_cli_auth_available())
+        except Exception:
+            auth = Path.home() / ".grok" / "auth.json"
+            return auth.is_file() or bool(os.environ.get("XAI_API_KEY", "").strip())
 
 
-def _grok_cli_command(*, workspace_path: Path) -> list[str]:
+def _grok_cli_command(
+    *,
+    workspace_path: Path,
+    model_override: str = "",
+) -> list[str]:
     """Build a Grok CLI agent command through llm_router.grok_cli.
 
     Prompt body is supplied on stdin by the daemon; :mod:`grok_cli_runner`
@@ -1604,11 +1624,12 @@ def _grok_cli_command(*, workspace_path: Path) -> list[str]:
         )
 
     model = (
-        os.environ.get(_GROK_MODEL_ENV, "").strip()
+        str(model_override).strip()
+        or os.environ.get(_GROK_MODEL_ENV, "").strip()
         or os.environ.get("GROK_CLI_MODEL", "").strip()
         or os.environ.get("GROK_MODEL", "").strip()
         or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
-        or "grok-4.5"
+        or DEFAULT_GROK_IMPLEMENTATION_MODEL
     )
     # Prefer an effectively uncapped turn budget; the implementation daemon
     # still enforces implementation_timeout as the hard wall-clock limit.
@@ -1617,7 +1638,7 @@ def _grok_cli_command(*, workspace_path: Path) -> list[str]:
     runner_path = Path(__file__).resolve().parents[1] / "grok_cli_runner.py"
     if not runner_path.is_file():
         raise RuntimeError(f"grok_cli_runner missing at {runner_path}")
-    return [
+    command = [
         sys.executable,
         str(runner_path),
         "--workspace",
@@ -1631,46 +1652,7 @@ def _grok_cli_command(*, workspace_path: Path) -> list[str]:
         "--mode",
         "agent",
     ]
-
-
-def _exact_ordered_grok_command_binding(
-    command: Sequence[str],
-) -> dict[str, Any]:
-    """Return the exact reviewed Grok dispatch binding, or no binding."""
-
-    items = [str(item) for item in command]
-    runner_path = Path(__file__).resolve().parents[1] / "grok_cli_runner.py"
-    if (
-        len(items) != 12
-        or items[0] != sys.executable
-        or items[1] != str(runner_path)
-        or items[2] != "--workspace"
-        or items[4] != "--grok-bin"
-        or not items[5]
-        or items[6] != "--model"
-        or items[7] != ORDERED_GROK_MODEL_ID
-        or items[8] != "--max-turns"
-        or re.fullmatch(r"[1-9][0-9]*", items[9]) is None
-        or items[10:] != ["--mode", "agent"]
-    ):
-        return {}
-    try:
-        workspace_path = Path(items[3])
-        if (
-            not workspace_path.is_absolute()
-            or str(workspace_path.resolve(strict=False)) != items[3]
-        ):
-            return {}
-    except (OSError, RuntimeError, ValueError):
-        return {}
-    return {
-        "provider_id": ORDERED_GROK_PROVIDER_ID,
-        "model_id": ORDERED_GROK_MODEL_ID,
-        "workspace_path": items[3],
-        "grok_binary": items[5],
-        "command": items,
-        "command_cid": content_identity(items),
-    }
+    return bind_grok_runner_command(command)
 
 
 def _copilot_has_auth() -> bool:
@@ -1696,103 +1678,6 @@ _COPILOT_MODEL_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_MODEL"
 _COPILOT_EFFORT_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_EFFORT"
 _COPILOT_CONTEXT_TIER_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_CONTEXT_TIER"
 _COPILOT_MAX_CONTINUES_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_MAX_CONTINUES"
-_CODEX_MODEL_PROVIDER_HINT_RE = re.compile(
-    r"^(?:gpt(?:[-.]|$)|o[1-9](?:[-.]|$)|codex(?:[-.]|$))",
-    re.IGNORECASE,
-)
-
-
-def _configured_implementation_provider() -> str:
-    """Resolve legacy auto provider hints without affecting ordered routes."""
-
-    provider = (
-        os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
-        or "auto"
-    )
-    if provider != "auto":
-        return provider
-    model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
-    if model and _CODEX_MODEL_PROVIDER_HINT_RE.match(model):
-        return "codex"
-    return provider
-
-
-def _configured_implementation_fallback_provider() -> str:
-    """Return only the explicitly configured implementation fallback."""
-
-    return os.environ.get(
-        IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
-        "",
-    ).strip().lower()
-
-
-def _configured_implementation_fallback_trigger() -> str:
-    """Return the reviewed condition that may authorize fallback dispatch."""
-
-    return os.environ.get(
-        IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
-        "",
-    ).strip().lower()
-
-
-def _configured_codex_reasoning_effort() -> str:
-    """Return the configured Codex effort without applying legacy defaults."""
-
-    return os.environ.get(_CODEX_REASONING_EFFORT_ENV, "").strip().lower()
-
-
-def _codex_cli_command(
-    *,
-    codex: str,
-    workspace_path: Path,
-    codex_context_window: int | None = None,
-) -> list[str]:
-    """Build the exact non-fallback Codex implementation command."""
-
-    codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
-    codex_context = (
-        str(codex_context_window)
-        if codex_context_window is not None
-        else os.environ.get(
-            _CODEX_CONTEXT_WINDOW_ENV,
-            "200000",
-        ).strip()
-    )
-    codex_reasoning = os.environ.get(
-        _CODEX_REASONING_EFFORT_ENV,
-        "high",
-    ).strip()
-    codex_max_threads = os.environ.get(
-        _CODEX_MAX_THREADS_ENV,
-        "10",
-    ).strip()
-    codex_max_depth = os.environ.get(
-        _CODEX_MAX_DEPTH_ENV,
-        "2",
-    ).strip()
-
-    command = [
-        codex,
-        "exec",
-        "--ignore-user-config",
-        "--dangerously-bypass-approvals-and-sandbox",
-        "-C",
-        str(workspace_path),
-    ]
-    if codex_model:
-        command.extend(["-m", codex_model])
-    if codex_context:
-        command.extend(["-c", f"model_context_window={codex_context}"])
-    if codex_reasoning:
-        command.extend(
-            ["-c", f'model_reasoning_effort="{codex_reasoning}"']
-        )
-    if codex_max_threads:
-        command.extend(["-c", f"agents.max_threads={codex_max_threads}"])
-    if codex_max_depth:
-        command.extend(["-c", f"agents.max_depth={codex_max_depth}"])
-    command.append("-")
-    return command
 
 
 def _copilot_fallback_command(
@@ -1893,6 +1778,60 @@ exec "$copilot_bin" "${copilot_args[@]}"
     ]
 
 
+def _direct_codex_command(
+    *,
+    codex: str,
+    workspace_path: Path,
+    codex_context_window: int | None = None,
+    model: str = "",
+    reasoning_effort: str = "",
+) -> list[str]:
+    """Build one direct Codex command without any secondary provider.
+
+    ``model`` and ``reasoning_effort`` are explicit policy inputs.  Callers
+    implementing quota-only failover pass immutable values so ambient Codex
+    configuration cannot silently widen the fallback route.
+    """
+
+    codex_model = str(model).strip() or os.environ.get(
+        _CODEX_MODEL_ENV,
+        "",
+    ).strip()
+    codex_context = (
+        str(codex_context_window)
+        if codex_context_window is not None
+        else os.environ.get(_CODEX_CONTEXT_WINDOW_ENV, "200000").strip()
+    )
+    codex_reasoning = str(reasoning_effort).strip() or os.environ.get(
+        _CODEX_REASONING_EFFORT_ENV,
+        "high",
+    ).strip()
+    codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
+    codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
+
+    command = [
+        codex,
+        "exec",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-C",
+        str(workspace_path),
+    ]
+    if codex_model:
+        command.extend(["-m", codex_model])
+    if codex_context:
+        command.extend(["-c", f"model_context_window={codex_context}"])
+    if codex_reasoning:
+        command.extend(
+            ["-c", f'model_reasoning_effort="{codex_reasoning}"']
+        )
+    if codex_max_threads:
+        command.extend(["-c", f"agents.max_threads={codex_max_threads}"])
+    if codex_max_depth:
+        command.extend(["-c", f"agents.max_depth={codex_max_depth}"])
+    command.append("-")
+    return command
+
+
 def split_csv(value: str) -> list[str]:
     raw = [item.strip() for item in value.split(",")]
     return [item for item in raw if item and item.lower() not in {"none", "n/a"}]
@@ -1916,6 +1855,58 @@ def normalize_task_header_prefix(value: str) -> str:
     if stripped.startswith("## "):
         return stripped
     return f"## {stripped}"
+
+
+TASK_DIRECT_IMPLEMENTATION_BOOLEAN_KEYS = frozenset(
+    {"is schedulable", "review only"}
+)
+AMBIGUOUS_TASK_BOOLEAN_METADATA = "<ambiguous-task-boolean-metadata>"
+
+
+def normalize_task_metadata_key(value: Any) -> str:
+    """Return the canonical comparison form for task metadata keys."""
+
+    return re.sub(
+        r"[^a-z0-9]+",
+        " ",
+        str(value).strip().lower(),
+    ).strip()
+
+
+def merge_task_metadata_value(
+    metadata: dict[str, str],
+    key: Any,
+    value: Any,
+    *,
+    normalize_underscores: bool = False,
+    fallback_only: bool = False,
+) -> None:
+    """Store metadata while preserving ambiguous authorization aliases."""
+
+    storage_key = str(key).strip().lower()
+    if normalize_underscores:
+        storage_key = storage_key.replace("_", " ")
+    if not storage_key:
+        return
+    rendered_value = str(value).strip()
+    normalized_key = normalize_task_metadata_key(storage_key)
+    if normalized_key in TASK_DIRECT_IMPLEMENTATION_BOOLEAN_KEYS:
+        matching_keys = [
+            existing_key
+            for existing_key in metadata
+            if normalize_task_metadata_key(existing_key) == normalized_key
+        ]
+        if matching_keys:
+            if fallback_only:
+                return
+            for existing_key in matching_keys:
+                metadata.pop(existing_key, None)
+            metadata[normalized_key] = AMBIGUOUS_TASK_BOOLEAN_METADATA
+            return
+    if fallback_only:
+        metadata.setdefault(storage_key, rendered_value)
+    else:
+        metadata[storage_key] = rendered_value
 
 
 RETRY_BUDGET_REPAIR_TITLE_RE = re.compile(
@@ -2040,9 +2031,6 @@ def normalize_retry_validation_path(value: Any) -> str:
 def validation_command_working_prefix(command: str) -> str:
     """Return a safe package working prefix declared by a test command."""
 
-    repository_root = validation_command_repository_root(command)
-    if repository_root is None:
-        return ""
     try:
         tokens = shlex.split(str(command or ""), posix=True)
     except ValueError:
@@ -2053,23 +2041,19 @@ def validation_command_working_prefix(command: str) -> str:
             raw_prefix = tokens[index + 1]
         elif token.startswith(("--prefix=", "--cwd=", "--dir=")):
             raw_prefix = token.split("=", 1)[1]
+        elif token == "cd" and index + 1 < len(tokens):
+            raw_prefix = tokens[index + 1]
         if not raw_prefix:
             continue
         normalized = normalize_retry_validation_path(raw_prefix)
-        if repository_root and normalized:
-            normalized = normalize_retry_validation_path(
-                f"{repository_root}/{normalized}"
-            )
         if normalized:
             return normalized
-    return repository_root
+    return ""
 
 
 def normalize_reported_test_failure_path(command: str, value: Any) -> str:
     """Resolve one runner-relative failure path to the repository root."""
 
-    if validation_command_repository_root(command) is None:
-        return ""
     normalized = normalize_retry_validation_path(value)
     if not normalized:
         return ""
@@ -2086,9 +2070,10 @@ def normalize_reported_test_failure_path(command: str, value: Any) -> str:
 def unsafe_validation_path_aliases(command: str) -> set[str]:
     """Return normalized aliases derived from absolute or escaping arguments.
 
-    Impact inference now rejects these paths directly.  Retain the aliases as
-    defense in depth for persisted results created by older supervisors and
-    for diagnostic paths reported by external runners.
+    ``infer_validation_impact_paths`` intentionally removes a leading slash
+    for changed-file matching.  Authorization must retain that distinction,
+    so repair scopes conservatively exclude aliases whose raw argument was
+    absolute, drive-qualified, or traversed above the repository root.
     """
 
     try:
@@ -2383,175 +2368,95 @@ def _provider_labels_from_implementation_command(
     return labels
 
 
-def _read_anonymous_provider_error_channel(
-    handle: Any,
-) -> tuple[str, dict[str, Any]]:
-    """Read and bind the same anonymous fd used as provider stderr."""
+def _is_exact_internal_grok_runner_command(
+    command: Sequence[str],
+) -> bool:
+    """Require the exact supervisor-owned Grok 4.5 agent command shape."""
 
-    handle.flush()
-    before = os.fstat(handle.fileno())
-    digest = hashlib.sha256()
-    handle.seek(0)
-    while True:
-        chunk = handle.read(64 * 1024)
-        if not chunk:
-            break
-        digest.update(chunk)
-    tail_start = max(0, int(before.st_size) - PROVIDER_CAPACITY_LOG_TAIL_BYTES)
-    handle.seek(tail_start)
-    tail = handle.read().decode("utf-8", errors="replace")
-    after = os.fstat(handle.fileno())
-    if (
-        before.st_dev != after.st_dev
-        or before.st_ino != after.st_ino
-        or before.st_size != after.st_size
-    ):
-        raise RuntimeError("provider stderr channel mutated while retained")
-    return tail, {
-        "schema": (
-            "ipfs_accelerate_py/agent-supervisor/"
-            "anonymous-provider-error-channel@1"
-        ),
-        "device": int(after.st_dev),
-        "inode": int(after.st_ino),
-        "size": int(after.st_size),
-        "sha256": digest.hexdigest(),
-        "tail_start_offset": tail_start,
-    }
-
-
-def _valid_anonymous_provider_error_channel_identity(value: Any) -> bool:
-    if not isinstance(value, Mapping):
+    values = [str(item) for item in command]
+    if len(values) != 16:
         return False
-    integer_fields = ("device", "inode", "size", "tail_start_offset")
-    if any(
-        isinstance(value.get(field), bool)
-        or not isinstance(value.get(field), int)
-        or int(value.get(field)) < 0
-        for field in integer_fields
-    ):
+    expected_runner = (
+        Path(__file__).resolve().parents[1] / "grok_cli_runner.py"
+    ).resolve()
+    try:
+        python_matches = Path(values[0]).resolve() == Path(
+            sys.executable
+        ).resolve()
+        runner_matches = Path(values[1]).resolve() == expected_runner
+        max_turns = int(values[9])
+    except (OSError, RuntimeError, ValueError):
         return False
     return bool(
-        value.get("schema")
-        == (
-            "ipfs_accelerate_py/agent-supervisor/"
-            "anonymous-provider-error-channel@1"
-        )
-        and int(value.get("inode") or 0) > 0
-        and re.fullmatch(r"[0-9a-f]{64}", str(value.get("sha256") or ""))
-        and int(value.get("tail_start_offset") or 0)
-        <= int(value.get("size") or 0)
+        python_matches
+        and runner_matches
+        and values[2] == "--workspace"
+        and Path(values[3]).is_absolute()
+        and values[4] == "--grok-bin"
+        and bool(values[5].strip())
+        and values[6:8]
+        == ["--model", DEFAULT_GROK_IMPLEMENTATION_MODEL]
+        and values[8] == "--max-turns"
+        and 1 <= max_turns <= 4_294_967_295
+        and values[10:12] == ["--mode", "agent"]
+        and values[12] == "--invocation-id"
+        and values[14] == "--invocation-binding-sha256"
+        and bool(validate_grok_runner_command_binding(values))
     )
 
 
-def _validated_grok_quota_runner_receipt(text: str) -> dict[str, Any]:
-    """Validate the runner's final receipt and its immediately framed bytes."""
+def _open_grok_terminal_receipt_pipe(
+    command: Sequence[str],
+) -> tuple[int, int]:
+    """Open a runner-only control channel for an exact Grok invocation."""
 
-    framed = text.rstrip()
-    if "\n" not in framed:
-        return {}
-    prefix, receipt_line = framed.rsplit("\n", 1)
-    expected_keys = {
-        "failure_kind",
-        "http_status",
-        "kind",
-        "message",
-        "model",
-        "provider",
-        "raw_error_size",
-        "raw_error_sha256",
-        "schema",
-    }
+    if not _is_exact_internal_grok_runner_command(command):
+        return -1, -1
     try:
-        receipt = json.loads(receipt_line)
-    except (json.JSONDecodeError, TypeError, ValueError):
-        return {}
-    if not isinstance(receipt, dict) or set(receipt) != expected_keys:
-        return {}
-    kind = receipt.get("kind")
-    status = receipt.get("http_status")
-    raw_size = receipt.get("raw_error_size")
-    if (
-        receipt.get("schema") != GROK_QUOTA_RECEIPT_SCHEMA
-        or receipt.get("provider") != ORDERED_GROK_PROVIDER_ID
-        or receipt.get("model") != ORDERED_GROK_MODEL_ID
-        or receipt.get("failure_kind")
-        != QUOTA_OR_BALANCE_EXHAUSTED_FAILURE_KIND
-        or receipt.get("message")
-        != "Grok Build usage balance exhausted"
-        or not re.fullmatch(
-            r"[0-9a-f]{64}",
-            str(receipt.get("raw_error_sha256") or ""),
-        )
-        or isinstance(raw_size, bool)
-        or not isinstance(raw_size, int)
-        or raw_size < 1
-        or raw_size > PROVIDER_CAPACITY_LOG_TAIL_BYTES
-        or kind not in {"usage_limit", "usage_balance_exhausted"}
-        or (kind == "usage_limit" and status is not None)
-        or (
-            kind == "usage_balance_exhausted"
-            and (
-                isinstance(status, bool)
-                or not isinstance(status, int)
-                or status != 402
+        read_fd, write_fd = os.pipe()
+        os.set_blocking(read_fd, False)
+        return read_fd, write_fd
+    except OSError:
+        # Provider execution may proceed, but quota fallback fails closed when
+        # its private authority channel cannot be constructed.
+        return -1, -1
+
+
+def _close_descriptor(descriptor: int) -> None:
+    if descriptor < 0:
+        return
+    try:
+        os.close(descriptor)
+    except OSError:
+        pass
+
+
+def _read_grok_terminal_receipt(descriptor: int) -> bytes:
+    """Read one bounded receipt after the runner process has terminated."""
+
+    if descriptor < 0:
+        return b""
+    chunks: list[bytes] = []
+    total = 0
+    try:
+        while total <= GROK_TERMINAL_RECEIPT_MAX_BYTES:
+            chunk = os.read(
+                descriptor,
+                GROK_TERMINAL_RECEIPT_MAX_BYTES + 1 - total,
             )
-        )
-    ):
-        return {}
-    prefix_bytes = prefix.encode("utf-8")
-    candidates = [
-        prefix_bytes[-raw_size:],
-        (prefix_bytes + b"\n")[-raw_size:],
-    ]
-    for candidate in candidates:
-        try:
-            candidate_text = candidate.decode("utf-8", errors="strict")
-        except UnicodeDecodeError:
-            continue
-        if (
-            len(candidate) == raw_size
-            and hashlib.sha256(candidate).hexdigest()
-            == receipt["raw_error_sha256"]
-            and parse_grok_quota_error(candidate_text)
-        ):
-            return dict(receipt)
-    return {}
-
-
-def _has_direct_grok_quota_evidence(text: str) -> bool:
-    return bool(_validated_grok_quota_runner_receipt(text))
-
-
-def _valid_grok_quota_runner_receipt_metadata(value: Any) -> bool:
-    if not isinstance(value, Mapping):
-        return False
-    raw_size = value.get("raw_error_size")
-    status = value.get("http_status")
-    kind = value.get("kind")
-    return bool(
-        value.get("schema") == GROK_QUOTA_RECEIPT_SCHEMA
-        and value.get("provider") == ORDERED_GROK_PROVIDER_ID
-        and value.get("model") == ORDERED_GROK_MODEL_ID
-        and value.get("failure_kind")
-        == QUOTA_OR_BALANCE_EXHAUSTED_FAILURE_KIND
-        and value.get("message") == "Grok Build usage balance exhausted"
-        and not isinstance(raw_size, bool)
-        and isinstance(raw_size, int)
-        and 0 < raw_size <= PROVIDER_CAPACITY_LOG_TAIL_BYTES
-        and re.fullmatch(
-            r"[0-9a-f]{64}",
-            str(value.get("raw_error_sha256") or ""),
-        )
-        and (
-            (kind == "usage_limit" and status is None)
-            or (
-                kind == "usage_balance_exhausted"
-                and not isinstance(status, bool)
-                and isinstance(status, int)
-                and status == 402
-            )
-        )
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+    except BlockingIOError:
+        pass
+    except OSError:
+        return b""
+    value = b"".join(chunks)
+    return (
+        value
+        if 0 < len(value) <= GROK_TERMINAL_RECEIPT_MAX_BYTES
+        else b""
     )
 
 
@@ -2559,7 +2464,6 @@ def classify_provider_capacity_failure(
     text: str,
     *,
     provider_labels: Sequence[str] = (),
-    provider_returncode: int | None = None,
 ) -> dict[str, Any]:
     """Classify provider quota/capacity failures without treating them as code failures."""
 
@@ -2581,134 +2485,25 @@ def classify_provider_capacity_failure(
             if str(provider).strip()
         )
     )
-    direct_grok_quota_evidence = bool(
-        provider_returncode == GROK_QUOTA_EXHAUSTED_EXIT_CODE
-        and _has_direct_grok_quota_evidence(text)
-    )
     if command_providers and unique_providers:
         attributed = [
             provider
             for provider in unique_providers
             if provider != "provider" and provider in command_providers
         ]
-        if (
-            not attributed
-            and "provider" in unique_providers
-            and not (
-                "grok" in command_providers
-                and not direct_grok_quota_evidence
-            )
-        ):
+        if not attributed and "provider" in unique_providers:
             attributed = command_providers
         unique_providers = attributed
-    grok_command_attributed = bool(
-        {"grok", "xai"} & set(command_providers)
-    )
-    explicit_quota_or_balance_text = bool(
-        GROK_QUOTA_OR_BALANCE_EXHAUSTION_PATTERN.search(text)
-    )
-    fallback_disqualified = bool(
-        GROK_FALLBACK_DISQUALIFY_PATTERN.search(text)
-    )
-    if (
-        grok_command_attributed
-        and explicit_quota_or_balance_text
-        and direct_grok_quota_evidence
-        and not fallback_disqualified
-        and "grok" not in unique_providers
-    ):
-        # The dispatched command is stronger attribution than a provider's
-        # generic wording (for example, "you've hit your usage limit").
-        unique_providers = ["grok"]
-    explicit_grok_quota_or_balance = bool(
-        grok_command_attributed
-        and "grok" in unique_providers
-        and explicit_quota_or_balance_text
-        and direct_grok_quota_evidence
-        and not fallback_disqualified
-    )
     result = {
         "exhausted": bool(unique_providers),
         "providers": unique_providers,
         "reason": "provider_capacity_exhausted" if unique_providers else "",
-        "capacity_failure_kind": (
-            QUOTA_OR_BALANCE_EXHAUSTED_FAILURE_KIND
-            if explicit_grok_quota_or_balance
-            else "provider_capacity_exhausted" if unique_providers else ""
-        ),
-        "provider_attribution": (
-            "implementation_command" if command_providers else "log_text"
-        ),
-        "fallback_eligible": explicit_grok_quota_or_balance,
-        "fallback_trigger": (
-            PRIMARY_QUOTA_EXHAUSTED_FALLBACK_TRIGGER
-            if explicit_grok_quota_or_balance
-            else ""
-        ),
     }
     retry_at = parse_provider_declared_retry_at(text)
     if unique_providers and retry_at is not None:
         result["retry_at"] = retry_at.isoformat()
         result["retry_at_source"] = "provider_declared"
     return result
-
-
-class _GrokQuotaFallbackAuthorityIssuer:
-    """Issue process-local, integrity-protected Codex fallback authority.
-
-    The JSON projection is useful audit evidence, but registry membership and
-    an HMAC under this daemon instance's ephemeral key are both required for
-    authority.  A copied or fabricated JSONL event therefore cannot authorize
-    Codex, and a daemon restart deliberately fails closed to Grok.
-    """
-
-    def __init__(self, *, max_receipts: int = MAX_GROK_QUOTA_FALLBACK_AUTHORITIES) -> None:
-        self._key = secrets.token_bytes(32)
-        self._max_receipts = max(1, int(max_receipts))
-        self._issued: dict[str, dict[str, Any]] = {}
-
-    @staticmethod
-    def _body(receipt: Mapping[str, Any]) -> dict[str, Any]:
-        return {
-            str(key): value
-            for key, value in receipt.items()
-            if key not in {"receipt_id", "authority_mac"}
-        }
-
-    def _mac(self, body: Mapping[str, Any]) -> str:
-        digest = hmac.new(
-            self._key,
-            canonical_json(dict(body)).encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest()
-        return f"hmac-sha256:{digest}"
-
-    def issue(self, body: Mapping[str, Any]) -> dict[str, Any]:
-        normalized = dict(body)
-        receipt_id = content_identity(normalized)
-        receipt = {
-            "receipt_id": receipt_id,
-            **normalized,
-            "authority_mac": self._mac(normalized),
-        }
-        self._issued[receipt_id] = dict(receipt)
-        while len(self._issued) > self._max_receipts:
-            self._issued.pop(next(iter(self._issued)))
-        return dict(receipt)
-
-    def verified_receipts(self) -> tuple[dict[str, Any], ...]:
-        verified: list[dict[str, Any]] = []
-        for receipt_id, registered in self._issued.items():
-            body = self._body(registered)
-            claimed_mac = str(registered.get("authority_mac") or "")
-            if (
-                receipt_id != str(registered.get("receipt_id") or "")
-                or receipt_id != content_identity(body)
-                or not hmac.compare_digest(claimed_mac, self._mac(body))
-            ):
-                continue
-            verified.append(dict(registered))
-        return tuple(verified)
 
 
 @dataclass(frozen=True)
@@ -2853,38 +2648,6 @@ class ImplementationRetryDeferred(RuntimeError):
         self.backoff_seconds = backoff_seconds
 
 
-class WorktreeSubmoduleInitializationDeferred(ImplementationRetryDeferred):
-    """Fail closed when a configured implementation dependency is unavailable."""
-
-    def __init__(self, failures: Sequence[Mapping[str, Any]]) -> None:
-        normalized_failures = tuple(dict(failure) for failure in failures)
-        super().__init__(
-            "worktree submodule initialization failed",
-            backoff_seconds=30,
-        )
-        self.failures = normalized_failures
-
-
-class ValidationProjectDependencyPreflightDeferred(
-    ImplementationRetryDeferred
-):
-    """Fail closed when validation dependencies drift before dispatch."""
-
-    def __init__(
-        self,
-        receipt: Mapping[str, Any],
-        *,
-        backoff_seconds: int = (
-            PROJECT_DEPENDENCY_PREFLIGHT_BACKOFF_SECONDS
-        ),
-    ) -> None:
-        super().__init__(
-            "approved validation environment dependency drift",
-            backoff_seconds=backoff_seconds,
-        )
-        self.receipt = dict(receipt)
-
-
 class ValidationGeneratedArtifactRestoreError(RuntimeError):
     """A typed pre-validation stop that preserves the candidate worktree."""
 
@@ -2995,6 +2758,34 @@ def task_declared_output_paths(task: PortalTask) -> tuple[str, ...]:
     )
 
 
+def task_additional_allowed_paths(task: PortalTask) -> tuple[str, ...]:
+    """Return safe exact edit paths that are authorized but not mandatory."""
+
+    return normalize_exact_authorized_paths(
+        task.metadata.get("allowed paths", "")
+    )
+
+
+def task_validation_python_modules(task: PortalTask) -> tuple[str, ...]:
+    """Return task-declared interpreter-level validation imports.
+
+    The taskboard already carries arbitrary reviewed metadata.  Use one narrow
+    normalized key so tasks can declare extra installed modules without
+    treating validation command text as dependency-install authority.
+    Syntax and bounds are enforced by the validation runtime preflight.
+    """
+
+    modules: list[str] = []
+    for key, value in task.metadata.items():
+        if (
+            normalize_task_metadata_key(key)
+            != VALIDATION_PYTHON_MODULES_METADATA_KEY
+        ):
+            continue
+        modules.extend(split_csv(str(value)))
+    return tuple(dict.fromkeys(modules))
+
+
 @dataclass(frozen=True)
 class ImplementationTimeoutPolicy:
     """One task's bounded implementation lease and progress-idle deadline."""
@@ -3030,41 +2821,6 @@ COMPLETION_GAP_EDIT_SCOPE_ROLES = frozenset(
     }
 )
 COMPLETION_GAP_MANUAL_REVIEW_ROLE = "completion_gate_gap_manual_review"
-
-SCOPE_EXPANSION_POLICY_METADATA_KEY = "scope expansion policy"
-SCOPE_EXPANSION_POLICY_ADJUDICATED = "adjudicated"
-SCOPE_EXPANSION_POLICY_EXACT = "exact"
-_SCOPE_EXPANSION_ALLOWED_VALUES = frozenset(
-    {
-        "allow",
-        "adjudicated",
-        "dependency-adjudicated",
-        "dependency_adjudicated",
-    }
-)
-
-
-def task_scope_expansion_policy(task: PortalTask) -> tuple[str, bool]:
-    """Return the task-bound scope policy and whether expansion is allowed.
-
-    Scope adjudication is the compatibility default for existing boards.  A
-    task may opt into exact output/predicted-file ownership with the explicit
-    ``Scope expansion policy: exact`` metadata field.  Once the field is
-    present, unknown values fail closed instead of accidentally granting
-    dependency-derived write authority.
-    """
-
-    metadata = {
-        str(key).strip().lower().replace("_", " "): str(value or "").strip()
-        for key, value in task.metadata.items()
-    }
-    configured = metadata.get(SCOPE_EXPANSION_POLICY_METADATA_KEY, "")
-    normalized = configured.lower().replace(" ", "-")
-    if not normalized:
-        return SCOPE_EXPANSION_POLICY_ADJUDICATED, True
-    if normalized in _SCOPE_EXPANSION_ALLOWED_VALUES:
-        return SCOPE_EXPANSION_POLICY_ADJUDICATED, True
-    return SCOPE_EXPANSION_POLICY_EXACT, False
 
 
 def completion_gap_edit_scope(
@@ -3218,6 +2974,7 @@ class PortalTaskState:
     strict_deprioritized_ready_task_ids: list[str] = field(default_factory=list)
     waiting_task_ids: list[str] = field(default_factory=list)
     blocked_task_ids: list[str] = field(default_factory=list)
+    task_policy_blockers: dict[str, list[str]] = field(default_factory=dict)
     task_statuses: dict[str, str] = field(default_factory=dict)
     task_artifacts: dict[str, list[str]] = field(default_factory=dict)
     task_validation: dict[str, list[str]] = field(default_factory=dict)
@@ -3313,6 +3070,13 @@ class PortalTaskState:
                 ],
                 waiting_task_ids=[str(item) for item in payload.get("waiting_task_ids", []) or []],
                 blocked_task_ids=[str(item) for item in payload.get("blocked_task_ids", []) or []],
+                task_policy_blockers={
+                    str(key): [str(item) for item in value]
+                    for key, value in (
+                        payload.get("task_policy_blockers") or {}
+                    ).items()
+                    if isinstance(value, list)
+                },
                 task_statuses={str(key): str(value) for key, value in (payload.get("task_statuses") or {}).items()},
                 task_artifacts={
                     str(key): [str(item) for item in value]
@@ -3487,6 +3251,7 @@ def state_file_repair_reason(path: Path) -> str:
         return "malformed_state_metadata"
     for field_name in (
         "task_statuses",
+        "task_policy_blockers",
         "task_artifacts",
         "task_validation",
         "task_identities",
@@ -3530,7 +3295,7 @@ def parse_task_text(
             if not stripped.startswith("- ") or ":" not in stripped:
                 continue
             key, value = stripped[2:].split(":", 1)
-            metadata[key.strip().lower()] = value.strip()
+            merge_task_metadata_value(metadata, key, value)
         if not metadata:
             metadata["blocked reason"] = "empty task metadata"
         default_status = "blocked" if metadata.get("blocked reason") == "empty task metadata" else "todo"
@@ -3607,31 +3372,18 @@ def dependency_satisfied_references(
     *,
     completed_task_ids: Iterable[str] = (),
     assumed_completed_references: Iterable[str] = (),
-    soft_completed_references: Iterable[str] = (),
-    auto_resolve_orphaned_references: bool = True,
 ) -> set[str]:
     """Return satisfied task and objective-goal dependency references.
 
     Generated objective boards use stable goal IDs as dependencies before a
     concrete task alias is always available. A goal dependency is satisfied
-    only after every task currently bound to that goal is complete (or soft
-    complete), so a completed historical task cannot prematurely unlock a
-    newer continuation.
-
-    Soft-completed references (merged / acceptance-pending / shared merge
-    receipts) unlock dependents without granting board completion authority
-    to the upstream task itself. Orphaned dependency references that match
-    neither a declared task id nor a bound goal id are auto-resolved so a
-    missing external alias cannot stall the board indefinitely.
+    only after every task currently bound to that goal is complete, so a
+    completed historical task cannot prematurely unlock a newer continuation.
     """
 
     satisfied_task_ids = {
         str(reference)
-        for reference in (
-            *completed_task_ids,
-            *assumed_completed_references,
-            *soft_completed_references,
-        )
+        for reference in (*completed_task_ids, *assumed_completed_references)
         if str(reference).strip()
     }
     satisfied = set(satisfied_task_ids)
@@ -3640,7 +3392,6 @@ def dependency_satisfied_references(
     for task in tasks:
         for goal_id in split_csv(task.metadata.get("goal id", "")):
             task_ids_by_goal.setdefault(goal_id, set()).add(task.task_id)
-    bound_goal_ids = set(task_ids_by_goal)
     for goal_id, task_ids in task_ids_by_goal.items():
         if (
             goal_id not in declared_task_ids
@@ -3648,62 +3399,7 @@ def dependency_satisfied_references(
             and task_ids.issubset(satisfied_task_ids)
         ):
             satisfied.add(goal_id)
-    if auto_resolve_orphaned_references:
-        for task in tasks:
-            for dependency in task.depends_on:
-                reference = str(dependency).strip()
-                if not reference or reference in satisfied:
-                    continue
-                if (
-                    reference not in declared_task_ids
-                    and reference not in bound_goal_ids
-                ):
-                    # Nothing on this board can ever complete the alias.
-                    satisfied.add(reference)
     return satisfied
-
-
-def downstream_unlock_counts(
-    tasks: Sequence[PortalTask],
-    *,
-    incomplete_task_ids: Iterable[str] | None = None,
-) -> dict[str, int]:
-    """Count incomplete tasks transitively unlocked by completing each task.
-
-    Used by ready-task selection so critical-path blockers (high fan-out
-    roots) are preferred over leaf work that does not free the cascade.
-    """
-
-    children: dict[str, list[str]] = {task.task_id: [] for task in tasks}
-    for task in tasks:
-        for dependency in task.depends_on:
-            dep = str(dependency).strip()
-            if dep in children:
-                children[dep].append(task.task_id)
-    if incomplete_task_ids is None:
-        incomplete = {
-            task.task_id
-            for task in tasks
-            if normalize_status(str(task.status or "")) != "completed"
-        }
-    else:
-        incomplete = {
-            str(task_id).strip()
-            for task_id in incomplete_task_ids
-            if str(task_id).strip()
-        }
-    counts: dict[str, int] = {}
-    for task in tasks:
-        seen: set[str] = set()
-        stack = list(children.get(task.task_id, ()))
-        while stack:
-            node = stack.pop()
-            if node in seen:
-                continue
-            seen.add(node)
-            stack.extend(children.get(node, ()))
-        counts[task.task_id] = len(seen & incomplete)
-    return counts
 
 
 class PortalImplementationDaemon:
@@ -3901,19 +3597,18 @@ class PortalImplementationDaemon:
         self._implementation_retry_not_before: dict[str, float] = {}
         self._implementation_seed_failure_guidance: dict[str, str] = {}
         self._implementation_scope_adjudications: dict[str, Any] = {}
-        # In-process issuance is the attempt authority for the separate
-        # already-satisfied gate.  Content IDs prove integrity; membership here
-        # proves that this daemon actually issued the gate for this attempt.
-        self._implementation_no_change_policy_gates: dict[
-            str, dict[str, Any]
-        ] = {}
-        self._grok_quota_fallback_authority = (
-            _GrokQuotaFallbackAuthorityIssuer()
-        )
+        # Durable lifecycle events are diagnostic evidence, not sufficient
+        # authority for Grok -> Codex fallback: a bypass-permissions child runs
+        # as the same OS user and can rewrite those files.  The opaque
+        # classification sentinel and exact appended event IDs never cross the
+        # child boundary and deliberately start empty after every daemon
+        # restart, which makes restart behavior fail closed to Grok.
+        self._grok_quota_classification_sentinel = object()
+        self._live_grok_quota_exhaustion_event_ids: set[str] = set()
         self.use_ephemeral_worktree = use_ephemeral_worktree
         configured_worktree_root = worktree_root or Path(tempfile.gettempdir()) / "211-ai-implementation-worktrees"
         # The implementation runner executes with the ephemeral worktree as
-        # its cwd.  Keep the path supplied to model providers absolute so a
+        # its cwd.  Keep the path supplied to Codex/Copilot absolute so a
         # relative --worktree-root cannot be resolved a second time below it.
         if not configured_worktree_root.is_absolute():
             configured_worktree_root = self.repo_root / configured_worktree_root
@@ -3964,46 +3659,20 @@ class PortalImplementationDaemon:
             ),
         )
         self.worktree_lifecycle_restart_recovery = []
-        self._worktree_lifecycle_reclaim_on_pass = _env_bool(
-            WORKTREE_LIFECYCLE_RECLAIM_EXPIRED_ON_PASS_ENV,
-            True,
-        )
-        reclaim_interval = float(
-            os.environ.get(WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS_ENV, "")
-            or 0
-        )
-        self._worktree_lifecycle_reclaim_interval_seconds = (
-            reclaim_interval
-            if reclaim_interval > 0
-            else DEFAULT_WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS
-        )
-        self._last_worktree_lifecycle_reclaim_monotonic = 0.0
-        # Always reclaim expired nonterminal claims on startup so abandoned
-        # attempts (daemon PID still alive, lease not renewed) cannot stall
-        # the board for hours.  Dead-owner controlled restart remains opt-in.
-        startup_reclaim = self._reclaim_expired_worktree_lifecycle_claims(
-            reason="daemon_startup_expired_lease_auto_reclaim",
-            force=True,
-        )
-        if startup_reclaim.get("reclaimed_count", 0):
-            self.worktree_lifecycle_restart_recovery.extend(
-                list(startup_reclaim.get("records") or [])
-            )
         if _env_bool(
             WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV,
             True,
         ):
-            dead_reclaimed = (
+            self.worktree_lifecycle_restart_recovery = (
                 self.worktree_lifecycle.reclaim_dead_owners_for_controlled_restart(
                     expected_state_dir=self.state_path.parent.resolve(),
                 )
             )
-            self.worktree_lifecycle_restart_recovery.extend(dead_reclaimed)
-            if dead_reclaimed:
+            if self.worktree_lifecycle_restart_recovery:
                 logger.warning(
                     "Controlled restart fenced %d dead worktree lifecycle "
                     "owner(s) for state directory %s",
-                    len(dead_reclaimed),
+                    len(self.worktree_lifecycle_restart_recovery),
                     self.state_path.parent.resolve(),
                 )
         # Active attempt's fenced workspace claim (if any).  Cleanup paths
@@ -4041,9 +3710,7 @@ class PortalImplementationDaemon:
         self.llm_merge_resolver_command = (
             default_llm_merge_resolver_command()
             if llm_merge_resolver_command is None
-            else normalize_llm_merge_resolver_command(
-                llm_merge_resolver_command
-            )
+            else llm_merge_resolver_command
         ).strip()
         self.llm_merge_resolver_timeout_seconds = llm_merge_resolver_timeout_seconds
         self.merge_reconciliation_max_merges = (
@@ -4225,18 +3892,22 @@ class PortalImplementationDaemon:
 
         body = dict(task.body)
         provenance = body.get("provenance")
-        metadata: dict[str, str] = {
-            str(key).strip().lower().replace("_", " "): cls._task_source_metadata_text(
-                value
+        metadata: dict[str, str] = {}
+        for key, value in body.items():
+            merge_task_metadata_value(
+                metadata,
+                key,
+                cls._task_source_metadata_text(value),
+                normalize_underscores=True,
             )
-            for key, value in body.items()
-            if str(key).strip()
-        }
         if isinstance(provenance, Mapping):
             for key, value in provenance.items():
-                metadata.setdefault(
-                    str(key).strip().lower().replace("_", " "),
+                merge_task_metadata_value(
+                    metadata,
+                    key,
                     cls._task_source_metadata_text(value),
+                    normalize_underscores=True,
+                    fallback_only=True,
                 )
         metadata.update(
             {
@@ -5484,19 +5155,12 @@ class PortalImplementationDaemon:
             path.unlink()
         except FileNotFoundError:
             pass
-        task_claim_reconciliation = (
-            self._reap_retained_task_claim_after_protected_fence_clear(
-                task_id=task_id,
-                attempt=attempt,
-            )
-        )
         self._record_event(
             "implementation_protected_path_snapshot_cleared",
             {
                 "task_id": task_id,
                 "attempt": attempt,
                 "reason": reason,
-                "task_claim_reconciliation": task_claim_reconciliation,
             },
         )
 
@@ -5864,12 +5528,6 @@ class PortalImplementationDaemon:
             active_path.unlink()
         except FileNotFoundError:
             pass
-        task_claim_reconciliation = (
-            self._reap_retained_task_claim_after_protected_fence_clear(
-                task_id=receipt["task_id"],
-                attempt=receipt["attempt"],
-            )
-        )
         stale_lock_cleared = False
         if lock_path.exists():
             lock_path.unlink()
@@ -5905,7 +5563,6 @@ class PortalImplementationDaemon:
             "ephemeral_workspace_recovery_approved": bool(
                 disposed_workspace_proof or mirrored_workspace_proof
             ),
-            "task_claim_reconciliation": task_claim_reconciliation,
             "stale_lock_cleared": stale_lock_cleared,
         }
         self._record_event(
@@ -6467,7 +6124,6 @@ class PortalImplementationDaemon:
         can keep those scans outside the exclusive lease.
         """
 
-        resolved_task_id = task.task_id if task is not None else task_id
         missing_ephemeral_before = (
             self._missing_ephemeral_workspace_shared_snapshot(
                 workspace_path,
@@ -6932,154 +6588,6 @@ class PortalImplementationDaemon:
                 )
         return violation
 
-    def _finalize_canonical_task_cancellation_fence(
-        self,
-        *,
-        task: PortalTask,
-        attempt: int,
-        workspace_path: Path,
-        before: Mapping[str, Mapping[str, Any]],
-        cancellation: Mapping[str, Any],
-    ) -> dict[str, Any]:
-        """Clear a fence when its only delta is a re-proved board supersession."""
-
-        if not self.implementation_protected_paths:
-            return {}
-        missing_ephemeral_before = (
-            self._missing_ephemeral_workspace_shared_snapshot(
-                workspace_path,
-                before,
-            )
-        )
-        comparison_before = missing_ephemeral_before or before
-        comparison_workspace = (
-            self.repo_root
-            if missing_ephemeral_before is not None
-            else workspace_path
-        )
-        lock_result = self._acquire_implementation_protected_verification_lock(
-            task_id=task.task_id,
-            attempt=attempt,
-            workspace_path=workspace_path,
-        )
-        if not lock_result.get("acquired", False):
-            return self._implementation_protected_verification_deferred(
-                task_id=task.task_id,
-                attempt=attempt,
-                workspace_path=workspace_path,
-                before=comparison_before,
-                lock_result=lock_result,
-                reason=(
-                    "implementation_protected_path_verification_lock_timeout"
-                    if lock_result.get("reason") == "lock_exists"
-                    else (
-                        "implementation_protected_path_verification_lock_"
-                        f"{lock_result.get('reason') or 'unavailable'}"
-                    )
-                ),
-            )
-
-        result: dict[str, Any] = {}
-        cleared = False
-        try:
-            # The checkout-mutation lease remains held through both identity
-            # reads, canonical-board reproof, mutation classification, and
-            # durable-fence clearance. A peer therefore cannot invalidate the
-            # proof in the former read/classify/unlink window.
-            after = self._implementation_protected_path_snapshot(
-                comparison_workspace
-            )
-            confirmed_after = self._implementation_protected_path_snapshot(
-                comparison_workspace
-            )
-            if after != confirmed_after:
-                result = self._implementation_protected_verification_deferred(
-                    task_id=task.task_id,
-                    attempt=attempt,
-                    workspace_path=workspace_path,
-                    before=comparison_before,
-                    lock_result=lock_result,
-                    reason=(
-                        "implementation_protected_path_verification_"
-                        "snapshot_changed"
-                    ),
-                )
-            else:
-                mutations = self._implementation_protected_path_mutations(
-                    comparison_before,
-                    confirmed_after,
-                )
-                concurrent_update = (
-                    self._authorized_concurrent_protected_path_update(
-                        workspace_path=workspace_path,
-                        before=comparison_before,
-                        after=confirmed_after,
-                        mutations=mutations,
-                    )
-                    if mutations
-                    else {}
-                )
-                if not mutations or concurrent_update:
-                    clear_reason = (
-                        "canonical_task_concurrent_update_accepted"
-                        if concurrent_update
-                        else "canonical_task_completion_cancelled"
-                    )
-                    self._clear_implementation_protected_snapshot(
-                        task_id=task.task_id,
-                        attempt=attempt,
-                        reason=clear_reason,
-                    )
-                    cleared = True
-                    if concurrent_update:
-                        self._record_event(
-                            "implementation_protected_path_"
-                            "concurrent_update_accepted",
-                            {
-                                "task_id": task.task_id,
-                                "attempt": attempt,
-                                "workspace_path": str(workspace_path),
-                                **concurrent_update,
-                            },
-                        )
-                else:
-                    # The board status/CID is not independent authority for a
-                    # protected-path delta: the provider being cancelled can
-                    # write that same board and manufacture its own apparent
-                    # supersession.  Only the committed-history proof above
-                    # may classify an in-flight mutation as a peer update.
-                    # Every unattributed delta remains latched fail-closed.
-                    result = self._implementation_protected_mutation_payload(
-                        task_id=task.task_id,
-                        attempt=attempt,
-                        workspace_path=workspace_path,
-                        before=comparison_before,
-                        after=confirmed_after,
-                        latch=True,
-                    )
-        finally:
-            released = self._release_implementation_protected_verification_lock(
-                lock_result
-            )
-        if not released:
-            lost_lock = self._implementation_protected_verification_deferred(
-                task_id=task.task_id,
-                attempt=attempt,
-                workspace_path=workspace_path,
-                before=comparison_before,
-                lock_result=lock_result,
-                reason="implementation_protected_path_verification_lock_lost",
-            )
-            if cleared:
-                # Clearance cannot remain authoritative if the exact lease was
-                # not released as expected. Persist a global fail-closed latch
-                # even though the per-attempt snapshot was already unlinked.
-                lost_lock = self._latch_implementation_protected_incident(
-                    lost_lock
-                )
-            return lost_lock
-        return result
-
     @staticmethod
     def _protected_mutation_content_preserved(
         before: Mapping[str, Any] | None,
@@ -7334,12 +6842,6 @@ class PortalImplementationDaemon:
             active_path.unlink()
         except FileNotFoundError:
             pass
-        task_claim_reconciliation = (
-            self._reap_retained_task_claim_after_protected_fence_clear(
-                task_id=receipt["task_id"],
-                attempt=receipt["attempt"],
-            )
-        )
         result = {
             "cleared": True,
             "auto": True,
@@ -7350,7 +6852,6 @@ class PortalImplementationDaemon:
             "attempt": receipt["attempt"],
             "mutated_paths": receipt["mutated_paths"],
             "class_codes": receipt["class_codes"],
-            "task_claim_reconciliation": task_claim_reconciliation,
             "blocked": False,
         }
         self._record_event(
@@ -7391,155 +6892,6 @@ class PortalImplementationDaemon:
             incident_path=incident_path,
             active_path=active_path,
         )
-
-    def _auto_clear_committed_shared_checkout_protected_mutations(
-        self,
-        incident: Mapping[str, Any],
-        *,
-        incident_path: Path,
-        active_path: Path,
-    ) -> dict[str, Any] | None:
-        """Clear latched incidents when shared-checkout dirt is fully committed.
-
-        Control-plane updates (config, preflight, catalogs, protected boards)
-        often land on the shared repo while a lane still holds an active fence.
-        Once those paths are clean at HEAD and no implementation runner owns the
-        recorded workspace, leaving the lane latched forever is a false stall.
-        This recovery is generic for every board: shared-checkout-only mutations,
-        clean working tree for every touched path, no live implementation runner.
-        """
-
-        if (
-            incident.get("schema") != "implementation-protected-path-incident-v1"
-            or incident.get("requires_operator_clearance") is not True
-            or incident.get("reason") != "implementation_protected_path_mutated"
-        ):
-            return None
-        mutations = incident.get("mutations")
-        if not isinstance(mutations, list) or not mutations:
-            return None
-        paths: list[str] = []
-        for item in mutations:
-            if not isinstance(item, Mapping):
-                return None
-            if str(item.get("scope") or "") != "shared_checkout":
-                return None
-            path = str(item.get("path") or "").strip()
-            if not path:
-                return None
-            if path not in paths:
-                paths.append(path)
-
-        workspace_value = str(incident.get("workspace_path") or "").strip()
-        if workspace_value:
-            try:
-                workspace = Path(workspace_value).resolve()
-            except (OSError, RuntimeError):
-                workspace = None
-            if workspace is not None:
-                for line in self._list_process_commands():
-                    if str(workspace) in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(
-                        line
-                    ):
-                        return None
-
-        # Working tree must be clean for every latched shared-checkout path.
-        try:
-            status = subprocess.run(
-                [
-                    "git",
-                    "status",
-                    "--porcelain",
-                    "--untracked-files=all",
-                    "--",
-                    *paths,
-                ],
-                cwd=self.repo_root,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-        except OSError:
-            return None
-        if status.returncode != 0 or status.stdout.strip():
-            return None
-
-        head = self._implementation_protected_git_head(self.repo_root)
-        if not head:
-            return None
-
-        task_id = str(incident.get("task_id") or "")
-        try:
-            attempt = int(incident.get("attempt") or 0)
-        except (TypeError, ValueError):
-            attempt = 0
-        clearance_payload = {
-            "kind": "committed-shared-checkout-protected-mutations",
-            "task_id": task_id,
-            "attempt": attempt,
-            "workspace_path": workspace_value,
-            "paths": paths,
-            "shared_checkout_head": head,
-            "incident_latched_at": str(incident.get("latched_at") or ""),
-        }
-        clearance_id = "sha256:" + hashlib.sha256(
-            json.dumps(
-                clearance_payload,
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode("utf-8")
-        ).hexdigest()
-        receipt = {
-            "schema": (
-                "implementation-protected-path-committed-shared-clearance-v1"
-            ),
-            "clearance_id": clearance_id,
-            "cleared_at": utc_now(),
-            "reason": "committed_shared_checkout_protected_mutations",
-            **clearance_payload,
-        }
-        receipt_path = (
-            incident_path.parent
-            / (
-                "implementation-protected-path-committed-clearance-"
-                f"{clearance_id.removeprefix('sha256:')[:16]}.json"
-            )
-        )
-        write_json_atomic(receipt_path, receipt)
-        try:
-            incident_path.unlink()
-        except FileNotFoundError:
-            pass
-        try:
-            active_path.unlink()
-        except FileNotFoundError:
-            pass
-        if task_id and attempt > 0:
-            try:
-                self._clear_implementation_protected_snapshot(
-                    task_id=task_id,
-                    attempt=attempt,
-                    reason="committed_shared_checkout_protected_mutations",
-                )
-            except Exception:
-                pass
-        result = {
-            "cleared": True,
-            "auto": True,
-            "blocked": False,
-            "reason": receipt["reason"],
-            "clearance_id": clearance_id,
-            "receipt_path": str(receipt_path),
-            "task_id": task_id,
-            "attempt": attempt,
-            "paths": paths,
-            "shared_checkout_head": head,
-        }
-        self._record_event(
-            "implementation_protected_path_incident_auto_cleared",
-            result,
-        )
-        return result
 
     def _auto_clear_trusted_concurrent_protected_path_update(
         self,
@@ -7708,12 +7060,6 @@ class PortalImplementationDaemon:
             active_path.unlink()
         except FileNotFoundError:
             pass
-        task_claim_reconciliation = (
-            self._reap_retained_task_claim_after_protected_fence_clear(
-                task_id=task_id,
-                attempt=attempt,
-            )
-        )
         result = {
             "cleared": True,
             "auto": True,
@@ -7723,7 +7069,6 @@ class PortalImplementationDaemon:
             "receipt_path": str(receipt_path),
             "task_id": task_id,
             "attempt": attempt,
-            "task_claim_reconciliation": task_claim_reconciliation,
             **concurrent_update,
         }
         self._record_event(
@@ -8109,7 +7454,382 @@ class PortalImplementationDaemon:
         )
         return result
 
-    def reconcile_quiesced_active_attempt(self) -> dict[str, Any]:
+    @staticmethod
+    def _shutdown_metadata_pid(metadata: Mapping[str, Any] | None) -> int:
+        try:
+            return int((metadata or {}).get("pid") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _shutdown_claim_mismatch_reason(
+        self,
+        metadata: Mapping[str, Any] | None,
+        *,
+        expected_kind: str,
+        owner_pid: int,
+        state: PortalTaskState,
+        resource_path: str = "",
+    ) -> str:
+        """Return why a shutdown claim is not exactly owned by ``state``."""
+
+        if metadata is None:
+            return "malformed_metadata"
+        if str(metadata.get("kind") or "") != expected_kind:
+            return "kind_mismatch"
+        if self._shutdown_metadata_pid(metadata) != owner_pid:
+            return "owner_pid_mismatch"
+        if process_is_running(owner_pid):
+            return "owner_still_active"
+
+        state_dir = str(metadata.get("state_dir") or "").strip()
+        if not state_dir:
+            return "state_dir_missing"
+        try:
+            if Path(state_dir).resolve() != self.state_path.parent.resolve():
+                return "state_dir_mismatch"
+        except (OSError, RuntimeError):
+            return "state_dir_invalid"
+
+        repo_root = str(metadata.get("repo_root") or "").strip()
+        if repo_root:
+            try:
+                if Path(repo_root).resolve() != self.repo_root.resolve():
+                    return "repo_root_mismatch"
+            except (OSError, RuntimeError):
+                return "repo_root_invalid"
+
+        if (
+            state.active_task_id
+            and str(metadata.get("task_id") or "") != state.active_task_id
+        ):
+            return "task_id_mismatch"
+        if (
+            state.active_task_cid
+            and str(metadata.get("canonical_task_cid") or "")
+            != state.active_task_cid
+        ):
+            return "canonical_task_cid_mismatch"
+        try:
+            claim_attempt = int(metadata.get("attempt") or 0)
+        except (TypeError, ValueError):
+            return "attempt_invalid"
+        if state.active_attempt <= 0 or claim_attempt != state.active_attempt:
+            return "attempt_mismatch"
+        if not str(metadata.get("lease_id") or ""):
+            return "lease_id_missing"
+        if resource_path:
+            if (
+                str(metadata.get("resource_kind") or "") != "submodule"
+                or str(metadata.get("resource_path") or "") != resource_path
+            ):
+                return "resource_path_mismatch"
+        return ""
+
+    def _shutdown_pool_state_mismatch_reason(
+        self,
+        pool: WorktreePool,
+        pool_state: Mapping[str, Any] | None,
+        *,
+        owner_pid: int,
+        state: PortalTaskState,
+        workspace_path: Path,
+    ) -> str:
+        """Return why a pooled lease is not the interrupted attempt's lease."""
+
+        if not isinstance(pool_state, Mapping):
+            return "malformed_metadata"
+        if pool_state.get("schema") != WORKTREE_POOL_SCHEMA:
+            return "schema_mismatch"
+        lease_token = str(pool_state.get("lease_token") or "")
+        if not lease_token:
+            return "lease_token_missing"
+        if pool_state.get("state") not in {"leased", "initializing"}:
+            return "lease_state_mismatch"
+        try:
+            lease_pid = int(pool_state.get("lease_pid") or 0)
+        except (TypeError, ValueError):
+            return "lease_pid_invalid"
+        if lease_pid != owner_pid:
+            return "owner_pid_mismatch"
+
+        raw_path = str(pool_state.get("path") or "").strip()
+        if not raw_path:
+            return "workspace_path_missing"
+        try:
+            candidate_path = Path(raw_path).resolve()
+            candidate_path.relative_to(pool.worktree_root)
+        except (OSError, RuntimeError, ValueError):
+            return "workspace_path_invalid"
+        if candidate_path == pool.worktree_root:
+            return "workspace_path_invalid"
+        if candidate_path != workspace_path:
+            return "workspace_path_mismatch"
+
+        raw_repo_root = str(pool_state.get("repo_root") or "").strip()
+        if not raw_repo_root:
+            return "repo_root_missing"
+        try:
+            if Path(raw_repo_root).resolve() != self.repo_root.resolve():
+                return "repo_root_mismatch"
+        except (OSError, RuntimeError):
+            return "repo_root_invalid"
+        if (
+            state.active_branch
+            and str(pool_state.get("branch") or "") != state.active_branch
+        ):
+            return "branch_mismatch"
+        return ""
+
+    def _detach_shutdown_pool_lease(
+        self,
+        state: PortalTaskState,
+        *,
+        owner_pid: int,
+    ) -> dict[str, Any]:
+        """Detach dead pool metadata while preserving the candidate checkout."""
+
+        result: dict[str, Any] = {
+            "detached": False,
+            "reason": "pool_state_not_found",
+            "workspace_path": state.active_worktree_path,
+            "workspace_preserved": False,
+            "preserved": [],
+        }
+        raw_workspace_path = str(state.active_worktree_path or "").strip()
+        if not raw_workspace_path:
+            result["reason"] = "active_worktree_path_missing"
+            return result
+        try:
+            workspace_path = Path(raw_workspace_path).resolve()
+            workspace_path.relative_to(self.worktree_root)
+        except (OSError, RuntimeError, ValueError):
+            result["reason"] = "active_worktree_path_invalid"
+            return result
+        if workspace_path == self.worktree_root:
+            result["reason"] = "active_worktree_path_invalid"
+            return result
+
+        result["workspace_path"] = str(workspace_path)
+        result["workspace_preserved"] = workspace_path.exists()
+        pool = self.worktree_pool
+        if pool is None:
+            state_root = self.worktree_root / ".pool-state"
+            if not state_root.exists():
+                result["reason"] = "pool_state_directory_missing"
+                return result
+            pool = WorktreePool(
+                repo_root=self.repo_root,
+                worktree_root=self.worktree_root,
+            )
+
+        for candidate in pool._states():
+            raw_candidate_path = str(candidate.get("path") or "").strip()
+            try:
+                candidate_path = Path(raw_candidate_path).resolve()
+            except (OSError, RuntimeError):
+                continue
+            if candidate_path != workspace_path:
+                continue
+
+            mismatch = self._shutdown_pool_state_mismatch_reason(
+                pool,
+                candidate,
+                owner_pid=owner_pid,
+                state=state,
+                workspace_path=workspace_path,
+            )
+            entry_id = str(candidate.get("lease_token") or "")
+            entry = {
+                "entry_id": entry_id,
+                "path": str(candidate_path),
+            }
+            if mismatch:
+                result["preserved"].append({**entry, "reason": mismatch})
+                result["reason"] = "pool_state_preserved"
+                continue
+
+            lock_path = pool._try_claim(candidate)
+            if lock_path is None:
+                result["preserved"].append(
+                    {**entry, "reason": "lease_or_claim_owner_active"}
+                )
+                result["reason"] = "pool_state_preserved"
+                continue
+            try:
+                current = pool._read_state(entry_id)
+                mismatch = (
+                    "malformed_metadata"
+                    if not isinstance(current, Mapping)
+                    else (
+                        "lease_token_mismatch"
+                        if str(current.get("lease_token") or "") != entry_id
+                        else self._shutdown_pool_state_mismatch_reason(
+                            pool,
+                            current,
+                            owner_pid=owner_pid,
+                            state=state,
+                            workspace_path=workspace_path,
+                        )
+                    )
+                )
+                if mismatch:
+                    result["preserved"].append(
+                        {**entry, "reason": f"changed_during_cleanup:{mismatch}"}
+                    )
+                    result["reason"] = "pool_state_preserved"
+                    continue
+                pool._state_path(entry_id).unlink()
+                result.update(
+                    {
+                        "detached": True,
+                        "reason": "dead_lease_metadata_detached",
+                        "entry_id": entry_id,
+                        "workspace_preserved": workspace_path.exists(),
+                    }
+                )
+                return result
+            except (OSError, RuntimeError) as exc:
+                result["preserved"].append(
+                    {
+                        **entry,
+                        "reason": "pool_state_cleanup_failed",
+                        "error_type": type(exc).__name__,
+                    }
+                )
+                result["reason"] = "pool_state_preserved"
+                return result
+            finally:
+                pool._remove_lock(lock_path)
+        return result
+
+    def _reconcile_shutdown_coordination_artifacts(
+        self,
+        state: PortalTaskState,
+        *,
+        expected_owner_pid: int,
+        implementation_lock: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Remove only coordination artifacts proven to belong to a dead owner."""
+
+        lock_owner_pid = self._shutdown_metadata_pid(implementation_lock)
+        owner_pid = int(expected_owner_pid or lock_owner_pid or 0)
+        receipt: dict[str, Any] = {
+            "attempted": False,
+            "owner_pid": owner_pid,
+            "task_claims": {"cleared": [], "preserved": []},
+            "resource_claims": {"cleared": [], "preserved": []},
+            "worktree_pool": {
+                "detached": False,
+                "reason": "not_attempted",
+                "workspace_path": state.active_worktree_path,
+                "workspace_preserved": bool(
+                    state.active_worktree_path
+                    and Path(state.active_worktree_path).exists()
+                ),
+                "preserved": [],
+            },
+        }
+        if owner_pid <= 0:
+            receipt["reason"] = "owner_pid_unavailable"
+            return receipt
+        if (
+            expected_owner_pid > 0
+            and lock_owner_pid > 0
+            and expected_owner_pid != lock_owner_pid
+        ):
+            receipt["reason"] = "implementation_lock_owner_pid_mismatch"
+            return receipt
+        if process_is_running(owner_pid):
+            receipt["reason"] = "owner_still_active"
+            return receipt
+        if (
+            state.active_attempt <= 0
+            or not (state.active_task_id or state.active_task_cid)
+        ):
+            receipt["reason"] = "active_attempt_identity_incomplete"
+            return receipt
+
+        receipt["attempted"] = True
+        receipt["reason"] = "dead_owner_artifacts_reconciled"
+        task_claim_paths: list[Path] = []
+        if state.active_task_cid:
+            task_claim_paths.append(
+                self._implementation_task_claim_path(
+                    state.active_task_id,
+                    canonical_task_cid=state.active_task_cid,
+                )
+            )
+        if state.active_task_id:
+            task_claim_paths.append(
+                self._implementation_task_claim_path(state.active_task_id)
+            )
+        for claim_path in dict.fromkeys(task_claim_paths):
+            if not claim_path.exists():
+                continue
+            metadata = load_json_dict(claim_path)
+            mismatch = self._shutdown_claim_mismatch_reason(
+                metadata,
+                expected_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+                owner_pid=owner_pid,
+                state=state,
+            )
+            item = {"path": str(claim_path)}
+            if mismatch:
+                receipt["task_claims"]["preserved"].append(
+                    {**item, "reason": mismatch}
+                )
+                continue
+            if self._release_implementation_task_claim(claim_path, metadata):
+                receipt["task_claims"]["cleared"].append(item)
+            else:
+                receipt["task_claims"]["preserved"].append(
+                    {**item, "reason": "changed_during_cleanup"}
+                )
+
+        for resource_path in self.worktree_submodule_paths:
+            claim_path = self._implementation_resource_claim_path(
+                resource_path
+            )
+            if not claim_path.exists():
+                continue
+            metadata = load_json_dict(claim_path)
+            mismatch = self._shutdown_claim_mismatch_reason(
+                metadata,
+                expected_kind=IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND,
+                owner_pid=owner_pid,
+                state=state,
+                resource_path=resource_path,
+            )
+            item = {
+                "path": str(claim_path),
+                "resource_path": resource_path,
+            }
+            if mismatch:
+                receipt["resource_claims"]["preserved"].append(
+                    {**item, "reason": mismatch}
+                )
+                continue
+            if self._release_implementation_resource_claim(
+                claim_path,
+                metadata,
+            ):
+                receipt["resource_claims"]["cleared"].append(item)
+            else:
+                receipt["resource_claims"]["preserved"].append(
+                    {**item, "reason": "changed_during_cleanup"}
+                )
+
+        receipt["worktree_pool"] = self._detach_shutdown_pool_lease(
+            state,
+            owner_pid=owner_pid,
+        )
+        return receipt
+
+    def reconcile_quiesced_active_attempt(
+        self,
+        *,
+        expected_owner_pid: int = 0,
+    ) -> dict[str, Any]:
         """Finalize an interrupted attempt after proving no worker owns it.
 
         Supervisor shutdown can terminate the daemon between provider exit and
@@ -8138,6 +7858,23 @@ class PortalImplementationDaemon:
             return result
 
         lock_path = self._implementation_lock_path()
+        # Lock replacement uses this same update guard. Retain it through the
+        # state transition so a restarting daemon cannot publish a new lease
+        # between our quiescence proof and stale-owner cleanup.
+        with serialized_lock_update(lock_path):
+            return self._reconcile_quiesced_active_attempt_locked(
+                lock_path=lock_path,
+                expected_owner_pid=max(0, int(expected_owner_pid or 0)),
+            )
+
+    def _reconcile_quiesced_active_attempt_locked(
+        self,
+        *,
+        lock_path: Path,
+        expected_owner_pid: int,
+    ) -> dict[str, Any]:
+        """Reconcile while holding the implementation-lease update guard."""
+
         lock = load_json_dict(lock_path)
         if lock_path.exists() and lock is None:
             result = {
@@ -8196,8 +7933,48 @@ class PortalImplementationDaemon:
             or state.active_worktree_path
             or state.active_branch
         )
+        coordination_cleanup: dict[str, Any] = {
+            "attempted": False,
+            "reason": "no_active_state",
+        }
         attempt_recovery: dict[str, Any] = {}
         if had_active_state:
+            # A non-cooperating writer may still replace the lease file.
+            # Revalidate the exact snapshot immediately before mutating state.
+            current_lock = load_json_dict(lock_path)
+            if lock_path.exists() != (lock is not None) or current_lock != lock:
+                result = {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": "implementation_lock_changed_during_reconciliation",
+                    "lock_path": str(lock_path),
+                }
+                self._record_event(
+                    "implementation_shutdown_reconciliation_blocked",
+                    result,
+                )
+                return result
+            coordination_cleanup = (
+                self._reconcile_shutdown_coordination_artifacts(
+                    state,
+                    expected_owner_pid=expected_owner_pid,
+                    implementation_lock=lock,
+                )
+            )
+            current_lock = load_json_dict(lock_path)
+            if lock_path.exists() != (lock is not None) or current_lock != lock:
+                result = {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": "implementation_lock_changed_during_reconciliation",
+                    "lock_path": str(lock_path),
+                    "coordination_cleanup": coordination_cleanup,
+                }
+                self._record_event(
+                    "implementation_shutdown_reconciliation_blocked",
+                    result,
+                )
+                return result
             attempt_recovery = consume_stale_active_attempt(state)
             self._clear_active_execution_state(state, clear_task=True)
             reconciled_at = utc_now()
@@ -8209,6 +7986,20 @@ class PortalImplementationDaemon:
 
         stale_lock_cleared = False
         if lock_path.exists():
+            current_lock = load_json_dict(lock_path)
+            if current_lock != lock:
+                result = {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": "implementation_lock_changed_during_reconciliation",
+                    "lock_path": str(lock_path),
+                    "state_reconciled": had_active_state,
+                }
+                self._record_event(
+                    "implementation_shutdown_reconciliation_blocked",
+                    result,
+                )
+                return result
             stale_lock_cleared = self._clear_stale_lock(
                 lock_path,
                 lock_kind="implementation",
@@ -8230,6 +8021,7 @@ class PortalImplementationDaemon:
             "protected_path_reconciliation": (
                 protected_path_reconciliation
             ),
+            "coordination_cleanup": coordination_cleanup,
             "stale_lock_cleared": stale_lock_cleared,
         }
         self._record_event(
@@ -8240,9 +8032,21 @@ class PortalImplementationDaemon:
 
     def _identity_for_task(self, task: PortalTask) -> TaskIdentity:
         metadata = dict(task.metadata)
-        if task.canonical_task_key:
+        normalized_metadata = {
+            str(key).strip().casefold().replace("_", " "): str(value or "").strip()
+            for key, value in metadata.items()
+        }
+        # parse_task_text has already bound a board-provided identity to any
+        # exact additional path authority.  Preserve that source pair here so
+        # repeated daemon lookups reproduce the parsed identity instead of
+        # recursively wrapping the derived identity in the same authority.
+        source_identity_complete = bool(
+            normalized_metadata.get("canonical task key")
+            and normalized_metadata.get("canonical task cid")
+        )
+        if task.canonical_task_key and not source_identity_complete:
             metadata["canonical task key"] = task.canonical_task_key
-        if task.canonical_task_cid:
+        if task.canonical_task_cid and not source_identity_complete:
             metadata["canonical task cid"] = task.canonical_task_cid
         return canonical_task_identity(
             {
@@ -8279,66 +8083,6 @@ class PortalImplementationDaemon:
 
     def _canonical_ref(self, task: PortalTask) -> str:
         return self._identity_for_task(task).canonical_task_cid
-
-    def _retry_no_change_pre_dispatch_scope(
-        self,
-        task: PortalTask,
-        state: PortalTaskState,
-    ) -> dict[str, str] | None:
-        """Return the board-bound retry scope eligible for local validation.
-
-        Ordinary tasks still require their configured implementation provider.
-        A generated retry-budget repair, or the exact source task released by
-        a completed repair already consumed by this lane, may first prove that
-        its immutable baseline satisfies the declared contract.  Re-reading
-        the board for source tasks prevents a mutable state-file entry from
-        granting this provider-bypass privilege on its own.
-        """
-
-        source_task_id, failure_kind = retry_budget_repair_source(task)
-        if source_task_id:
-            # Passing tests on an unchanged checkout cannot establish that a
-            # stranded implementation commit has the correct ancestry or is
-            # ready to merge.  Merge repairs must produce a reviewed
-            # candidate and traverse the normal proposal/merge gates; never
-            # retire them through the local no-change provider bypass.
-            if failure_kind == "merge":
-                return None
-            return {
-                "kind": "retry_budget_repair",
-                "source_task_id": source_task_id,
-                "repair_task_id": task.task_id,
-                "failure_kind": failure_kind,
-                "repair_task_cid": self._canonical_ref(task),
-            }
-
-        repair_task_id = str(
-            state.retry_budget_repair_receipts.get(task.task_id) or ""
-        ).strip()
-        if not repair_task_id:
-            return None
-        try:
-            current_tasks = self._load_tasks()
-        except (OSError, RuntimeError, ValueError):
-            return None
-        for repair_task in current_tasks:
-            if repair_task.task_id != repair_task_id:
-                continue
-            if normalize_status(repair_task.status) != "completed":
-                return None
-            repaired_source_id, repaired_failure_kind = (
-                retry_budget_repair_source(repair_task)
-            )
-            if repaired_source_id != task.task_id:
-                return None
-            return {
-                "kind": "retry_budget_released_source",
-                "source_task_id": task.task_id,
-                "repair_task_id": repair_task_id,
-                "failure_kind": repaired_failure_kind,
-                "repair_task_cid": self._canonical_ref(repair_task),
-            }
-        return None
 
     def _task_attempt_count(self, state: PortalTaskState, task: PortalTask) -> int:
         """Return the durable attempt count for this task's canonical identity."""
@@ -8390,6 +8134,16 @@ class PortalImplementationDaemon:
                 == repair_task_id
             ):
                 continue
+            source_task = tasks_by_id.get(source_task_id)
+            if (
+                source_task is not None
+                and normalize_status(source_task.status) == "completed"
+            ):
+                # A peer lane may retire a generated repair after the source
+                # task completed through its normal merge path. That no-op
+                # retirement must not erase the completed task's attempt
+                # history or queue outcome.
+                continue
             if (
                 state.implementation_in_progress
                 and state.active_task_id == source_task_id
@@ -8405,7 +8159,6 @@ class PortalImplementationDaemon:
                 continue
 
             canonical_task_cids: set[str] = set()
-            source_task = tasks_by_id.get(source_task_id)
             if source_task is not None:
                 canonical_task_cids.add(self._canonical_ref(source_task))
             stored_identity = state.task_identities.get(source_task_id, {})
@@ -8892,86 +8645,14 @@ class PortalImplementationDaemon:
             "blocked_count",
             "active_task_id",
             "selection_idle_reason",
+            "task_policy_blockers",
             "state_path",
             "strategy_path",
             "events_path",
             "task_source_identity",
             "reason",
-            "protected_path_incident_generation",
         )
         return {key: result[key] for key in keys if key in result}
-
-    def _stable_latched_protected_path_incident(
-        self,
-    ) -> dict[str, Any]:
-        """Return the unchanged incident generation from the last checkpoint.
-
-        An incident latch is already a fail-closed terminal state.  Replaying
-        its expensive recovery proof for unrelated runtime wakes only appends
-        duplicate blocked events and makes the resulting event-log change
-        rewrite the checkpoint again.  Bind the quiet path to the exact
-        durable incident generation so clearance, replacement, or corruption
-        immediately invalidates it.
-        """
-
-        cached = self._runtime_last_result
-        if (
-            not isinstance(cached, Mapping)
-            or cached.get("blocked") is not True
-            or cached.get("reason")
-            != "implementation_protected_path_incident_latched"
-        ):
-            return {}
-        expected = cached.get("protected_path_incident_generation")
-        if not isinstance(expected, Mapping):
-            return {}
-        observed = durable_input_generation(
-            self._implementation_protected_incident_path()
-        )
-        if (
-            observed.get("state") != "present"
-            or not generations_match(expected, observed)
-        ):
-            return {}
-        return dict(observed)
-
-    def _acknowledge_stable_latched_protected_path_incident(
-        self,
-        *,
-        source_digest: str,
-        wake_kinds: set[str],
-        incident_generation: Mapping[str, Any],
-    ) -> dict[str, Any]:
-        """Acknowledge an unrelated wake without writing latch evidence."""
-
-        result = self._unchanged_runtime_result(
-            source_digest=source_digest,
-            wake_kinds=wake_kinds,
-        )
-        result.update(
-            {
-                "blocked": True,
-                "reason": (
-                    "implementation_protected_path_incident_latched"
-                ),
-                "protected_path_incident_generation": dict(
-                    incident_generation
-                ),
-                "protected_path_reconciliation": {
-                    "blocked": True,
-                    "reason": (
-                        "implementation_protected_path_incident_latched"
-                    ),
-                    "reconciliation_skipped": True,
-                    "skip_reason": (
-                        "stable_latch_unrelated_runtime_wake"
-                    ),
-                    "incident_generation": dict(incident_generation),
-                },
-                "ignored_wake_kinds": sorted(wake_kinds),
-            }
-        )
-        return result
 
     def _save_runtime_checkpoint(
         self,
@@ -9183,6 +8864,7 @@ class PortalImplementationDaemon:
         state.strict_deprioritized_ready_task_ids = []
         state.waiting_task_ids = []
         state.blocked_task_ids = []
+        state.task_policy_blockers = {}
         state.completed_count = 0
         state.ready_count = 0
         state.selectable_ready_count = 0
@@ -9238,6 +8920,7 @@ class PortalImplementationDaemon:
             "blocked_count": 0,
             "active_task_id": state.active_task_id,
             "selection_idle_reason": reason,
+            "task_policy_blockers": {},
             "state_path": str(self.state_path),
             "strategy_path": str(self.strategy_path),
             "events_path": str(self.events_path),
@@ -9401,23 +9084,6 @@ class PortalImplementationDaemon:
             time.monotonic() - self._last_safety_reconciliation_monotonic
             >= DEFAULT_MISSED_NOTIFICATION_RECONCILIATION_SECONDS
         )
-        stable_incident_generation = (
-            self._stable_latched_protected_path_incident()
-        )
-        if (
-            stable_incident_generation
-            and not safety_reconciliation_due
-            and not wake_kinds.intersection(
-                PROTECTED_INCIDENT_REEVALUATION_WAKE_KINDS
-            )
-        ):
-            return (
-                self._acknowledge_stable_latched_protected_path_incident(
-                    source_digest=source_digest,
-                    wake_kinds=wake_kinds,
-                    incident_generation=stable_incident_generation,
-                )
-            )
         preflight_unchanged = (
             source_digest == self._runtime_last_source_digest
             and not forced_wake_kinds
@@ -9438,19 +9104,8 @@ class PortalImplementationDaemon:
                 provider_retry_schedule
                 and provider_retry_schedule.get("active", False)
             )
-            local_retry_probe_due = bool(
-                provider_retry_active
-                and self._selectable_retry_no_change_probe_due()
-            )
-            ordered_fallback_due = bool(
-                provider_retry_active
-                and self._selectable_ordered_fallback_due()
-            )
-            runtime_retry_due = (
-                local_retry_probe_due
-                or ordered_fallback_due
-                or provider_retry_due
-                or (not provider_retry_active and task_retry_due)
+            runtime_retry_due = provider_retry_due or (
+                not provider_retry_active and task_retry_due
             )
             if not runtime_retry_due:
                 return self._unchanged_runtime_result(
@@ -9458,22 +9113,12 @@ class PortalImplementationDaemon:
                     wake_kinds=wake_kinds,
                 )
         self._last_safety_reconciliation_monotonic = time.monotonic()
-        # Supervisor-native auto-unstick: reclaim abandoned worktree claims
-        # every pass interval so boards do not depend on external companions.
-        worktree_lifecycle_reclaim = (
-            self._reclaim_expired_worktree_lifecycle_claims(
-                reason="daemon_pass_expired_lease_auto_reclaim",
-            )
-        )
         event_log_repair = self.ensure_event_log_file()
         state_file_repair = self.ensure_state_file()
         protected_path_reconciliation = (
             self._reconcile_implementation_protected_path_fence()
         )
         if protected_path_reconciliation.get("blocked", False):
-            incident_generation = durable_input_generation(
-                self._implementation_protected_incident_path()
-            )
             result = {
                 "blocked": True,
                 "reason": str(
@@ -9493,9 +9138,6 @@ class PortalImplementationDaemon:
                 "merge_reconciliation": [],
                 "wake_kinds": sorted(wake_kinds),
                 "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
-                "protected_path_incident_generation": (
-                    incident_generation
-                ),
             }
             final_source_digest, final_sources = self._runtime_source_head()
             checkpoint_result = self._save_runtime_checkpoint(
@@ -9682,6 +9324,14 @@ class PortalImplementationDaemon:
             for task in tasks
             if self._canonical_ref(task) in completed_cids
         )
+        task_policy_blockers = {
+            task.task_id: list(blockers)
+            for task in tasks
+            if task.task_id not in completed_set
+            and (
+                blockers := self._task_direct_implementation_blockers(task)
+            )
+        }
         protected_path_conflicts_by_task = {
             task.task_id: task_implementation_protected_path_conflicts(
                 task,
@@ -9694,29 +9344,10 @@ class PortalImplementationDaemon:
             for task_id, conflicts in protected_path_conflicts_by_task.items()
             if conflicts
         }
-        # Soft-complete: integrated / acceptance-pending work unblocks
-        # dependents without marking the upstream task board-completed.
-        soft_completed_task_ids = set(acceptance_pending_merged_task_ids) | (
-            (successfully_merged_task_ids | shared_completed_task_ids)
-            - completed_set
-            - correction_ready_task_ids
-            - retry_budget_reopened_post_merge_task_ids
-        )
-        soft_completed_cids = {
-            self._canonical_ref(task)
-            for task in tasks
-            if task.task_id in soft_completed_task_ids
-        }
-        soft_completed_task_ids.update(
-            task.task_id
-            for task in tasks
-            if self._canonical_ref(task) in soft_completed_cids
-        )
         dependency_satisfied_task_ids = dependency_satisfied_references(
             tasks,
             completed_task_ids=completed_set,
             assumed_completed_references=self.assumed_completed_task_ids,
-            soft_completed_references=soft_completed_task_ids,
         )
         dependency_reopen_candidates = [
             task.task_id
@@ -9726,6 +9357,7 @@ class PortalImplementationDaemon:
                 and bool(task.depends_on)
                 and not str(task.metadata.get("blocked reason") or "").strip()
                 and task.task_id not in strategy_blocked_task_ids
+                and task.task_id not in task_policy_blockers
                 and all(
                     dependency in dependency_satisfied_task_ids
                     for dependency in task.depends_on
@@ -9736,29 +9368,6 @@ class PortalImplementationDaemon:
             dependency_reopen_candidates,
             reason="dependencies_completed",
         )
-        soft_unlock_waiting = [
-            task.task_id
-            for task in tasks
-            if (
-                task.task_id not in completed_set
-                and bool(task.depends_on)
-                and any(dep in soft_completed_task_ids for dep in task.depends_on)
-                and all(
-                    dependency in dependency_satisfied_task_ids
-                    for dependency in task.depends_on
-                )
-            )
-        ]
-        if soft_completed_task_ids and soft_unlock_waiting:
-            self._record_event(
-                "dependency_soft_completed",
-                {
-                    "soft_completed_task_ids": sorted(soft_completed_task_ids)[:50],
-                    "soft_completed_count": len(soft_completed_task_ids),
-                    "unlocked_task_ids": soft_unlock_waiting[:50],
-                    "reason": "merged_or_acceptance_pending_unblocks_dependents",
-                },
-            )
         dependency_reopened_task_ids = {
             *dependency_reopen_result.get("updated_task_ids", []),
             *dependency_reopen_result.get("already_ready_task_ids", []),
@@ -9769,6 +9378,11 @@ class PortalImplementationDaemon:
                 resolved_statuses[task.task_id] = "completed"
                 if task.task_id not in previous_completed:
                     newly_completed.append(task.task_id)
+                continue
+            if task.task_id in task_policy_blockers:
+                # These fields are authorization boundaries, not transient
+                # scheduler pressure.
+                resolved_statuses[task.task_id] = "blocked"
                 continue
             if task.task_id in protected_path_conflicts_by_task:
                 # This is a board/configuration error, not transient provider
@@ -9834,19 +9448,6 @@ class PortalImplementationDaemon:
                 for resource_path in self._task_implementation_resource_paths(
                     task
                 )
-            )
-        }
-        admission_resource_reserved_ready_task_ids = {
-            task.task_id
-            for task in execution_tasks
-            if (
-                task.task_id in representative_task_ids
-                and (
-                    not self.strict_task_sharding
-                    or self._task_belongs_to_shard(task.task_id)
-                )
-                and resolved_statuses.get(task.task_id) == "ready"
-                and task.task_id in resource_reserved_task_ids
             )
         }
         external_task_reservations = self._external_task_reservations(tasks)
@@ -9918,61 +9519,20 @@ class PortalImplementationDaemon:
                     "selection_idle_reason": attempt_limit_idle_reason,
                 },
             )
-        incomplete_for_unlock = {
-            task.task_id
-            for task in tasks
-            if resolved_statuses.get(task.task_id) != "completed"
-        }
-        unlock_counts = downstream_unlock_counts(
-            tasks,
-            incomplete_task_ids=incomplete_for_unlock,
-        )
-        selection_provider_backoff = self._active_provider_capacity_backoff()
-        if selection_provider_backoff:
-            provider_independent_or_authorized_tasks = [
-                task
-                for task in selectable_tasks
-                if (
-                    resolved_statuses.get(task.task_id) == "ready"
-                    and (
-                        self._task_uses_typed_local_execution(task)
-                        or (
-                            self.use_ephemeral_worktree
-                            and self._retry_no_change_pre_dispatch_scope(
-                                task,
-                                previous,
-                            )
-                            is not None
-                        )
-                        or bool(
-                            self._active_grok_quota_fallback_proof(
-                                task,
-                                attempt=self._task_attempt(previous, task),
-                            )
-                        )
-                    )
-                )
-            ]
-            if provider_independent_or_authorized_tasks:
-                # A primary-capacity wake may be consumed only by local work
-                # or a task carrying its own live fallback authority. Do not
-                # let a higher-ranked unrelated task recreate a spin.
-                selectable_tasks = provider_independent_or_authorized_tasks
         selected = self._select_next_task(
             selectable_tasks,
             resolved_statuses,
             strategy,
             unresolved_merge_failures,
             recent_outcomes,
-            all_tasks=tasks,
-            downstream_unlock_by_task=unlock_counts,
         )
         selection_scope = self._selection_scope(selectable_tasks, resolved_statuses, strategy)
         if selected is None and attempt_limit_idle_reason:
             selection_scope["selection_idle_reason"] = attempt_limit_idle_reason
-        elif (
-            selected is None
-            and admission_resource_reserved_ready_task_ids
+        elif selected is None and any(
+            resolved_statuses.get(task.task_id) == "ready"
+            and task.task_id in resource_reserved_task_ids
+            for task in execution_tasks
         ):
             selection_scope["selection_idle_reason"] = (
                 "all_selectable_ready_tasks_deferred_by_resource_claim"
@@ -9995,6 +9555,7 @@ class PortalImplementationDaemon:
             if resolved_statuses[task.task_id] in {"waiting", "merge-queued"}
         ]
         state.blocked_task_ids = [task.task_id for task in tasks if resolved_statuses[task.task_id] == "blocked"]
+        state.task_policy_blockers = dict(task_policy_blockers)
         state.ready_count = len(state.ready_task_ids)
         state.selectable_ready_count = len(state.selectable_ready_task_ids)
         state.external_reserved_count = len(state.external_reserved_task_ids)
@@ -10130,6 +9691,28 @@ class PortalImplementationDaemon:
             # If the process exits on either side of this boundary, strict
             # lifecycle replay makes the next pass idempotently converge.
             self._record_event("task_completed", receipt)
+            if receipt_repair:
+                member_receipts = self._completion_receipts_for_task_ids(
+                    [task.task_id]
+                )
+                if member_receipts:
+                    # Leased lanes consume the same durable completion packet
+                    # shape as a normal board transition.  Publishing it for
+                    # an already-completed task lets a restarted daemon repair
+                    # an exact identity receipt without mutating board bytes
+                    # or weakening the lane's fail-closed CID checks.
+                    self._record_event(
+                        "todo_status_updated",
+                        {
+                            "updated": False,
+                            "reason": "completion_receipt_repair",
+                            "path": str(self.todo_path),
+                            "completion_reason": "completion_receipt_repair",
+                            "updated_task_ids": [],
+                            "already_completed_task_ids": [task.task_id],
+                            "completion_receipts": member_receipts,
+                        },
+                    )
             completion_receipt_bindings.add(receipt_binding)
             completion_receipt_writes.append(receipt)
 
@@ -10160,7 +9743,22 @@ class PortalImplementationDaemon:
                 }
                 self._record_event("implementation_skipped", implementation_result)
             else:
-                implementation_result = self._run_implementation(selected, state)
+                validation_python_preflight = (
+                    self._validation_python_dependency_preflight(selected)
+                )
+                if validation_python_preflight.get("passed") is not True:
+                    implementation_result = (
+                        self._defer_validation_python_dependency_preflight(
+                            selected,
+                            state,
+                            validation_python_preflight,
+                        )
+                    )
+                else:
+                    implementation_result = self._run_implementation(
+                        selected,
+                        state,
+                    )
         provider_backoff_result = bool(
             implementation_result
             and implementation_result.get("reason") == "provider_capacity_backoff"
@@ -10173,6 +9771,7 @@ class PortalImplementationDaemon:
                 "provider_capacity_exhausted",
                 "provider_capacity_backoff",
                 "resource_claim_lock_exists",
+                "validation_python_dependency_preflight_failed",
             }
         )
         if state_written or completion_receipt_writes or (
@@ -10190,6 +9789,7 @@ class PortalImplementationDaemon:
                     "eligible_ready_count": state.eligible_ready_count,
                     "strict_deprioritized_ready_count": state.strict_deprioritized_ready_count,
                     "selection_idle_reason": state.selection_idle_reason,
+                    "task_policy_blockers": dict(state.task_policy_blockers),
                     "max_task_attempts": self.max_task_attempts,
                     "attempt_limited_task_ids": [
                         item["task_id"] for item in attempt_limited_tasks
@@ -10247,6 +9847,7 @@ class PortalImplementationDaemon:
             "blocked_count": state.blocked_count,
             "active_task_id": state.active_task_id,
             "selection_idle_reason": state.selection_idle_reason,
+            "task_policy_blockers": dict(state.task_policy_blockers),
             "max_task_attempts": self.max_task_attempts,
             "attempt_limited_task_ids": [
                 item["task_id"] for item in attempt_limited_tasks
@@ -10286,16 +9887,6 @@ class PortalImplementationDaemon:
             ),
             "external_reserved_task_ids": sorted(external_task_reservations),
             "assumed_completed_task_ids": sorted(self.assumed_completed_task_ids),
-            "soft_completed_task_ids": sorted(soft_completed_task_ids),
-            "soft_completed_count": len(soft_completed_task_ids),
-            "dependency_satisfied_task_ids": sorted(
-                dependency_satisfied_task_ids
-            )[:200],
-            "downstream_unlock_counts": {
-                task_id: unlock_counts[task_id]
-                for task_id in sorted(unlock_counts)
-                if unlock_counts[task_id] > 0
-            },
             "execution_slice_task_ids": sorted(self.execution_slice_task_ids),
             "execution_slice_task_cids": sorted(self.execution_slice_task_cids),
             "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
@@ -10353,81 +9944,665 @@ class PortalImplementationDaemon:
         except ValueError:
             return DEFAULT_PROVIDER_CAPACITY_BACKOFF_SECONDS
 
+    @staticmethod
+    def _stop_grok_quota_verifier_process(
+        process: subprocess.Popen[bytes],
+    ) -> None:
+        """Stop a verifier process group without trusting child cleanup."""
+
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except (OSError, ProcessLookupError):
+            try:
+                process.kill()
+            except (OSError, ProcessLookupError):
+                pass
+        try:
+            process.wait(timeout=1)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+    def _run_grok_quota_verifier(self, request_bytes: bytes) -> bytes:
+        """Exchange one bounded request under a single nonblocking deadline."""
+
+        if (
+            not isinstance(request_bytes, bytes)
+            or not request_bytes
+            or len(request_bytes) > GROK_QUOTA_VERIFIER_MAX_REQUEST_BYTES
+        ):
+            return b""
+
+        configured_raw = os.environ.get(
+            GROK_QUOTA_VERIFIER_COMMAND_ENV,
+            "",
+        )
+        if len(configured_raw) > GROK_QUOTA_VERIFIER_MAX_COMMAND_BYTES:
+            return b""
+        configured = configured_raw.strip()
+        if not configured:
+            return b""
+        try:
+            configured_bytes = configured.encode("utf-8")
+        except UnicodeEncodeError:
+            return b""
+        if len(configured_bytes) > GROK_QUOTA_VERIFIER_MAX_COMMAND_BYTES:
+            return b""
+        try:
+            command = shlex.split(configured)
+        except ValueError:
+            return b""
+        if (
+            not command
+            or len(command) > GROK_QUOTA_VERIFIER_MAX_COMMAND_ARGUMENTS
+        ):
+            return b""
+        try:
+            if any(
+                not item
+                or len(item.encode("utf-8"))
+                > GROK_QUOTA_VERIFIER_MAX_COMMAND_ARGUMENT_BYTES
+                for item in command
+            ):
+                return b""
+        except UnicodeEncodeError:
+            return b""
+        raw_timeout = os.environ.get(
+            GROK_QUOTA_VERIFIER_TIMEOUT_ENV,
+            "",
+        ).strip()
+        try:
+            timeout_seconds = (
+                float(raw_timeout)
+                if raw_timeout
+                else DEFAULT_GROK_QUOTA_VERIFIER_TIMEOUT_SECONDS
+            )
+        except ValueError:
+            return b""
+        if not math.isfinite(timeout_seconds) or not 0 < timeout_seconds <= 60:
+            return b""
+        # This deadline covers process launch, every request write, every
+        # response read, and waiting for the verifier leader. No pipe I/O is
+        # permitted before it exists.
+        deadline = time.monotonic() + timeout_seconds
+        verifier_environment = dict(os.environ)
+        verifier_environment.pop(GROK_TERMINAL_RECEIPT_FD_ENV, None)
+        try:
+            process: subprocess.Popen[bytes] = subprocess.Popen(
+                command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                env=verifier_environment,
+                close_fds=True,
+                start_new_session=True,
+            )
+        except (OSError, ValueError):
+            return b""
+        if process.stdin is None or process.stdout is None:
+            self._stop_grok_quota_verifier_process(process)
+            return b""
+        input_fd = process.stdin.fileno()
+        output_fd = process.stdout.fileno()
+        output = bytearray()
+        input_offset = 0
+        input_open = True
+        output_open = True
+        try:
+            os.set_blocking(input_fd, False)
+            os.set_blocking(output_fd, False)
+            while input_open or output_open:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return b""
+                readers = (output_fd,) if output_open else ()
+                writers = (input_fd,) if input_open else ()
+                try:
+                    readable, writable, _ = select.select(
+                        readers,
+                        writers,
+                        (),
+                        min(0.1, remaining),
+                    )
+                except InterruptedError:
+                    continue
+                if input_open and input_fd in writable:
+                    try:
+                        written = os.write(
+                            input_fd,
+                            request_bytes[
+                                input_offset : input_offset + 64 * 1024
+                            ],
+                        )
+                    except BlockingIOError:
+                        written = 0
+                    except InterruptedError:
+                        continue
+                    except (BrokenPipeError, OSError):
+                        return b""
+                    if written < 0:
+                        return b""
+                    input_offset += written
+                    if input_offset == len(request_bytes):
+                        try:
+                            process.stdin.close()
+                        except (BrokenPipeError, OSError):
+                            return b""
+                        input_open = False
+                if not output_open or output_fd not in readable:
+                    continue
+                read_limit = min(
+                    4096,
+                    GROK_QUOTA_VERIFIER_MAX_OUTPUT_BYTES
+                    + 1
+                    - len(output),
+                )
+                if read_limit <= 0:
+                    return b""
+                try:
+                    chunk = os.read(output_fd, read_limit)
+                except BlockingIOError:
+                    continue
+                except InterruptedError:
+                    continue
+                if not chunk:
+                    try:
+                        process.stdout.close()
+                    except OSError:
+                        return b""
+                    output_open = False
+                    continue
+                output.extend(chunk)
+                if len(output) > GROK_QUOTA_VERIFIER_MAX_OUTPUT_BYTES:
+                    return b""
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return b""
+            try:
+                returncode = process.wait(timeout=remaining)
+            except subprocess.TimeoutExpired:
+                return b""
+            return bytes(output) if returncode == 0 else b""
+        except (OSError, ValueError):
+            return b""
+        finally:
+            # Kill the entire verifier process group even after its leader
+            # exits successfully so a verifier cannot orphan helpers.
+            self._stop_grok_quota_verifier_process(process)
+            if input_open:
+                try:
+                    process.stdin.close()
+                except (BrokenPipeError, OSError):
+                    pass
+            if output_open:
+                try:
+                    process.stdout.close()
+                except OSError:
+                    pass
+
+    def _trusted_grok_quota_verifier_receipt(
+        self,
+        candidate: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Verify an independently signed, invocation-bound quota verdict.
+
+        The signer is an operator trust boundary: it must independently query
+        the exact configured Grok Build account and entitlement pool.  Merely
+        echoing the candidate, or checking a generic xAI API account, is not a
+        valid implementation of this verifier contract.  Its private key must
+        be unavailable to the daemon's same-UID model descendants.
+        """
+
+        public_key_text = os.environ.get(
+            GROK_QUOTA_VERIFIER_PUBLIC_KEY_ENV,
+            "",
+        )
+        expected_account_id = os.environ.get(
+            GROK_QUOTA_VERIFIER_ACCOUNT_ID_ENV,
+            "",
+        )
+        expected_quota_pool_id = os.environ.get(
+            GROK_QUOTA_VERIFIER_POOL_ID_ENV,
+            "",
+        )
+        if (
+            not _bounded_grok_quota_verifier_identifier(
+                expected_account_id
+            )
+            or not _bounded_grok_quota_verifier_identifier(
+                expected_quota_pool_id
+            )
+            or candidate.get("provider") != "grok"
+            or candidate.get("model") != DEFAULT_GROK_IMPLEMENTATION_MODEL
+            or candidate.get("error_kind") != "quota_exhausted"
+            or candidate.get("quota_code") not in {
+                "usage_limit_reached",
+                "usage_pool_exhausted",
+            }
+            or not re.fullmatch(
+                r"[0-9a-f]{64}",
+                str(candidate.get("invocation_binding_sha256") or ""),
+            )
+            or not re.fullmatch(
+                r"[0-9a-f]{64}",
+                str(candidate.get("terminal_event_sha256") or ""),
+            )
+            or not isinstance(candidate.get("inner_returncode"), int)
+            or isinstance(candidate.get("inner_returncode"), bool)
+            or candidate.get("inner_returncode") == 0
+            or candidate.get("runner_returncode")
+            != GROK_QUOTA_EXHAUSTED_EXIT_CODE
+            or len(public_key_text) != 43
+        ):
+            return {}
+        try:
+            if len(_strict_urlsafe_base64_decode(public_key_text)) != 32:
+                return {}
+        except (UnicodeEncodeError, ValueError):
+            return {}
+        challenge_nonce = secrets.token_hex(32)
+        request = {
+            "schema": GROK_QUOTA_VERIFIER_REQUEST_SCHEMA,
+            "challenge_nonce": challenge_nonce,
+            "provider": "grok",
+            "entitlement": "grok_build",
+            "expected_account_id": expected_account_id,
+            "expected_quota_pool_id": expected_quota_pool_id,
+            "model": str(candidate.get("model") or ""),
+            "candidate_error_kind": str(
+                candidate.get("error_kind") or ""
+            ),
+            "quota_code": str(candidate.get("quota_code") or ""),
+            "invocation_binding_sha256": str(
+                candidate.get("invocation_binding_sha256") or ""
+            ),
+            "terminal_event_sha256": str(
+                candidate.get("terminal_event_sha256") or ""
+            ),
+            "inner_returncode": candidate.get("inner_returncode"),
+            "runner_returncode": candidate.get("runner_returncode"),
+        }
+        try:
+            request_bytes = canonical_json(request).encode("utf-8")
+        except (TypeError, ValueError, UnicodeEncodeError, RecursionError):
+            return {}
+        if len(request_bytes) > GROK_QUOTA_VERIFIER_MAX_REQUEST_BYTES:
+            return {}
+        request_sha256 = hashlib.sha256(request_bytes).hexdigest()
+        response_bytes = self._run_grok_quota_verifier(request_bytes)
+        if (
+            not response_bytes
+            or len(response_bytes) > GROK_QUOTA_VERIFIER_MAX_OUTPUT_BYTES
+        ):
+            return {}
+        try:
+            response = json.loads(response_bytes.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError, RecursionError):
+            return {}
+        if (
+            not isinstance(response, dict)
+            or set(response) != {"schema", "payload", "signature"}
+            or response.get("schema")
+            != GROK_QUOTA_VERIFIER_RECEIPT_SCHEMA
+            or not isinstance(response.get("payload"), dict)
+            or not isinstance(response.get("signature"), str)
+        ):
+            return {}
+        payload = response["payload"]
+        expected_payload_fields = {
+            "provider",
+            "entitlement",
+            "account_id",
+            "quota_pool_id",
+            "provider_request_id",
+            "model",
+            "verdict",
+            "quota_code",
+            "challenge_nonce",
+            "request_sha256",
+            "invocation_binding_sha256",
+            "terminal_event_sha256",
+            "verified_at",
+            "expires_at",
+        }
+        if set(payload) != expected_payload_fields:
+            return {}
+        expected_values = {
+            "provider": "grok",
+            "entitlement": "grok_build",
+            "account_id": expected_account_id,
+            "quota_pool_id": expected_quota_pool_id,
+            "model": request["model"],
+            "verdict": "quota_exhausted",
+            "quota_code": request["quota_code"],
+            "challenge_nonce": challenge_nonce,
+            "request_sha256": request_sha256,
+            "invocation_binding_sha256": request[
+                "invocation_binding_sha256"
+            ],
+            "terminal_event_sha256": request["terminal_event_sha256"],
+        }
+        if any(
+            payload.get(key) != value
+            for key, value in expected_values.items()
+        ):
+            return {}
+        if payload.get("quota_code") not in {
+            "usage_limit_reached",
+            "usage_pool_exhausted",
+        }:
+            return {}
+        provider_request_id = payload.get("provider_request_id")
+        if (
+            not isinstance(provider_request_id, str)
+            or not re.fullmatch(
+                r"[A-Za-z0-9._:-]{8,256}",
+                provider_request_id,
+            )
+        ):
+            return {}
+        persisted_request = {
+            "schema": GROK_QUOTA_VERIFIER_REQUEST_SCHEMA,
+            "challenge_nonce": payload["challenge_nonce"],
+            "provider": "grok",
+            "entitlement": "grok_build",
+            "expected_account_id": expected_account_id,
+            "expected_quota_pool_id": expected_quota_pool_id,
+            "model": str(candidate.get("model") or ""),
+            "candidate_error_kind": str(
+                candidate.get("error_kind") or ""
+            ),
+            "quota_code": str(candidate.get("quota_code") or ""),
+            "invocation_binding_sha256": str(
+                candidate.get("invocation_binding_sha256") or ""
+            ),
+            "terminal_event_sha256": str(
+                candidate.get("terminal_event_sha256") or ""
+            ),
+            "inner_returncode": candidate.get("inner_returncode"),
+            "runner_returncode": candidate.get("runner_returncode"),
+        }
+        if payload.get("request_sha256") != hashlib.sha256(
+            canonical_json(persisted_request).encode("utf-8")
+        ).hexdigest():
+            return {}
+        verified_at = parse_timestamp(str(payload.get("verified_at") or ""))
+        expires_at = parse_timestamp(str(payload.get("expires_at") or ""))
+        now = _provider_capacity_now()
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
+        else:
+            now = now.astimezone(timezone.utc)
+        if (
+            verified_at is None
+            or expires_at is None
+            or verified_at < now - timedelta(seconds=60)
+            or verified_at > now + timedelta(seconds=30)
+            or expires_at <= now
+            or expires_at
+            > verified_at
+            + timedelta(seconds=GROK_QUOTA_VERIFIER_MAX_LIFETIME_SECONDS)
+        ):
+            return {}
+        try:
+            public_key_bytes = _strict_urlsafe_base64_decode(public_key_text)
+            signature_text = str(response["signature"])
+            if not signature_text.startswith("ed25519:"):
+                return {}
+            encoded_signature = signature_text[len("ed25519:") :]
+            signature_bytes = _strict_urlsafe_base64_decode(
+                encoded_signature
+            )
+            if len(public_key_bytes) != 32 or len(signature_bytes) != 64:
+                return {}
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+                Ed25519PublicKey,
+            )
+
+            Ed25519PublicKey.from_public_bytes(public_key_bytes).verify(
+                signature_bytes,
+                canonical_json(payload).encode("utf-8"),
+            )
+        except Exception:
+            return {}
+        return dict(response)
+
+    def _persisted_grok_quota_verifier_payload(
+        self,
+        value: str,
+        candidate: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Reverify one signed diagnostic envelope for live route replay."""
+
+        if not value.startswith(GROK_QUOTA_VERIFIER_RECEIPT_PREFIX):
+            return {}
+        encoded = value[len(GROK_QUOTA_VERIFIER_RECEIPT_PREFIX) :]
+        if not encoded or len(encoded.encode("utf-8")) > (
+            GROK_QUOTA_VERIFIER_MAX_OUTPUT_BYTES
+        ):
+            return {}
+        try:
+            receipt = json.loads(encoded)
+        except (TypeError, ValueError, RecursionError):
+            return {}
+        if (
+            not isinstance(receipt, dict)
+            or set(receipt) != {"schema", "payload", "signature"}
+            or receipt.get("schema")
+            != GROK_QUOTA_VERIFIER_RECEIPT_SCHEMA
+            or not isinstance(receipt.get("payload"), dict)
+            or not isinstance(receipt.get("signature"), str)
+        ):
+            return {}
+        payload = receipt["payload"]
+        expected_fields = {
+            "provider",
+            "entitlement",
+            "account_id",
+            "quota_pool_id",
+            "provider_request_id",
+            "model",
+            "verdict",
+            "quota_code",
+            "challenge_nonce",
+            "request_sha256",
+            "invocation_binding_sha256",
+            "terminal_event_sha256",
+            "verified_at",
+            "expires_at",
+        }
+        if set(payload) != expected_fields:
+            return {}
+        expected_account_id = os.environ.get(
+            GROK_QUOTA_VERIFIER_ACCOUNT_ID_ENV,
+            "",
+        )
+        expected_quota_pool_id = os.environ.get(
+            GROK_QUOTA_VERIFIER_POOL_ID_ENV,
+            "",
+        )
+        public_key_text = os.environ.get(
+            GROK_QUOTA_VERIFIER_PUBLIC_KEY_ENV,
+            "",
+        )
+        if (
+            not _bounded_grok_quota_verifier_identifier(
+                expected_account_id
+            )
+            or not _bounded_grok_quota_verifier_identifier(
+                expected_quota_pool_id
+            )
+            or payload.get("provider") != "grok"
+            or payload.get("entitlement") != "grok_build"
+            or payload.get("account_id") != expected_account_id
+            or payload.get("quota_pool_id") != expected_quota_pool_id
+            or payload.get("verdict") != "quota_exhausted"
+            or payload.get("model") != candidate.get("model")
+            or payload.get("quota_code") != candidate.get("quota_code")
+            or payload.get("invocation_binding_sha256")
+            != candidate.get("invocation_binding_sha256")
+            or payload.get("terminal_event_sha256")
+            != candidate.get("terminal_event_sha256")
+            or not re.fullmatch(
+                r"[0-9a-f]{64}",
+                str(payload.get("challenge_nonce") or ""),
+            )
+            or not re.fullmatch(
+                r"[0-9a-f]{64}",
+                str(payload.get("request_sha256") or ""),
+            )
+            or not re.fullmatch(
+                r"[A-Za-z0-9._:-]{8,256}",
+                str(payload.get("provider_request_id") or ""),
+            )
+            or len(public_key_text) != 43
+        ):
+            return {}
+        try:
+            if len(_strict_urlsafe_base64_decode(public_key_text)) != 32:
+                return {}
+        except (UnicodeEncodeError, ValueError):
+            return {}
+        verified_at = parse_timestamp(str(payload.get("verified_at") or ""))
+        expires_at = parse_timestamp(str(payload.get("expires_at") or ""))
+        now = _provider_capacity_now()
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
+        else:
+            now = now.astimezone(timezone.utc)
+        if (
+            verified_at is None
+            or expires_at is None
+            or verified_at < now - timedelta(
+                seconds=GROK_QUOTA_VERIFIER_MAX_LIFETIME_SECONDS
+            )
+            or verified_at > now + timedelta(seconds=30)
+            or expires_at <= now
+            or expires_at
+            > verified_at
+            + timedelta(seconds=GROK_QUOTA_VERIFIER_MAX_LIFETIME_SECONDS)
+        ):
+            return {}
+        try:
+            public_key_bytes = _strict_urlsafe_base64_decode(public_key_text)
+            signature_text = str(receipt["signature"])
+            if not signature_text.startswith("ed25519:"):
+                return {}
+            encoded_signature = signature_text[len("ed25519:") :]
+            signature_bytes = _strict_urlsafe_base64_decode(
+                encoded_signature
+            )
+            if len(public_key_bytes) != 32 or len(signature_bytes) != 64:
+                return {}
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+                Ed25519PublicKey,
+            )
+
+            Ed25519PublicKey.from_public_bytes(public_key_bytes).verify(
+                signature_bytes,
+                canonical_json(payload).encode("utf-8"),
+            )
+        except Exception:
+            return {}
+        return dict(payload)
+
     def _provider_capacity_failure_from_log(
         self,
         log_path: Path,
         *,
         command: Sequence[str] = (),
-        provider_output_start_offset: int | None = None,
+        returncode: int | None = None,
+        terminal_receipt: str | bytes = b"",
     ) -> dict[str, Any]:
+        command_providers = _provider_labels_from_implementation_command(
+            command
+        )
+        if "grok" in command_providers:
+            # The merged log contains model text, tool output, and provider
+            # diagnostics. None of it is quota authority. Require both the
+            # wrapper-reserved status and the typed receipt delivered over the
+            # runner-only file descriptor.
+            receipt_bytes = (
+                terminal_receipt
+                if isinstance(terminal_receipt, bytes)
+                else str(terminal_receipt or "").encode("utf-8")
+            )
+            if (
+                not _is_exact_internal_grok_runner_command(command)
+                or returncode != GROK_QUOTA_EXHAUSTED_EXIT_CODE
+                or not receipt_bytes.endswith(b"\n")
+                or len(receipt_bytes.splitlines()) != 1
+            ):
+                return {
+                    "exhausted": False,
+                    "providers": [],
+                    "reason": "",
+                }
+            record = parse_grok_terminal_quota_receipt(
+                receipt_bytes,
+                expected_runner_command=command,
+            )
+            if (
+                not record
+                or record.get("model")
+                != DEFAULT_GROK_IMPLEMENTATION_MODEL
+                or record.get("runner_returncode") != returncode
+            ):
+                return {
+                    "exhausted": False,
+                    "providers": [],
+                    "reason": "",
+                }
+            verifier_receipt = self._trusted_grok_quota_verifier_receipt(
+                record
+            )
+            if not verifier_receipt:
+                # A streaming frame and private-pipe receipt are only a
+                # candidate diagnostic. Model-launched same-UID descendants
+                # can inject into the Grok process's stdout via procfs. Terra
+                # fallback therefore remains disabled unless an independent
+                # signer attests this exact invocation and fresh challenge.
+                return {
+                    "exhausted": False,
+                    "providers": ["grok"],
+                    "reason": "grok_quota_verifier_unavailable",
+                    "evidence": [
+                        encode_grok_terminal_quota_receipt(record)
+                    ],
+                    "structured_evidence": {
+                        "terminal_candidate": dict(record),
+                    },
+                }
+            evidence = encode_grok_terminal_quota_receipt(record)
+            verifier_evidence = (
+                GROK_QUOTA_VERIFIER_RECEIPT_PREFIX
+                + canonical_json(verifier_receipt)
+            )
+            return {
+                "exhausted": True,
+                "providers": ["grok"],
+                "reason": "provider_capacity_exhausted",
+                "evidence": [evidence, verifier_evidence],
+                "structured_evidence": {
+                    "terminal_candidate": dict(record),
+                    "quota_verifier_receipt": verifier_receipt,
+                },
+                "_process_authority": (
+                    self._grok_quota_classification_sentinel
+                ),
+            }
         try:
             with log_path.open("rb") as handle:
                 handle.seek(0, os.SEEK_END)
                 size = handle.tell()
-                if (
-                    provider_output_start_offset is not None
-                    and (
-                        isinstance(provider_output_start_offset, bool)
-                        or not isinstance(provider_output_start_offset, int)
-                        or provider_output_start_offset < 0
-                        or provider_output_start_offset > size
-                    )
-                ):
-                    return {
-                        "exhausted": False,
-                        "providers": [],
-                        "reason": "invalid_provider_output_boundary",
-                    }
-                start = max(0, size - PROVIDER_CAPACITY_LOG_TAIL_BYTES)
-                if provider_output_start_offset is not None:
-                    start = max(start, provider_output_start_offset)
-                handle.seek(start)
+                handle.seek(max(0, size - PROVIDER_CAPACITY_LOG_TAIL_BYTES))
                 text = handle.read().decode("utf-8", errors="replace")
         except OSError:
             return {"exhausted": False, "providers": [], "reason": ""}
-        return self._provider_capacity_failure_from_text(
-            text,
-            command=command,
-            provider_output_only=provider_output_start_offset is not None,
-            provider_output_start_offset=provider_output_start_offset,
-        )
-
-    def _provider_capacity_failure_from_text(
-        self,
-        text: str,
-        *,
-        command: Sequence[str] = (),
-        provider_output_only: bool = False,
-        provider_output_start_offset: int | None = None,
-        provider_error_channel_identity: Mapping[str, Any] | None = None,
-        provider_returncode: int | None = None,
-    ) -> dict[str, Any]:
-        """Classify bytes already retained by a supervisor-owned channel."""
-
         classified = classify_provider_capacity_failure(
             text,
-            provider_labels=_provider_labels_from_implementation_command(
-                command
-            ),
-            provider_returncode=provider_returncode,
+            provider_labels=command_providers,
         )
-        runner_receipt = (
-            _validated_grok_quota_runner_receipt(text)
-            if provider_returncode == GROK_QUOTA_EXHAUSTED_EXIT_CODE
-            else {}
-        )
-        if runner_receipt:
-            classified["grok_quota_runner_receipt"] = runner_receipt
         if not classified["exhausted"]:
-            classified["provider_output_only"] = bool(provider_output_only)
-            if provider_output_start_offset is not None:
-                classified["provider_output_start_offset"] = (
-                    provider_output_start_offset
-                )
-            if provider_error_channel_identity is not None:
-                classified["provider_error_channel_identity"] = dict(
-                    provider_error_channel_identity
-                )
             return classified
         evidence = [
             line.strip()
@@ -10441,370 +10616,427 @@ class PortalImplementationDaemon:
             )
         ]
         classified["evidence"] = evidence[-4:]
-        classified["provider_output_only"] = bool(provider_output_only)
-        if provider_output_start_offset is not None:
-            classified["provider_output_start_offset"] = (
-                provider_output_start_offset
-            )
-        if provider_error_channel_identity is not None:
-            channel_identity = dict(provider_error_channel_identity)
-            encoded_text = text.encode("utf-8")
-            if (
-                _valid_anonymous_provider_error_channel_identity(
-                    channel_identity
-                )
-                and channel_identity.get("tail_start_offset") == 0
-                and channel_identity.get("size") == len(encoded_text)
-                and channel_identity.get("sha256")
-                == hashlib.sha256(encoded_text).hexdigest()
-            ):
-                classified["provider_error_channel_identity"] = (
-                    channel_identity
-                )
         return classified
 
-    def _provider_capacity_backoff_schedule_for_labels(
+    def _provider_exhaustion_event(
         self,
-        provider_labels: set[str],
-    ) -> dict[str, Any]:
-        """Return the newest still-relevant capacity latch for one provider."""
-
-        labels = {
-            str(label).strip().lower()
-            for label in provider_labels
-            if str(label).strip()
-        }
-        if not labels:
-            return {}
-        now = _provider_capacity_now()
-        for event in reversed(self._iter_events()):
-            event_type = str(event.get("type") or "")
-            if event_type == "implementation_provider_exhausted":
-                exhausted = {
-                    str(item).strip().lower()
-                    for item in list(event.get("providers") or [])
-                    if str(item).strip()
-                }
-                if exhausted and not (exhausted & labels):
-                    continue
-                retry_at = parse_timestamp(str(event.get("retry_at") or ""))
-                if retry_at is None:
-                    return {}
-                return {
-                    "active": retry_at > now,
-                    "retry_at": retry_at.isoformat(),
-                    "retry_after_seconds": max(
-                        0.0,
-                        (retry_at - now).total_seconds(),
-                    ),
-                    "providers": list(event.get("providers") or []),
-                }
-            if event_type == "implementation_started":
-                if event.get("provider_dispatched") is False:
-                    # A local contract proof is not evidence that capacity
-                    # returned.  Preserve the provider-specific latch until
-                    # an actual dispatch boundary or its declared deadline.
-                    continue
-                started_labels = set(
-                    _provider_labels_from_implementation_command(
-                        event.get("command") or ()
-                    )
-                )
-                if started_labels & labels:
-                    return {}
-        return {}
-
-    def _active_provider_capacity_backoff_for_labels(
-        self,
-        provider_labels: set[str],
-    ) -> dict[str, Any]:
-        schedule = self._provider_capacity_backoff_schedule_for_labels(
-            provider_labels
-        )
-        return schedule if schedule.get("active", False) else {}
-
-    def _issue_grok_quota_fallback_authority(
-        self,
+        provider: str,
         *,
-        task: PortalTask,
-        state: PortalTaskState,
-        attempt: int,
-        returncode: int,
-        command: Sequence[str],
-        implementation_started_event: Mapping[str, Any],
-        failure: Mapping[str, Any],
-        retry_at: str,
+        require_active: bool,
     ) -> dict[str, Any]:
-        """Issue authority only for this daemon's exact failed Grok dispatch."""
+        """Return this lane's latest strongly validated quota event.
 
-        if not self._ordered_grok_codex_route_configured(task):
-            return {}
-        identity = self._identity_for_task(task)
-        command_binding = _exact_ordered_grok_command_binding(command)
-        evidence = [
-            str(item).strip()
-            for item in failure.get("evidence", ())
-            if str(item).strip()
-        ]
-        providers = {
-            str(item).strip().lower()
-            for item in failure.get("providers", ())
-            if str(item).strip()
-        }
-        started_command = [
-            str(item)
-            for item in implementation_started_event.get("command", ())
-        ]
-        started_event_id = str(
-            implementation_started_event.get("event_id") or ""
-        ).strip()
-        parsed_retry_at = parse_timestamp(retry_at)
-        provider_error_channel_identity = failure.get(
-            "provider_error_channel_identity"
-        )
-        runner_receipt = failure.get("grok_quota_runner_receipt")
-        if (
-            not command_binding
-            or int(returncode) != GROK_QUOTA_EXHAUSTED_EXIT_CODE
-            or not _valid_grok_quota_runner_receipt_metadata(runner_receipt)
-            or providers != {"grok"}
-            or failure.get("fallback_eligible") is not True
-            or failure.get("provider_output_only") is not True
-            or not _valid_anonymous_provider_error_channel_identity(
-                provider_error_channel_identity
-            )
-            or int(provider_error_channel_identity.get("tail_start_offset") or 0)
-            != 0
-            or isinstance(
-                failure.get("provider_output_start_offset"),
-                bool,
-            )
-            or not isinstance(
-                failure.get("provider_output_start_offset"),
-                int,
-            )
-            or int(failure.get("provider_output_start_offset") or 0) < 0
-            or str(failure.get("fallback_trigger") or "")
-            != PRIMARY_QUOTA_EXHAUSTED_FALLBACK_TRIGGER
-            or str(failure.get("capacity_failure_kind") or "")
-            != QUOTA_OR_BALANCE_EXHAUSTED_FAILURE_KIND
-            or str(failure.get("provider_attribution") or "")
-            != "implementation_command"
-            or not evidence
-            or parsed_retry_at is None
-            or parsed_retry_at <= _provider_capacity_now()
-            or state.implementation_in_progress is not True
-            or state.active_task_id != task.task_id
-            or state.active_task_key != identity.canonical_task_key
-            or state.active_task_cid != identity.canonical_task_cid
-            or state.active_attempt != int(attempt)
-            or str(implementation_started_event.get("type") or "")
-            != "implementation_started"
-            or str(implementation_started_event.get("task_id") or "")
-            != task.task_id
-            or str(
-                implementation_started_event.get("canonical_task_key") or ""
-            )
-            != identity.canonical_task_key
-            or str(
-                implementation_started_event.get("canonical_task_cid") or ""
-            )
-            != identity.canonical_task_cid
-            or int(implementation_started_event.get("attempt") or 0)
-            != int(attempt)
-            or started_command != list(command_binding["command"])
-            or not started_event_id
-        ):
-            return {}
-        issued_at = _provider_capacity_now()
-        if issued_at.tzinfo is None:
-            issued_at = issued_at.replace(tzinfo=timezone.utc)
-        else:
-            issued_at = issued_at.astimezone(timezone.utc)
-        return self._grok_quota_fallback_authority.issue(
-            {
-                "schema": GROK_QUOTA_FALLBACK_AUTHORITY_SCHEMA,
-                "task_id": task.task_id,
-                "canonical_task_key": identity.canonical_task_key,
-                "canonical_task_cid": identity.canonical_task_cid,
-                "attempt": int(attempt),
-                "provider_id": command_binding["provider_id"],
-                "model_id": command_binding["model_id"],
-                "workspace_path": command_binding["workspace_path"],
-                "command": list(command_binding["command"]),
-                "command_cid": command_binding["command_cid"],
-                "implementation_started_event_id": started_event_id,
-                "provider_returncode": int(returncode),
-                "capacity_failure_kind": QUOTA_OR_BALANCE_EXHAUSTED_FAILURE_KIND,
-                "provider_attribution": "implementation_command",
-                "provider_output_start_offset": int(
-                    failure.get("provider_output_start_offset") or 0
-                ),
-                "provider_error_channel_identity": dict(
-                    provider_error_channel_identity
-                ),
-                "grok_quota_runner_receipt": dict(runner_receipt),
-                "fallback_trigger": PRIMARY_QUOTA_EXHAUSTED_FALLBACK_TRIGGER,
-                "evidence_cid": content_identity(evidence),
-                "issued_at": issued_at.isoformat(),
-                "retry_at": parsed_retry_at.astimezone(timezone.utc).isoformat(),
-            }
-        )
-
-    def _active_grok_quota_fallback_proof(
-        self,
-        task: PortalTask | None = None,
-        *,
-        attempt: int | None = None,
-    ) -> dict[str, Any]:
-        """Return only live authority issued and retained by this daemon.
-
-        With no task binding this is a scheduling hint, never Codex dispatch
-        authority.  Dispatch callers must provide the exact task and attempt.
+        Provider latches are independent.  In particular, a later Codex
+        attempt must not erase the Grok quota evidence that authorized that
+        attempt, and an unrelated implementation failure must not manufacture
+        fallback authority.
         """
 
-        if (task is None) != (attempt is None):
+        normalized_provider = str(provider).strip().lower()
+        if not normalized_provider:
             return {}
-        identity = self._identity_for_task(task) if task is not None else None
         now = _provider_capacity_now()
-        for receipt in reversed(
-            self._grok_quota_fallback_authority.verified_receipts()
-        ):
-            retry_at = parse_timestamp(str(receipt.get("retry_at") or ""))
-            command_binding = _exact_ordered_grok_command_binding(
-                receipt.get("command") or ()
+        try:
+            events = list(
+                self._iter_merge_lifecycle_events(
+                    include_physical_canonicality=True,
+                )
             )
+        except (CursorReplayError, OSError, ValueError):
+            return {}
+        for event_index in range(len(events) - 1, -1, -1):
+            event = events[event_index]
+            if str(event.get("type") or "") != "implementation_provider_exhausted":
+                continue
+            if event.get("_physical_canonical_event") is not True:
+                continue
+            raw_providers = event.get("providers")
             if (
-                str(receipt.get("schema") or "")
-                != GROK_QUOTA_FALLBACK_AUTHORITY_SCHEMA
-                or retry_at is None
-                or retry_at <= now
-                or not command_binding
-                or receipt.get("provider_id") != ORDERED_GROK_PROVIDER_ID
-                or receipt.get("model_id") != ORDERED_GROK_MODEL_ID
-                or receipt.get("command_cid") != command_binding["command_cid"]
-                or receipt.get("provider_returncode")
-                != GROK_QUOTA_EXHAUSTED_EXIT_CODE
-                or not _valid_anonymous_provider_error_channel_identity(
-                    receipt.get("provider_error_channel_identity")
+                not isinstance(raw_providers, list)
+                or not raw_providers
+                or any(
+                    not isinstance(item, str) or not item.strip()
+                    for item in raw_providers
                 )
-                or int(
-                    receipt.get("provider_error_channel_identity", {}).get(
-                        "tail_start_offset"
+            ):
+                continue
+            canonical_providers = [
+                item.strip().lower() for item in raw_providers
+            ]
+            if len(set(canonical_providers)) != len(canonical_providers):
+                continue
+            providers = set(canonical_providers)
+            if normalized_provider not in providers:
+                continue
+            if (
+                normalized_provider == "grok"
+                and raw_providers != ["grok"]
+            ):
+                continue
+            if str(event.get("reason") or "") != "provider_capacity_exhausted":
+                continue
+            retry_at_source = str(event.get("retry_at_source") or "")
+            if retry_at_source not in {
+                "configured_backoff",
+                "provider_declared",
+                "verifier_expiry",
+            }:
+                continue
+            raw_evidence = event.get("evidence")
+            if (
+                not isinstance(raw_evidence, list)
+                or not raw_evidence
+                or any(
+                    not isinstance(item, str) or not item.strip()
+                    for item in raw_evidence
+                )
+            ):
+                continue
+            evidence: list[str]
+            structured_grok_record: dict[str, object] = {}
+            structured_grok_line = ""
+            grok_verifier_payload: dict[str, Any] = {}
+            if normalized_provider == "grok":
+                # Never truncate signed evidence. A Grok latch consists of
+                # exactly one untrusted runner candidate and one independently
+                # signed verifier envelope; extra text grants no authority.
+                if len(raw_evidence) != 2:
+                    continue
+                evidence = list(raw_evidence)
+                structured_records = [
+                    (item, record)
+                    for item in evidence
+                    if (
+                        record := parse_grok_terminal_quota_receipt(item)
                     )
-                    or 0
+                ]
+                verifier_lines = [
+                    item
+                    for item in evidence
+                    if item.startswith(GROK_QUOTA_VERIFIER_RECEIPT_PREFIX)
+                ]
+                if len(structured_records) != 1 or len(verifier_lines) != 1:
+                    continue
+                structured_grok_line, structured_grok_record = structured_records[0]
+                if (
+                    structured_grok_record.get("error_kind")
+                    != "quota_exhausted"
+                    or structured_grok_record.get("model")
+                    != DEFAULT_GROK_IMPLEMENTATION_MODEL
+                ):
+                    continue
+                grok_verifier_payload = (
+                    self._persisted_grok_quota_verifier_payload(
+                        verifier_lines[0],
+                        structured_grok_record,
+                    )
                 )
-                != 0
-                or not _valid_grok_quota_runner_receipt_metadata(
-                    receipt.get("grok_quota_runner_receipt")
+                if not grok_verifier_payload:
+                    continue
+            else:
+                evidence = [item[:1000] for item in raw_evidence[-4:]]
+                classified = classify_provider_capacity_failure(
+                    "\n".join(evidence),
+                    provider_labels=(normalized_provider,),
                 )
-                or not str(
-                    receipt.get("implementation_started_event_id") or ""
+                if (
+                    classified.get("exhausted") is not True
+                    or normalized_provider
+                    not in set(classified.get("providers") or [])
+                ):
+                    continue
+            retry_at = parse_timestamp(str(event.get("retry_at") or ""))
+            if retry_at is None:
+                continue
+            if normalized_provider == "grok":
+                verifier_expires_at = parse_timestamp(
+                    str(grok_verifier_payload.get("expires_at") or "")
                 )
-                or not str(receipt.get("evidence_cid") or "")
+                if (
+                    verifier_expires_at is None
+                    or retry_at > verifier_expires_at
+                ):
+                    continue
+            is_active = retry_at > now
+            if require_active and not is_active:
+                return {}
+            source_task_id = str(event.get("task_id") or "").strip()
+            source_task_cid = str(
+                event.get("canonical_task_cid") or ""
+            ).strip()
+            source_started_event_id = str(
+                event.get("implementation_started_event_id") or ""
+            ).strip()
+            source_event_id = str(event.get("event_id") or "").strip()
+            source_event_at = str(event.get("timestamp") or "").strip()
+            source_timestamp = parse_timestamp(source_event_at)
+            if (
+                not source_task_id
+                or not source_task_cid
+                or not re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    source_started_event_id,
+                )
+                or source_timestamp is None
+                or retry_at <= source_timestamp
+                or not re.fullmatch(r"sha256:[0-9a-f]{64}", source_event_id)
+                or not str(event.get("stream_id") or "").strip()
+                or not str(event.get("snapshot_id") or "").strip()
             ):
                 continue
-            if identity is not None and (
-                receipt.get("task_id") != task.task_id
-                or receipt.get("canonical_task_key")
-                != identity.canonical_task_key
-                or receipt.get("canonical_task_cid")
-                != identity.canonical_task_cid
-                or int(receipt.get("attempt") or 0) != int(attempt or 0)
+            if (
+                normalized_provider == "grok"
+                and source_event_id
+                not in self._live_grok_quota_exhaustion_event_ids
             ):
                 continue
+            try:
+                source_attempt = int(event.get("attempt") or 0)
+                source_sequence = int(event.get("sequence") or 0)
+                source_returncode = int(event.get("returncode") or 0)
+            except (TypeError, ValueError):
+                continue
+            if (
+                isinstance(event.get("attempt"), bool)
+                or isinstance(event.get("sequence"), bool)
+                or isinstance(event.get("returncode"), bool)
+                or source_attempt <= 0
+                or source_sequence <= 0
+                or source_returncode == 0
+            ):
+                continue
+            if normalized_provider == "grok":
+                if (
+                    source_returncode != GROK_QUOTA_EXHAUSTED_EXIT_CODE
+                    or int(
+                        structured_grok_record.get("runner_returncode") or 0
+                    )
+                    != source_returncode
+                ):
+                    continue
+                matching_start: Mapping[str, Any] | None = None
+                for candidate in reversed(events[:event_index]):
+                    try:
+                        candidate_attempt = int(candidate.get("attempt") or 0)
+                        candidate_sequence = int(
+                            candidate.get("sequence") or 0
+                        )
+                    except (TypeError, ValueError):
+                        continue
+                    if (
+                        str(candidate.get("type") or "")
+                        == "implementation_started"
+                        and candidate.get("_physical_canonical_event") is True
+                        and str(candidate.get("event_id") or "")
+                        == source_started_event_id
+                        and str(candidate.get("task_id") or "")
+                        == source_task_id
+                        and str(candidate.get("canonical_task_cid") or "")
+                        == source_task_cid
+                        and candidate_attempt == source_attempt
+                        and 0 < candidate_sequence < source_sequence
+                    ):
+                        matching_start = candidate
+                        break
+                if matching_start is None:
+                    continue
+                command = matching_start.get("command")
+                if (
+                    not isinstance(command, (list, tuple))
+                    or not command
+                    or not _is_exact_internal_grok_runner_command(command)
+                    or str(matching_start.get("stream_id") or "")
+                    != str(event.get("stream_id") or "")
+                    or str(matching_start.get("snapshot_id") or "")
+                    != str(event.get("snapshot_id") or "")
+                    or not parse_grok_terminal_quota_receipt(
+                        structured_grok_line,
+                        expected_runner_command=tuple(
+                            str(item) for item in command
+                        ),
+                    )
+                ):
+                    continue
+                route_receipt = matching_start.get("provider_route_receipt")
+                if not isinstance(route_receipt, Mapping) or (
+                    str(route_receipt.get("configured_policy") or "")
+                    not in GROK_QUOTA_CODEX_PROVIDER_ALIASES
+                    or str(route_receipt.get("route") or "")
+                    != "grok_primary"
+                    or str(route_receipt.get("selected_provider") or "")
+                    != "grok"
+                    or str(route_receipt.get("model") or "")
+                    != DEFAULT_GROK_IMPLEMENTATION_MODEL
+                    or route_receipt.get("secondary_fallback_allowed")
+                    is not False
+                ):
+                    continue
             return {
-                "active": True,
-                "receipt_id": str(receipt.get("receipt_id") or ""),
+                "active": is_active,
+                "provider": normalized_provider,
                 "retry_at": retry_at.isoformat(),
                 "retry_after_seconds": max(
                     0.0,
                     (retry_at - now).total_seconds(),
                 ),
-                "provider_id": ORDERED_GROK_PROVIDER_ID,
-                "model_id": ORDERED_GROK_MODEL_ID,
-                "command_cid": str(receipt.get("command_cid") or ""),
-                "implementation_started_event_id": str(
-                    receipt.get("implementation_started_event_id") or ""
-                ),
-                "capacity_failure_kind": QUOTA_OR_BALANCE_EXHAUSTED_FAILURE_KIND,
-                "provider_attribution": "implementation_command",
-                "fallback_trigger": PRIMARY_QUOTA_EXHAUSTED_FALLBACK_TRIGGER,
+                "source_task_id": source_task_id,
+                "source_task_cid": source_task_cid,
+                "source_attempt": source_attempt,
+                "source_event_at": source_event_at,
+                "source_event_id": source_event_id,
+                "source_sequence": source_sequence,
+                "source_evidence": evidence,
+                "structured_evidence": structured_grok_record,
+                "quota_verifier": grok_verifier_payload,
+                "retry_at_source": retry_at_source,
             }
         return {}
 
-    def _ordered_grok_codex_route_requested(
-        self,
-        task: PortalTask | None = None,
-    ) -> bool:
-        return bool(
-            os.environ.get(IMPLEMENTATION_FALLBACK_PROVIDER_ENV, "").strip()
-            or os.environ.get(IMPLEMENTATION_FALLBACK_TRIGGER_ENV, "").strip()
+    def _active_provider_exhaustion(self, provider: str) -> dict[str, Any]:
+        """Return the latest still-active, validated quota latch."""
+
+        return self._provider_exhaustion_event(
+            provider,
+            require_active=True,
         )
 
-    def _ordered_grok_codex_route_configured(
+    def _grok_quota_authority_matches_task(
         self,
-        task: PortalTask | None = None,
+        authority: Mapping[str, Any],
+        task: PortalTask | None,
     ) -> bool:
-        declared_provider = self._task_declared_implementation_provider(task)
-        if declared_provider and declared_provider not in (
-            GROK_IMPLEMENTATION_PROVIDER_ALIASES
-        ):
+        """Return whether a signed latch belongs to this exact task retry."""
+
+        if task is None:
+            return False
+        try:
+            next_attempt = self._task_attempt(
+                PortalTaskState.load(self.state_path),
+                task,
+            )
+        except (OSError, TypeError, ValueError):
             return False
         return (
-            os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip()
-            == ORDERED_GROK_PROVIDER_ID
-            and os.environ.get(
-                IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
-                "",
-            ).strip()
-            == ORDERED_CODEX_PROVIDER_ID
-            and os.environ.get(_GROK_MODEL_ENV, "").strip()
-            == ORDERED_GROK_MODEL_ID
-            and os.environ.get(_CODEX_MODEL_ENV, "").strip()
-            == ORDERED_CODEX_MODEL_ID
-            and os.environ.get(
-                IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
-                "",
-            ).strip()
-            == PRIMARY_QUOTA_EXHAUSTED_FALLBACK_TRIGGER
-            and os.environ.get(
-                _CODEX_REASONING_EFFORT_ENV,
-                "",
-            ).strip()
-            == ORDERED_CODEX_REASONING_EFFORT
+            str(authority.get("source_task_id") or "") == task.task_id
+            and str(authority.get("source_task_cid") or "")
+            == self._canonical_ref(task)
+            and authority.get("source_attempt") == next_attempt
         )
 
-    def _ordered_grok_codex_selected_provider(
+    def _quota_routed_implementation_provider_route(
         self,
         task: PortalTask | None = None,
-        *,
-        attempt: int | None = None,
     ) -> str:
-        """Select one healthy route member without crossing task authority."""
+        """Select Terra only for the signed source task's exact retry."""
 
-        if not self._ordered_grok_codex_route_configured(task):
-            return ""
-        grok_backoff = self._active_provider_capacity_backoff_for_labels(
-            {"grok", "xai"}
-        )
-        grok_quota_proof = self._active_grok_quota_fallback_proof(
+        authority = self._active_provider_exhaustion("grok")
+        if authority and self._grok_quota_authority_matches_task(
+            authority,
             task,
-            attempt=attempt,
-        )
-        if _grok_cli_available() and not grok_backoff:
-            return "grok"
-        if (
-            task is not None
-            and attempt is not None
-            and grok_quota_proof
-            and shutil.which("codex")
-            and not self._active_provider_capacity_backoff_for_labels(
-                {"codex"}
-            )
         ):
-            return "codex"
-        return ""
+            return "codex_quota_fallback"
+        return "grok_primary"
+
+    def _implementation_provider_route_receipt(
+        self,
+        command: Sequence[str],
+        *,
+        task: PortalTask | None = None,
+    ) -> dict[str, Any]:
+        """Describe the selected autonomous-daemon provider route."""
+
+        configured_provider = (
+            os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
+            or "auto"
+        )
+        labels = _provider_labels_from_implementation_command(command)
+        declared_provider = self._task_declared_implementation_provider(task)
+        quota_policy_applies = (
+            configured_provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES
+            and declared_provider in {"", "grok"}
+        )
+        receipt: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "implementation-provider-route@1"
+            ),
+            "configured_policy": configured_provider,
+            "task_declared_provider": declared_provider,
+            "selected_providers": labels,
+        }
+        if not quota_policy_applies:
+            receipt.update(
+                {
+                    "route": (
+                        "task_declared"
+                        if declared_provider
+                        else "configured_provider"
+                    ),
+                    "selected_provider": (
+                        labels[0] if len(labels) == 1 else ""
+                    ),
+                    "selection_reason": (
+                        "task_declared_provider"
+                        if declared_provider
+                        else "configured_provider"
+                    ),
+                }
+            )
+            return receipt
+        selected_provider = labels[0] if len(labels) == 1 else ""
+        if selected_provider == "codex":
+            quota_authority = self._provider_exhaustion_event(
+                "grok",
+                require_active=False,
+            )
+            if (
+                not quota_authority
+                or not self._grok_quota_authority_matches_task(
+                    quota_authority,
+                    task,
+                )
+            ):
+                receipt.update(
+                    {
+                        "route": "invalid",
+                        "selected_provider": "codex",
+                        "selection_reason": "missing_grok_quota_authority",
+                        "secondary_fallback_allowed": False,
+                    }
+                )
+                return receipt
+            receipt["route"] = "codex_quota_fallback"
+            receipt.update(
+                {
+                    "selected_provider": "codex",
+                    "model": GROK_QUOTA_FALLBACK_CODEX_MODEL,
+                    "reasoning_effort": (
+                        GROK_QUOTA_FALLBACK_CODEX_REASONING_EFFORT
+                    ),
+                    "selection_reason": "grok_quota_exhausted",
+                    "grok_quota_authority": quota_authority,
+                    "secondary_fallback_allowed": False,
+                }
+            )
+        elif selected_provider == "grok":
+            receipt["route"] = "grok_primary"
+            receipt.update(
+                {
+                    "selected_provider": "grok",
+                    "model": DEFAULT_GROK_IMPLEMENTATION_MODEL,
+                    "selection_reason": "primary",
+                    "secondary_fallback_allowed": False,
+                }
+            )
+        else:
+            receipt.update(
+                {
+                    "route": "invalid",
+                    "selection_reason": "provider_identity_ambiguous",
+                    "secondary_fallback_allowed": False,
+                }
+            )
+        return receipt
 
     def _current_implementation_provider_labels(
         self,
@@ -10812,29 +11044,31 @@ class PortalImplementationDaemon:
     ) -> set[str]:
         """Return coarse provider labels for the active implementation runner."""
 
+        configured_provider = (
+            os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower() or "auto"
+        )
         declared_provider = self._task_declared_implementation_provider(task)
-        explicit_command = ""
-        if not declared_provider:
+        provider = (
+            configured_provider
+            if (
+                configured_provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES
+                and declared_provider in {"", "grok"}
+            )
+            else declared_provider or configured_provider
+        )
+        if (
+            not declared_provider
+            and configured_provider not in GROK_QUOTA_CODEX_PROVIDER_ALIASES
+        ):
             explicit_command = self.implementation_command or os.environ.get(
                 "IMPLEMENTATION_DAEMON_COMMAND",
                 "",
             ).strip()
-        explicit_labels = _provider_labels_from_implementation_command(
-            explicit_command
-        )
-        if explicit_labels:
-            return {*explicit_labels, "provider"}
-        provider = declared_provider or _configured_implementation_provider()
-        ordered_grok_codex = self._ordered_grok_codex_route_configured(task)
-        if ordered_grok_codex:
-            selected_provider = (
-                self._ordered_grok_codex_selected_provider(task)
+            explicit_labels = _provider_labels_from_implementation_command(
+                explicit_command
             )
-            if selected_provider == "grok":
-                return {"grok", "xai", "provider"}
-            if selected_provider == "codex":
-                return {"codex", "provider"}
-            return {"grok", "xai", "codex", "provider"}
+            if explicit_labels:
+                return {*explicit_labels, "provider"}
         if provider in {
             "goose",
             "goose_meta",
@@ -10857,26 +11091,34 @@ class PortalImplementationDaemon:
             "grok-build",
         }:
             return {"grok", "xai", "provider"}
-        if provider in {"codex", "openai"}:
-            if declared_provider:
-                return {"codex", "provider"}
+        if provider in {"codex", "copilot", "openai"}:
             return {"codex", "copilot", "provider"}
-        if provider == "copilot":
-            return {"codex", "copilot", "provider"}
+        if provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES:
+            if (
+                self._quota_routed_implementation_provider_route(task)
+                == "codex_quota_fallback"
+            ):
+                if shutil.which("codex"):
+                    return {"codex", "provider"}
+                # No fallback executable is available, so the live Grok latch
+                # remains the scheduling backoff rather than permitting a
+                # second Grok dispatch during known exhaustion.
+                return {"grok", "xai", "provider"}
+            return {"grok", "xai", "provider"}
         labels: set[str] = set()
         if _goose_meta_spark_available():
             labels.update({"goose", "meta_spark", "meta", "provider"})
         if _grok_cli_available():
             labels.update({"grok", "xai", "provider"})
-        if shutil.which("codex") or (shutil.which("copilot") and _copilot_has_auth()):
+        if shutil.which("codex") or (
+            shutil.which("copilot") and _copilot_has_auth()
+        ):
             labels.update({"codex", "copilot", "provider"})
         return labels or {"provider"}
 
     def _provider_capacity_backoff_schedule(
         self,
         task: PortalTask | None = None,
-        *,
-        attempt: int | None = None,
     ) -> dict[str, Any]:
         """Return the latest invocation-bound provider retry schedule, if any.
 
@@ -10885,109 +11127,86 @@ class PortalImplementationDaemon:
         Provider labels isolate codex/goose/grok latches from each other.
         """
 
-        ordered_grok_codex = (
-            self._ordered_grok_codex_route_configured(task)
-        )
-        if ordered_grok_codex:
-            if self._ordered_grok_codex_selected_provider(
-                task,
-                attempt=attempt,
-            ):
-                return {}
-            grok_schedule = (
-                self._active_provider_capacity_backoff_for_labels(
-                    {"grok", "xai"}
-                )
-            )
-            if task is None:
-                # Fallback authority is task/CID/attempt-bound. A receipt for
-                # one task cannot globally clear the primary backoff and make
-                # unrelated tasks spin. Selection uses the exact binding.
-                return grok_schedule
-            grok_quota_proof = self._active_grok_quota_fallback_proof(
-                task,
-                attempt=attempt,
-            )
-            if not grok_quota_proof:
-                return grok_schedule
-            active_schedules: list[dict[str, Any]] = []
-            if grok_schedule:
-                active_schedules.append(grok_schedule)
-            if shutil.which("codex"):
-                codex_schedule = (
-                    self._active_provider_capacity_backoff_for_labels(
-                        {"codex"}
-                    )
-                )
-                if not codex_schedule:
-                    # A live supervisor-issued Grok quota receipt authorizes
-                    # the healthy Codex route now.  Do not advertise the
-                    # primary's sleep deadline to the outer scheduler.
-                    return {}
-                active_schedules.append(codex_schedule)
-            if active_schedules:
-                return min(
-                    active_schedules,
-                    key=lambda item: float(
-                        item.get("retry_after_seconds") or 0.0
-                    ),
-                )
-            return {}
-
-        # Preserve the legacy route's lazy provider discovery.  Provider
-        # probes can inspect local auth and installed CLIs, so do not perform
-        # them on ordinary passes that have no capacity event to interpret.
         now = _provider_capacity_now()
-        current_labels: set[str] | None = None
+        current_labels = self._current_implementation_provider_labels(task)
+        configured_provider = (
+            os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
+            or "auto"
+        )
+        declared_provider = self._task_declared_implementation_provider(task)
+        grok_quota_policy_applies = (
+            configured_provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES
+            and declared_provider in {"", "grok"}
+        )
         for event in reversed(self._iter_events()):
             event_type = str(event.get("type") or "")
             if event_type == "implementation_provider_exhausted":
-                retry_at = parse_timestamp(str(event.get("retry_at") or ""))
-                if retry_at is None:
-                    return {}
-                exhausted = {
-                    str(item).strip().lower()
-                    for item in list(event.get("providers") or [])
-                    if str(item).strip()
-                }
-                if exhausted:
-                    if current_labels is None:
-                        current_labels = (
-                            self._current_implementation_provider_labels()
-                            if task is None
-                            else self._current_implementation_provider_labels(
-                                task
+                raw_providers = event.get("providers")
+                if (
+                    not isinstance(raw_providers, list)
+                    or not raw_providers
+                    or any(
+                        not isinstance(item, str) or not item.strip()
+                        for item in raw_providers
+                    )
+                ):
+                    continue
+                canonical_providers = [
+                    item.strip().lower() for item in raw_providers
+                ]
+                if len(set(canonical_providers)) != len(
+                    canonical_providers
+                ):
+                    continue
+                exhausted = set(canonical_providers)
+                if grok_quota_policy_applies:
+                    # Under the pinned Grok quota policy, xAI aliases and an
+                    # empty/compound provider set are never scheduling
+                    # authority.  Only the exact private-receipt-derived Grok
+                    # event may back off the lane.
+                    if raw_providers != ["grok"]:
+                        continue
+                if "grok" in exhausted or grok_quota_policy_applies:
+                    grok_authority = self._provider_exhaustion_event(
+                        "grok",
+                        require_active=False,
+                    )
+                    if (
+                        not grok_authority
+                        or str(grok_authority.get("source_event_id") or "")
+                        != str(event.get("event_id") or "")
+                        or (
+                            grok_quota_policy_applies
+                            and not self._grok_quota_authority_matches_task(
+                                grok_authority,
+                                task,
                             )
                         )
-                    if not (exhausted & current_labels):
+                    ):
                         continue
+                retry_at = parse_timestamp(str(event.get("retry_at") or ""))
+                if retry_at is None:
+                    continue
+                # A codex quota latch must not block goose/grok (and vice versa).
+                if exhausted and not (exhausted & current_labels):
+                    continue
                 return {
                     "active": retry_at > now,
                     "retry_at": retry_at.isoformat(),
                     "retry_after_seconds": max(
                         0.0, (retry_at - now).total_seconds()
                     ),
-                    "providers": list(event.get("providers") or []),
+                    "providers": list(raw_providers),
                 }
-            if event_type in {
-                "implementation_started",
-                "implementation_finished",
-            }:
-                if event.get("provider_dispatched") is False:
-                    continue
+            if event_type in {"implementation_started", "implementation_finished"}:
                 return {}
         return {}
 
     def _active_provider_capacity_backoff(
         self,
         task: PortalTask | None = None,
-        *,
-        attempt: int | None = None,
     ) -> dict[str, Any]:
-        schedule = self._provider_capacity_backoff_schedule(
-            task,
-            attempt=attempt,
-        )
+        schedule = self._provider_capacity_backoff_schedule(task)
         return schedule if schedule.get("active", False) else {}
 
     def _selectable_task_retry_schedule(self) -> dict[str, Any]:
@@ -10996,7 +11215,9 @@ class PortalImplementationDaemon:
         state = PortalTaskState.load(self.state_path)
         if state.active_task_id or state.implementation_in_progress:
             return {}
-        task_ids = list(dict.fromkeys(state.selectable_ready_task_ids))
+        # This projection is the final durable scheduling boundary; the
+        # selectable list intentionally retains filtered tasks for diagnostics.
+        task_ids = list(dict.fromkeys(state.eligible_ready_task_ids))
         if not task_ids:
             return {}
 
@@ -11033,65 +11254,6 @@ class PortalImplementationDaemon:
             "task_count": len(task_ids),
         }
 
-    def _selectable_retry_no_change_probe_due(self) -> bool:
-        """Return whether provider backoff may yield to one local retry proof."""
-
-        if not self.implement or not self.use_ephemeral_worktree:
-            return False
-        state = PortalTaskState.load(self.state_path)
-        if state.active_task_id or state.implementation_in_progress:
-            return False
-        selectable_ids = set(state.selectable_ready_task_ids)
-        if not selectable_ids:
-            return False
-        now = time.time()
-        try:
-            tasks = self._load_tasks()
-        except (OSError, RuntimeError, ValueError):
-            return False
-        for task in tasks:
-            if task.task_id not in selectable_ids:
-                continue
-            canonical_ref = self.task_queue.resolve_key(task.task_id)
-            queue_entry = self.task_queue.entries.get(canonical_ref)
-            if queue_entry is not None and queue_entry.cooldown_until > now:
-                continue
-            if self._retry_no_change_pre_dispatch_scope(task, state) is not None:
-                return True
-        return False
-
-    def _selectable_ordered_fallback_due(self) -> bool:
-        """Return whether a ready task owns live quota-gated Codex authority."""
-
-        if (
-            not self.implement
-            or not self._ordered_grok_codex_route_configured()
-            or not shutil.which("codex")
-            or self._active_provider_capacity_backoff_for_labels({"codex"})
-        ):
-            return False
-        state = PortalTaskState.load(self.state_path)
-        if state.active_task_id or state.implementation_in_progress:
-            return False
-        selectable_ids = set(state.selectable_ready_task_ids)
-        if not selectable_ids:
-            return False
-        try:
-            tasks = self._load_tasks()
-        except (OSError, RuntimeError, ValueError):
-            return False
-        for task in tasks:
-            if task.task_id not in selectable_ids:
-                continue
-            if self.task_queue.is_cooled_down(self._canonical_ref(task)):
-                continue
-            if self._active_grok_quota_fallback_proof(
-                task,
-                attempt=self._task_attempt(state, task),
-            ):
-                return True
-        return False
-
     def _attach_runtime_retry_schedule(self, result: dict[str, Any]) -> None:
         """Attach the earliest provider or task-selection wake deadline."""
 
@@ -11106,10 +11268,7 @@ class PortalImplementationDaemon:
 
         retry_after_seconds: list[float] = []
         provider_backoff = self._active_provider_capacity_backoff()
-        ordered_fallback_due = self._selectable_ordered_fallback_due()
-        if ordered_fallback_due:
-            retry_after_seconds.append(0.0)
-        elif provider_backoff:
+        if provider_backoff:
             result["provider_capacity_retry_at"] = provider_backoff["retry_at"]
             retry_after_seconds.append(provider_backoff["retry_after_seconds"])
 
@@ -11133,12 +11292,103 @@ class PortalImplementationDaemon:
         returncode: int,
         log_path: Path,
         failure: dict[str, Any],
-        command: Sequence[str] = (),
-        implementation_started_event: Mapping[str, Any] | None = None,
+        implementation_started_event: Mapping[str, Any],
         worktree_path: Path | None = None,
         branch_name: str = "",
         cleanup_result: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        failure_providers = failure.get("providers")
+        failure_evidence = failure.get("evidence")
+        if (
+            failure.get("exhausted") is not True
+            or failure.get("reason") != "provider_capacity_exhausted"
+            or not isinstance(failure_providers, list)
+            or not failure_providers
+            or any(
+                not isinstance(item, str) or not item.strip()
+                for item in failure_providers
+            )
+            or not isinstance(failure_evidence, list)
+            or not failure_evidence
+            or any(
+                not isinstance(item, str) or not item.strip()
+                for item in failure_evidence
+            )
+        ):
+            raise RuntimeError(
+                "provider-capacity deferral has no typed failure authority"
+            )
+        expected_task_cid = self._canonical_ref(task)
+        started_event_id = str(
+            implementation_started_event.get("event_id") or ""
+        )
+        if (
+            not re.fullmatch(r"sha256:[0-9a-f]{64}", started_event_id)
+            or str(implementation_started_event.get("task_id") or "")
+            != task.task_id
+            or str(
+                implementation_started_event.get("canonical_task_cid") or ""
+            )
+            != expected_task_cid
+            or implementation_started_event.get("attempt") != attempt
+        ):
+            raise RuntimeError(
+                "provider-capacity deferral has no exact implementation "
+                "start authority"
+            )
+        grok_verifier_payload: dict[str, Any] = {}
+        if failure_providers == ["grok"]:
+            started_command = implementation_started_event.get("command")
+            candidate_records = [
+                (item, record)
+                for item in failure_evidence
+                if (record := parse_grok_terminal_quota_receipt(item))
+            ]
+            verifier_lines = [
+                item
+                for item in failure_evidence
+                if item.startswith(GROK_QUOTA_VERIFIER_RECEIPT_PREFIX)
+            ]
+            if (
+                returncode != GROK_QUOTA_EXHAUSTED_EXIT_CODE
+                or failure.get("_process_authority")
+                is not self._grok_quota_classification_sentinel
+                or len(failure_evidence) != 2
+                or len(candidate_records) != 1
+                or len(verifier_lines) != 1
+                or not isinstance(started_command, (list, tuple))
+                or not _is_exact_internal_grok_runner_command(started_command)
+            ):
+                raise RuntimeError(
+                    "Grok provider-capacity deferral has no signed quota "
+                    "verifier authority"
+                )
+            candidate_line, candidate_record = candidate_records[0]
+            if (
+                not parse_grok_terminal_quota_receipt(
+                    candidate_line,
+                    expected_runner_command=tuple(
+                        str(item) for item in started_command
+                    ),
+                )
+                or candidate_record.get("model")
+                != DEFAULT_GROK_IMPLEMENTATION_MODEL
+            ):
+                raise RuntimeError(
+                    "Grok provider-capacity deferral does not bind its "
+                    "implementation start"
+                )
+            grok_verifier_payload = (
+                self._persisted_grok_quota_verifier_payload(
+                    verifier_lines[0],
+                    candidate_record,
+                )
+            )
+            if not grok_verifier_payload:
+                raise RuntimeError(
+                    "Grok provider-capacity deferral has an invalid quota "
+                    "verifier receipt"
+                )
         finished_at = utc_now()
         now = _provider_capacity_now()
         if now.tzinfo is None:
@@ -11151,30 +11401,28 @@ class PortalImplementationDaemon:
         if declared_retry_at is not None:
             declared_retry_at = declared_retry_at.astimezone(timezone.utc)
         if declared_retry_at is not None and declared_retry_at > now:
-            retry_at = declared_retry_at.isoformat()
+            retry_deadline = declared_retry_at
             retry_at_source = "provider_declared"
         else:
-            retry_at = (
+            retry_deadline = (
                 now
                 + timedelta(
                     seconds=self._provider_capacity_backoff_seconds()
                 )
-            ).isoformat()
-            retry_at_source = "configured_backoff"
-        grok_quota_fallback_authority = (
-            self._issue_grok_quota_fallback_authority(
-                task=task,
-                state=state,
-                attempt=attempt,
-                returncode=returncode,
-                command=command,
-                implementation_started_event=(
-                    implementation_started_event or {}
-                ),
-                failure=failure,
-                retry_at=retry_at,
             )
-        )
+            retry_at_source = "configured_backoff"
+        if grok_verifier_payload:
+            verifier_expires_at = parse_timestamp(
+                str(grok_verifier_payload.get("expires_at") or "")
+            )
+            if verifier_expires_at is None or verifier_expires_at <= now:
+                raise RuntimeError(
+                    "Grok quota verifier receipt expired before deferral"
+                )
+            if retry_deadline > verifier_expires_at:
+                retry_deadline = verifier_expires_at
+                retry_at_source = "verifier_expiry"
+        retry_at = retry_deadline.isoformat()
         state.last_implementation_started_at = started_at
         state.last_implementation_finished_at = finished_at
         state.last_implementation_returncode = returncode
@@ -11188,33 +11436,19 @@ class PortalImplementationDaemon:
         state.save(self.state_path)
         result = {
             "task_id": task.task_id,
+            "canonical_task_cid": expected_task_cid,
+            "implementation_started_event_id": started_event_id,
             "attempt": attempt,
             "returncode": returncode,
             "log_path": str(log_path),
             "deferred": True,
             "reason": "provider_capacity_exhausted",
-            "providers": list(failure.get("providers") or []),
-            "evidence": list(failure.get("evidence") or []),
-            "capacity_failure_kind": str(
-                failure.get("capacity_failure_kind") or ""
-            ),
-            "provider_attribution": str(
-                failure.get("provider_attribution") or ""
-            ),
-            "fallback_eligible": failure.get("fallback_eligible") is True,
-            "fallback_trigger": str(
-                failure.get("fallback_trigger") or ""
-            ),
+            "providers": list(failure_providers),
+            "evidence": list(failure_evidence),
             "retry_at": retry_at,
             "retry_at_source": retry_at_source,
             "attempt_consumed": False,
         }
-        if grok_quota_fallback_authority:
-            # This durable projection is audit evidence only.  The in-memory
-            # issuer registry and its HMAC remain mandatory at dispatch.
-            result["grok_quota_fallback_authority"] = (
-                grok_quota_fallback_authority
-            )
         if worktree_path is not None:
             result["worktree_path"] = str(worktree_path)
         if branch_name:
@@ -11226,10 +11460,40 @@ class PortalImplementationDaemon:
                 worktree_path,
                 reason="provider_capacity_deferred",
             )
-        self._record_event("implementation_provider_exhausted", result)
+        exhaustion_event = self._record_event(
+            "implementation_provider_exhausted",
+            result,
+        )
+        if (
+            failure_providers == ["grok"]
+            and returncode == GROK_QUOTA_EXHAUSTED_EXIT_CODE
+            and failure.get("_process_authority")
+            is self._grok_quota_classification_sentinel
+        ):
+            source_event_id = str(
+                exhaustion_event.get("event_id") or ""
+            )
+            if re.fullmatch(r"sha256:[0-9a-f]{64}", source_event_id):
+                # Add authority only after the canonical diagnostic append has
+                # completed successfully.  The durable event alone is never
+                # sufficient on this or a future daemon instance.
+                self._live_grok_quota_exhaustion_event_ids.add(
+                    source_event_id
+                )
         return result
 
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
+        policy_blockers = self._task_direct_implementation_blockers(task)
+        if policy_blockers:
+            result = {
+                "skipped": True,
+                "reason": "task_direct_implementation_ineligible",
+                "task_id": task.task_id,
+                "attempt": self._task_attempt(state, task),
+                "policy_blockers": list(policy_blockers),
+            }
+            self._record_event("implementation_skipped", result)
+            return result
         protected_conflicts = task_implementation_protected_path_conflicts(
             task,
             self.implementation_protected_paths,
@@ -11245,11 +11509,6 @@ class PortalImplementationDaemon:
             self._record_event("implementation_skipped", result)
             return result
         deterministic_only = self._task_uses_typed_local_execution(task)
-        retry_probe_eligible = bool(
-            not deterministic_only
-            and self.use_ephemeral_worktree
-            and self._retry_no_change_pre_dispatch_scope(task, state) is not None
-        )
         completion_scope = completion_gap_edit_scope(
             task,
             repo_root=self.repo_root,
@@ -11263,14 +11522,10 @@ class PortalImplementationDaemon:
             }
             self._record_event("implementation_skipped", result)
             return result
-        attempt = self._task_attempt(state, task)
         provider_backoff = (
             {}
-            if deterministic_only or retry_probe_eligible
-            else self._active_provider_capacity_backoff(
-                task,
-                attempt=attempt,
-            )
+            if deterministic_only
+            else self._active_provider_capacity_backoff(task)
         )
         if provider_backoff:
             result = {
@@ -11294,34 +11549,8 @@ class PortalImplementationDaemon:
             self._record_event("implementation_skipped", result)
             return result
 
-        canonical_cancellation = self._canonical_implementation_cancellation(
-            task
-        )
-        if canonical_cancellation:
-            result = {
-                "skipped": True,
-                "attempt_consumed": False,
-                "provider_dispatched": False,
-                "attempt": self._task_attempt(state, task),
-                **canonical_cancellation,
-            }
-            if (
-                state.active_task_id == task.task_id
-                and state.active_task_cid == self._canonical_ref(task)
-                and not state.implementation_in_progress
-            ):
-                self._clear_active_execution_state(state, clear_task=True)
-                state.selection_idle_reason = str(result["reason"])
-                state.save(self.state_path)
-                result["active_task_cleared"] = True
-            self._record_event("implementation_cancelled", result)
-            return result
-
         started_at = utc_now()
-        # No-change gates authorize only this implementation attempt.  Any
-        # unconsumed gate from a prior protected-path interruption or failed
-        # completion must not be reusable by a later attempt.
-        self._implementation_no_change_policy_gates.clear()
+        attempt = self._task_attempt(state, task)
         task_claim_path = self._implementation_task_claim_path(
             task.task_id,
             canonical_task_cid=self._canonical_ref(task),
@@ -11494,15 +11723,6 @@ class PortalImplementationDaemon:
                     )
                 self._compile_implementation_context(task, attempt)
                 prompt = ""
-            elif retry_probe_eligible:
-                # Provider-only context is intentionally lazy.  The retry
-                # probe runs in a disposable worktree and may prove the
-                # declared contract without consulting any model runtime.
-                if self._implementation_cancel_requested():
-                    raise ImplementationRetryDeferred(
-                        "implementation dispatch cancelled"
-                    )
-                prompt = ""
             else:
                 prompt = self._build_implementation_prompt(task, attempt)
         except ImplementationRetryDeferred as exc:
@@ -11606,7 +11826,6 @@ class PortalImplementationDaemon:
             raise
         workspace_path = self.repo_root
         baseline_ref = ""
-        baseline_branch = ""
         command: list[str] = []
         result: dict[str, Any]
         validation_result: dict[str, Any] = {
@@ -11616,22 +11835,17 @@ class PortalImplementationDaemon:
             "results": [],
             "reason": "not_run",
         }
-        proposal_validation: Any = None
         todo_update_result: dict[str, Any] = {}
         completion_durability_deferred = False
         completion_published_in_transaction = False
+        grok_quota_verifier_deferred = False
+        provider_failure: dict[str, Any] = {}
         context_receipt_path: Path | None = None
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
         protected_path_violation: dict[str, Any] = {}
         task_execution_receipt_path: Path | None = None
         task_execution_receipt: dict[str, Any] = {}
         operator_prepared_outputs: tuple[dict[str, Any], ...] = ()
-        provider_dispatched = False
-        canonical_task_cancellation: dict[str, Any] = {}
-        provider_output_start_offset: int | None = None
-        provider_error_text = ""
-        provider_error_channel_identity: dict[str, Any] = {}
-        pre_dispatch_no_change_result: dict[str, Any] | None = None
         checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
         timeout_policy = self._implementation_timeout_policy(task)
 
@@ -11654,14 +11868,11 @@ class PortalImplementationDaemon:
                     result["lock_owner_task_id"] = str(existing_lock.get("task_id") or "")
                 self._record_event("implementation_skipped", result)
                 return result
+            context_receipt_path = self._persist_implementation_context_receipt(
+                task,
+                attempt,
+            )
             if self.use_ephemeral_worktree:
-                if not retry_probe_eligible:
-                    context_receipt_path = (
-                        self._persist_implementation_context_receipt(
-                            task,
-                            attempt,
-                        )
-                    )
                 ephemeral_result = self._run_implementation_in_ephemeral_worktree(
                     task=task,
                     state=state,
@@ -11669,119 +11880,15 @@ class PortalImplementationDaemon:
                     started_at=started_at,
                     log_path=log_path,
                     prompt=prompt,
-                    retry_no_change_probe_only=retry_probe_eligible,
                 )
-                if ephemeral_result.get(
-                    "retry_probe_requires_fresh_provider_workspace"
-                ):
-                    retry_probe_result = ephemeral_result
-                    cleanup_result = ephemeral_result.get("cleanup_result")
-                    if (
-                        not isinstance(cleanup_result, Mapping)
-                        or cleanup_result.get("cleaned") is not True
-                    ):
-                        return ephemeral_result
-                    provider_backoff = self._active_provider_capacity_backoff(
-                        task,
-                        attempt=attempt,
-                    )
-                    if provider_backoff:
-                        backoff_result = {
-                            "skipped": True,
-                            "deferred": True,
-                            "reason": "provider_capacity_backoff",
-                            "task_id": task.task_id,
-                            "attempt": attempt,
-                            "attempt_consumed": False,
-                            "provider_dispatched": False,
-                            "retry_probe_result": ephemeral_result,
-                            **provider_backoff,
-                        }
-                        retry_after_seconds = float(
-                            provider_backoff.get("retry_after_seconds") or 0.0
-                        )
-                        if retry_after_seconds > 0:
-                            self.task_queue.defer(
-                                self._canonical_ref(task),
-                                retry_after_seconds,
-                                reason="provider_capacity_backoff",
-                            )
-                            self.task_queue.save()
-                        self._record_event(
-                            "implementation_skipped",
-                            backoff_result,
-                        )
-                        return backoff_result
-                    try:
-                        prompt = self._build_implementation_prompt(
-                            task,
-                            attempt,
-                        )
-                    except ImplementationRetryDeferred as exc:
-                        if exc.backoff_seconds > 0:
-                            self.task_queue.defer(
-                                self._canonical_ref(task),
-                                exc.backoff_seconds,
-                                reason=exc.reason,
-                            )
-                            self.task_queue.save()
-                        deferred_result = {
-                            "skipped": True,
-                            "deferred": True,
-                            "reason": exc.reason.replace(" ", "_"),
-                            "task_id": task.task_id,
-                            "attempt": attempt,
-                            "attempt_consumed": False,
-                            "provider_dispatched": False,
-                            "backoff_seconds": exc.backoff_seconds,
-                            "retry_probe_result": ephemeral_result,
-                        }
-                        self._record_event(
-                            "implementation_retry_deferred",
-                            deferred_result,
-                        )
-                        return deferred_result
-                    context_receipt_path = (
-                        self._persist_implementation_context_receipt(
-                            task,
-                            attempt,
-                        )
-                    )
-                    ephemeral_result = (
-                        self._run_implementation_in_ephemeral_worktree(
-                            task=task,
-                            state=state,
-                            attempt=attempt,
-                            started_at=started_at,
-                            log_path=log_path,
-                            prompt=prompt,
-                            retry_no_change_probe_only=False,
-                        )
-                    )
-                    ephemeral_result["retry_probe_result"] = (
-                        retry_probe_result
-                    )
-                pre_dispatch_setup_deferral = bool(
-                    ephemeral_result.get("lifecycle_race")
-                    or (
-                        ephemeral_result.get("attempt_consumed") is False
-                        and ephemeral_result.get("provider_dispatched") is False
-                        and ephemeral_result.get("failure_kind")
-                        == LifecycleFailureKind.LIFECYCLE_SETUP.value
-                    )
-                )
-                if pre_dispatch_setup_deferral:
+                if ephemeral_result.get("lifecycle_race"):
                     canonical_task_cid = self._canonical_ref(task)
-                    backoff_seconds = int(
-                        ephemeral_result.get("backoff_seconds")
-                        or WORKTREE_LIFECYCLE_RACE_BACKOFF_SECONDS
-                    )
                     self.task_queue.defer(
                         canonical_task_cid,
-                        backoff_seconds,
+                        WORKTREE_LIFECYCLE_RACE_BACKOFF_SECONDS,
                         reason=str(
                             ephemeral_result.get("reason")
-                            or "worktree_setup_deferred"
+                            or "worktree_lifecycle_race"
                         ),
                     )
                     self.task_queue.save()
@@ -11799,7 +11906,9 @@ class PortalImplementationDaemon:
                     ephemeral_result.update(
                         {
                             "deferred": True,
-                            "backoff_seconds": backoff_seconds,
+                            "backoff_seconds": (
+                                WORKTREE_LIFECYCLE_RACE_BACKOFF_SECONDS
+                            ),
                         }
                     )
                     self._record_event(
@@ -11808,81 +11917,18 @@ class PortalImplementationDaemon:
                             "task_id": task.task_id,
                             "attempt": attempt,
                             "reason": str(ephemeral_result.get("reason") or ""),
-                            "failure_kind": str(
-                                ephemeral_result.get("failure_kind")
-                                or LifecycleFailureKind.LIFECYCLE_RACE.value
+                            "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                            "backoff_seconds": (
+                                WORKTREE_LIFECYCLE_RACE_BACKOFF_SECONDS
                             ),
-                            "backoff_seconds": backoff_seconds,
                             "provider_call_allowed": False,
                             "attempt_consumed": False,
                         },
                     )
-                if context_receipt_path is not None:
-                    ephemeral_result["context_receipt_path"] = str(
-                        context_receipt_path
-                    )
+                ephemeral_result["context_receipt_path"] = str(
+                    context_receipt_path
+                )
                 return ephemeral_result
-            context_receipt_path = self._persist_implementation_context_receipt(
-                task,
-                attempt,
-            )
-            try:
-                dependency_preflight = (
-                    self._require_validation_project_dependency_preflight(
-                        workspace_path=workspace_path,
-                        task=task,
-                        attempt=attempt,
-                    )
-                )
-            except ValidationProjectDependencyPreflightDeferred as exc:
-                canonical_task_cid = self._canonical_ref(task)
-                backoff_seconds = int(exc.backoff_seconds)
-                self.task_queue.defer(
-                    canonical_task_cid,
-                    backoff_seconds,
-                    reason=(
-                        "validation_project_dependency_preflight_failed"
-                    ),
-                )
-                self.task_queue.save()
-                self._restore_task_attempt(
-                    state,
-                    task,
-                    max(0, attempt - 1),
-                )
-                if not state.implementation_in_progress:
-                    self._clear_active_execution_state(
-                        state,
-                        clear_task=True,
-                    )
-                state.save(self.state_path)
-                result = {
-                    "task_id": task.task_id,
-                    "attempt": attempt,
-                    "returncode": 1,
-                    "deferred": True,
-                    "reason": (
-                        "validation_project_dependency_preflight_failed"
-                    ),
-                    "infrastructure_failure": True,
-                    "failure_kind": (
-                        LifecycleFailureKind.LIFECYCLE_SETUP.value
-                    ),
-                    "provider_call_allowed": False,
-                    "provider_dispatched": False,
-                    "attempt_consumed": False,
-                    "backoff_seconds": backoff_seconds,
-                    "dependency_preflight": dict(exc.receipt),
-                    "workspace_path": str(workspace_path),
-                    "context_receipt_path": str(
-                        context_receipt_path
-                    ),
-                }
-                self._record_event(
-                    "implementation_retry_deferred",
-                    result,
-                )
-                return result
             # Some administrative and provider-capacity paths intentionally
             # operate against a not-yet-initialized checkout.  Baseline
             # discovery must not pre-empt the implementation command in those
@@ -11895,16 +11941,31 @@ class PortalImplementationDaemon:
                 ).stdout.strip()
             except (OSError, RuntimeError):
                 baseline_ref = ""
-            baseline_branch = self._git_current_branch(workspace_path)
             command = (
                 []
                 if deterministic_only
                 else self._build_implementation_command(
                     workspace_path,
                     task=task,
-                    attempt=attempt,
                 )
             )
+            provider_route_receipt = (
+                None
+                if deterministic_only
+                else self._implementation_provider_route_receipt(
+                    command,
+                    task=task,
+                )
+            )
+            if (
+                isinstance(provider_route_receipt, Mapping)
+                and provider_route_receipt.get("route") == "invalid"
+            ):
+                raise RuntimeError(
+                    "implementation provider route has no valid dispatch "
+                    "authority: "
+                    + str(provider_route_receipt.get("selection_reason") or "")
+                )
             protected_path_snapshot = self._require_implementation_protected_snapshot(
                 task=task,
                 attempt=attempt,
@@ -11918,27 +11979,24 @@ class PortalImplementationDaemon:
                 started_at=started_at,
                 log_path=log_path,
             )
-            task_identity = self._identity_for_task(task)
             implementation_started_event = self._record_event(
                 "implementation_started",
                 {
                     "task_id": task.task_id,
-                    "canonical_task_key": task_identity.canonical_task_key,
-                    "canonical_task_cid": task_identity.canonical_task_cid,
+                    "canonical_task_cid": self._canonical_ref(task),
                     "attempt": attempt,
                     "outputs": list(task_declared_output_paths(task)),
                     "command": command,
+                    "provider_route_receipt": provider_route_receipt,
                     "log_path": str(log_path),
                     "execution_mode": (
                         ExecutionMode.DETERMINISTIC_ONLY.value
                         if deterministic_only
                         else "model-assisted"
                     ),
-                    "validation_project_dependency_preflight": (
-                        dependency_preflight
-                    ),
                 },
             )
+            terminal_receipt = b""
             with log_path.open("w", encoding="utf-8") as log_fh:
                 log_fh.write(f"Task: {task.task_id} {task.title}\n")
                 log_fh.write(f"Started: {started_at}\n")
@@ -11952,84 +12010,25 @@ class PortalImplementationDaemon:
                         f"{' '.join(shlex.quote(item) for item in command)}\n\n"
                     )
                 log_fh.flush()
-                if retry_probe_eligible:
-                    pre_dispatch_no_change_result = (
-                        self._run_retry_no_change_pre_dispatch_validation(
-                            workspace_path,
-                            task,
-                            log_path,
-                            state=state,
-                            attempt=attempt,
-                            baseline_ref=baseline_ref,
-                            protected_path_snapshot=protected_path_snapshot,
-                            branch_name=baseline_branch,
-                            prepare_workspace=False,
-                        )
-                    )
-                if deterministic_only or pre_dispatch_no_change_result is not None:
+                if deterministic_only:
                     completed = subprocess.CompletedProcess(
                         args=(),
                         returncode=0,
                     )
                 else:
-                    log_fh.flush()
-                    provider_output_start_offset = log_path.stat().st_size
-                    use_provider_error_channel = bool(
-                        _exact_ordered_grok_command_binding(command)
+                    receipt_read_fd, receipt_write_fd = (
+                        _open_grok_terminal_receipt_pipe(command)
                     )
-                    provider_error_fh = None
-                    if use_provider_error_channel:
-                        provider_error_fh = tempfile.TemporaryFile(mode="w+b")
-
-                    def canonical_cancellation_reason() -> str:
-                        observation = (
-                            self._canonical_implementation_cancellation(task)
-                        )
-                        if not observation:
-                            return ""
-                        canonical_task_cancellation.clear()
-                        canonical_task_cancellation.update(observation)
-                        return str(observation.get("reason") or "")
-
-                    def invoke_provider() -> subprocess.CompletedProcess[str]:
-                        nonlocal provider_dispatched
-                        cancellation_reason = canonical_cancellation_reason()
-                        if cancellation_reason:
-                            raise ProcessGroupCancelled(cancellation_reason)
-                        provider_dispatched = True
-                        return run_process_group_stream(
-                            command,
-                            cwd=workspace_path,
-                            stdout=log_fh,
-                            stderr=(
-                                provider_error_fh
-                                if provider_error_fh is not None
-                                else subprocess.STDOUT
-                            ),
-                            input_text=prompt,
-                            env=self._implementation_process_environment(
+                    try:
+                        provider_environment = (
+                            self._implementation_process_environment(
                                 task,
                                 attempt=attempt,
                                 checkpoint_dir=checkpoint_dir,
-                            ),
-                            timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_timeout_seconds=(
-                                timeout_policy.progress_timeout_seconds
-                                if timeout_policy.progress_aware
-                                else None
-                            ),
-                            max_timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_paths=(checkpoint_dir,),
-                            on_progress=self._implementation_progress_observer(
-                                state,
-                                task,
-                                attempt=attempt,
-                            ),
-                            cancel_requested=canonical_cancellation_reason,
-                            cancellation_reason="canonical_task_completed",
+                                command=command,
+                                terminal_receipt_fd=receipt_write_fd,
+                            )
                         )
-
-                    try:
                         completed = self._decision_runtime_mutation(
                             "command_invocation",
                             {
@@ -12038,30 +12037,48 @@ class PortalImplementationDaemon:
                                 "attempt": int(attempt),
                                 "command": tuple(command),
                                 "workspace_path": str(workspace_path),
-                                "context_receipt_path": str(context_receipt_path),
+                                "context_receipt_path": str(
+                                    context_receipt_path
+                                ),
                             },
-                            invoke_provider,
+                            lambda: run_process_group_stream(
+                                command,
+                                cwd=workspace_path,
+                                stdout=log_fh,
+                                input_text=prompt,
+                                env=provider_environment,
+                                timeout_seconds=(
+                                    timeout_policy.max_timeout_seconds
+                                ),
+                                progress_timeout_seconds=(
+                                    timeout_policy.progress_timeout_seconds
+                                    if timeout_policy.progress_aware
+                                    else None
+                                ),
+                                max_timeout_seconds=(
+                                    timeout_policy.max_timeout_seconds
+                                ),
+                                progress_paths=(checkpoint_dir,),
+                                on_progress=(
+                                    self._implementation_progress_observer(
+                                        state,
+                                        task,
+                                        attempt=attempt,
+                                    )
+                                ),
+                                pass_fds=(
+                                    (receipt_write_fd,)
+                                    if receipt_write_fd >= 3
+                                    else ()
+                                ),
+                            ),
                         )
-                    except BaseException:
-                        if provider_error_fh is not None:
-                            provider_error_fh.close()
-                        raise
-                    if provider_error_fh is not None:
-                        try:
-                            (
-                                provider_error_text,
-                                provider_error_channel_identity,
-                            ) = _read_anonymous_provider_error_channel(
-                                provider_error_fh
-                            )
-                        finally:
-                            provider_error_fh.close()
-                        if provider_error_text:
-                            log_fh.write("\n[provider stderr]\n")
-                            log_fh.write(provider_error_text)
-                            if not provider_error_text.endswith("\n"):
-                                log_fh.write("\n")
-                            log_fh.flush()
+                    finally:
+                        _close_descriptor(receipt_write_fd)
+                        terminal_receipt = _read_grok_terminal_receipt(
+                            receipt_read_fd
+                        )
+                        _close_descriptor(receipt_read_fd)
             effective_returncode = completed.returncode
             protected_path_violation = (
                 self._implementation_protected_path_violation(
@@ -12085,19 +12102,9 @@ class PortalImplementationDaemon:
                 provider_failure = self._provider_capacity_failure_from_log(
                     log_path,
                     command=command,
-                    provider_output_start_offset=provider_output_start_offset,
+                    returncode=completed.returncode,
+                    terminal_receipt=terminal_receipt,
                 )
-                if provider_error_channel_identity:
-                    provider_failure = self._provider_capacity_failure_from_text(
-                        provider_error_text,
-                        command=command,
-                        provider_output_only=True,
-                        provider_output_start_offset=0,
-                        provider_error_channel_identity=(
-                            provider_error_channel_identity
-                        ),
-                        provider_returncode=completed.returncode,
-                    )
                 if provider_failure.get("exhausted", False):
                     protected_path_violation = (
                         self._finalize_implementation_protected_path_fence(
@@ -12117,7 +12124,6 @@ class PortalImplementationDaemon:
                             returncode=completed.returncode,
                             log_path=log_path,
                             failure=provider_failure,
-                            command=command,
                             implementation_started_event=(
                                 implementation_started_event
                             ),
@@ -12135,15 +12141,44 @@ class PortalImplementationDaemon:
                         "reason": "implementation_protected_path_mutated",
                         "protected_path_violation": protected_path_violation,
                     }
+                elif provider_failure.get("reason") == (
+                    "grok_quota_verifier_unavailable"
+                ):
+                    protected_path_violation = (
+                        self._finalize_implementation_protected_path_fence(
+                            task=task,
+                            attempt=attempt,
+                            workspace_path=workspace_path,
+                            before=protected_path_snapshot,
+                            reason="grok_quota_verifier_deferral_unchanged",
+                        )
+                    )
+                    if not protected_path_violation:
+                        grok_quota_verifier_deferred = True
+                        validation_result = {
+                            "attempted": False,
+                            "passed": False,
+                            "returncode": completed.returncode,
+                            "results": [],
+                            "reason": "grok_quota_verifier_unavailable",
+                        }
+                    else:
+                        effective_returncode = 1
+                        validation_result = {
+                            "attempted": False,
+                            "passed": False,
+                            "returncode": 1,
+                            "results": [],
+                            "reason": "implementation_protected_path_mutated",
+                            "protected_path_violation": protected_path_violation,
+                        }
             if completed.returncode == 0 and not protected_path_violation:
                 self._mark_active_phase(
                     state,
                     phase="validating",
                     phase_detail="; ".join(task.validation) if task.validation else "",
                 )
-                if pre_dispatch_no_change_result is not None:
-                    validation_result = dict(pre_dispatch_no_change_result)
-                elif deterministic_only:
+                if deterministic_only:
                     (
                         validation_result,
                         task_execution_receipt_path,
@@ -12166,39 +12201,18 @@ class PortalImplementationDaemon:
                         )
                     )
                 else:
-                    validation_result = self._run_clean_candidate_validation(
+                    proposal_validation = self._validate_implementation_patch(
+                        workspace_path,
+                        task,
+                        baseline_ref=baseline_ref,
+                    )
+                    validation_result = self._run_validation_commands(
                         workspace_path,
                         task,
                         log_path,
                         state=state,
-                        baseline_ref=baseline_ref,
+                        proposal_validation=proposal_validation,
                     )
-                    if validation_result is None:
-                        proposal_validation = self._validate_implementation_patch(
-                            workspace_path,
-                            task,
-                            baseline_ref=baseline_ref,
-                        )
-                        validation_result = self._run_validation_commands(
-                            workspace_path,
-                            task,
-                            log_path,
-                            state=state,
-                            proposal_validation=proposal_validation,
-                        )
-                    elif (
-                        validation_result.get("reason")
-                        == "candidate_changed_during_validation"
-                    ):
-                        validation_result = (
-                            self._run_validation_with_candidate_binding(
-                                workspace_path,
-                                task,
-                                log_path,
-                                state=state,
-                                baseline_ref=baseline_ref,
-                            )
-                        )
                 protected_path_violation = (
                     self._implementation_protected_path_violation(
                         task=task,
@@ -12216,7 +12230,7 @@ class PortalImplementationDaemon:
                         "reason": "implementation_protected_path_mutated",
                         "protected_path_violation": protected_path_violation,
                     }
-                elif not deterministic_only and proposal_validation is not None:
+                else:
                     validation_result = (
                         self._restore_and_verify_post_validation_candidate(
                             workspace_path,
@@ -12230,10 +12244,10 @@ class PortalImplementationDaemon:
                             allow_candidate_stabilization=True,
                         )
                     )
-                if not validation_result.get("passed", False):
-                    effective_returncode = int(
-                        validation_result.get("returncode") or 1
-                    )
+                    if not validation_result.get("passed", False):
+                        effective_returncode = int(
+                            validation_result.get("returncode") or 1
+                        )
             if not protected_path_violation:
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
@@ -12252,47 +12266,6 @@ class PortalImplementationDaemon:
                         "returncode": 1,
                         "reason": "implementation_protected_path_mutated",
                         "protected_path_violation": protected_path_violation,
-                    }
-            no_change_policy_gate = validation_result.get(
-                "no_change_policy_gate"
-            )
-            if (
-                effective_returncode == 0
-                and isinstance(no_change_policy_gate, Mapping)
-            ):
-                try:
-                    current_head = self._run_git(
-                        ["rev-parse", "HEAD"],
-                        cwd=workspace_path,
-                    ).stdout.strip()
-                except (OSError, RuntimeError):
-                    current_head = ""
-                no_change_guard = (
-                    self._validated_no_change_completion_guard(
-                        baseline_ref=baseline_ref,
-                        current_head=current_head,
-                        expected_branch=baseline_branch,
-                        current_branch=self._git_current_branch(
-                            workspace_path
-                        ),
-                        validation_result=validation_result,
-                        expected_task_id=task.task_id,
-                        expected_task_cid=self._canonical_ref(task),
-                        authoritative_no_change_policy_gate=(
-                            self._take_issued_no_change_policy_gate(
-                                validation_result
-                            )
-                        ),
-                    )
-                )
-                validation_result["no_change_guard"] = no_change_guard
-                if not no_change_guard["allowed"]:
-                    effective_returncode = 1
-                    validation_result = {
-                        **validation_result,
-                        "passed": False,
-                        "returncode": 1,
-                        "reason": "validated_no_change_guard_failed",
                     }
             if effective_returncode == 0:
                 _repository_id, completion_tree_id = (
@@ -12377,7 +12350,7 @@ class PortalImplementationDaemon:
             finished_at = utc_now()
             verification_deferred = bool(
                 protected_path_violation.get("verification_deferred")
-            ) or completion_durability_deferred
+            ) or completion_durability_deferred or grok_quota_verifier_deferred
             if verification_deferred:
                 self._restore_task_attempt(state, task, max(0, attempt - 1))
             else:
@@ -12386,6 +12359,16 @@ class PortalImplementationDaemon:
             state.last_implementation_finished_at = finished_at
             state.last_implementation_returncode = effective_returncode
             state.last_implementation_log_path = str(log_path)
+            if grok_quota_verifier_deferred:
+                self.task_queue.defer(
+                    self._canonical_ref(task),
+                    GROK_QUOTA_VERIFIER_RETRY_SECONDS,
+                    reason="grok_quota_verifier_unavailable",
+                )
+                self.task_queue.save()
+                state.selection_idle_reason = (
+                    "grok_quota_verifier_unavailable"
+                )
             self._mark_implementation_finished(state, finished_at=finished_at)
             state.save(self.state_path)
             if (
@@ -12408,7 +12391,6 @@ class PortalImplementationDaemon:
                 "log_path": str(log_path),
                 "validation_result": validation_result,
                 "context_receipt_path": str(context_receipt_path),
-                "provider_dispatched": provider_dispatched,
             }
             if task_execution_receipt_path is not None:
                 result["task_execution_receipt_path"] = str(
@@ -12427,10 +12409,29 @@ class PortalImplementationDaemon:
             elif completion_durability_deferred:
                 result["reason"] = "protected_board_completion_not_durable"
                 result["completion_pending_durability"] = True
+            elif grok_quota_verifier_deferred:
+                result.update(
+                    {
+                        "reason": "grok_quota_verifier_unavailable",
+                        "providers": ["grok"],
+                        "evidence": list(
+                            provider_failure.get("evidence") or []
+                        ),
+                        "backoff_seconds": (
+                            GROK_QUOTA_VERIFIER_RETRY_SECONDS
+                        ),
+                    }
+                )
             result["attempt_consumed"] = not verification_deferred
             if verification_deferred:
                 result["deferred"] = True
-            termination_result = self._implementation_returncode_detail(effective_returncode)
+            termination_result = (
+                {}
+                if grok_quota_verifier_deferred
+                else self._implementation_returncode_detail(
+                    effective_returncode
+                )
+            )
             if termination_result:
                 result["termination_result"] = termination_result
                 self._record_implementation_termination(task, attempt, termination_result)
@@ -12449,51 +12450,6 @@ class PortalImplementationDaemon:
                 result["todo_update_result"] = todo_update_result
             self._record_event("implementation_finished", result)
             return result
-        except ProcessGroupCancelled as cancelled_exc:
-            if protected_path_snapshot is not None:
-                protected_path_violation = (
-                    self._finalize_canonical_task_cancellation_fence(
-                        task=task,
-                        attempt=attempt,
-                        workspace_path=workspace_path,
-                        before=protected_path_snapshot,
-                        cancellation=canonical_task_cancellation,
-                    )
-                )
-            finished_at = utc_now()
-            terminal_returncode = 1 if protected_path_violation else 0
-            self._restore_task_attempt(state, task, max(0, attempt - 1))
-            state.last_implementation_started_at = started_at
-            state.last_implementation_finished_at = finished_at
-            state.last_implementation_returncode = terminal_returncode
-            state.last_implementation_log_path = str(log_path)
-            self._mark_implementation_finished(state, finished_at=finished_at)
-            state.save(self.state_path)
-            cancellation = {
-                **canonical_task_cancellation,
-                "cancelled": True,
-                "reason": str(
-                    canonical_task_cancellation.get("reason")
-                    or cancelled_exc.reason
-                ),
-                "task_id": task.task_id,
-                "canonical_task_cid": self._canonical_ref(task),
-                "attempt": attempt,
-                "returncode": terminal_returncode,
-                "attempt_consumed": False,
-                "provider_dispatched": provider_dispatched,
-                "log_path": str(log_path),
-                "context_receipt_path": (
-                    str(context_receipt_path) if context_receipt_path else ""
-                ),
-            }
-            if protected_path_violation:
-                cancellation["protected_path_violation"] = (
-                    protected_path_violation
-                )
-            self._record_event("implementation_cancelled", cancellation)
-            self._record_event("implementation_finished", cancellation)
-            return cancellation
         except subprocess.TimeoutExpired as timeout_exc:
             if protected_path_snapshot is not None:
                 protected_path_violation = (
@@ -16039,12 +15995,6 @@ class PortalImplementationDaemon:
             return {}, {
                 "reason": "completion_task_already_completed",
                 "completed_task_ids": completed,
-                "completed_task_cids": {
-                    task_id: self._identity_for_task(
-                        matches_by_id[task_id][0]
-                    ).canonical_task_cid
-                    for task_id in completed
-                },
             }
         return (
             {
@@ -16053,58 +16003,6 @@ class PortalImplementationDaemon:
             },
             {},
         )
-
-    def _canonical_implementation_cancellation(
-        self,
-        task: PortalTask,
-    ) -> dict[str, Any]:
-        """Return a cancellation proof when the current board supersedes work.
-
-        Status-only completion preserves a task's canonical CID, so the guard
-        binds both the display ID and CID before treating ``completed`` as an
-        authoritative cancellation.  A visible revision mismatch is also
-        stale work.  Board read/missing-task errors do not manufacture a
-        completion proof; normal source reconciliation remains authoritative
-        for those cases.
-        """
-
-        expected_cid = self._canonical_ref(task)
-        current, error = self._current_completion_task_cids(
-            (task.task_id,),
-            require_pending=True,
-        )
-        current_cid = str(current.get(task.task_id) or "")
-        if str(error.get("reason") or "") == (
-            "completion_task_already_completed"
-        ):
-            completed_cids = error.get("completed_task_cids")
-            current_cid = (
-                str(completed_cids.get(task.task_id) or "")
-                if isinstance(completed_cids, Mapping)
-                else ""
-            )
-        if current_cid and current_cid != expected_cid:
-            return {
-                "cancelled": True,
-                "reason": "canonical_task_revision_changed",
-                "task_id": task.task_id,
-                "canonical_task_cid": expected_cid,
-                "current_canonical_task_cid": current_cid,
-            }
-        if (
-            current_cid == expected_cid
-            and str(error.get("reason") or "")
-            == "completion_task_already_completed"
-        ):
-            return {
-                "cancelled": True,
-                "reason": "canonical_task_completed",
-                "task_id": task.task_id,
-                "canonical_task_cid": expected_cid,
-                "board_status": "completed",
-                "board_observation": dict(error),
-            }
-        return {}
 
     def _completion_task_revision_binding_error(
         self,
@@ -18947,6 +18845,7 @@ class PortalImplementationDaemon:
                         recovery_key=recovery_key,
                     )
                 ),
+                reconciliation_branch_name=branch_name,
             )
             validation_result = self._run_validation_commands(
                 worktree_path,
@@ -19246,97 +19145,6 @@ class PortalImplementationDaemon:
             self._record_event(reconciliation_event_type(), result)
         return result
 
-    def _validation_project_dependency_preflight_backoff(
-        self,
-        *,
-        task_id: str,
-        receipt: Mapping[str, Any],
-    ) -> int:
-        """Back off repeated identical environment drift, reset on change."""
-
-        prior_fingerprints: list[str] = []
-        for event in reversed(self._iter_events()):
-            if str(event.get("task_id") or "") != task_id:
-                continue
-            event_type = str(event.get("type") or "")
-            if event_type == "implementation_started":
-                break
-            if (
-                event_type
-                != "validation_project_dependency_preflight_failed"
-            ):
-                continue
-            prior_receipt = event.get("dependency_preflight")
-            if not isinstance(prior_receipt, Mapping):
-                break
-            prior_fingerprints.append(
-                str(
-                    prior_receipt.get("retry_fingerprint")
-                    or prior_receipt.get("receipt_id")
-                    or ""
-                )
-            )
-            if len(prior_fingerprints) >= 8:
-                break
-        return project_dependency_preflight_backoff_seconds(
-            str(
-                receipt.get("retry_fingerprint")
-                or receipt.get("receipt_id")
-                or ""
-            ),
-            prior_fingerprints,
-        )
-
-    def _require_validation_project_dependency_preflight(
-        self,
-        *,
-        workspace_path: Path,
-        task: PortalTask,
-        attempt: int,
-        branch_name: str = "",
-    ) -> dict[str, Any]:
-        """Gate every provider path on one shared fail-closed preflight."""
-
-        try:
-            raw_receipt = preflight_validation_project_dependencies(
-                workspace_path,
-                task.validation,
-            )
-            if not isinstance(raw_receipt, Mapping):
-                raise TypeError(
-                    "dependency preflight receipt must be a mapping"
-                )
-            receipt = dict(raw_receipt)
-        except Exception as exc:
-            receipt = project_dependency_preflight_error_receipt(
-                workspace_path,
-                task.validation,
-                exc,
-            )
-        if receipt.get("passed") is True:
-            return receipt
-        backoff_seconds = (
-            self._validation_project_dependency_preflight_backoff(
-                task_id=task.task_id,
-                receipt=receipt,
-            )
-        )
-        self._record_event(
-            "validation_project_dependency_preflight_failed",
-            {
-                "task_id": task.task_id,
-                "attempt": attempt,
-                "worktree_path": str(workspace_path),
-                "branch": branch_name,
-                "dependency_preflight": receipt,
-                "backoff_seconds": backoff_seconds,
-            },
-        )
-        raise ValidationProjectDependencyPreflightDeferred(
-            receipt,
-            backoff_seconds=backoff_seconds,
-        )
-
     def _run_implementation_in_ephemeral_worktree(
         self,
         *,
@@ -19346,7 +19154,6 @@ class PortalImplementationDaemon:
         started_at: str,
         log_path: Path,
         prompt: str,
-        retry_no_change_probe_only: bool = False,
     ) -> dict[str, Any]:
         self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
         self.worktree_root.mkdir(parents=True, exist_ok=True)
@@ -19354,8 +19161,6 @@ class PortalImplementationDaemon:
         safe_task_id = task.task_id.lower().replace("/", "-")
         identity_suffix = self._identity_for_task(task).short_id
         execution_id = f"{safe_task_id}-{identity_suffix}"
-        if retry_no_change_probe_only:
-            execution_id = f"{execution_id}-local-probe"
         attempt_stamp = int(time.time())
         worktree_path = self.worktree_root / f"{execution_id}-attempt-{attempt}-{attempt_stamp}"
         branch_name = f"implementation/{execution_id}-attempt-{attempt}-{attempt_stamp}"
@@ -19378,25 +19183,18 @@ class PortalImplementationDaemon:
         exception_result: dict[str, Any] = {}
         provider_failure: dict[str, Any] = {}
         timeout_result: dict[str, Any] = {}
-        pre_dispatch_no_change_result: dict[str, Any] | None = None
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
         protected_path_violation: dict[str, Any] = {}
         task_execution_receipt_path: Path | None = None
         task_execution_receipt: dict[str, Any] = {}
         provider_dispatched = False
-        canonical_task_cancellation: dict[str, Any] = {}
-        canonical_task_cancelled = False
-        provider_output_start_offset: int | None = None
-        provider_error_text = ""
-        provider_error_channel_identity: dict[str, Any] = {}
+        validated_clean_candidate = False
         seed_replayable_proposal_ids: tuple[str, ...] = ()
         checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
         timeout_policy = self._implementation_timeout_policy(task)
         lifecycle_record: WorkspaceLifecycleRecord | None = None
         implementation_started = False
         lifecycle_race_exception = False
-        submodule_setup_deferral = False
-        dependency_setup_deferral = False
 
         try:
             # Publish a preparing lifecycle claim *before* the cleanup-visible
@@ -19404,11 +19202,15 @@ class PortalImplementationDaemon:
             # target checkout as already-merged while the owner is still mid
             # setup (ASI-171 / AICAT-025 prerequisite).
             try:
-                lifecycle_record = self._begin_worktree_lifecycle_preparing(
-                    task=task,
+                lifecycle_record = self.worktree_lifecycle.begin_preparing(
+                    task_id=task.task_id,
+                    canonical_task_cid=self._canonical_ref(task),
                     attempt=attempt,
-                    worktree_path=worktree_path,
-                    branch_name=branch_name,
+                    lane_id=self._worktree_lifecycle_lane_id(),
+                    workspace_path=worktree_path,
+                    branch=branch_name,
+                    merge_target=self._main_branch_name(),
+                    state_dir=str(self.state_path.parent.resolve()),
                 )
                 self._active_worktree_lifecycle = lifecycle_record
             except DuplicateAttemptError as exc:
@@ -19422,32 +19224,18 @@ class PortalImplementationDaemon:
                         "branch": branch_name,
                     },
                 )
-            seed_plan = (
-                {"reuse_prior_attempt": False}
-                if retry_no_change_probe_only
-                else self._prior_attempt_seed_plan(
-                    state=state,
-                    attempt=attempt,
-                )
-            )
+            seed_plan = self._prior_attempt_seed_plan(state=state, attempt=attempt)
             baseline_ref = self._create_seeded_worktree(worktree_path, branch_name, task=task)
             # A pooled checkout keeps a stable physical path so Git does not
             # have to relocate populated submodule worktrees.  Resolve the
             # task's provisional timestamp path before any command, state, or
             # merge metadata is built from it.
             worktree_path = self._effective_pooled_worktree_path(worktree_path)
-            seed_apply = (
-                {
-                    "applied": False,
-                    "reason": "retry_probe_uses_immutable_baseline",
-                }
-                if retry_no_change_probe_only
-                else self._apply_prior_attempt_seed(
-                    worktree_path,
-                    task=task,
-                    seed_plan=seed_plan,
-                    baseline_ref=baseline_ref,
-                )
+            seed_apply = self._apply_prior_attempt_seed(
+                worktree_path,
+                task=task,
+                seed_plan=seed_plan,
+                baseline_ref=baseline_ref,
             )
             if seed_apply.get("applied"):
                 seed_proposal_authority = seed_apply.get(
@@ -19501,26 +19289,31 @@ class PortalImplementationDaemon:
                 )
             workspace_setup = self._worktree_setup_result(worktree_path)
             workspace_setup["prior_attempt_seed"] = dict(seed_apply)
-            dependency_preflight = (
-                self._require_validation_project_dependency_preflight(
-                    workspace_path=worktree_path,
-                    task=task,
-                    attempt=attempt,
-                    branch_name=branch_name,
-                )
-            )
-            workspace_setup["validation_project_dependency_preflight"] = (
-                dependency_preflight
-            )
             command = (
                 []
-                if deterministic_only or retry_no_change_probe_only
+                if deterministic_only
                 else self._build_implementation_command(
                     worktree_path,
                     task=task,
-                    attempt=attempt,
                 )
             )
+            provider_route_receipt = (
+                None
+                if deterministic_only
+                else self._implementation_provider_route_receipt(
+                    command,
+                    task=task,
+                )
+            )
+            if (
+                isinstance(provider_route_receipt, Mapping)
+                and provider_route_receipt.get("route") == "invalid"
+            ):
+                raise RuntimeError(
+                    "implementation provider route has no valid dispatch "
+                    "authority: "
+                    + str(provider_route_receipt.get("selection_reason") or "")
+                )
             protected_path_snapshot = self._require_implementation_protected_snapshot(
                 task=task,
                 attempt=attempt,
@@ -19560,17 +19353,15 @@ class PortalImplementationDaemon:
                 branch_name=branch_name,
             )
             implementation_started = True
-            implementation_started_event = {
+            implementation_started_event = self._record_event(
+                "implementation_started",
+                {
                     "task_id": task.task_id,
-                    "canonical_task_key": (
-                        self._identity_for_task(task).canonical_task_key
-                    ),
-                    "canonical_task_cid": (
-                        self._identity_for_task(task).canonical_task_cid
-                    ),
+                    "canonical_task_cid": self._canonical_ref(task),
                     "attempt": attempt,
                     "outputs": list(task_declared_output_paths(task)),
                     "command": command,
+                    "provider_route_receipt": provider_route_receipt,
                     "log_path": str(log_path),
                     "worktree_path": str(worktree_path),
                     "branch": branch_name,
@@ -19582,13 +19373,9 @@ class PortalImplementationDaemon:
                     "checkpoint_directory": str(checkpoint_dir),
                     "timeout_policy": timeout_policy.to_dict(),
                     "execution_mode": (
-                        "local-retry-proof"
-                        if retry_no_change_probe_only
-                        else (
-                            ExecutionMode.DETERMINISTIC_ONLY.value
-                            if deterministic_only
-                            else "model-assisted"
-                        )
+                        ExecutionMode.DETERMINISTIC_ONLY.value
+                        if deterministic_only
+                        else "model-assisted"
                     ),
                     "worktree_lifecycle": (
                         None
@@ -19600,24 +19387,16 @@ class PortalImplementationDaemon:
                             "requirement_id": FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID,
                         }
                     ),
-                }
-            if retry_no_change_probe_only:
-                implementation_started_event["provider_dispatched"] = False
-            recorded_implementation_started_event = self._record_event(
-                "implementation_started",
-                implementation_started_event,
+                },
             )
+            terminal_receipt = b""
             with log_path.open("w", encoding="utf-8") as log_fh:
                 log_fh.write(f"Task: {task.task_id} {task.title}\n")
                 log_fh.write(f"Started: {started_at}\n")
                 log_fh.write(f"Workspace: {worktree_path}\n")
                 log_fh.write(f"Branch: {branch_name}\n")
                 log_fh.write(f"Baseline: {baseline_ref}\n")
-                if retry_no_change_probe_only:
-                    log_fh.write(
-                        "Execution: isolated local retry contract proof\n\n"
-                    )
-                elif deterministic_only:
+                if deterministic_only:
                     log_fh.write(
                         "Execution: typed local declared-validation-plan\n\n"
                     )
@@ -19627,305 +19406,81 @@ class PortalImplementationDaemon:
                         f"{' '.join(shlex.quote(item) for item in command)}\n\n"
                     )
                 log_fh.flush()
-                if retry_no_change_probe_only:
-                    pre_dispatch_no_change_result = (
-                        self._run_retry_no_change_pre_dispatch_validation(
-                            worktree_path,
-                            task,
-                            log_path,
-                            state=state,
-                            attempt=attempt,
-                            baseline_ref=baseline_ref,
-                            protected_path_snapshot=protected_path_snapshot,
-                            branch_name=branch_name,
-                        )
-                    )
-                if (
-                    deterministic_only
-                    or retry_no_change_probe_only
-                    or pre_dispatch_no_change_result is not None
-                ):
+                if deterministic_only:
                     completed = subprocess.CompletedProcess(
                         args=(),
                         returncode=0,
                     )
                 else:
-                    log_fh.flush()
-                    provider_output_start_offset = log_path.stat().st_size
-                    use_provider_error_channel = bool(
-                        _exact_ordered_grok_command_binding(command)
-                    )
-                    provider_error_fh = None
-                    if use_provider_error_channel:
-                        provider_error_fh = tempfile.TemporaryFile(mode="w+b")
-
-                    def canonical_cancellation_reason() -> str:
-                        observation = (
-                            self._canonical_implementation_cancellation(task)
-                        )
-                        if not observation:
-                            return ""
-                        canonical_task_cancellation.clear()
-                        canonical_task_cancellation.update(observation)
-                        return str(observation.get("reason") or "")
-
                     def invoke_provider() -> subprocess.CompletedProcess[str]:
-                        nonlocal provider_dispatched
-                        cancellation_reason = canonical_cancellation_reason()
-                        if cancellation_reason:
-                            raise ProcessGroupCancelled(cancellation_reason)
-                        provider_environment = (
-                            self._implementation_process_environment(
-                                task,
-                                attempt=attempt,
-                                checkpoint_dir=checkpoint_dir,
-                            )
+                        nonlocal provider_dispatched, terminal_receipt
+                        receipt_read_fd, receipt_write_fd = (
+                            _open_grok_terminal_receipt_pipe(command)
                         )
-                        progress_observer = (
-                            self._implementation_progress_observer(
-                                state,
-                                task,
-                                attempt=attempt,
-                            )
-                        )
-                        provider_dispatched = True
-                        return run_process_group_stream(
-                            command,
-                            cwd=worktree_path,
-                            stdout=log_fh,
-                            stderr=(
-                                provider_error_fh
-                                if provider_error_fh is not None
-                                else subprocess.STDOUT
-                            ),
-                            input_text=prompt,
-                            env=provider_environment,
-                            timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_timeout_seconds=(
-                                timeout_policy.progress_timeout_seconds
-                                if timeout_policy.progress_aware
-                                else None
-                            ),
-                            max_timeout_seconds=timeout_policy.max_timeout_seconds,
-                            progress_paths=(checkpoint_dir,),
-                            on_progress=progress_observer,
-                            cancel_requested=canonical_cancellation_reason,
-                            cancellation_reason="canonical_task_completed",
-                        )
-
-                    try:
-                        completed = self._decision_runtime_mutation(
-                            "command_invocation",
-                            {
-                                "operation": "implementation_provider",
-                                "task_id": task.task_id,
-                                "attempt": int(attempt),
-                                "command": tuple(command),
-                                "workspace_path": str(worktree_path),
-                                "branch": branch_name,
-                            },
-                            invoke_provider,
-                        )
-                    except BaseException:
-                        if provider_error_fh is not None:
-                            provider_error_fh.close()
-                        raise
-                    if provider_error_fh is not None:
                         try:
-                            (
-                                provider_error_text,
-                                provider_error_channel_identity,
-                            ) = _read_anonymous_provider_error_channel(
-                                provider_error_fh
-                            )
-                        finally:
-                            provider_error_fh.close()
-                        if provider_error_text:
-                            log_fh.write("\n[provider stderr]\n")
-                            log_fh.write(provider_error_text)
-                            if not provider_error_text.endswith("\n"):
-                                log_fh.write("\n")
-                            log_fh.flush()
-            if retry_no_change_probe_only:
-                probe_reason = str(
-                    (
-                        pre_dispatch_no_change_result.get(
-                            "pre_dispatch_no_change"
-                        )
-                        if isinstance(pre_dispatch_no_change_result, Mapping)
-                        else {}
-                    ).get("reason")
-                    or ""
-                )
-                probe_proved_contract = (
-                    probe_reason
-                    == "declared_validation_proved_existing_contract"
-                )
-                if not probe_proved_contract:
-                    try:
-                        probe_head = self._run_git(
-                            ["rev-parse", "HEAD"],
-                            cwd=worktree_path,
-                        ).stdout.strip()
-                    except (OSError, RuntimeError):
-                        probe_head = ""
-                    probe_branch = self._git_current_branch(worktree_path)
-                    control_state_valid = bool(
-                        probe_head == baseline_ref
-                        and probe_branch == branch_name
-                    )
-                    terminal_protected_violation = (
-                        self._finalize_implementation_protected_path_fence(
-                            task=task,
-                            attempt=attempt,
-                            workspace_path=worktree_path,
-                            before=protected_path_snapshot,
-                            reason="retry_probe_terminal_check_unchanged",
-                        )
-                    )
-                    cleanup_result = self._cleanup_merged_worktree(
-                        worktree_path,
-                        branch_name,
-                        reusable=False,
-                    )
-                    clean_failed_probe = bool(
-                        pre_dispatch_no_change_result is None
-                        and control_state_valid
-                        and not terminal_protected_violation
-                    )
-                    cleanup_succeeded = cleanup_result.get("cleaned") is True
-                    attempt_consumed = bool(
-                        not clean_failed_probe and cleanup_succeeded
-                    )
-                    if attempt_consumed:
-                        self._record_task_attempt(state, task, attempt)
-                    else:
-                        self._restore_task_attempt(
-                            state,
-                            task,
-                            max(0, attempt - 1),
-                        )
-                    finished_at = utc_now()
-                    state.last_implementation_started_at = started_at
-                    state.last_implementation_finished_at = finished_at
-                    state.last_implementation_returncode = 1
-                    state.last_implementation_log_path = str(log_path)
-                    state.last_implementation_worktree_path = str(
-                        worktree_path
-                    )
-                    state.last_implementation_branch = branch_name
-                    self._mark_implementation_finished(
-                        state,
-                        finished_at=finished_at,
-                    )
-                    state.save(self.state_path)
-                    terminal_validation = (
-                        dict(pre_dispatch_no_change_result)
-                        if isinstance(
-                            pre_dispatch_no_change_result,
-                            Mapping,
-                        )
-                        else {
-                            "attempted": True,
-                            "passed": False,
-                            "returncode": 1,
-                            "reason": "declared_validation_failed",
-                        }
-                    )
-                    if not control_state_valid:
-                        terminal_validation.update(
-                            {
-                                "passed": False,
-                                "returncode": 1,
-                                "reason": (
-                                    "retry_probe_control_state_changed"
-                                ),
-                                "expected_head": baseline_ref,
-                                "actual_head": probe_head,
-                                "expected_branch": branch_name,
-                                "actual_branch": probe_branch,
-                            }
-                        )
-                    if terminal_protected_violation:
-                        terminal_validation.update(
-                            {
-                                "passed": False,
-                                "returncode": 1,
-                                "reason": (
-                                    "implementation_protected_path_mutated"
-                                ),
-                                "protected_path_violation": (
-                                    terminal_protected_violation
-                                ),
-                            }
-                        )
-                    probe_result = {
-                        "task_id": task.task_id,
-                        "attempt": attempt,
-                        "returncode": 1,
-                        "log_path": str(log_path),
-                        "worktree_path": str(worktree_path),
-                        "branch": branch_name,
-                        "baseline_ref": baseline_ref,
-                        "validation_result": terminal_validation,
-                        "cleanup_result": cleanup_result,
-                        "attempt_consumed": attempt_consumed,
-                        "provider_dispatched": False,
-                        "provider_call_allowed": bool(
-                            clean_failed_probe and cleanup_succeeded
-                        ),
-                        "retry_probe_requires_fresh_provider_workspace": bool(
-                            clean_failed_probe and cleanup_succeeded
-                        ),
-                        "reason": (
-                            "retry_probe_requires_fresh_provider_workspace"
-                            if clean_failed_probe and cleanup_succeeded
-                            else (
-                                "retry_probe_cleanup_failed"
-                                if not cleanup_succeeded
-                                else str(
-                                    terminal_validation.get("reason")
-                                    or "retry_probe_blocked"
+                            provider_environment = (
+                                self._implementation_process_environment(
+                                    task,
+                                    attempt=attempt,
+                                    checkpoint_dir=checkpoint_dir,
+                                    command=command,
+                                    terminal_receipt_fd=receipt_write_fd,
                                 )
                             )
-                        ),
-                    }
-                    if not cleanup_succeeded:
-                        probe_result.update(
-                            {
-                                "deferred": True,
-                                "infrastructure_failure": True,
-                                "lifecycle_race": True,
-                                "failure_kind": (
-                                    LifecycleFailureKind.LIFECYCLE_RACE.value
-                                ),
-                            }
-                        )
-                    if attempt_consumed:
-                        failure_reason = str(
-                            terminal_validation.get("reason")
-                            or "retry_probe_blocked"
-                        )
-                        self._record_task_queue_outcome(
-                            task,
-                            1,
-                            reason=failure_reason,
-                        )
-                        diagnostic = self._record_failed_attempt_retry_context(
-                            task,
-                            returncode=1,
-                            validation_result=terminal_validation,
-                        )
-                        if diagnostic is not None:
-                            probe_result["diagnostic_receipt_id"] = (
-                                diagnostic.receipt_id
+                            progress_observer = (
+                                self._implementation_progress_observer(
+                                    state,
+                                    task,
+                                    attempt=attempt,
+                                )
                             )
-                    probe_result["execution_mode"] = "local-retry-proof"
-                    self._record_event(
-                        "implementation_finished",
-                        probe_result,
+                            provider_dispatched = True
+                            return run_process_group_stream(
+                                command,
+                                cwd=worktree_path,
+                                stdout=log_fh,
+                                input_text=prompt,
+                                env=provider_environment,
+                                timeout_seconds=(
+                                    timeout_policy.max_timeout_seconds
+                                ),
+                                progress_timeout_seconds=(
+                                    timeout_policy.progress_timeout_seconds
+                                    if timeout_policy.progress_aware
+                                    else None
+                                ),
+                                max_timeout_seconds=(
+                                    timeout_policy.max_timeout_seconds
+                                ),
+                                progress_paths=(checkpoint_dir,),
+                                on_progress=progress_observer,
+                                pass_fds=(
+                                    (receipt_write_fd,)
+                                    if receipt_write_fd >= 3
+                                    else ()
+                                ),
+                            )
+                        finally:
+                            _close_descriptor(receipt_write_fd)
+                            terminal_receipt = (
+                                _read_grok_terminal_receipt(
+                                    receipt_read_fd
+                                )
+                            )
+                            _close_descriptor(receipt_read_fd)
+
+                    completed = self._decision_runtime_mutation(
+                        "command_invocation",
+                        {
+                            "operation": "implementation_provider",
+                            "task_id": task.task_id,
+                            "attempt": int(attempt),
+                            "command": tuple(command),
+                            "workspace_path": str(worktree_path),
+                            "branch": branch_name,
+                        },
+                        invoke_provider,
                     )
-                    return probe_result
             returncode = completed.returncode
             protected_path_violation = (
                 self._implementation_protected_path_violation(
@@ -19966,19 +19521,9 @@ class PortalImplementationDaemon:
                 provider_failure = self._provider_capacity_failure_from_log(
                     log_path,
                     command=command,
-                    provider_output_start_offset=provider_output_start_offset,
+                    returncode=returncode,
+                    terminal_receipt=terminal_receipt,
                 )
-                if provider_error_channel_identity:
-                    provider_failure = self._provider_capacity_failure_from_text(
-                        provider_error_text,
-                        command=command,
-                        provider_output_only=True,
-                        provider_output_start_offset=0,
-                        provider_error_channel_identity=(
-                            provider_error_channel_identity
-                        ),
-                        provider_returncode=completed.returncode,
-                    )
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
                         task=task,
@@ -20016,6 +19561,16 @@ class PortalImplementationDaemon:
                     cleanup_result = dict(
                         failed_preservation_result.get("cleanup_result") or cleanup_result
                     )
+                elif provider_failure.get("reason") == (
+                    "grok_quota_verifier_unavailable"
+                ):
+                    validation_result = {
+                        "attempted": False,
+                        "passed": False,
+                        "returncode": returncode,
+                        "results": [],
+                        "reason": "grok_quota_verifier_unavailable",
+                    }
             if returncode == 0 and not protected_path_violation:
                 self._mark_worktree_lifecycle_settling(worktree_path)
                 self._mark_active_phase(
@@ -20035,111 +19590,121 @@ class PortalImplementationDaemon:
                     cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
                 else:
                     proposal_validation: Any = None
-                    if pre_dispatch_no_change_result is not None:
-                        validation_result = dict(
-                            pre_dispatch_no_change_result
+                    try:
+                        self._prepare_worktree_for_validation(
+                            worktree_path,
+                            task=task,
+                            branch_name=branch_name,
+                        )
+                    except ValidationGeneratedArtifactRestoreError as exc:
+                        validation_result = (
+                            self._validation_generated_artifact_restore_failure_result(
+                                exc.receipt
+                            )
                         )
                     else:
-                        try:
-                            self._prepare_worktree_for_validation(
-                                worktree_path,
+                        if deterministic_only:
+                            operator_prepared_outputs = (
+                                self._seed_operator_prepared_outputs(
+                                    worktree_path,
+                                    task,
+                                )
+                            )
+                            (
+                                validation_result,
+                                task_execution_receipt_path,
+                                task_execution_receipt,
+                            ) = self._execute_deterministic_validation_plan(
+                                workspace_path=worktree_path,
                                 task=task,
-                                branch_name=branch_name,
+                                attempt=attempt,
+                                log_path=log_path,
+                                state=state,
                             )
-                        except ValidationGeneratedArtifactRestoreError as exc:
                             validation_result = (
-                                self._validation_generated_artifact_restore_failure_result(
-                                    exc.receipt
+                                self._admit_deterministic_validation_materialization(
+                                    worktree_path,
+                                    task,
+                                    log_path,
+                                    state=state,
+                                    baseline_ref=baseline_ref,
+                                    materialization_result=validation_result,
                                 )
                             )
+                            if operator_prepared_outputs:
+                                validation_result["operator_prepared_outputs"] = [
+                                    dict(item)
+                                    for item in operator_prepared_outputs
+                                ]
                         else:
-                            if deterministic_only:
-                                operator_prepared_outputs = (
-                                    self._seed_operator_prepared_outputs(
-                                        worktree_path,
-                                        task,
-                                    )
-                                )
-                                (
-                                    validation_result,
-                                    task_execution_receipt_path,
-                                    task_execution_receipt,
-                                ) = self._execute_deterministic_validation_plan(
-                                    workspace_path=worktree_path,
-                                    task=task,
-                                    attempt=attempt,
-                                    log_path=log_path,
-                                    state=state,
-                                )
-                                validation_result = (
-                                    self._admit_deterministic_validation_materialization(
-                                        worktree_path,
-                                        task,
-                                        log_path,
-                                        state=state,
-                                        baseline_ref=baseline_ref,
-                                        materialization_result=validation_result,
-                                    )
-                                )
-                                if operator_prepared_outputs:
-                                    validation_result["operator_prepared_outputs"] = [
-                                        dict(item)
-                                        for item in operator_prepared_outputs
-                                    ]
-                            else:
-                                validation_result = self._run_clean_candidate_validation(
+                            clean_validation = (
+                                self._run_clean_candidate_validation(
                                     worktree_path,
                                     task,
                                     log_path,
                                     state=state,
                                     baseline_ref=baseline_ref,
                                 )
-                                if validation_result is None:
-                                    proposal_validation = (
-                                        self._validate_implementation_patch(
-                                            worktree_path,
-                                            task,
-                                            baseline_ref=baseline_ref,
-                                            replayable_consumed_proposal_ids=(
-                                                seed_replayable_proposal_ids
-                                            ),
-                                        )
-                                    )
-                                    validation_result = self._run_validation_commands(
-                                        worktree_path,
-                                        task,
-                                        log_path,
-                                        state=state,
-                                        proposal_validation=proposal_validation,
-                                    )
+                            )
+                            if clean_validation is not None:
+                                validation_result = clean_validation
+                                validated_clean_candidate = True
+                                if not validation_result.get(
+                                    "passed", False
+                                ):
                                     validation_result = (
                                         self._apply_implementation_failure_review(
                                             task=task,
                                             attempt=attempt,
                                             workspace_path=worktree_path,
-                                            validation_result=validation_result,
+                                            validation_result=(
+                                                validation_result
+                                            ),
                                             log_path=log_path,
-                                            proposal_validation=proposal_validation,
+                                            proposal_validation=None,
                                             baseline_ref=baseline_ref,
                                             state=state,
                                         )
                                     )
-                                elif (
-                                    validation_result.get("reason")
-                                    == "candidate_changed_during_validation"
-                                ):
-                                    validation_result = (
-                                        self._run_validation_with_candidate_binding(
-                                            worktree_path,
-                                            task,
-                                            log_path,
-                                            state=state,
-                                            baseline_ref=baseline_ref,
-                                        )
+                            else:
+                                proposal_validation = (
+                                    self._validate_implementation_patch(
+                                        worktree_path,
+                                        task,
+                                        baseline_ref=baseline_ref,
+                                        replayable_consumed_proposal_ids=(
+                                            seed_replayable_proposal_ids
+                                        ),
                                     )
+                                )
+                                validation_result = (
+                                    self._run_validation_commands(
+                                        worktree_path,
+                                        task,
+                                        log_path,
+                                        state=state,
+                                        proposal_validation=(
+                                            proposal_validation
+                                        ),
+                                    )
+                                )
+                                validation_result = (
+                                    self._apply_implementation_failure_review(
+                                        task=task,
+                                        attempt=attempt,
+                                        workspace_path=worktree_path,
+                                        validation_result=validation_result,
+                                        log_path=log_path,
+                                        proposal_validation=(
+                                            proposal_validation
+                                        ),
+                                        baseline_ref=baseline_ref,
+                                        state=state,
+                                    )
+                                )
                         if (
                             not deterministic_only
-                            and proposal_validation is not None
+                            and not validated_clean_candidate
                             and validation_result.get("passed", False)
                         ):
                             validation_result = (
@@ -20226,17 +19791,6 @@ class PortalImplementationDaemon:
                                 expected_branch=branch_name,
                                 current_branch=current_branch,
                                 validation_result=validation_result,
-                                require_no_change_policy_gate=(
-                                    not deterministic_only
-                                ),
-                                expected_task_id=task.task_id,
-                                expected_task_cid=self._canonical_ref(task),
-                                authoritative_no_change_policy_gate=(
-                                    self._take_issued_no_change_policy_gate(
-                                        validation_result,
-                                        required=not deterministic_only,
-                                    )
-                                ),
                             )
                         )
                         commit_result["no_change_guard"] = no_change_guard
@@ -20244,20 +19798,7 @@ class PortalImplementationDaemon:
                             cleanup_result = self._cleanup_merged_worktree(
                                 worktree_path,
                                 branch_name,
-                                reusable=not retry_no_change_probe_only,
                             )
-                            if (
-                                retry_no_change_probe_only
-                                and cleanup_result.get("cleaned") is not True
-                            ):
-                                returncode = 1
-                                validation_result = {
-                                    **validation_result,
-                                    "passed": False,
-                                    "returncode": 1,
-                                    "reason": "retry_probe_cleanup_failed",
-                                    "cleanup_result": cleanup_result,
-                                }
                         else:
                             returncode = 1
                             reason = "validated_candidate_missing_before_commit"
@@ -20396,54 +19937,6 @@ class PortalImplementationDaemon:
                             reason="failed_implementation_provider_exited",
                         ),
                     }
-        except ProcessGroupCancelled as cancelled_exc:
-            canonical_task_cancelled = True
-            returncode = 0
-            if protected_path_snapshot is not None:
-                protected_path_violation = (
-                    self._finalize_canonical_task_cancellation_fence(
-                        task=task,
-                        attempt=attempt,
-                        workspace_path=worktree_path,
-                        before=protected_path_snapshot,
-                        cancellation=canonical_task_cancellation,
-                    )
-                )
-            if protected_path_violation:
-                returncode = 1
-            cleanup_result = self._cleanup_failed_setup_worktree(
-                worktree_path,
-                branch_name,
-                task=task,
-                attempt=attempt,
-                exception_result={
-                    "reason": str(
-                        canonical_task_cancellation.get("reason")
-                        or cancelled_exc.reason
-                    ),
-                    "cancelled": True,
-                    "attempt_consumed": False,
-                },
-            )
-            self._record_event(
-                "implementation_cancelled",
-                {
-                    **canonical_task_cancellation,
-                    "cancelled": True,
-                    "reason": str(
-                        canonical_task_cancellation.get("reason")
-                        or cancelled_exc.reason
-                    ),
-                    "task_id": task.task_id,
-                    "canonical_task_cid": self._canonical_ref(task),
-                    "attempt": attempt,
-                    "provider_dispatched": provider_dispatched,
-                    "attempt_consumed": False,
-                    "worktree_path": str(worktree_path),
-                    "branch": branch_name,
-                    "cleanup_result": cleanup_result,
-                },
-            )
         except subprocess.TimeoutExpired as timeout_exc:
             returncode = 124
             if protected_path_snapshot is not None:
@@ -20516,7 +20009,6 @@ class PortalImplementationDaemon:
                         worktree_path=worktree_path,
                         branch_name=branch_name,
                     )
-                    proposal_validation: Any = None
                     try:
                         self._prepare_worktree_for_validation(
                             worktree_path,
@@ -20530,15 +20022,8 @@ class PortalImplementationDaemon:
                             )
                         )
                     else:
-                        validation_result = self._run_clean_candidate_validation(
-                            worktree_path,
-                            task,
-                            log_path,
-                            state=state,
-                            baseline_ref=baseline_ref,
-                        )
-                        if validation_result is None:
-                            proposal_validation = self._validate_implementation_patch(
+                        proposal_validation = (
+                            self._validate_implementation_patch(
                                 worktree_path,
                                 task,
                                 baseline_ref=baseline_ref,
@@ -20546,38 +20031,26 @@ class PortalImplementationDaemon:
                                     seed_replayable_proposal_ids
                                 ),
                             )
-                            validation_result = self._run_validation_commands(
-                                worktree_path,
-                                task,
-                                log_path,
-                                state=state,
+                        )
+                        validation_result = self._run_validation_commands(
+                            worktree_path,
+                            task,
+                            log_path,
+                            state=state,
+                            proposal_validation=proposal_validation,
+                        )
+                        validation_result = (
+                            self._apply_implementation_failure_review(
+                                task=task,
+                                attempt=attempt,
+                                workspace_path=worktree_path,
+                                validation_result=validation_result,
+                                log_path=log_path,
                                 proposal_validation=proposal_validation,
+                                baseline_ref=baseline_ref,
+                                state=state,
                             )
-                            validation_result = (
-                                self._apply_implementation_failure_review(
-                                    task=task,
-                                    attempt=attempt,
-                                    workspace_path=worktree_path,
-                                    validation_result=validation_result,
-                                    log_path=log_path,
-                                    proposal_validation=proposal_validation,
-                                    baseline_ref=baseline_ref,
-                                    state=state,
-                                )
-                            )
-                        elif (
-                            validation_result.get("reason")
-                            == "candidate_changed_during_validation"
-                        ):
-                            validation_result = (
-                                self._run_validation_with_candidate_binding(
-                                    worktree_path,
-                                    task,
-                                    log_path,
-                                    state=state,
-                                    baseline_ref=baseline_ref,
-                                )
-                            )
+                        )
                     protected_path_violation = (
                         self._implementation_protected_path_violation(
                             task=task,
@@ -20596,10 +20069,7 @@ class PortalImplementationDaemon:
                                 protected_path_violation
                             ),
                         }
-                    elif (
-                        proposal_validation is not None
-                        and validation_result.get("passed", False)
-                    ):
+                    elif validation_result.get("passed", False):
                         validation_result = (
                             self._restore_and_verify_post_validation_candidate(
                                 worktree_path,
@@ -20669,49 +20139,11 @@ class PortalImplementationDaemon:
                             )
                             commit_handoff_ready = True
                         elif commit_result.get("reason") == "no_changes":
-                            current_head = self._run_git(
-                                ["rev-parse", "HEAD"],
-                                cwd=worktree_path,
-                            ).stdout.strip()
-                            current_branch = self._git_current_branch(
-                                worktree_path
+                            cleanup_result = self._cleanup_merged_worktree(
+                                worktree_path,
+                                branch_name,
                             )
-                            no_change_guard = (
-                                self._validated_no_change_completion_guard(
-                                    baseline_ref=baseline_ref,
-                                    current_head=current_head,
-                                    expected_branch=branch_name,
-                                    current_branch=current_branch,
-                                    validation_result=validation_result,
-                                    expected_task_id=task.task_id,
-                                    expected_task_cid=self._canonical_ref(task),
-                                    authoritative_no_change_policy_gate=(
-                                        self._take_issued_no_change_policy_gate(
-                                            validation_result
-                                        )
-                                    ),
-                                )
-                            )
-                            commit_result["no_change_guard"] = no_change_guard
-                            if no_change_guard["allowed"]:
-                                cleanup_result = self._cleanup_merged_worktree(
-                                    worktree_path,
-                                    branch_name,
-                                )
-                                commit_handoff_ready = True
-                            else:
-                                validation_result = {
-                                    **validation_result,
-                                    "passed": False,
-                                    "returncode": 1,
-                                    "reason": (
-                                        "validated_candidate_missing_before_commit"
-                                    ),
-                                    "no_change_guard": no_change_guard,
-                                }
-                                timeout_result["reason"] = (
-                                    "validated_candidate_missing_before_commit"
-                                )
+                            commit_handoff_ready = True
                         else:
                             returncode = 1
                             validation_result = {
@@ -20861,19 +20293,6 @@ class PortalImplementationDaemon:
                 isinstance(exc, WorktreeLifecycleError)
                 and not implementation_started
             )
-            submodule_setup_deferral = (
-                isinstance(exc, WorktreeSubmoduleInitializationDeferred)
-                and not implementation_started
-                and not provider_dispatched
-            )
-            dependency_setup_deferral = (
-                isinstance(
-                    exc,
-                    ValidationProjectDependencyPreflightDeferred,
-                )
-                and not implementation_started
-                and not provider_dispatched
-            )
             if protected_path_snapshot is not None and not protected_path_violation:
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
@@ -20891,38 +20310,6 @@ class PortalImplementationDaemon:
                 "branch": branch_name,
                 "phase": state.active_phase or "worktree_setup",
             }
-            if submodule_setup_deferral:
-                exception_result.update(
-                    {
-                        "reason": "worktree_submodule_initialization_failed",
-                        "infrastructure_failure": True,
-                        "failure_kind": (
-                            LifecycleFailureKind.LIFECYCLE_SETUP.value
-                        ),
-                        "provider_call_allowed": False,
-                        "attempt_consumed": False,
-                        "backoff_seconds": int(exc.backoff_seconds),
-                        "failures": [
-                            dict(failure) for failure in exc.failures
-                        ],
-                    }
-                )
-            if dependency_setup_deferral:
-                exception_result.update(
-                    {
-                        "reason": (
-                            "validation_project_dependency_preflight_failed"
-                        ),
-                        "infrastructure_failure": True,
-                        "failure_kind": (
-                            LifecycleFailureKind.LIFECYCLE_SETUP.value
-                        ),
-                        "provider_call_allowed": False,
-                        "attempt_consumed": False,
-                        "backoff_seconds": int(exc.backoff_seconds),
-                        "dependency_preflight": dict(exc.receipt),
-                    }
-                )
             if protected_path_violation:
                 exception_result["reason"] = "implementation_protected_path_mutated"
                 exception_result["protected_path_violation"] = (
@@ -20960,19 +20347,6 @@ class PortalImplementationDaemon:
                         attempt=attempt,
                         exception_result=exception_result,
                     )
-                    if (
-                        submodule_setup_deferral
-                        or dependency_setup_deferral
-                    ):
-                        cleanup_result.update(
-                            {
-                                "failure_kind": (
-                                    LifecycleFailureKind.LIFECYCLE_SETUP.value
-                                ),
-                                "provider_call_allowed": False,
-                                "attempt_consumed": False,
-                            }
-                        )
                 exception_result["cleanup_result"] = cleanup_result
                 if lifecycle_race_exception and lifecycle_record is not None:
                     lifecycle_finalize_result = (
@@ -21006,14 +20380,17 @@ class PortalImplementationDaemon:
                 returncode=returncode,
                 log_path=log_path,
                 failure=provider_failure,
-                command=command,
-                implementation_started_event=(
-                    recorded_implementation_started_event
-                ),
+                implementation_started_event=implementation_started_event,
                 worktree_path=worktree_path,
                 branch_name=branch_name,
                 cleanup_result=cleanup_result,
             )
+
+        grok_quota_verifier_deferred = (
+            not protected_path_violation
+            and provider_failure.get("reason")
+            == "grok_quota_verifier_unavailable"
+        )
 
         finished_at = utc_now()
         protected_mutation_scopes = {
@@ -21038,10 +20415,7 @@ class PortalImplementationDaemon:
             and cleanup_result.get("attempt_consumed") is False
             and cleanup_result.get("provider_call_allowed") is False
             and cleanup_result.get("failure_kind")
-            in {
-                LifecycleFailureKind.LIFECYCLE_RACE.value,
-                LifecycleFailureKind.LIFECYCLE_SETUP.value,
-            }
+            == LifecycleFailureKind.LIFECYCLE_RACE.value
         )
         if lifecycle_setup_deferral:
             active_lifecycle = self._active_worktree_lifecycle
@@ -21065,9 +20439,7 @@ class PortalImplementationDaemon:
             protected_path_external_deferral
             or lifecycle_setup_deferral
             or lifecycle_race_exception
-            or submodule_setup_deferral
-            or dependency_setup_deferral
-            or canonical_task_cancelled
+            or grok_quota_verifier_deferred
         )
         if attempt_consumed:
             self._record_task_attempt(state, task, attempt)
@@ -21096,6 +20468,14 @@ class PortalImplementationDaemon:
             if merge_result.get("queued")
             else str(merge_result.get("stderr") or merge_result.get("reason") or "")
         )
+        if grok_quota_verifier_deferred:
+            self.task_queue.defer(
+                self._canonical_ref(task),
+                GROK_QUOTA_VERIFIER_RETRY_SECONDS,
+                reason="grok_quota_verifier_unavailable",
+            )
+            self.task_queue.save()
+            state.selection_idle_reason = "grok_quota_verifier_unavailable"
         no_change_guard = commit_result.get("no_change_guard") or {}
         no_change_completion = bool(
             not implementation_commit
@@ -21381,12 +20761,6 @@ class PortalImplementationDaemon:
             prior_seed = locals().get("seed_apply")
             if isinstance(prior_seed, Mapping):
                 workspace_setup["prior_attempt_seed"] = dict(prior_seed)
-        if "validation_project_dependency_preflight" not in workspace_setup:
-            dependency_preflight = locals().get("dependency_preflight")
-            if isinstance(dependency_preflight, Mapping):
-                workspace_setup[
-                    "validation_project_dependency_preflight"
-                ] = dict(dependency_preflight)
         result = {
             "task_id": task.task_id,
             "task_cid": self._canonical_ref(task),
@@ -21422,11 +20796,18 @@ class PortalImplementationDaemon:
             )
             result["protected_path_violation"] = protected_path_violation
             result["deferred"] = protected_path_external_deferral
-        if canonical_task_cancelled:
-            result.update(canonical_task_cancellation)
-            result["cancelled"] = True
-            result["attempt_consumed"] = False
-            result.setdefault("reason", "canonical_task_completed")
+        elif grok_quota_verifier_deferred:
+            result.update(
+                {
+                    "reason": "grok_quota_verifier_unavailable",
+                    "deferred": True,
+                    "providers": ["grok"],
+                    "evidence": list(
+                        provider_failure.get("evidence") or []
+                    ),
+                    "backoff_seconds": GROK_QUOTA_VERIFIER_RETRY_SECONDS,
+                }
+            )
         if lifecycle_race_exception:
             result.update(
                 lifecycle_race_result(
@@ -21442,50 +20823,14 @@ class PortalImplementationDaemon:
                     },
                 )
             )
-        if submodule_setup_deferral:
-            result.update(
-                {
-                    "reason": "worktree_submodule_initialization_failed",
-                    "deferred": True,
-                    "infrastructure_failure": True,
-                    "failure_kind": (
-                        LifecycleFailureKind.LIFECYCLE_SETUP.value
-                    ),
-                    "provider_call_allowed": False,
-                    "backoff_seconds": int(
-                        exception_result.get("backoff_seconds") or 30
-                    ),
-                    "submodule_init_failures": [
-                        dict(failure)
-                        for failure in exception_result.get("failures", ())
-                    ],
-                }
-            )
-        if dependency_setup_deferral:
-            result.update(
-                {
-                    "reason": (
-                        "validation_project_dependency_preflight_failed"
-                    ),
-                    "deferred": True,
-                    "infrastructure_failure": True,
-                    "failure_kind": (
-                        LifecycleFailureKind.LIFECYCLE_SETUP.value
-                    ),
-                    "provider_call_allowed": False,
-                    "backoff_seconds": int(
-                        exception_result.get("backoff_seconds")
-                        or PROJECT_DEPENDENCY_PREFLIGHT_BACKOFF_SECONDS
-                    ),
-                    "dependency_preflight": dict(
-                        exception_result.get("dependency_preflight") or {}
-                    ),
-                }
-            )
         result["cache_hit"] = result["workspace_setup"]["cache_hit"]
         result["setup_duration_seconds"] = result["workspace_setup"]["setup_duration_seconds"]
         result["saved_duration_seconds"] = result["workspace_setup"]["saved_duration_seconds"]
-        termination_result = self._implementation_returncode_detail(returncode)
+        termination_result = (
+            {}
+            if grok_quota_verifier_deferred
+            else self._implementation_returncode_detail(returncode)
+        )
         if termination_result:
             result["termination_result"] = termination_result
             self._record_implementation_termination(task, attempt, termination_result)
@@ -21536,28 +20881,6 @@ class PortalImplementationDaemon:
         self._record_event("implementation_finished", result)
         return result
 
-    def _take_issued_no_change_policy_gate(
-        self,
-        validation_result: Mapping[str, Any],
-        *,
-        required: bool = True,
-    ) -> dict[str, Any] | None:
-        """Consume the attempt-local authority for a no-change gate."""
-
-        if not required:
-            return None
-        gate = validation_result.get("no_change_policy_gate")
-        if not isinstance(gate, Mapping):
-            return None
-        gate_id = str(gate.get("gate_id") or "")
-        if not gate_id:
-            return None
-        issued = self._implementation_no_change_policy_gates.pop(
-            gate_id,
-            None,
-        )
-        return dict(issued) if isinstance(issued, Mapping) else None
-
     @staticmethod
     def _validated_no_change_completion_guard(
         *,
@@ -21566,10 +20889,6 @@ class PortalImplementationDaemon:
         expected_branch: str,
         current_branch: str,
         validation_result: Mapping[str, Any],
-        require_no_change_policy_gate: bool = True,
-        expected_task_id: str = "",
-        expected_task_cid: str = "",
-        authoritative_no_change_policy_gate: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         selection = validation_result.get("selection") or {}
         changed_files = (
@@ -21583,176 +20902,6 @@ class PortalImplementationDaemon:
             if str(path).strip()
         ]
         reasons: list[str] = []
-        no_change_policy_gate = validation_result.get(
-            "no_change_policy_gate"
-        )
-        candidate_binding = validation_result.get("candidate_binding")
-        proposal_gate = validation_result.get("proposal_gate")
-        gate_identity_valid = False
-        if isinstance(no_change_policy_gate, Mapping):
-            normalized_gate = dict(no_change_policy_gate)
-            claimed_gate_id = str(normalized_gate.pop("gate_id", "") or "")
-            gate_identity_valid = bool(
-                claimed_gate_id
-                and content_identity(normalized_gate) == claimed_gate_id
-            )
-        if require_no_change_policy_gate:
-            expected_findings = sorted(
-                [
-                    [
-                        "empty_patch",
-                        "patch",
-                        "candidate diff contains no file changes",
-                        "",
-                    ],
-                    [
-                        "missing_required_field",
-                        "structure",
-                        "structured proposal requires operations",
-                        "",
-                    ],
-                    [
-                        "missing_required_field",
-                        "structure",
-                        "structured proposal requires patch_text",
-                        "",
-                    ],
-                ]
-            )
-            empty_fingerprint = "sha256:" + hashlib.sha256(
-                b"[]"
-            ).hexdigest()
-            if (
-                not isinstance(no_change_policy_gate, Mapping)
-                or no_change_policy_gate.get("accepted") is not True
-                or not str(no_change_policy_gate.get("gate_id") or "")
-                or not str(
-                    no_change_policy_gate.get("proposal_receipt_id") or ""
-                )
-            ):
-                reasons.append("no_change_policy_gate_missing")
-            else:
-                semantic_gate_valid = bool(
-                    no_change_policy_gate.get("schema")
-                    == (
-                        "ipfs_accelerate_py.agent_supervisor/"
-                        "no-change-candidate-policy-gate@1"
-                    )
-                    and no_change_policy_gate.get("proposal_accepted") is False
-                    and list(
-                        no_change_policy_gate.get("changed_paths") or []
-                    )
-                    == []
-                    and list(
-                        no_change_policy_gate.get("actual_findings") or []
-                    )
-                    == expected_findings
-                    and list(
-                        no_change_policy_gate.get("expected_findings") or []
-                    )
-                    == expected_findings
-                    and str(
-                        no_change_policy_gate.get("candidate_fingerprint")
-                        or ""
-                    )
-                    == empty_fingerprint
-                    and str(
-                        no_change_policy_gate.get("repository_tree_id") or ""
-                    )
-                    == baseline_ref
-                    and str(
-                        no_change_policy_gate.get("baseline_id") or ""
-                    )
-                    == baseline_ref
-                    and not str(
-                        no_change_policy_gate.get(
-                            "proposal_collection_error"
-                        )
-                        or ""
-                    )
-                    and str(
-                        no_change_policy_gate.get("validation_plan_id") or ""
-                    )
-                    and str(
-                        no_change_policy_gate.get(
-                            "expected_output_preflight_id"
-                        )
-                        or ""
-                    )
-                    and (
-                        not expected_task_id
-                        or str(
-                            no_change_policy_gate.get("task_id") or ""
-                        )
-                        == expected_task_id
-                    )
-                    and (
-                        not expected_task_cid
-                        or str(
-                            no_change_policy_gate.get(
-                                "canonical_task_cid"
-                            )
-                            or ""
-                        )
-                        == expected_task_cid
-                    )
-                )
-                if not gate_identity_valid:
-                    reasons.append(
-                        "no_change_policy_gate_identity_mismatch"
-                    )
-                if not semantic_gate_valid:
-                    reasons.append(
-                        "no_change_policy_gate_authority_mismatch"
-                    )
-                if (
-                    not isinstance(
-                        authoritative_no_change_policy_gate,
-                        Mapping,
-                    )
-                    or dict(authoritative_no_change_policy_gate)
-                    != dict(no_change_policy_gate)
-                ):
-                    reasons.append(
-                        "no_change_policy_gate_not_issued_for_attempt"
-                    )
-            if (
-                not isinstance(proposal_gate, Mapping)
-                or proposal_gate.get("accepted") is not False
-                or list(proposal_gate.get("changed_paths") or []) != []
-                or sorted(
-                    str(code)
-                    for code in (
-                        proposal_gate.get("reason_codes") or []
-                    )
-                )
-                != ["empty_patch", "missing_required_field"]
-                or not isinstance(no_change_policy_gate, Mapping)
-                or str(proposal_gate.get("proposal_id") or "")
-                != str(no_change_policy_gate.get("proposal_id") or "")
-                or str(proposal_gate.get("policy_id") or "")
-                != str(no_change_policy_gate.get("policy_id") or "")
-                or str(proposal_gate.get("receipt_id") or "")
-                != str(
-                    no_change_policy_gate.get("proposal_receipt_id") or ""
-                )
-                or str(proposal_gate.get("repository_tree_id") or "")
-                != baseline_ref
-            ):
-                reasons.append("no_change_proposal_gate_mismatch")
-            if (
-                not isinstance(candidate_binding, Mapping)
-                or candidate_binding.get("verified") is not True
-                or str(
-                    candidate_binding.get("expected_fingerprint") or ""
-                )
-                != empty_fingerprint
-                or str(
-                    candidate_binding.get("current_fingerprint") or ""
-                )
-                != empty_fingerprint
-            ):
-                reasons.append("no_change_candidate_binding_missing")
         if normalized_changed_files:
             reasons.append("validated_diff_disappeared")
         if baseline_ref and current_head != baseline_ref:
@@ -21767,18 +20916,6 @@ class PortalImplementationDaemon:
             "expected_branch": expected_branch,
             "current_branch": current_branch,
             "validated_changed_files": normalized_changed_files,
-            "no_change_policy_gate_id": (
-                str(no_change_policy_gate.get("gate_id") or "")
-                if isinstance(no_change_policy_gate, Mapping)
-                else ""
-            ),
-            "proposal_receipt_id": (
-                str(
-                    no_change_policy_gate.get("proposal_receipt_id") or ""
-                )
-                if isinstance(no_change_policy_gate, Mapping)
-                else ""
-            ),
         }
 
     def _missing_validation_workspace_result(
@@ -23354,14 +22491,6 @@ class PortalImplementationDaemon:
                     validation = self._validate_submodule_init(target, relative)
                     if not validation.get("valid"):
                         init_failures.append(validation)
-                else:
-                    init_failures.append(
-                        {
-                            "valid": False,
-                            "path": relative,
-                            "reason": "local_submodule_worktree_invalid",
-                        }
-                    )
                 continue
             target = worktree_path / relative
             if self._is_git_worktree(target):
@@ -23373,37 +22502,8 @@ class PortalImplementationDaemon:
                 # Initialize exactly the configured dependency. Recursing here
                 # can follow repository cycles (datasets -> kit -> accelerate
                 # -> datasets) and fail on unrelated, deeply nested gitlinks.
-                # A failed dependency fetch is an expected, retryable setup
-                # outcome.  Do not route it through ``_run_git``, whose
-                # contract raises before we can persist bounded evidence and
-                # classify the failure as pre-provider infrastructure.
-                result = subprocess.run(
-                    [
-                        "git",
-                        "submodule",
-                        "update",
-                        "--init",
-                        "--",
-                        relative,
-                    ],
-                    cwd=worktree_path,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-                if result.returncode != 0:
-                    init_failures.append(
-                        {
-                            "valid": False,
-                            "path": relative,
-                            "reason": "submodule_update_failed",
-                            "returncode": int(result.returncode),
-                            "stderr_sha256": hashlib.sha256(
-                                str(result.stderr or "").encode("utf-8")
-                            ).hexdigest(),
-                        }
-                    )
-                elif self._is_git_worktree(target):
+                result = self._run_git(["submodule", "update", "--init", "--", relative], cwd=worktree_path)
+                if self._is_git_worktree(target):
                     self._initialize_nested_worktree_submodules(
                         target,
                         branch_name=branch_name,
@@ -23413,26 +22513,13 @@ class PortalImplementationDaemon:
                     validation = self._validate_submodule_init(target, relative)
                     if not validation.get("valid"):
                         init_failures.append(validation)
-                else:
-                    init_failures.append(
-                        {
-                            "valid": False,
-                            "path": relative,
-                            "reason": "submodule_update_target_invalid",
-                            "returncode": int(result.returncode),
-                            "stderr_sha256": hashlib.sha256(
-                                str(result.stderr or "").encode("utf-8")
-                            ).hexdigest(),
-                        }
-                    )
-                continue
-            init_failures.append(
-                {
-                    "valid": False,
-                    "path": relative,
-                    "reason": "configured_submodule_not_declared",
-                }
-            )
+                elif result.returncode != 0:
+                    init_failures.append({
+                        "valid": False,
+                        "path": relative,
+                        "reason": "submodule_update_failed",
+                        "stderr": result.stderr[-1000:] if hasattr(result, "stderr") else "",
+                    })
         if init_failures:
             self._record_event("worktree_submodule_init_failures", {
                 "worktree_path": str(worktree_path),
@@ -23440,7 +22527,6 @@ class PortalImplementationDaemon:
                 "failures": init_failures,
                 "failure_count": len(init_failures),
             })
-            raise WorktreeSubmoduleInitializationDeferred(init_failures)
 
     def _validate_submodule_init(self, target: Path, relative: str) -> dict[str, Any]:
         """Validate that a submodule was properly initialized in a worktree."""
@@ -26132,8 +25218,11 @@ class PortalImplementationDaemon:
     def _proposal_scope_paths(task: PortalTask) -> tuple[str, ...]:
         """Return exact repository paths owned by a task's output declaration."""
 
-        raw_paths: list[str] = list(task_declared_output_paths(task))
-        for metadata_name in ("predicted files", "allowed paths"):
+        raw_paths: list[str] = [
+            *task_declared_output_paths(task),
+            *task_additional_allowed_paths(task),
+        ]
+        for metadata_name in ("predicted files",):
             raw_paths.extend(split_csv(task.metadata.get(metadata_name, "")))
         normalized: set[str] = set()
         for raw_path in raw_paths:
@@ -26939,9 +26028,8 @@ class PortalImplementationDaemon:
         set, that set must remain inside the task-owned scope, and requested
         ceilings cannot exceed the daemon's immutable process bounds. The
         resulting policy uses measured sizes, not the looser declared
-        ceilings. Schema v2 may authorize binary material and schema v3 may
-        additionally authorize archives, but only after exact changed-path
-        equality and immutable task-scope checks below.
+        ceilings, and does not enable generated, binary, archive, or other
+        content exemptions.
         """
 
         defaults = {
@@ -27136,7 +26224,6 @@ class PortalImplementationDaemon:
             <= DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
             and largest_file_bytes
             <= MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
-            and not declared_artifact_envelope
         ):
             if (
                 materialized_bytes
@@ -27188,29 +26275,18 @@ class PortalImplementationDaemon:
         }
         if envelope_schema == PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA:
             expected_fields.add("allow_binary")
-        if envelope_schema == PROPOSAL_BINARY_ARCHIVE_ARTIFACT_ENVELOPE_SCHEMA:
-            expected_fields.update(("allow_binary", "allow_archives"))
         if type(envelope) is not dict or set(envelope) != expected_fields:
             return defaults
         if envelope_schema not in {
             PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA,
             PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA,
-            PROPOSAL_BINARY_ARCHIVE_ARTIFACT_ENVELOPE_SCHEMA,
         }:
             return defaults
         allow_binary = False
-        allow_archives = False
-        if envelope_schema in {
-            PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA,
-            PROPOSAL_BINARY_ARCHIVE_ARTIFACT_ENVELOPE_SCHEMA,
-        }:
+        if envelope_schema == PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA:
             if type(envelope.get("allow_binary")) is not bool:
                 return defaults
             allow_binary = envelope["allow_binary"]
-        if envelope_schema == PROPOSAL_BINARY_ARCHIVE_ARTIFACT_ENVELOPE_SCHEMA:
-            if type(envelope.get("allow_archives")) is not bool:
-                return defaults
-            allow_archives = envelope["allow_archives"]
 
         raw_paths = envelope.get("paths")
         if type(raw_paths) is not list or not raw_paths:
@@ -27319,12 +26395,18 @@ class PortalImplementationDaemon:
         return {
             **measured_limits,
             "allow_binary": allow_binary,
-            "allow_archives": allow_archives,
         }
 
-    def _consumed_proposal_ids(self, *, limit: int = 256) -> tuple[str, ...]:
+    @staticmethod
+    def _consumed_proposal_ids_from_events(
+        events: Sequence[Mapping[str, Any]],
+        *,
+        limit: int = 256,
+    ) -> tuple[str, ...]:
+        """Project the bounded proposal population consumed by ``events``."""
+
         consumed: list[str] = []
-        for event in reversed(list(self._iter_events())):
+        for event in reversed(events):
             if event.get("type") != "implementation_proposal_validated":
                 continue
             proposal_id = str(event.get("proposal_id") or "").strip()
@@ -27333,6 +26415,163 @@ class PortalImplementationDaemon:
                 if len(consumed) >= limit:
                     break
         return tuple(sorted(consumed))
+
+    def _consumed_proposal_ids(self, *, limit: int = 256) -> tuple[str, ...]:
+        return self._consumed_proposal_ids_from_events(
+            list(self._iter_events()),
+            limit=limit,
+        )
+
+    def _reconciliation_accepted_proposal_context(
+        self,
+        *,
+        task: PortalTask,
+        branch_name: str,
+        baseline_ref: str,
+    ) -> dict[str, Any]:
+        """Recover accepted receipts owned by one implementation branch.
+
+        Proposal events intentionally persist only compact, content-addressed
+        bindings.  The surrounding ``implementation_started`` event supplies
+        the branch and canonical task identity needed to associate those
+        receipts with a crash-recovery candidate.  Callers still rederive the
+        complete proposal, policy, and receipt and must match these bindings
+        exactly before an accepted receipt can be reused.
+        """
+
+        normalized_branch = str(branch_name or "").strip().removeprefix(
+            "refs/heads/"
+        )
+        normalized_baseline = str(baseline_ref or "").strip()
+        if not normalized_branch or not normalized_baseline:
+            return {
+                "segment_found": False,
+                "segment_mismatches": ("reconciliation_context",),
+                "accepted_receipts": (),
+            }
+
+        events = list(self._iter_events())
+        start_index = -1
+        for index, event in enumerate(events):
+            if event.get("type") != "implementation_started":
+                continue
+            event_branch = str(event.get("branch") or "").strip().removeprefix(
+                "refs/heads/"
+            )
+            if (
+                str(event.get("task_id") or "").strip() == task.task_id
+                and event_branch == normalized_branch
+            ):
+                # Branch names are attempt-unique.  Prefer the latest exact
+                # start if an imported event stream contains a duplicate.
+                start_index = index
+        if start_index < 0:
+            return {
+                "segment_found": False,
+                "segment_mismatches": (),
+                "accepted_receipts": (),
+            }
+
+        end_index = len(events)
+        for index in range(start_index + 1, len(events)):
+            if events[index].get("type") == "implementation_started":
+                end_index = index
+                break
+
+        identity = self._identity_for_task(task)
+        start = events[start_index]
+        expected_identity = {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "board_namespace": identity.board_namespace,
+        }
+        # Prefer identity bindings from the implementation_started event when
+        # they are present; proposal events historically omit them when the
+        # in-memory identity map was not yet registered.
+        start_identity = {
+            name: (
+                str(start.get(name) or "").strip()
+                or expected
+            )
+            for name, expected in expected_identity.items()
+        }
+        segment_mismatches = {
+            name
+            for name, expected in expected_identity.items()
+            if start_identity[name] != expected
+        }
+        if str(start.get("baseline_ref") or "").strip() != normalized_baseline:
+            segment_mismatches.add("repository_tree_id")
+
+        accepted_receipts: list[dict[str, Any]] = []
+        for index in range(start_index + 1, end_index):
+            event = events[index]
+            if (
+                event.get("type") != "implementation_proposal_validated"
+                or event.get("accepted") is not True
+                or str(event.get("task_id") or "").strip() != task.task_id
+            ):
+                continue
+            # Proposal events bind task_id always; other identity fields may be
+            # absent on older or map-less writers.  Inherit the segment start
+            # identity so exact receipt replay remains possible.
+            event_identity = {
+                name: (
+                    str(event.get(name) or "").strip()
+                    or start_identity[name]
+                )
+                for name in expected_identity
+            }
+            event_mismatches = {
+                name
+                for name, expected in expected_identity.items()
+                if event_identity[name] != expected
+            }
+            required_bindings = (
+                "proposal_id",
+                "policy_id",
+                "receipt_id",
+                "repository_tree_id",
+            )
+            event_mismatches.update(
+                name
+                for name in required_bindings
+                if not str(event.get(name) or "").strip()
+            )
+            raw_changed_paths = event.get("changed_paths")
+            if not isinstance(raw_changed_paths, list) or any(
+                not isinstance(path, str) or not path.strip()
+                for path in raw_changed_paths
+            ):
+                event_mismatches.add("changed_paths")
+                changed_paths: tuple[str, ...] = ()
+            else:
+                changed_paths = tuple(sorted(set(raw_changed_paths)))
+                if tuple(raw_changed_paths) != changed_paths:
+                    event_mismatches.add("changed_paths")
+            accepted_receipts.append(
+                {
+                    "event_id": str(event.get("event_id") or "").strip(),
+                    "proposal_id": str(event.get("proposal_id") or "").strip(),
+                    "policy_id": str(event.get("policy_id") or "").strip(),
+                    "receipt_id": str(event.get("receipt_id") or "").strip(),
+                    "repository_tree_id": str(
+                        event.get("repository_tree_id") or ""
+                    ).strip(),
+                    "changed_paths": changed_paths,
+                    "consumed_proposal_ids": (
+                        self._consumed_proposal_ids_from_events(events[:index])
+                    ),
+                    "mismatches": tuple(sorted(event_mismatches)),
+                }
+            )
+
+        return {
+            "segment_found": True,
+            "segment_mismatches": tuple(sorted(segment_mismatches)),
+            "accepted_receipts": tuple(accepted_receipts),
+        }
 
     @staticmethod
     def _terminal_reconciliation_security_failure(
@@ -27928,87 +27167,6 @@ class PortalImplementationDaemon:
         )
         return relative in records
 
-    def _proposal_expected_output_git_location(
-        self,
-        workspace_path: Path,
-        relative: str,
-    ) -> tuple[Path, str, str] | None:
-        """Resolve the verified Git owner for one exact expected output.
-
-        The superproject owns a configured submodule's gitlink, but the child
-        repository owns every strict descendant.  Running ignore or index
-        queries for a child path in the superproject can therefore apply an
-        unrelated parent ignore rule and reject a valid proposal.  Route only
-        explicitly configured, initialized, stage-zero gitlinks to their
-        exact child worktree; an unverifiable managed boundary fails closed.
-        """
-
-        if not self._repo_relative_path_safe(relative):
-            return None
-        configured_paths = tuple(
-            sorted(
-                {
-                    str(path).strip("/")
-                    for path in self.worktree_submodule_paths
-                    if str(path).strip("/")
-                    and self._repo_relative_path_safe(
-                        str(path).strip("/")
-                    )
-                },
-                key=lambda path: (-len(PurePosixPath(path).parts), path),
-            )
-        )
-        submodule_path = next(
-            (
-                path
-                for path in configured_paths
-                if relative.startswith(f"{path}/")
-            ),
-            "",
-        )
-        if not submodule_path:
-            # The parent index owns root files and exact gitlink paths.
-            return workspace_path, relative, ""
-
-        child_relative = relative[len(submodule_path) + 1 :]
-        if (
-            not child_relative
-            or not self._repo_relative_path_safe(child_relative)
-            or self._path_crosses_live_symlink(
-                workspace_path,
-                submodule_path,
-            )
-        ):
-            return None
-        try:
-            # A configured directory is not sufficient authority: it must be
-            # the exact stage-zero gitlink recorded by the superproject.
-            self._proposal_index_gitlink_ref(
-                workspace_path,
-                submodule_path,
-            )
-        except (OSError, RuntimeError, UnicodeError, ValueError):
-            return None
-
-        child_root = workspace_path.joinpath(
-            *PurePosixPath(submodule_path).parts
-        )
-        if child_root.is_symlink() or not self._is_git_worktree(child_root):
-            return None
-        try:
-            workspace_root = workspace_path.resolve(strict=True)
-            resolved_child_root = child_root.resolve(strict=True)
-            resolved_child_root.relative_to(workspace_root)
-            target = child_root.joinpath(
-                *PurePosixPath(child_relative).parts
-            )
-            target.resolve(
-                strict=target.exists() or target.is_symlink()
-            ).relative_to(resolved_child_root)
-        except (OSError, RuntimeError, ValueError):
-            return None
-        return child_root, child_relative, submodule_path
-
     @staticmethod
     def _path_crosses_live_symlink(
         workspace_path: Path,
@@ -28052,7 +27210,6 @@ class PortalImplementationDaemon:
         )
         default_forbidden = (".git", ".git/", ".env", ".ssh/")
         checks: list[dict[str, Any]] = []
-        git_locations: dict[str, tuple[Path, str, str]] = {}
 
         for relative in expected_paths:
             target = workspace_path / relative
@@ -28062,54 +27219,35 @@ class PortalImplementationDaemon:
                 baseline_ref=baseline_ref,
                 relative=relative,
             )
-            git_location = self._proposal_expected_output_git_location(
+            indexed = self._exact_path_is_indexed(
                 workspace_path,
                 relative,
             )
-            git_owner_valid = git_location is not None
-            if git_location is None:
-                git_root = workspace_path
-                git_relative = relative
-                git_repository = ""
-                indexed = False
-                ignored = False
-                ignore_check_succeeded = False
-            else:
-                git_root, git_relative, git_repository = git_location
-                git_locations[relative] = git_location
-                indexed = self._exact_path_is_indexed(
-                    git_root,
-                    git_relative,
+            ignored_result = subprocess.run(
+                [
+                    "git",
+                    "check-ignore",
+                    "--no-index",
+                    "-z",
+                    "--stdin",
+                ],
+                cwd=workspace_path,
+                input=relative.encode(
+                    "utf-8",
+                    errors="surrogateescape",
                 )
-                ignored_result = subprocess.run(
-                    [
-                        "git",
-                        "check-ignore",
-                        "--no-index",
-                        "-z",
-                        "--stdin",
-                    ],
-                    cwd=git_root,
-                    input=git_relative.encode(
-                        "utf-8",
-                        errors="surrogateescape",
-                    )
-                    + b"\0",
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    check=False,
-                )
-                ignored = ignored_result.returncode == 0
-                ignore_check_succeeded = (
-                    ignored_result.returncode in {0, 1}
-                )
+                + b"\0",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            ignored = ignored_result.returncode == 0
             protected = any(
                 self._path_matches_scope(relative, path)
                 for path in protected_paths
             )
             forbidden = any(
                 self._path_matches_scope(relative, path)
-                or self._path_matches_scope(git_relative, path)
                 for path in default_forbidden
             )
             submodule_bound = any(
@@ -28137,14 +27275,11 @@ class PortalImplementationDaemon:
 
             if not exists:
                 issue = EXPECTED_OUTPUT_MISSING
-            elif submodule_bound and not git_owner_valid:
-                issue = EXPECTED_OUTPUT_FORCE_ADD_FORBIDDEN
-            elif not ignore_check_succeeded:
-                issue = EXPECTED_OUTPUT_FORCE_ADD_FAILED
             elif force_stage_required:
                 if (
                     protected
                     or forbidden
+                    or submodule_bound
                     or symlink_bound
                     or not in_scope
                     or not regular_file
@@ -28159,9 +27294,9 @@ class PortalImplementationDaemon:
                             "add",
                             "--force",
                             "--",
-                            git_relative,
+                            relative,
                         ],
-                        cwd=git_root,
+                        cwd=workspace_path,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         check=False,
@@ -28169,8 +27304,8 @@ class PortalImplementationDaemon:
                     force_stage_succeeded = bool(
                         staged.returncode == 0
                         and self._exact_path_is_indexed(
-                            git_root,
-                            git_relative,
+                            workspace_path,
+                            relative,
                         )
                     )
                     if not force_stage_succeeded:
@@ -28179,14 +27314,10 @@ class PortalImplementationDaemon:
             checks.append(
                 {
                     "path": relative,
-                    "repository": git_repository or ".",
-                    "tracked_path": git_relative,
                     "exists": exists,
                     "baseline_present": baseline_present,
                     "indexed_before": indexed,
                     "ignored": ignored,
-                    "ignore_check_succeeded": ignore_check_succeeded,
-                    "git_owner_valid": git_owner_valid,
                     "in_scope": in_scope,
                     "protected": protected,
                     "forbidden": forbidden,
@@ -28202,41 +27333,17 @@ class PortalImplementationDaemon:
             )
 
         staged_paths = set(self._staged_worktree_paths(workspace_path))
-        staged_by_git_root: dict[Path, set[str]] = {
-            workspace_path: set(staged_paths)
-        }
-        for git_root, _git_relative, git_repository in git_locations.values():
-            if git_root not in staged_by_git_root:
-                staged_by_git_root[git_root] = set(
-                    self._staged_worktree_paths(git_root)
-                )
-            if git_repository:
-                staged_paths.update(
-                    f"{git_repository}/{path}"
-                    for path in staged_by_git_root[git_root]
-                )
         for check in checks:
             relative = str(check["path"])
-            git_location = git_locations.get(relative)
-            indexed_after = False
-            if git_location is not None:
-                git_root, git_relative, _git_repository = git_location
-                check["staged"] = (
-                    git_relative
-                    in staged_by_git_root.get(git_root, set())
-                )
-                indexed_after = self._exact_path_is_indexed(
-                    git_root,
-                    git_relative,
-                )
-            else:
-                check["staged"] = False
-            check["indexed_after"] = indexed_after
+            check["staged"] = relative in staged_paths
             if (
                 check["force_stage_required"]
                 and (
                     not check["staged"]
-                    or not indexed_after
+                    or not self._exact_path_is_indexed(
+                        workspace_path,
+                        relative,
+                    )
                 )
                 and not check["issue"]
             ):
@@ -28418,9 +27525,9 @@ class PortalImplementationDaemon:
         *,
         baseline_ref: str,
         replayable_consumed_proposal_ids: Sequence[str] = (),
+        reconciliation_branch_name: str = "",
         record_event: bool = True,
         allow_scope_adjudication: bool = True,
-        diagnostics: dict[str, Any] | None = None,
     ) -> Any:
         """Validate a candidate patch before task validation is dispatched."""
 
@@ -28451,9 +27558,6 @@ class PortalImplementationDaemon:
             task,
             workspace_path=workspace_path,
             baseline_ref=baseline_ref,
-        )
-        scope_expansion_policy, task_allows_scope_expansion = (
-            task_scope_expansion_policy(task)
         )
         scope_paths = self._proposal_scope_paths(task)
         # A missing output declaration grants no mutation authority.
@@ -28674,13 +27778,7 @@ class PortalImplementationDaemon:
                 }
             },
         }
-        if local_envelope_limits.get("allow_binary") is True:
-            local_policy_limits["allow_binary"] = True
-        if local_envelope_limits.get("allow_archives") is True:
-            local_policy_limits["allow_archives"] = True
         policy_version = "strict-proposal-v2+local-envelope-v2"
-        if not task_allows_scope_expansion:
-            policy_version += "+exact-task-scope-v1"
         if local_envelope_limits.get("bounded_size_reduction"):
             policy_version += "+bounded-size-reduction-v1"
         policy_allowed_paths = allowed_paths
@@ -28700,12 +27798,11 @@ class PortalImplementationDaemon:
             declared_artifact_envelope
             and "max_file_bytes" in local_envelope_limits
         ):
-            if local_envelope_limits.get("allow_archives"):
-                policy_version += "+declared-binary-archive-artifact-envelope-v3"
-            elif local_envelope_limits.get("allow_binary"):
-                policy_version += "+declared-binary-artifact-envelope-v2"
-            else:
-                policy_version += "+declared-artifact-envelope-v1"
+            policy_version += (
+                "+declared-binary-artifact-envelope-v2"
+                if local_envelope_limits.get("allow_binary")
+                else "+declared-artifact-envelope-v1"
+            )
             # The envelope helper admitted only exact set equality between
             # these changed paths and the identity-bound task outputs.
             policy_allowed_paths = changed_paths
@@ -28714,6 +27811,96 @@ class PortalImplementationDaemon:
             for proposal_id in replayable_consumed_proposal_ids
             if str(proposal_id).strip()
         }
+        accepted_replay_binding: Mapping[str, Any] | None = None
+        accepted_replay_receipts: tuple[Mapping[str, Any], ...] = ()
+        reconciliation_replay_mismatch_fields: set[str] = set()
+        if str(reconciliation_branch_name or "").strip():
+            replay_context = self._reconciliation_accepted_proposal_context(
+                task=task,
+                branch_name=reconciliation_branch_name,
+                baseline_ref=authority["repository_tree_id"],
+            )
+            raw_receipts = replay_context.get("accepted_receipts") or ()
+            if isinstance(raw_receipts, Sequence) and not isinstance(
+                raw_receipts,
+                (str, bytes, bytearray),
+            ):
+                accepted_replay_receipts = tuple(
+                    receipt
+                    for receipt in raw_receipts
+                    if isinstance(receipt, Mapping)
+                )
+            segment_mismatches = {
+                str(name).strip()
+                for name in (
+                    replay_context.get("segment_mismatches") or ()
+                )
+                if str(name).strip()
+            }
+            for binding in accepted_replay_receipts:
+                binding_mismatches = {
+                    *segment_mismatches,
+                    *(
+                        str(name).strip()
+                        for name in (binding.get("mismatches") or ())
+                        if str(name).strip()
+                    ),
+                }
+                if (
+                    str(binding.get("proposal_id") or "")
+                    != proposal.proposal_id
+                ):
+                    binding_mismatches.add("proposal_id")
+                if (
+                    str(binding.get("repository_tree_id") or "")
+                    != proposal.repository_tree_id
+                ):
+                    binding_mismatches.add("repository_tree_id")
+                if tuple(binding.get("changed_paths") or ()) != (
+                    proposal.changed_paths
+                ):
+                    binding_mismatches.add("changed_paths")
+                if not binding_mismatches and accepted_replay_binding is None:
+                    # Iteration order is durable event order, so this binds the
+                    # first accepted receipt for the exact proposal body.
+                    accepted_replay_binding = binding
+                reconciliation_replay_mismatch_fields.update(
+                    binding_mismatches
+                )
+
+        current_consumed_proposal_ids = self._consumed_proposal_ids()
+        if accepted_replay_binding is not None:
+            policy_consumed_proposal_ids = tuple(
+                str(proposal_id).strip()
+                for proposal_id in (
+                    accepted_replay_binding.get("consumed_proposal_ids") or ()
+                )
+                if str(proposal_id).strip()
+            )
+        elif accepted_replay_receipts:
+            # The implementation branch has an accepted receipt, but the
+            # current body/tree/task projection does not bind it exactly.  Add
+            # the current proposal identity to the consumed set so the normal
+            # validator emits the existing fail-closed replay finding rather
+            # than silently admitting a different proposal.
+            policy_consumed_proposal_ids = tuple(
+                sorted(
+                    {
+                        *current_consumed_proposal_ids,
+                        proposal.proposal_id,
+                    }
+                )
+            )
+            if not reconciliation_replay_mismatch_fields:
+                reconciliation_replay_mismatch_fields.add(
+                    "accepted_receipt_binding"
+                )
+        else:
+            policy_consumed_proposal_ids = tuple(
+                proposal_id
+                for proposal_id in current_consumed_proposal_ids
+                if proposal_id not in replayable_proposal_ids
+            )
         policy = ProposalValidationPolicy(
             allowed_paths=policy_allowed_paths,
             task_owned_paths=allowed_paths,
@@ -28725,11 +27912,7 @@ class PortalImplementationDaemon:
             expected_context_id=authority["context_id"],
             expected_baseline_id=authority["baseline_id"],
             expected_replay_nonce=replay_nonce,
-            consumed_proposal_ids=tuple(
-                proposal_id
-                for proposal_id in self._consumed_proposal_ids()
-                if proposal_id not in replayable_proposal_ids
-            ),
+            consumed_proposal_ids=policy_consumed_proposal_ids,
             symlink_paths=symlink_paths,
             submodule_paths=submodule_paths,
             protected_paths=tuple(self.implementation_protected_paths),
@@ -28744,6 +27927,51 @@ class PortalImplementationDaemon:
             result,
             expected_output_issues,
         )
+        accepted_receipt_reused = False
+        if accepted_replay_binding is not None:
+            original_policy_id = str(
+                accepted_replay_binding.get("policy_id") or ""
+            )
+            original_receipt_id = str(
+                accepted_replay_binding.get("receipt_id") or ""
+            )
+            accepted_receipt_reused = bool(
+                result.accepted
+                and result.policy.policy_id == original_policy_id
+                and result.receipt.receipt_id == original_receipt_id
+            )
+            if not accepted_receipt_reused:
+                if result.policy.policy_id != original_policy_id:
+                    reconciliation_replay_mismatch_fields.add("policy_id")
+                if result.receipt.receipt_id != original_receipt_id:
+                    reconciliation_replay_mismatch_fields.add("receipt_id")
+                if not result.accepted:
+                    reconciliation_replay_mismatch_fields.add("accepted")
+                denial_policy_payload = policy.to_dict()
+                denial_policy_payload.update(
+                    {
+                        "consumed_proposal_ids": tuple(
+                            sorted(
+                                {
+                                    *current_consumed_proposal_ids,
+                                    proposal.proposal_id,
+                                }
+                            )
+                        ),
+                        "policy_id": "",
+                    }
+                )
+                policy = ProposalValidationPolicy.from_dict(
+                    denial_policy_payload
+                )
+                result = validate_implementation_proposal(
+                    proposal,
+                    policy=policy,
+                )
+                result = self._reject_proposal_for_expected_output_issues(
+                    result,
+                    expected_output_issues,
+                )
         finding_codes = tuple(
             sorted(
                 {
@@ -28754,7 +27982,6 @@ class PortalImplementationDaemon:
         )
         if (
             allow_scope_adjudication
-            and task_allows_scope_expansion
             and not result.accepted
             and finding_codes
             == (ProposalFindingCode.PATH_OUTSIDE_SCOPE.value,)
@@ -28851,19 +28078,6 @@ class PortalImplementationDaemon:
                 else ""
             ),
         )
-        if diagnostics is not None:
-            diagnostics.clear()
-            diagnostics.update(
-                {
-                    "collection_error": collection_error,
-                    "changed_paths": list(changed_paths),
-                    "submodule_expansion_count": len(
-                        submodule_expansions
-                    ),
-                    "scope_expansion_policy": scope_expansion_policy,
-                    "scope_expansion_allowed": task_allows_scope_expansion,
-                }
-            )
         if record_event:
             self._record_event(
                 "implementation_expected_outputs_checked",
@@ -28890,14 +28104,41 @@ class PortalImplementationDaemon:
                     "completion_authoritative": False,
                 },
             )
+            proposal_event_payload = {
+                "task_id": task.task_id,
+                **compact,
+            }
+            if accepted_receipt_reused:
+                proposal_event_payload.update(
+                    {
+                        "original_event_id": str(
+                            accepted_replay_binding.get("event_id") or ""
+                        ),
+                        "original_policy_id": str(
+                            accepted_replay_binding.get("policy_id") or ""
+                        ),
+                        "original_receipt_id": str(
+                            accepted_replay_binding.get("receipt_id") or ""
+                        ),
+                        "idempotent_reconciliation_replay": True,
+                    }
+                )
+                proposal_event_type = (
+                    "implementation_proposal_receipt_reused"
+                )
+            else:
+                if accepted_replay_receipts:
+                    proposal_event_payload[
+                        "reconciliation_replay_mismatch_fields"
+                    ] = sorted(reconciliation_replay_mismatch_fields)
+                proposal_event_type = (
+                    "implementation_proposal_validated"
+                    if result.accepted
+                    else "implementation_proposal_rejected"
+                )
             self._record_event(
-                "implementation_proposal_validated"
-                if result.accepted
-                else "implementation_proposal_rejected",
-                {
-                    "task_id": task.task_id,
-                    **compact,
-                },
+                proposal_event_type,
+                proposal_event_payload,
             )
         return result
 
@@ -29642,410 +28883,6 @@ class PortalImplementationDaemon:
             "error": "proposal_candidate_binding_failed",
         }
 
-    @staticmethod
-    def _no_change_candidate_policy_gate(
-        proposal_validation: Any,
-        *,
-        candidate_fingerprint: str,
-        canonical_task_cid: str,
-        expected_output_preflight_id: str,
-        proposal_diagnostics: Mapping[str, Any],
-    ) -> dict[str, Any]:
-        """Bind an empty candidate to the ordinary proposal policy receipt.
-
-        The strict proposal contract intentionally rejects an empty patch.  An
-        already-satisfied task may nevertheless run its declared validation,
-        but only after every *other* proposal gate has passed.  Keep the
-        proposal rejected and issue a separate, content-addressed gate that
-        admits exactly the structural findings inherent to an empty diff.
-        """
-
-        from ..validation.proposal_validation import (
-            ProposalFindingCode,
-            ProposalGate,
-        )
-
-        proposal = getattr(proposal_validation, "proposal", None)
-        policy = getattr(proposal_validation, "policy", None)
-        receipt = getattr(proposal_validation, "receipt", None)
-        findings = tuple(
-            getattr(proposal_validation, "findings", ()) or ()
-        )
-        actual_findings = tuple(
-            sorted(
-                (
-                    str(
-                        getattr(
-                            getattr(finding, "code", ""),
-                            "value",
-                            getattr(finding, "code", ""),
-                        )
-                        or ""
-                    ),
-                    str(
-                        getattr(
-                            getattr(finding, "gate", ""),
-                            "value",
-                            getattr(finding, "gate", ""),
-                        )
-                        or ""
-                    ),
-                    str(getattr(finding, "message", "") or ""),
-                    str(getattr(finding, "path", "") or ""),
-                )
-                for finding in findings
-            )
-        )
-        expected_findings = tuple(
-            sorted(
-                (
-                    (
-                        ProposalFindingCode.EMPTY_PATCH.value,
-                        ProposalGate.PATCH.value,
-                        "candidate diff contains no file changes",
-                        "",
-                    ),
-                    (
-                        ProposalFindingCode.MISSING_REQUIRED_FIELD.value,
-                        ProposalGate.STRUCTURE.value,
-                        "structured proposal requires operations",
-                        "",
-                    ),
-                    (
-                        ProposalFindingCode.MISSING_REQUIRED_FIELD.value,
-                        ProposalGate.STRUCTURE.value,
-                        "structured proposal requires patch_text",
-                        "",
-                    ),
-                )
-            )
-        )
-        changed_paths = tuple(
-            getattr(proposal, "changed_paths", ()) or ()
-        )
-        candidate_diff = tuple(
-            getattr(proposal, "candidate_diff", ()) or ()
-        )
-        validation_plan = tuple(
-            getattr(proposal, "validation_plan", ()) or ()
-        )
-        validation_plan_projection = [
-            (
-                step.to_dict()
-                if callable(getattr(step, "to_dict", None))
-                else {
-                    "command": list(
-                        getattr(step, "command", ()) or ()
-                    ),
-                    "rationale_refs": list(
-                        getattr(step, "rationale_refs", ()) or ()
-                    ),
-                }
-            )
-            for step in validation_plan
-        ]
-        proposal_id = str(
-            getattr(proposal, "proposal_id", "") or ""
-        )
-        policy_id = str(getattr(policy, "policy_id", "") or "")
-        receipt_id = str(getattr(receipt, "receipt_id", "") or "")
-        repository_tree_id = str(
-            getattr(proposal, "repository_tree_id", "") or ""
-        )
-        diff_digest = str(
-            getattr(proposal, "diff_digest", "") or ""
-        )
-        task_id = str(getattr(proposal, "task_id", "") or "")
-        repository_id = str(
-            getattr(proposal, "repository_id", "") or ""
-        )
-        baseline_id = str(
-            getattr(proposal, "baseline_id", "") or ""
-        )
-        context_id = str(
-            getattr(proposal, "context_id", "") or ""
-        )
-        accepted_plan_id = str(
-            getattr(proposal, "accepted_plan_id", "") or ""
-        )
-        objective_id = str(
-            getattr(proposal, "objective_id", "") or ""
-        )
-        replay_nonce = str(
-            getattr(proposal, "replay_nonce", "") or ""
-        )
-        collection_error = str(
-            proposal_diagnostics.get("collection_error") or ""
-        )
-        accepted = bool(
-            not getattr(proposal_validation, "accepted", False)
-            and actual_findings == expected_findings
-            and not changed_paths
-            and not candidate_diff
-            and validation_plan
-            and proposal_id
-            and policy_id
-            and receipt_id
-            and repository_tree_id
-            and diff_digest
-            and task_id
-            and canonical_task_cid
-            and repository_id
-            and baseline_id
-            and context_id
-            and accepted_plan_id
-            and objective_id
-            and replay_nonce
-            and expected_output_preflight_id
-            and candidate_fingerprint
-            and not collection_error
-            and int(
-                proposal_diagnostics.get("submodule_expansion_count") or 0
-            )
-            == 0
-        )
-        payload: dict[str, Any] = {
-            "schema": (
-                "ipfs_accelerate_py.agent_supervisor/"
-                "no-change-candidate-policy-gate@1"
-            ),
-            "attempted": True,
-            "accepted": accepted,
-            "reason": (
-                "empty_candidate_policy_admitted"
-                if accepted
-                else "empty_candidate_policy_rejected"
-            ),
-            "task_id": task_id,
-            "canonical_task_cid": canonical_task_cid,
-            "proposal_id": proposal_id,
-            "policy_id": policy_id,
-            "proposal_receipt_id": receipt_id,
-            "repository_tree_id": repository_tree_id,
-            "repository_id": repository_id,
-            "baseline_id": baseline_id,
-            "context_id": context_id,
-            "accepted_plan_id": accepted_plan_id,
-            "objective_id": objective_id,
-            "replay_nonce": replay_nonce,
-            "diff_digest": diff_digest,
-            "candidate_fingerprint": candidate_fingerprint,
-            "validation_plan_id": content_identity(
-                validation_plan_projection
-            ),
-            "expected_output_preflight_id": (
-                expected_output_preflight_id
-            ),
-            "proposal_collection_error": collection_error,
-            "changed_paths": list(changed_paths[:256]),
-            "proposal_accepted": bool(
-                getattr(proposal_validation, "accepted", False)
-            ),
-            "expected_findings": [list(item) for item in expected_findings],
-            "actual_findings": [list(item) for item in actual_findings[:32]],
-            "proof_authoritative": False,
-            "completion_authoritative": False,
-        }
-        payload["gate_id"] = content_identity(payload)
-        return payload
-
-    def _run_retry_no_change_pre_dispatch_validation(
-        self,
-        workspace_path: Path,
-        task: PortalTask,
-        log_path: Path,
-        *,
-        state: PortalTaskState,
-        attempt: int,
-        baseline_ref: str,
-        protected_path_snapshot: Mapping[str, Mapping[str, Any]] | None,
-        branch_name: str = "",
-        prepare_workspace: bool = True,
-    ) -> dict[str, Any] | None:
-        """Prove a narrowly authorized retry is already satisfied locally.
-
-        ``None`` means that the exact clean baseline was not proven complete
-        and provider execution may continue.  A returned result is terminal
-        for the pre-dispatch phase: either the declared validation and all
-        existing no-change gates passed, or an unsafe/dirty probe failed
-        closed before any provider saw its side effects.
-        """
-
-        scope = self._retry_no_change_pre_dispatch_scope(task, state)
-        if scope is None:
-            return None
-
-        if prepare_workspace:
-            try:
-                self._prepare_worktree_for_validation(
-                    workspace_path,
-                    task=task,
-                    branch_name=branch_name,
-                )
-            except ValidationGeneratedArtifactRestoreError as exc:
-                result = self._validation_generated_artifact_restore_failure_result(
-                    exc.receipt
-                )
-                result["pre_dispatch_no_change"] = {
-                    **scope,
-                    "eligible": True,
-                    "provider_dispatched": False,
-                    "reason": "pre_dispatch_workspace_prepare_failed",
-                }
-                self._record_event(
-                    "implementation_pre_dispatch_no_change_blocked",
-                    {"task_id": task.task_id, **result["pre_dispatch_no_change"]},
-                )
-                return result
-
-        result = self._run_clean_candidate_validation(
-            workspace_path,
-            task,
-            log_path,
-            state=state,
-            baseline_ref=baseline_ref,
-        )
-        if result is None:
-            self._record_event(
-                "implementation_pre_dispatch_no_change_continued",
-                {
-                    "task_id": task.task_id,
-                    **scope,
-                    "provider_dispatched": False,
-                    "reason": "candidate_requires_implementation",
-                },
-            )
-            return None
-
-        no_change_policy_gate = result.get("no_change_policy_gate")
-        candidate_binding = result.get("candidate_binding")
-        satisfied = bool(
-            result.get("attempted") is True
-            and result.get("passed") is True
-            and isinstance(no_change_policy_gate, Mapping)
-            and no_change_policy_gate.get("accepted") is True
-            and isinstance(candidate_binding, Mapping)
-            and candidate_binding.get("verified") is True
-        )
-        if satisfied:
-            bypass = {
-                **scope,
-                "eligible": True,
-                "provider_dispatched": False,
-                "reason": "declared_validation_proved_existing_contract",
-            }
-            bypass["receipt_id"] = content_identity(bypass)
-            admitted = {**result, "pre_dispatch_no_change": bypass}
-            self._record_event(
-                "implementation_provider_bypassed_already_satisfied",
-                {"task_id": task.task_id, **bypass},
-            )
-            return admitted
-
-        # A rejected no-change policy means the declared validation itself is
-        # not safe to execute.  Provider output cannot repair that authority
-        # defect, so do not dispatch it after a failed policy gate.
-        if (
-            isinstance(no_change_policy_gate, Mapping)
-            and no_change_policy_gate.get("accepted") is False
-        ):
-            blocked = {
-                **scope,
-                "eligible": True,
-                "provider_dispatched": False,
-                "reason": "pre_dispatch_no_change_policy_rejected",
-            }
-            self._record_event(
-                "implementation_pre_dispatch_no_change_blocked",
-                {"task_id": task.task_id, **blocked},
-            )
-            return {**result, "pre_dispatch_no_change": blocked}
-
-        # A legitimate failing test may need model assistance, but validation
-        # must not smuggle mutations into the provider candidate.  Restore
-        # bounded generated artifacts, then freshly prove the root and every
-        # managed submodule still have the exact empty candidate.
-        if prepare_workspace:
-            try:
-                self._prepare_worktree_for_validation(
-                    workspace_path,
-                    task=task,
-                    branch_name=branch_name,
-                )
-            except ValidationGeneratedArtifactRestoreError as exc:
-                blocked_result = (
-                    self._validation_generated_artifact_restore_failure_result(
-                        exc.receipt
-                    )
-                )
-                blocked_result["pre_dispatch_validation_result"] = dict(result)
-                blocked_result["pre_dispatch_no_change"] = {
-                    **scope,
-                    "eligible": True,
-                    "provider_dispatched": False,
-                    "reason": "pre_dispatch_probe_restore_failed",
-                }
-                return blocked_result
-
-        collection_error = ""
-        try:
-            self._stage_declared_ignored_outputs(workspace_path, task)
-            current_entries, current_expansions = (
-                self._collect_proposal_candidate_diff(
-                    workspace_path,
-                    baseline_ref=baseline_ref,
-                    scope_paths=self._proposal_scope_paths(task),
-                )
-            )
-        except (OSError, RuntimeError, ValueError) as exc:
-            current_entries = ()
-            current_expansions = ()
-            collection_error = type(exc).__name__
-        protected_violation = self._implementation_protected_path_violation(
-            task=task,
-            attempt=attempt,
-            workspace_path=workspace_path,
-            before=protected_path_snapshot,
-        )
-        if (
-            collection_error
-            or current_entries
-            or current_expansions
-            or protected_violation
-        ):
-            blocked = {
-                **scope,
-                "eligible": True,
-                "provider_dispatched": False,
-                "reason": "pre_dispatch_probe_changed_candidate",
-                "collection_error": collection_error,
-                "changed_path_count": len(current_entries),
-                "submodule_expansion_count": len(current_expansions),
-                "protected_path_violation": protected_violation,
-            }
-            self._record_event(
-                "implementation_pre_dispatch_no_change_blocked",
-                {"task_id": task.task_id, **blocked},
-            )
-            return {
-                **result,
-                "passed": False,
-                "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
-                "reason": "pre_dispatch_probe_changed_candidate",
-                "pre_dispatch_no_change": blocked,
-            }
-
-        self._record_event(
-            "implementation_pre_dispatch_no_change_continued",
-            {
-                "task_id": task.task_id,
-                **scope,
-                "provider_dispatched": False,
-                "reason": "declared_validation_failed_on_clean_candidate",
-            },
-        )
-        return None
-
     def _run_clean_candidate_validation(
         self,
         workspace_path: Path,
@@ -30066,140 +28903,31 @@ class PortalImplementationDaemon:
 
         if not task.validation:
             return None
-        scope_paths = self._proposal_scope_paths(task)
-        try:
-            expected_output_preflight = (
-                self._prepare_proposal_expected_outputs(
-                    workspace_path,
-                    task,
-                    baseline_ref=baseline_ref,
-                    scope_paths=scope_paths,
-                )
+        declared_outputs = task_declared_output_paths(task)
+        if not declared_outputs:
+            return None
+        declared_output_invariant = (
+            self._declared_output_tracking_invariant(
+                [task],
+                workspace_path=workspace_path,
+                repository_ref=baseline_ref,
             )
+        )
+        if declared_output_invariant.get("passed") is not True:
+            return None
+        try:
             self._stage_declared_ignored_outputs(workspace_path, task)
             entries, submodule_expansions = (
                 self._collect_proposal_candidate_diff(
                     workspace_path,
                     baseline_ref=baseline_ref,
-                    scope_paths=scope_paths,
+                    scope_paths=self._proposal_scope_paths(task),
                 )
             )
         except (OSError, RuntimeError, ValueError):
             return None
         if entries or submodule_expansions:
             return None
-
-        expected_output_issues = self._proposal_expected_output_issues(
-            expected_output_preflight,
-            changed_paths=(),
-            candidate_entries=(),
-        )
-        if expected_output_issues:
-            # Missing, untracked, or unsafe outputs must continue through the
-            # strict proposal gate.  A green command alone cannot turn an
-            # incomplete baseline into an already-satisfied task.
-            return None
-        self._record_event(
-            "implementation_expected_outputs_checked",
-            {
-                "task_id": task.task_id,
-                "proposal_id": "",
-                "expected_paths": (
-                    expected_output_preflight.get("expected_paths") or []
-                )[:256],
-                "staged_paths": (
-                    expected_output_preflight.get("staged_paths") or []
-                )[:256],
-                "force_staged_paths": [],
-                "issues": [],
-                "passed": True,
-                "reason": "validated_no_change_candidate",
-                "proof_authoritative": False,
-                "completion_authoritative": False,
-            },
-        )
-
-        # Reuse the exact strict proposal policy for command, authority,
-        # boundary, and output checks.  The proposal must remain rejected only
-        # for the three findings that are intrinsic to an empty candidate;
-        # every other finding fails closed before validation dispatch.
-        proposal_validation = self._validate_implementation_patch(
-            workspace_path,
-            task,
-            baseline_ref=baseline_ref,
-            allow_scope_adjudication=False,
-            diagnostics=(proposal_diagnostics := {}),
-        )
-        empty_fingerprint = self._proposal_candidate_fingerprint(())
-        no_change_policy_gate = self._no_change_candidate_policy_gate(
-            proposal_validation,
-            candidate_fingerprint=empty_fingerprint,
-            canonical_task_cid=self._canonical_ref(task),
-            expected_output_preflight_id=content_identity(
-                expected_output_preflight
-            ),
-            proposal_diagnostics=proposal_diagnostics,
-        )
-        try:
-            self._stage_declared_ignored_outputs(workspace_path, task)
-            policy_bound_entries, policy_bound_expansions = (
-                self._collect_proposal_candidate_diff(
-                    workspace_path,
-                    baseline_ref=baseline_ref,
-                    scope_paths=scope_paths,
-                )
-            )
-        except (OSError, RuntimeError, ValueError) as exc:
-            policy_bound_entries = ()
-            policy_bound_expansions = ()
-            no_change_policy_gate = {
-                **no_change_policy_gate,
-                "accepted": False,
-                "reason": "empty_candidate_policy_collection_failed",
-                "collection_error": type(exc).__name__,
-            }
-            no_change_policy_gate["gate_id"] = content_identity(
-                {
-                    key: value
-                    for key, value in no_change_policy_gate.items()
-                    if key != "gate_id"
-                }
-            )
-        if policy_bound_entries or policy_bound_expansions:
-            no_change_policy_gate = {
-                **no_change_policy_gate,
-                "accepted": False,
-                "reason": "empty_candidate_changed_before_dispatch",
-            }
-            no_change_policy_gate["gate_id"] = content_identity(
-                {
-                    key: value
-                    for key, value in no_change_policy_gate.items()
-                    if key != "gate_id"
-                }
-            )
-        self._record_event(
-            (
-                "implementation_no_change_policy_validated"
-                if no_change_policy_gate["accepted"]
-                else "implementation_no_change_policy_rejected"
-            ),
-            {
-                "task_id": task.task_id,
-                **no_change_policy_gate,
-            },
-        )
-        if not no_change_policy_gate["accepted"]:
-            rejected = self._run_validation_commands(
-                workspace_path,
-                task,
-                log_path,
-                state=state,
-                proposal_validation=proposal_validation,
-                force_uncached=True,
-            )
-            rejected["no_change_policy_gate"] = no_change_policy_gate
-            return rejected
 
         result = self._run_validation_commands(
             workspace_path,
@@ -30208,12 +28936,17 @@ class PortalImplementationDaemon:
             state=state,
             force_uncached=True,
         )
-        proposal_gate = self._compact_proposal_validation(
-            proposal_validation
+        result["declared_output_invariant"] = (
+            declared_output_invariant
         )
-        proposal_gate["reason"] = "empty_patch_reserved_for_no_change_gate"
+        proposal_gate = {
+            "attempted": False,
+            "accepted": True,
+            "reason": "validated_no_change_candidate",
+            "changed_paths": [],
+            "reason_codes": [],
+        }
         result["proposal_gate"] = proposal_gate
-        result["no_change_policy_gate"] = no_change_policy_gate
         if not result.get("passed", False):
             return result
         if not result.get("attempted", False):
@@ -30272,22 +29005,6 @@ class PortalImplementationDaemon:
         )
         if verified:
             result["candidate_binding"] = binding
-            gate_id = str(no_change_policy_gate.get("gate_id") or "")
-            if gate_id:
-                if (
-                    gate_id not in self._implementation_no_change_policy_gates
-                    and len(self._implementation_no_change_policy_gates) >= 64
-                ):
-                    oldest_gate_id = next(
-                        iter(self._implementation_no_change_policy_gates)
-                    )
-                    self._implementation_no_change_policy_gates.pop(
-                        oldest_gate_id,
-                        None,
-                    )
-                self._implementation_no_change_policy_gates[gate_id] = dict(
-                    no_change_policy_gate
-                )
             return result
         return {
             **result,
@@ -31473,18 +30190,35 @@ class PortalImplementationDaemon:
                 }
             else:
                 proposal = getattr(proposal_validation, "proposal", None)
-                proposal_accepted = bool(
-                    getattr(proposal_validation, "accepted", False)
-                )
-                if isinstance(proposal_validation, Mapping):
-                    proposal_accepted = bool(
-                        proposal_validation.get("accepted", False)
+                try:
+                    bound_commands, declared_graph = (
+                        build_declared_validation_plan_graph(
+                            scheduled_commands,
+                            repository_tree_id=str(
+                                getattr(
+                                    proposal,
+                                    "repository_tree_id",
+                                    "",
+                                )
+                                or ""
+                            ),
+                            changed_paths=tuple(
+                                getattr(proposal, "changed_paths", ()) or ()
+                            ),
+                        )
                     )
-                if not proposal_accepted:
-                    # Rejected proposals are already terminal.  Dispatch them
-                    # to the strict scheduler before graph construction so an
-                    # intentionally empty rejected candidate reports the
-                    # proposal gate failure instead of a misleading DAG error.
+                except (TypeError, ValueError) as exc:
+                    result = {
+                        "attempted": False,
+                        "passed": False,
+                        "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+                        "results": [],
+                        "reason": "declared_validation_plan_invalid",
+                        "error": "validation_configuration_failed",
+                        "configuration_error": type(exc).__name__,
+                        "configuration_detail": str(exc)[:1000],
+                    }
+                else:
                     result = self._decision_runtime_mutation(
                         "validation_execution",
                         {
@@ -31492,80 +30226,30 @@ class PortalImplementationDaemon:
                             "workspace_path": str(workspace_path),
                             "commands": tuple(commands),
                             "scope": "pre_merge",
-                            "proposal_accepted": False,
+                            "validation_graph_id": declared_graph.graph_id,
                         },
                         lambda: strict_runner(
                             proposal_validation,
-                            scheduled_commands,
+                            bound_commands,
                             workspace_path=workspace_path,
-                            require_impact_graph=False,
+                            impact_graph=declared_graph,
+                            require_impact_graph=True,
                             require_full_validation=True,
                             scope="pre_merge",
                             runner=self._validation_command_runner,
                             **proof_options,
                         ),
                     )
-                else:
-                    try:
-                        bound_commands, declared_graph = (
-                            build_declared_validation_plan_graph(
-                                scheduled_commands,
-                                repository_tree_id=str(
-                                    getattr(
-                                        proposal,
-                                        "repository_tree_id",
-                                        "",
-                                    )
-                                    or ""
-                                ),
-                                changed_paths=tuple(
-                                    getattr(proposal, "changed_paths", ()) or ()
-                                ),
-                            )
-                        )
-                    except (TypeError, ValueError) as exc:
-                        result = {
-                            "attempted": False,
-                            "passed": False,
-                            "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
-                            "results": [],
-                            "reason": "declared_validation_plan_invalid",
-                            "error": "validation_configuration_failed",
-                            "configuration_error": type(exc).__name__,
-                            "configuration_detail": str(exc)[:1000],
-                        }
-                    else:
-                        result = self._decision_runtime_mutation(
-                            "validation_execution",
-                            {
-                                "task_id": task.task_id,
-                                "workspace_path": str(workspace_path),
-                                "commands": tuple(commands),
-                                "scope": "pre_merge",
-                                "validation_graph_id": declared_graph.graph_id,
-                            },
-                            lambda: strict_runner(
-                                proposal_validation,
-                                bound_commands,
-                                workspace_path=workspace_path,
-                                impact_graph=declared_graph,
-                                require_impact_graph=True,
-                                require_full_validation=True,
-                                scope="pre_merge",
-                                runner=self._validation_command_runner,
-                                **proof_options,
-                            ),
-                        )
-                        result["validation_plan_binding"] = {
-                            "source": "proposal_declared_validation_plan",
-                            "graph_id": declared_graph.graph_id,
-                            "graph_version": declared_graph.graph_version,
-                            "command_count": len(bound_commands),
-                            "validation_ids": [
-                                command.validation_id
-                                for command in bound_commands
-                            ],
-                        }
+                    result["validation_plan_binding"] = {
+                        "source": "proposal_declared_validation_plan",
+                        "graph_id": declared_graph.graph_id,
+                        "graph_version": declared_graph.graph_version,
+                        "command_count": len(bound_commands),
+                        "validation_ids": [
+                            command.validation_id
+                            for command in bound_commands
+                        ],
+                    }
 
             # The scheduler needs full source-bound records in process, while
             # daemon state and JSONL events retain only compact repair data.
@@ -31787,27 +30471,17 @@ class PortalImplementationDaemon:
                     result["failed_command"] = failed_commands[0]
                 result["failed_commands"] = failed_commands[:8]
             if failed_tests:
-                result["failed_tests"] = failed_tests[
-                    :MAX_PERSISTED_VALIDATION_FAILED_TESTS
-                ]
+                result["failed_tests"] = failed_tests[:12]
             if failed_test_paths:
-                result["failed_test_paths"] = failed_test_paths[
-                    :MAX_PERSISTED_VALIDATION_FAILED_TEST_PATHS
-                ]
+                result["failed_test_paths"] = failed_test_paths[:12]
             if failure_exception_types:
-                result["exception_types"] = failure_exception_types[
-                    :MAX_PERSISTED_VALIDATION_EXCEPTION_TYPES
-                ]
+                result["exception_types"] = failure_exception_types[:8]
             if validation_impact_paths:
                 result["validation_impact_paths"] = (
-                    validation_impact_paths[
-                        :MAX_PERSISTED_VALIDATION_IMPACT_PATHS
-                    ]
+                    validation_impact_paths[:16]
                 )
             if failure_heads:
-                result["failure_head"] = "\n".join(failure_heads)[
-                    :MAX_PERSISTED_VALIDATION_FAILURE_HEAD_CHARS
-                ]
+                result["failure_head"] = "\n".join(failure_heads)[:2000]
         return result
 
     @staticmethod
@@ -31847,31 +30521,9 @@ class PortalImplementationDaemon:
                 ),
                 "infrastructure_failure": False,
             }
-        with tempfile.TemporaryDirectory(
-            prefix="ipfs-accelerate-validation-home-"
-        ) as temporary_home:
-            home_path = Path(temporary_home)
-            child_environment = dict(environment)
-            child_environment.update(
-                {
-                    "HOME": str(home_path),
-                    "XDG_CACHE_HOME": str(home_path / ".cache"),
-                    "XDG_CONFIG_HOME": str(home_path / ".config"),
-                    "XDG_DATA_HOME": str(home_path / ".local" / "share"),
-                    "XDG_STATE_HOME": str(home_path / ".local" / "state"),
-                }
-            )
-            for key in (
-                "XDG_CACHE_HOME",
-                "XDG_CONFIG_HOME",
-                "XDG_DATA_HOME",
-                "XDG_STATE_HOME",
-            ):
-                Path(child_environment[key]).mkdir(
-                    mode=0o700,
-                    parents=True,
-                    exist_ok=True,
-                )
+        with private_validation_environment(
+            environment
+        ) as child_environment:
             try:
                 with validation_python_launcher_environment(
                     child_environment
@@ -32061,18 +30713,6 @@ class PortalImplementationDaemon:
             workspace_root = workspace_path.resolve(strict=True)
         except OSError:
             return command, ""
-        repository_root = validation_command_repository_root(command)
-        if repository_root is None:
-            return command, ""
-        validation_root = workspace_root
-        if repository_root:
-            try:
-                validation_root = (
-                    workspace_root / repository_root
-                ).resolve(strict=True)
-                validation_root.relative_to(workspace_root)
-            except (OSError, ValueError):
-                return command, ""
         roots: list[str] = []
         for relative in self.worktree_submodule_paths:
             candidate = workspace_root / relative
@@ -32082,78 +30722,14 @@ class PortalImplementationDaemon:
             except (OSError, ValueError):
                 continue
             if resolved.is_dir():
-                if repository_root:
-                    roots.append(
-                        Path(
-                            os.path.relpath(
-                                resolved,
-                                start=validation_root,
-                            )
-                        ).as_posix()
-                    )
-                else:
-                    roots.append(Path(relative).as_posix())
+                roots.append(Path(relative).as_posix())
         if not roots:
             return command, ""
         pythonpath = shlex.quote(os.pathsep.join(dict.fromkeys(roots)))
-        if repository_root:
-            operator_end = self._leading_cd_and_then_operator_end(command)
-            if operator_end is None:
-                return command, ""
-            return (
-                f"{command[:operator_end]} export PYTHONPATH={pythonpath} && "
-                f"{command[operator_end:].lstrip()}",
-                "added configured worktree package roots to PYTHONPATH",
-            )
         return (
-            f"export PYTHONPATH={pythonpath} && {command}",
+            f"PYTHONPATH={pythonpath} {command}",
             "added configured worktree package roots to PYTHONPATH",
         )
-
-    @staticmethod
-    def _leading_cd_and_then_operator_end(command: str) -> int | None:
-        """Return the end of the leading unquoted ``&&`` operator.
-
-        ``validation_command_repository_root`` has already proved that the
-        command contains one exact, safe leading ``cd`` clause.  This scanner
-        preserves the original quoting and command text while locating the
-        operator after that clause so the bounded validation-process export is
-        evaluated after ``cd`` and uses package-root-relative paths.
-        """
-
-        quote = ""
-        escaped = False
-        index = 0
-        while index < len(command):
-            character = command[index]
-            if escaped:
-                escaped = False
-                index += 1
-                continue
-            if quote == "'":
-                if character == "'":
-                    quote = ""
-                index += 1
-                continue
-            if quote == '"':
-                if character == "\\":
-                    escaped = True
-                elif character == '"':
-                    quote = ""
-                index += 1
-                continue
-            if character == "\\":
-                escaped = True
-                index += 1
-                continue
-            if character in {"'", '"'}:
-                quote = character
-                index += 1
-                continue
-            if command.startswith("&&", index):
-                return index + 2
-            index += 1
-        return None
 
     def _main_branch_name(self) -> str:
         if self.merge_target_branch:
@@ -33926,21 +32502,7 @@ class PortalImplementationDaemon:
         reason: str = "merge_conflict",
         dirty_paths: list[str] | None = None,
     ) -> dict[str, Any]:
-        if self._ordered_grok_codex_route_requested(None):
-            if not self._ordered_grok_codex_route_configured(None):
-                return {
-                    "attempted": False,
-                    "deferred": True,
-                    "reason": "ordered_merge_resolver_policy_invalid",
-                }
-            # A configured command can conceal a direct Codex or Copilot
-            # invocation.  The sealed route always enters through the
-            # packaged Grok-first, quota-gated resolver instead.
-            command_template = llm_merge_resolver_fallback_command(
-                python_executable=sys.executable,
-            )
-        else:
-            command_template = self.llm_merge_resolver_command
+        command_template = self.llm_merge_resolver_command
         if not command_template:
             return {"attempted": False, "reason": "resolver_command_not_configured"}
         from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import build_merge_prompt, invoke_llm_resolver
@@ -36307,152 +34869,6 @@ class PortalImplementationDaemon:
         state_dir = str(self.state_path.parent.resolve())
         shard = f"{self.task_shard_index}/{self.task_shard_count}"
         return f"{state_dir}:{shard}:{os.getpid()}"
-
-    def _reclaim_expired_worktree_lifecycle_claims(
-        self,
-        *,
-        reason: str = "daemon_pass_expired_lease_auto_reclaim",
-        force: bool = False,
-    ) -> dict[str, Any]:
-        """Terminalize abandoned worktree lifecycle claims (supervisor auto-unstick).
-
-        Integrated into the agent supervisor so boards do not require an
-        external companion to recover from expired nonterminal claims.  Safe
-        to call periodically: unexpired live claims are left alone.
-        """
-
-        if not force and not getattr(
-            self, "_worktree_lifecycle_reclaim_on_pass", True
-        ):
-            return {
-                "reclaimed_count": 0,
-                "skipped": True,
-                "reason": "reclaim_on_pass_disabled",
-                "records": [],
-            }
-        interval = float(
-            getattr(
-                self,
-                "_worktree_lifecycle_reclaim_interval_seconds",
-                DEFAULT_WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS,
-            )
-            or DEFAULT_WORKTREE_LIFECYCLE_RECLAIM_INTERVAL_SECONDS
-        )
-        now_mono = time.monotonic()
-        last = float(
-            getattr(self, "_last_worktree_lifecycle_reclaim_monotonic", 0.0) or 0.0
-        )
-        if not force and last > 0.0 and (now_mono - last) < interval:
-            return {
-                "reclaimed_count": 0,
-                "skipped": True,
-                "reason": "reclaim_interval_not_elapsed",
-                "records": [],
-                "interval_seconds": interval,
-            }
-        try:
-            recovered = self.worktree_lifecycle.reclaim_expired_nonterminal(
-                reason=reason,
-            )
-        except Exception as exc:  # pragma: no cover - recovery best-effort
-            logger.warning(
-                "Failed expired worktree lifecycle reclaim (%s): %s",
-                reason,
-                exc,
-            )
-            return {
-                "reclaimed_count": 0,
-                "skipped": False,
-                "reason": "reclaim_failed",
-                "error": str(exc)[-1000:],
-                "records": [],
-            }
-        self._last_worktree_lifecycle_reclaim_monotonic = now_mono
-        result: dict[str, Any] = {
-            "reclaimed_count": len(recovered),
-            "skipped": False,
-            "reason": reason,
-            "records": recovered,
-            "task_ids": sorted(
-                {
-                    str(getattr(record, "task_id", "") or "")
-                    for record in recovered
-                    if str(getattr(record, "task_id", "") or "")
-                }
-            ),
-        }
-        if recovered:
-            logger.warning(
-                "Auto-reclaimed %d expired worktree lifecycle claim(s) "
-                "(%s) for state directory %s",
-                len(recovered),
-                reason,
-                self.state_path.parent.resolve(),
-            )
-            try:
-                self._record_event(
-                    "worktree_lifecycle_expired_claims_reclaimed",
-                    {
-                        "reclaimed_count": len(recovered),
-                        "reason": reason,
-                        "task_ids": result["task_ids"],
-                        "requirement_id": FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID,
-                    },
-                )
-            except Exception:
-                # Event recording is best-effort during early init.
-                pass
-        return result
-
-    def _begin_worktree_lifecycle_preparing(
-        self,
-        *,
-        task: Any,
-        attempt: int,
-        worktree_path: Path,
-        branch_name: str,
-    ) -> Any:
-        """Acquire a preparing lifecycle claim, reclaiming expired blockers once."""
-
-        kwargs = {
-            "task_id": task.task_id,
-            "canonical_task_cid": self._canonical_ref(task),
-            "attempt": attempt,
-            "lane_id": self._worktree_lifecycle_lane_id(),
-            "workspace_path": worktree_path,
-            "branch": branch_name,
-            "merge_target": self._main_branch_name(),
-            "state_dir": str(self.state_path.parent.resolve()),
-        }
-        try:
-            return self.worktree_lifecycle.begin_preparing(**kwargs)
-        except DuplicateAttemptError:
-            # Integrated unstick: reclaim expired claims then retry once so a
-            # stale lease cannot burn the entire implement pass.
-            reclaim = self._reclaim_expired_worktree_lifecycle_claims(
-                reason="pre_acquire_expired_lease_reclaim",
-                force=True,
-            )
-            try:
-                self.worktree_lifecycle.reclaim_stale(
-                    worktree_path,
-                    reason="pre_acquire_workspace_expired_reclaim",
-                )
-            except Exception:
-                pass
-            try:
-                record = self.worktree_lifecycle.begin_preparing(**kwargs)
-            except DuplicateAttemptError as retry_exc:
-                raise retry_exc
-            if reclaim.get("reclaimed_count"):
-                logger.info(
-                    "Retrying worktree lifecycle acquire for %s attempt %s "
-                    "after reclaiming %s expired claim(s)",
-                    task.task_id,
-                    attempt,
-                    reclaim.get("reclaimed_count"),
-                )
-            return record
 
     def _active_worktree_lifecycle_lease_id(self) -> str:
         record = self._active_worktree_lifecycle
@@ -39797,12 +38213,9 @@ class PortalImplementationDaemon:
                             "coordination_error": "malformed_maintenance_lease",
                         }
                     return None
-                if checkout_lock_owner_is_active(
+                if self._lock_owner_is_active(
                     metadata,
                     expected_kind="implementation-protected-maintenance",
-                    expected_repo_root=self.repo_root,
-                    process_command_line=process_command_line,
-                    process_is_running=process_is_running,
                 ):
                     return metadata
                 lock_path.unlink(missing_ok=True)
@@ -39916,7 +38329,7 @@ class PortalImplementationDaemon:
             f"task-claim:{os.getpid()}:{threading.get_ident()}:{time.time_ns()}:"
             f"{task.task_id}:{attempt}"
         )
-        metadata = checkout_lock_metadata(
+        return checkout_lock_metadata(
             kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
             repo_root=self.repo_root,
             task_id=task.task_id,
@@ -39933,173 +38346,6 @@ class PortalImplementationDaemon:
                 "task_shard_index": self.task_shard_index,
                 "lease_id": hashlib.sha1(lease_seed.encode("utf-8")).hexdigest(),
             },
-        )
-        owner_state_path = self.state_path.resolve(strict=False)
-        state_suffix = "_task_state.json"
-        state_prefix = (
-            owner_state_path.name[: -len(state_suffix)]
-            if owner_state_path.name.endswith(state_suffix)
-            else ""
-        )
-        owner_lane_binding = {
-            "schema": IMPLEMENTATION_TASK_CLAIM_OWNER_LANE_BINDING_SCHEMA,
-            "pid": metadata["pid"],
-            "owner_script": metadata["owner_script"],
-            "state_dir": str(owner_state_path.parent),
-            "state_path": str(owner_state_path),
-            "state_filename": owner_state_path.name,
-            "state_prefix": state_prefix,
-            "task_shard_count": self.task_shard_count,
-            "task_shard_index": self.task_shard_index,
-        }
-        metadata["owner_lane_binding"] = owner_lane_binding
-        metadata["owner_lane_binding_cid"] = content_identity(
-            owner_lane_binding
-        )
-        return metadata
-
-    def _validated_implementation_task_claim_owner_lane_binding(
-        self,
-        metadata: Mapping[str, Any],
-        *,
-        owner_state_path: Path,
-        owner_state_dir: Path,
-    ) -> dict[str, Any] | None:
-        """Return a canonical claimant-lane binding, or fail closed.
-
-        The binding duplicates the deletion-sensitive state projection inside
-        one content-addressed claim component.  This catches partial metadata
-        rewrites before a peer consults a decoy state file.  Live-owner
-        reclamation additionally checks the process argv below, which is the
-        authority for the lane actually launched by the supervisor.
-        """
-
-        binding = metadata.get("owner_lane_binding")
-        binding_cid = metadata.get("owner_lane_binding_cid")
-        if not isinstance(binding, Mapping) or not isinstance(
-            binding_cid, str
-        ):
-            return None
-        normalized = dict(binding)
-        binding_pid = normalized.get("pid")
-        binding_owner_script = normalized.get("owner_script")
-        if (
-            not binding_cid
-            or content_identity(normalized) != binding_cid
-            or normalized.get("schema")
-            != IMPLEMENTATION_TASK_CLAIM_OWNER_LANE_BINDING_SCHEMA
-            or isinstance(binding_pid, bool)
-            or not isinstance(binding_pid, int)
-            or binding_pid <= 0
-            or not isinstance(binding_owner_script, str)
-            or not binding_owner_script
-            or normalized.get("pid") != metadata.get("pid")
-            or normalized.get("owner_script")
-            != metadata.get("owner_script")
-            or normalized.get("state_dir") != str(owner_state_dir)
-            or normalized.get("state_path") != str(owner_state_path)
-            or normalized.get("state_filename") != owner_state_path.name
-            or normalized.get("task_shard_count")
-            != metadata.get("task_shard_count")
-            or normalized.get("task_shard_index")
-            != metadata.get("task_shard_index")
-        ):
-            return None
-        state_prefix = normalized.get("state_prefix")
-        if not isinstance(state_prefix, str) or not state_prefix:
-            return None
-        if any(separator in state_prefix for separator in ("/", "\\")):
-            return None
-        if (
-            owner_state_dir / f"{state_prefix}_task_state.json"
-        ).resolve(strict=False) != owner_state_path:
-            return None
-        return normalized
-
-    def _live_implementation_task_claim_command_matches_owner_lane(
-        self,
-        metadata: Mapping[str, Any],
-        *,
-        owner_state_path: Path,
-        owner_state_dir: Path,
-        owner_lane_binding: Mapping[str, Any],
-    ) -> bool:
-        """Verify that a live claimant PID was launched for this exact lane.
-
-        Claim JSON is shared writable coordination state, so its state path is
-        not by itself authority to declare a live attempt stale.  The running
-        daemon's canonical supervisor arguments must independently resolve to
-        the same state file and shard.  Missing, malformed, or duplicate
-        arguments deliberately retain the incumbent claim.
-        """
-
-        try:
-            pid = int(metadata.get("pid") or 0)
-        except (TypeError, ValueError):
-            return False
-        command_line = process_command_line(pid)
-        if not command_line:
-            return False
-        try:
-            tokens = shlex.split(command_line, posix=(os.name != "nt"))
-        except ValueError:
-            return False
-
-        def exact_option_value(option: str) -> str | None:
-            values: list[str] = []
-            prefix = f"{option}="
-            index = 0
-            while index < len(tokens):
-                token = tokens[index]
-                if token == option:
-                    if index + 1 >= len(tokens):
-                        return None
-                    values.append(tokens[index + 1])
-                    index += 2
-                    continue
-                if token.startswith(prefix):
-                    values.append(token[len(prefix) :])
-                index += 1
-            if len(values) != 1 or not values[0]:
-                return None
-            return values[0]
-
-        state_dir_text = exact_option_value("--state-dir")
-        state_prefix = exact_option_value("--state-prefix")
-        shard_count_text = exact_option_value("--task-shard-count")
-        shard_index_text = exact_option_value("--task-shard-index")
-        if not all(
-            (
-                state_dir_text,
-                state_prefix,
-                shard_count_text,
-                shard_index_text,
-            )
-        ):
-            return False
-        try:
-            command_state_dir = Path(str(state_dir_text))
-            if not command_state_dir.is_absolute():
-                command_state_dir = self.repo_root / command_state_dir
-            command_state_dir = command_state_dir.resolve(strict=False)
-            command_state_path = (
-                command_state_dir / f"{state_prefix}_task_state.json"
-            ).resolve(strict=False)
-            command_shard_count = int(str(shard_count_text))
-            command_shard_index = int(str(shard_index_text))
-        except (OSError, RuntimeError, TypeError, ValueError):
-            return False
-        if (
-            str(command_shard_count) != shard_count_text
-            or str(command_shard_index) != shard_index_text
-        ):
-            return False
-        return (
-            command_state_dir == owner_state_dir
-            and command_state_path == owner_state_path
-            and state_prefix == owner_lane_binding.get("state_prefix")
-            and command_shard_count == metadata.get("task_shard_count")
-            and command_shard_index == metadata.get("task_shard_index")
         )
 
     def _build_implementation_resource_claim_metadata(
@@ -40144,27 +38390,21 @@ class PortalImplementationDaemon:
         started_at: str,
     ) -> dict[str, Any]:
         identity = self._identity_for_task(task)
-        metadata = checkout_lock_metadata(
-            kind="merge",
-            repo_root=self.repo_root,
-            task_id=task.task_id,
-            attempt=attempt,
-            branch=branch_name,
-            owner_script=Path(sys.argv[0]).name,
-            extra={
-                "state_dir": str(self.state_path.parent.resolve()),
-                "state_path": str(self.state_path.resolve()),
-                "canonical_task_key": identity.canonical_task_key,
-                "canonical_task_cid": identity.canonical_task_cid,
-                "board_namespace": identity.board_namespace,
-                "started_at": started_at,
-            },
-        )
-        # This legacy builder is task-state-scoped rather than an atomic
-        # checkout transaction. Preserve that distinction while migrating its
-        # repository identity fields.
-        metadata.pop("lease_id", None)
-        return metadata
+        return {
+            "kind": "merge",
+            "pid": os.getpid(),
+            "owner_script": Path(sys.argv[0]).name,
+            "repo_root": str(self.repo_root.resolve()),
+            "state_dir": str(self.state_path.parent.resolve()),
+            "state_path": str(self.state_path.resolve()),
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "board_namespace": identity.board_namespace,
+            "attempt": attempt,
+            "branch": branch_name,
+            "started_at": started_at,
+        }
 
     def _implementation_lock_owner_is_active(self, metadata: dict[str, Any]) -> bool:
         state_dir = str(metadata.get("state_dir") or "")
@@ -40173,352 +38413,39 @@ class PortalImplementationDaemon:
         return self._lock_owner_is_active(metadata, expected_kind="implementation")
 
     def _implementation_task_claim_owner_is_active(self, metadata: dict[str, Any]) -> bool:
-        if (
-            metadata.get("kind") != IMPLEMENTATION_TASK_CLAIM_LOCK_KIND
-            or not isinstance(metadata.get("lease_id"), str)
-            or not metadata.get("lease_id")
-        ):
-            return True
-        state_path_text = str(metadata.get("state_path") or "").strip()
-        state_dir_text = str(metadata.get("state_dir") or "").strip()
-        if not state_path_text and not state_dir_text:
-            # Legacy claims have no state projection to cross-check.
-            if implementation_task_claim_protected_fence_paths(metadata):
-                return True
-            repository_match = checkout_lock_repository_matches(
-                metadata,
-                self.repo_root,
-            )
-            if repository_match is not True:
-                # A record found in this repository's shared claim namespace
-                # cannot use a contradictory legacy repo field as deletion
-                # authority.
-                return True
-            return checkout_lock_owner_is_active(
-                metadata,
-                expected_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
-                expected_repo_root=self.repo_root,
-                process_command_line=process_command_line,
-                process_is_running=process_is_running,
-            )
-        if not state_path_text or not state_dir_text:
-            # A partial owner-lane binding cannot safely authorize reclamation.
-            return True
-        try:
-            raw_owner_state_path = Path(state_path_text)
-            raw_owner_state_dir = Path(state_dir_text)
-            if (
-                not raw_owner_state_path.is_absolute()
-                or not raw_owner_state_dir.is_absolute()
-            ):
-                return True
-            owner_state_path = raw_owner_state_path.resolve(strict=False)
-            owner_state_dir = raw_owner_state_dir.resolve(strict=False)
-        except (OSError, RuntimeError, ValueError):
-            return True
-        if owner_state_path.parent != owner_state_dir:
-            # State directories identify lanes.  Peer lanes may inspect this
-            # projection, but a path outside its declared lane is untrusted.
-            return True
-        trusted_state_root = self.state_path.resolve(strict=False).parent.parent
-        if owner_state_dir.parent != trusted_state_root:
-            # A coherent path/dir pair is not sufficient deletion authority:
-            # both values could otherwise redirect the claim to an unrelated
-            # empty JSON projection.  Peer lanes for one supervisor share the
-            # same sealed state root and differ only in their lane directory.
-            return True
-
-        has_shard_count = "task_shard_count" in metadata
-        has_shard_index = "task_shard_index" in metadata
-        if has_shard_count != has_shard_index:
-            return True
-        if has_shard_count:
-            shard_count = metadata.get("task_shard_count")
-            shard_index = metadata.get("task_shard_index")
-            if (
-                isinstance(shard_count, bool)
-                or not isinstance(shard_count, int)
-                or shard_count < 1
-                or isinstance(shard_index, bool)
-                or not isinstance(shard_index, int)
-                or shard_index < 0
-                or shard_index >= shard_count
-            ):
-                return True
-
-        owner_lane_binding = (
-            self._validated_implementation_task_claim_owner_lane_binding(
-                metadata,
-                owner_state_path=owner_state_path,
-                owner_state_dir=owner_state_dir,
-            )
-        )
-
-        canonical_metadata = dict(metadata)
-        canonical_metadata["state_dir"] = str(owner_state_dir)
-        if implementation_task_claim_protected_fence_paths(canonical_metadata):
-            return True
-        repository_match = checkout_lock_repository_matches(
-            metadata,
-            self.repo_root,
-        )
-        if repository_match is not True:
-            # This claim was discovered inside this physical repository's
-            # shared lock namespace. A contradictory or unproven JSON binding
-            # is therefore corruption/uncertainty, not proof that a peer may
-            # delete the incumbent record.
-            return True
-        process_owner_active = checkout_lock_owner_is_active(
-            metadata,
-            expected_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
-            expected_repo_root=self.repo_root,
-            process_command_line=process_command_line,
-            process_is_running=process_is_running,
-        )
-        owner_state = load_json_dict(owner_state_path)
-        if owner_state is None:
-            return True
-
-        active_task_id = owner_state.get("active_task_id")
-        active_task_cid = owner_state.get("active_task_cid")
-        active_attempt = owner_state.get("active_attempt")
-        implementation_in_progress = owner_state.get(
-            "implementation_in_progress"
-        )
-        if (
-            not isinstance(active_task_id, str)
-            or not isinstance(active_task_cid, str)
-            or isinstance(active_attempt, bool)
-            or not isinstance(active_attempt, int)
-            or not isinstance(implementation_in_progress, bool)
-        ):
-            return True
-        task_id = metadata.get("task_id")
-        canonical_task_cid = metadata.get("canonical_task_cid")
-        claim_attempt = metadata.get("attempt")
-        if (
-            not isinstance(task_id, str)
-            or not task_id
-            or not isinstance(canonical_task_cid, str)
-            or not canonical_task_cid
-            or isinstance(claim_attempt, bool)
-            or not isinstance(claim_attempt, int)
-            or claim_attempt <= 0
-        ):
-            return True
-        if not process_owner_active:
-            return False
-        if owner_lane_binding is None:
-            # Old or internally inconsistent claims cannot use a live PID and
-            # an arbitrary JSON state projection as deletion authority.
-            return True
-        if not self._live_implementation_task_claim_command_matches_owner_lane(
-            metadata,
-            owner_state_path=owner_state_path,
-            owner_state_dir=owner_state_dir,
-            owner_lane_binding=owner_lane_binding,
-        ):
-            return True
-        if (
-            active_task_id != task_id
-            or active_task_cid != canonical_task_cid
-        ):
-            return False
-        if implementation_in_progress:
-            return active_attempt == claim_attempt
-        # Selection persists before claim acquisition.  Preserve that narrow
-        # live pre-dispatch window, whose attempt marker is intentionally zero.
-        return active_attempt == 0
-
-    def _reap_retained_task_claim_after_protected_fence_clear(
-        self,
-        *,
-        task_id: str,
-        attempt: Any,
-    ) -> dict[str, Any]:
-        """Release a fence-retained claim once its exact owner is no longer active.
-
-        Attempt finalization deliberately keeps the repository-wide task claim
-        while a lane-local protected snapshot or incident exists.  Once that
-        fence is reconciled, a still-running daemon PID is not sufficient proof
-        that the old attempt remains active: the lane state must still name the
-        same task, canonical CID, and attempt.  Missing or malformed claim/state
-        data and any fence I/O uncertainty remain fail closed.
-        """
-
-        result: dict[str, Any] = {
-            "task_id": str(task_id or ""),
-            "attempt": attempt,
-            "reaped_claim_paths": [],
-            "retained_claim_paths": [],
-        }
-        resolved_task_id = str(task_id or "").strip()
-        try:
-            resolved_attempt = int(attempt)
-        except (TypeError, ValueError):
-            result["reason"] = "invalid_task_attempt"
-            return result
-        if not resolved_task_id or resolved_attempt <= 0:
-            result["reason"] = "invalid_task_attempt"
-            return result
-
-        claim_dir = checkout_mutation_lock_path(
-            self.repo_root,
-            lock_name=IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME,
-        )
-        try:
-            claim_paths = sorted(claim_dir.glob("*.lock"))
-        except OSError as exc:
-            result["reason"] = "claim_scan_failed"
-            result["error"] = f"{type(exc).__name__}: {exc}"
-            return result
-
-        expected_state_path = self.state_path.resolve()
-        expected_state_dir = expected_state_path.parent
-        for claim_path in claim_paths:
-            if claim_path.name.startswith("."):
-                continue
+        repo_root = str(metadata.get("repo_root") or "")
+        if repo_root:
             try:
-                with serialized_lock_update(claim_path):
-                    metadata = load_json_dict(claim_path)
-                    if metadata is None:
-                        # The claim could belong to the reconciled attempt, but
-                        # unreadable ownership cannot authorize deletion.
-                        if claim_path.exists():
-                            result["retained_claim_paths"].append(
-                                str(claim_path)
-                            )
-                        continue
-                    if str(metadata.get("task_id") or "") != resolved_task_id:
-                        continue
-                    raw_attempt = metadata.get("attempt")
-                    if (
-                        isinstance(raw_attempt, bool)
-                        or not isinstance(raw_attempt, int)
-                    ):
-                        result["retained_claim_paths"].append(str(claim_path))
-                        continue
-                    if raw_attempt != resolved_attempt:
-                        continue
-                    if (
-                        str(metadata.get("kind") or "")
-                        != IMPLEMENTATION_TASK_CLAIM_LOCK_KIND
-                        or not str(metadata.get("lease_id") or "")
-                    ):
-                        result["retained_claim_paths"].append(str(claim_path))
-                        continue
-                    try:
-                        repository_match = checkout_lock_repository_matches(
-                            metadata,
-                            self.repo_root,
-                        )
-                        owner_state_path = Path(
-                            str(metadata.get("state_path") or "")
-                        ).resolve()
-                        owner_state_dir = Path(
-                            str(metadata.get("state_dir") or "")
-                        ).resolve()
-                    except (OSError, RuntimeError, ValueError):
-                        result["retained_claim_paths"].append(str(claim_path))
-                        continue
-                    if repository_match is not True:
-                        result["retained_claim_paths"].append(str(claim_path))
-                        continue
-                    if (
-                        owner_state_path != expected_state_path
-                        or owner_state_dir != expected_state_dir
-                    ):
-                        # Another lane owns this claim; its reconciler is the
-                        # only authority that may assess its state projection.
-                        continue
-                    if implementation_task_claim_protected_fence_paths(
-                        metadata
-                    ):
-                        result["retained_claim_paths"].append(str(claim_path))
-                        continue
-
-                    owner_state = load_json_dict(owner_state_path)
-                    if owner_state is None:
-                        result["retained_claim_paths"].append(str(claim_path))
-                        continue
-                    active_task_id = owner_state.get("active_task_id")
-                    active_task_cid = owner_state.get("active_task_cid")
-                    active_attempt = owner_state.get("active_attempt")
-                    implementation_in_progress = owner_state.get(
-                        "implementation_in_progress"
-                    )
-                    if (
-                        not isinstance(active_task_id, str)
-                        or not isinstance(active_task_cid, str)
-                        or isinstance(active_attempt, bool)
-                        or not isinstance(active_attempt, int)
-                        or not isinstance(implementation_in_progress, bool)
-                    ):
-                        result["retained_claim_paths"].append(str(claim_path))
-                        continue
-                    canonical_task_cid = metadata.get("canonical_task_cid")
-                    if (
-                        not isinstance(canonical_task_cid, str)
-                        or not canonical_task_cid
-                    ):
-                        result["retained_claim_paths"].append(str(claim_path))
-                        continue
-
-                    # The shared owner predicate also recognizes the narrow
-                    # selected-but-not-yet-dispatched window (active attempt
-                    # zero).  Reuse it here so a fence clearance racing a new
-                    # dispatch cannot steal that freshly acquired claim.
-                    if self._implementation_task_claim_owner_is_active(
-                        metadata
-                    ):
-                        result["retained_claim_paths"].append(str(claim_path))
-                        continue
-                    claim_path.unlink()
-                    result["reaped_claim_paths"].append(str(claim_path))
-            except (OSError, RuntimeError) as exc:
-                result["retained_claim_paths"].append(str(claim_path))
-                result.setdefault("errors", []).append(
-                    {
-                        "claim_path": str(claim_path),
-                        "error": f"{type(exc).__name__}: {exc}",
-                    }
-                )
-
-        result["reaped_claim_paths"] = list(
-            dict.fromkeys(result["reaped_claim_paths"])
-        )
-        result["retained_claim_paths"] = list(
-            dict.fromkeys(result["retained_claim_paths"])
-        )
-        result["reason"] = (
-            "stale_claim_reaped"
-            if result["reaped_claim_paths"]
-            else (
-                "claim_retained_fail_closed"
-                if result["retained_claim_paths"]
-                else "no_matching_claim"
-            )
-        )
-        if result["reaped_claim_paths"]:
-            self._record_event(
-                "implementation_task_claim_reaped_after_protected_path_clear",
-                result,
-            )
-        return result
+                if Path(repo_root).resolve() != self.repo_root.resolve():
+                    return False
+            except OSError:
+                return False
+        return self._lock_owner_is_active(metadata, expected_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND)
 
     def _implementation_resource_claim_owner_is_active(
         self,
         metadata: dict[str, Any],
     ) -> bool:
+        repository_id = str(metadata.get("repository_id") or "")
+        if repository_id:
+            if repository_id != self.merge_target_repository_id:
+                return False
+        else:
+            repo_root = str(metadata.get("repo_root") or "")
+            try:
+                if (
+                    repo_root
+                    and Path(repo_root).resolve() != self.repo_root.resolve()
+                ):
+                    return False
+            except OSError:
+                return False
         resource_path = str(metadata.get("resource_path") or "")
         if not resource_path:
             return False
-        return checkout_lock_owner_is_active(
+        return self._lock_owner_is_active(
             metadata,
             expected_kind=IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND,
-            expected_repo_root=self.repo_root,
-            process_command_line=process_command_line,
-            process_is_running=process_is_running,
         )
 
     def _external_task_reservations(
@@ -40594,53 +38521,7 @@ class PortalImplementationDaemon:
                 if not claim_path.exists():
                     continue
                 metadata = load_json_dict(claim_path)
-                if metadata is None:
-                    # A present but unreadable claim has unknown ownership.
-                    # Keep the task reserved until a reviewed recovery can
-                    # establish that deleting the file is safe.
-                    active_claims[task_id] = {
-                        "kind": IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
-                        "coordination_error": "malformed_task_claim",
-                        "claim_path": str(claim_path),
-                    }
-                    break
-                if self._implementation_task_claim_owner_is_active(metadata):
-                    active_claims[task_id] = metadata
-                    if canonical_task_cid:
-                        active_claims_by_cid[canonical_task_cid] = metadata
-                    break
-                try:
-                    with serialized_lock_update(claim_path):
-                        current = load_json_dict(claim_path)
-                        if current is None:
-                            if claim_path.exists():
-                                # The claim became unreadable while the scan
-                                # was acquiring its serialization lease.  Do
-                                # not turn that coordination race into write
-                                # authority for another lane.
-                                active_claims[task_id] = {
-                                    "kind": IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
-                                    "coordination_error": "malformed_task_claim",
-                                    "claim_path": str(claim_path),
-                                }
-                                break
-                            continue
-                        if self._implementation_task_claim_owner_is_active(
-                            current
-                        ):
-                            active_claims[task_id] = current
-                            if canonical_task_cid:
-                                active_claims_by_cid[
-                                    canonical_task_cid
-                                ] = current
-                            break
-                        self._clear_stale_lock(
-                            claim_path,
-                            lock_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
-                            metadata=current,
-                        )
-                except (OSError, RuntimeError):
-                    # Coordination uncertainty must keep the task reserved.
+                if metadata is not None and self._implementation_task_claim_owner_is_active(metadata):
                     active_claims[task_id] = metadata
                     if canonical_task_cid:
                         active_claims_by_cid[canonical_task_cid] = metadata
@@ -40684,22 +38565,13 @@ class PortalImplementationDaemon:
         return active_claims
 
     def _merge_lock_owner_is_active(self, metadata: dict[str, Any]) -> bool:
-        repository_match = checkout_lock_repository_matches(
-            metadata,
-            self.repo_root,
-        )
-        if not checkout_lock_owner_is_active(
-            metadata,
-            expected_kind="merge",
-            expected_repo_root=self.repo_root,
-            process_command_line=process_command_line,
-            process_is_running=process_is_running,
-        ):
+        repo_root = str(metadata.get("repo_root") or "")
+        if repo_root and Path(repo_root).resolve() != self.repo_root.resolve():
             return False
-        if repository_match is None:
-            return True
         if metadata.get("protected_recovery_required") is True:
             return True
+        if not self._lock_owner_is_active(metadata, expected_kind="merge"):
+            return False
         # Atomic leases are fenced by a unique lease ID and the owning process.
         # Their operation may be supervisor-wide or nested, so task projection
         # is not an ownership signal for these fully published records.
@@ -41354,16 +39226,9 @@ class PortalImplementationDaemon:
 
         if str(metadata.get("kind") or "") != "merge":
             return "kind_mismatch"
-        worktree_root = str(
-            metadata.get("worktree_root")
-            or metadata.get("repo_root")
-            or ""
-        )
         try:
-            if (
-                not worktree_root
-                or Path(worktree_root).resolve()
-                != self.repo_root.resolve()
+            if Path(str(metadata.get("repo_root") or "")).resolve() != (
+                self.repo_root.resolve()
             ):
                 return "repository_path_mismatch"
         except (OSError, RuntimeError, ValueError):
@@ -43241,7 +41106,11 @@ class PortalImplementationDaemon:
         self._events_cache_data = data
         return data
 
-    def _iter_merge_lifecycle_events(self) -> list[dict[str, Any]]:
+    def _iter_merge_lifecycle_events(
+        self,
+        *,
+        include_physical_canonicality: bool = False,
+    ) -> list[dict[str, Any]]:
         """Strictly replay the retained active and rotated lifecycle history.
 
         General supervisor events predate the float-free control-contract
@@ -43303,6 +41172,7 @@ class PortalImplementationDaemon:
             ) from exc
 
         cache_key = (
+            bool(include_physical_canonicality),
             str(manifest.get("manifest_digest") or ""),
             tuple(source_cache_key),
         )
@@ -43421,6 +41291,29 @@ class PortalImplementationDaemon:
                         event["event_id"] = (
                             event_id or expected_event_id
                         )
+                        if include_physical_canonicality:
+                            # This replay-only marker is assigned after event
+                            # identity verification, so a payload cannot forge
+                            # physical canonicality for authority checks.
+                            event["_physical_canonical_event"] = bool(
+                                canonical
+                                and all(
+                                    field in raw_event
+                                    for field in (
+                                        "sequence",
+                                        "stream_id",
+                                        "snapshot_id",
+                                        "event_id",
+                                        "previous_event_id",
+                                    )
+                                )
+                                and bool(event_id)
+                                and event_id == expected_event_id
+                                and str(
+                                    raw_event.get("previous_event_id") or ""
+                                )
+                                == source_previous_event_id
+                            )
                         source_previous_event_id = event["event_id"]
                         if not source_first_sequence:
                             source_first_sequence = sequence
@@ -43690,7 +41583,6 @@ class PortalImplementationDaemon:
         workspace_path: Path,
         *,
         task: PortalTask | None = None,
-        attempt: int | None = None,
     ) -> list[str]:
         workspace_path = workspace_path.resolve()
         declared_provider = self._task_declared_implementation_provider(task)
@@ -43699,111 +41591,54 @@ class PortalImplementationDaemon:
                 f"{declared_provider} task requires a supervisor-owned typed "
                 "local operation; model dispatch is forbidden"
             )
-        ordered_route_requested = self._ordered_grok_codex_route_requested(
-            task
+        configured_provider = (
+            os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
+            or "auto"
         )
-        sealed_ordered_route = self._ordered_grok_codex_route_configured(None)
-        if ordered_route_requested and not sealed_ordered_route:
-            raise ImplementationRetryDeferred(
-                "ordered provider route requires exact grok_cli/grok-4.5 "
-                "primary and codex/gpt-5.6-terra medium quota-only fallback",
-                backoff_seconds=300,
-            )
-        if self.implementation_command and not declared_provider:
-            if sealed_ordered_route:
-                raise ImplementationRetryDeferred(
-                    "sealed Grok/Codex route forbids an explicit "
-                    "implementation command override",
-                    backoff_seconds=300,
-                )
+        quota_policy_applies = (
+            configured_provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES
+            and declared_provider in {"", "grok"}
+        )
+        if (
+            self.implementation_command
+            and not declared_provider
+            and not quota_policy_applies
+        ):
             return shlex.split(self.implementation_command)
         env_command = os.environ.get("IMPLEMENTATION_DAEMON_COMMAND", "").strip()
-        if env_command and not declared_provider:
-            if sealed_ordered_route:
-                raise ImplementationRetryDeferred(
-                    "sealed Grok/Codex route forbids the ambient "
-                    "IMPLEMENTATION_DAEMON_COMMAND override",
-                    backoff_seconds=300,
-                )
+        if env_command and not declared_provider and not quota_policy_applies:
             return shlex.split(env_command)
-        if (
-            sealed_ordered_route
-            and declared_provider in CODEX_IMPLEMENTATION_PROVIDER_ALIASES
-        ):
-            raise ImplementationRetryDeferred(
-                "sealed Grok/Codex route forbids task-declared Codex dispatch "
-                "without a live Grok quota exhaustion proof",
-                backoff_seconds=300,
-            )
 
-        configured_provider = _configured_implementation_provider()
+        # The quota-routed policy refines an autonomous task's Grok
+        # implementation role; it does not replace the independent Codex
+        # review role enforced by TaskExecutionPolicy.  Other configured
+        # providers remain subordinate to an exact task declaration.
         provider = (
-            declared_provider
-            or configured_provider
+            configured_provider
+            if quota_policy_applies
+            else declared_provider or configured_provider
         )
-        fallback_provider = _configured_implementation_fallback_provider()
-        if declared_provider and not sealed_ordered_route:
-            fallback_provider = ""
         grok_ready = _grok_cli_available()
         goose_meta_ready = _goose_meta_spark_available()
-        grok_provider_aliases = {
+        prefer_grok = provider in {
             "auto",
-            *GROK_IMPLEMENTATION_PROVIDER_ALIASES,
+            "grok",
+            "grok_cli",
+            "grok-cli",
+            "grok_build",
+            "grok-build",
+            "xai_cli",
+            "xai-cli",
         }
-        explicit_grok_aliases = grok_provider_aliases - {"auto"}
-        prefer_grok = provider in grok_provider_aliases
-        ordered_codex_fallback = (
-            self._ordered_grok_codex_route_configured(task)
-        )
-        ordered_selected_provider = (
-            self._ordered_grok_codex_selected_provider(
-                task,
-                attempt=attempt,
-            )
-            if ordered_codex_fallback
-            else ""
-        )
-        force_grok = (
-            provider in explicit_grok_aliases
-            and not ordered_codex_fallback
-        )
-        force_codex = provider in {"codex", "openai"}
-        force_declared_codex = bool(declared_provider) and force_codex
-        if fallback_provider and not ordered_codex_fallback:
-            raise RuntimeError(
-                "Unsupported implementation provider fallback route: "
-                f"{provider!r} -> {fallback_provider!r}"
-            )
-        if ordered_codex_fallback and not ordered_selected_provider:
-            if (
-                _configured_implementation_fallback_trigger()
-                != PRIMARY_QUOTA_EXHAUSTED_FALLBACK_TRIGGER
-                or _configured_codex_reasoning_effort() != "medium"
-            ):
-                reason = (
-                    "ordered Grok/Codex route is missing its reviewed "
-                    "primary_quota_exhausted trigger or medium reasoning "
-                    "policy"
-                )
-            elif self._active_grok_quota_fallback_proof(
-                task,
-                attempt=attempt,
-            ):
-                reason = (
-                    "Codex fallback is unavailable or capacity-deferred while "
-                    "the live Grok quota/balance exhaustion proof is active"
-                )
-            else:
-                reason = (
-                    "Grok is unavailable or capacity-deferred; Codex fallback "
-                    "requires a live explicit Grok quota/balance exhaustion proof"
-                )
-            raise ImplementationRetryDeferred(reason, backoff_seconds=300)
-        if (
-            declared_provider in GROK_IMPLEMENTATION_PROVIDER_ALIASES
-            and not ordered_codex_fallback
-        ):
-            force_grok = True
+        force_grok = provider in {
+            "grok",
+            "grok_cli",
+            "grok-cli",
+            "grok_build",
+            "grok-build",
+            "xai_cli",
+            "xai-cli",
+        }
         prefer_goose_meta = provider in {
             "goose",
             "goose_meta",
@@ -43826,9 +41661,42 @@ class PortalImplementationDaemon:
             "muse-spark",
             "spark",
         }
+        force_codex = provider in {"codex", "copilot", "openai"}
 
-        # Prefer only when the binary is actually resolvable so an auth-only
-        # readiness signal does not block auto-fallback to codex/copilot.
+        if provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES:
+            quota_route = self._quota_routed_implementation_provider_route(task)
+            if quota_route == "codex_quota_fallback":
+                codex = shutil.which("codex")
+                if not codex:
+                    raise RuntimeError(
+                        "Grok quota is exhausted, but the exact Codex fallback "
+                        "executable is unavailable"
+                    )
+                codex_context_window = (
+                    self._implementation_provider_context_window_for_task(task)[0]
+                    if task is not None
+                    else None
+                )
+                return _direct_codex_command(
+                    codex=codex,
+                    workspace_path=workspace_path,
+                    codex_context_window=codex_context_window,
+                    model=GROK_QUOTA_FALLBACK_CODEX_MODEL,
+                    reasoning_effort=(
+                        GROK_QUOTA_FALLBACK_CODEX_REASONING_EFFORT
+                    ),
+                )
+            if not grok_ready or not _grok_binary():
+                raise RuntimeError(
+                    f"Implementation provider {provider!r} requires the Grok "
+                    "Build CLI (`grok`) with login/auth. Codex is authorized "
+                    "only after a classified Grok quota-exhaustion event."
+                )
+            return _grok_cli_command(
+                workspace_path=workspace_path,
+                model_override=DEFAULT_GROK_IMPLEMENTATION_MODEL,
+            )
+
         if force_grok:
             if not grok_ready:
                 raise RuntimeError(
@@ -43841,10 +41709,6 @@ class PortalImplementationDaemon:
             prefer_grok
             and grok_ready
             and _grok_binary()
-            and (
-                not ordered_codex_fallback
-                or ordered_selected_provider == "grok"
-            )
             and not force_codex
             and not force_goose_meta
         ):
@@ -43864,34 +41728,21 @@ class PortalImplementationDaemon:
         codex = shutil.which("codex")
         copilot = shutil.which("copilot")
         codex_context_window = (
-            self._implementation_provider_context_window_for_task(
-                task,
-                selected_provider="codex",
-            )[0]
+            self._implementation_provider_context_window_for_task(task)[0]
             if task is not None
             else None
         )
-        if ordered_codex_fallback or force_declared_codex:
-            if (
-                ordered_codex_fallback
-                and ordered_selected_provider != "codex"
-            ):
-                raise RuntimeError(
-                    "Implementation provider route "
-                    f"{provider!r} -> {fallback_provider!r} has no currently "
-                    "available, authenticated, and capacity-eligible provider"
-                )
+        if (
+            force_codex
+            and configured_provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES
+        ):
             if not codex:
-                route = (
-                    f"{provider} -> {fallback_provider}"
-                    if ordered_codex_fallback
-                    else provider
-                )
                 raise RuntimeError(
-                    "Implementation provider route "
-                    f"{route!r} requires the Codex CLI (`codex`)"
+                    "Task-declared Codex implementation requires the exact "
+                    "Codex executable; Copilot substitution is forbidden by "
+                    f"provider policy {configured_provider!r}"
                 )
-            return _codex_cli_command(
+            return _direct_codex_command(
                 codex=codex,
                 workspace_path=workspace_path,
                 codex_context_window=codex_context_window,
@@ -43904,7 +41755,7 @@ class PortalImplementationDaemon:
                 codex_context_window=codex_context_window,
             )
         if codex:
-            return _codex_cli_command(
+            return _direct_codex_command(
                 codex=codex,
                 workspace_path=workspace_path,
                 codex_context_window=codex_context_window,
@@ -44004,8 +41855,6 @@ class PortalImplementationDaemon:
     def _configured_implementation_provider_context_window(
         self,
         task: PortalTask | None = None,
-        *,
-        selected_provider: str = "",
     ) -> int:
         configured = self.implementation_provider_context_window
         if configured is not None:
@@ -44018,19 +41867,36 @@ class PortalImplementationDaemon:
                     "invalid implementation provider context window"
                 )
             return configured
-        provider = str(selected_provider or "").strip().lower()
-        if not provider:
-            provider = self._task_declared_implementation_provider(task)
-        if (
-            not provider
-            and self._ordered_grok_codex_route_configured(task)
-        ):
-            provider = self._ordered_grok_codex_selected_provider(task)
-        if not provider:
-            provider = _configured_implementation_provider()
+        declared_provider = self._task_declared_implementation_provider(task)
+        configured_provider = (
+            os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
+        )
+        provider = (
+            configured_provider
+            if (
+                configured_provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES
+                and declared_provider in {"", "grok"}
+            )
+            else declared_provider or configured_provider
+        )
+        if provider in GROK_QUOTA_CODEX_PROVIDER_ALIASES:
+            provider = (
+                "codex"
+                if self._quota_routed_implementation_provider_route(task)
+                == "codex_quota_fallback"
+                else "grok"
+            )
         environment_name = (
             _GROK_CONTEXT_WINDOW_ENV
-            if provider in GROK_IMPLEMENTATION_PROVIDER_ALIASES
+            if provider in {
+                "grok",
+                "grok_cli",
+                "grok-cli",
+                "xai_cli",
+                "xai-cli",
+                "grok_build",
+                "grok-build",
+            }
             else _CODEX_CONTEXT_WINDOW_ENV
         )
         raw = os.environ.get(environment_name, "200000").strip()
@@ -44043,8 +41909,6 @@ class PortalImplementationDaemon:
     def _implementation_provider_context_window_for_task(
         self,
         task: PortalTask,
-        *,
-        selected_provider: str = "",
     ) -> tuple[int, ContextBudget, int | None]:
         budget = self._base_implementation_context_budget()
         token_limit = self._task_context_token_limit(task)
@@ -44058,8 +41922,7 @@ class PortalImplementationDaemon:
             )
         byte_limit = self._task_llm_context_budget_bytes(task)
         provider_window = self._configured_implementation_provider_context_window(
-            task,
-            selected_provider=selected_provider,
+            task
         )
         if byte_limit is not None:
             # Canonical provider input contains ordinary UTF-8 text, so its
@@ -44086,6 +41949,74 @@ class PortalImplementationDaemon:
                 "implementation context byte budget exhausted"
             )
         return byte_count
+
+    def _implementation_prompt_token_usage(
+        self,
+        task: PortalTask,
+        rendered: str,
+    ) -> tuple[int, int]:
+        """Measure final provider text against every authoritative ceiling.
+
+        Context compilation accounts for the canonical capsule.  Retry
+        guidance is appended later, so final dispatch must be remeasured with
+        the same tokenizer and negotiated provider window.  A retained parent
+        may be stricter than current configuration; its effective capsule
+        budget remains an upper bound.
+        """
+
+        provider_window, configured_budget, prompt_byte_limit = (
+            self._implementation_provider_context_window_for_task(task)
+        )
+        compiler = ContextCompiler(
+            configured_budget,
+            tokenizer=self.implementation_context_tokenizer,
+            provider_context_window=provider_window,
+            provider_max_input_tokens=(
+                self.implementation_provider_max_input_tokens
+            ),
+            provider_max_input_bytes=prompt_byte_limit,
+        )
+        token_count = compiler.estimator.estimate(rendered)
+        effective_limit = compiler.effective_input_limit
+        context = self._last_implementation_context
+        if isinstance(context, ContextCompileResult):
+            effective_limit = min(
+                effective_limit,
+                context.capsule.budget.max_input_tokens,
+            )
+            base_prompt = render_context_capsule(context.capsule)
+            if rendered.startswith(base_prompt):
+                suffix = rendered[len(base_prompt) :]
+                token_count = max(
+                    token_count,
+                    context.capsule.input_tokens
+                    + (
+                        compiler.estimator.estimate(suffix)
+                        if suffix
+                        else 0
+                    ),
+                )
+        elif isinstance(context, ContextDeltaResult):
+            effective_limit = min(
+                effective_limit,
+                context.parent_capsule.budget.max_input_tokens,
+            )
+        return token_count, effective_limit
+
+    def _require_implementation_prompt_token_budget(
+        self,
+        task: PortalTask,
+        rendered: str,
+    ) -> int:
+        token_count, effective_limit = self._implementation_prompt_token_usage(
+            task,
+            rendered,
+        )
+        if token_count > effective_limit:
+            raise ImplementationRetryDeferred(
+                "implementation context token budget exhausted"
+            )
+        return token_count
 
     def _resolve_context_path(self, value: Any) -> Path | None:
         text = str(value or "").strip()
@@ -44881,13 +42812,138 @@ class PortalImplementationDaemon:
         *,
         attempt: int,
         checkpoint_dir: Path,
+        command: Sequence[str] = (),
+        terminal_receipt_fd: int = -1,
     ) -> dict[str, str]:
-        return {
-            IMPLEMENTATION_CHECKPOINT_DIR_ENV: str(checkpoint_dir),
-            IMPLEMENTATION_TASK_ID_ENV: task.task_id,
-            IMPLEMENTATION_TASK_CID_ENV: self._canonical_ref(task),
-            IMPLEMENTATION_ATTEMPT_ENV: str(int(attempt)),
+        formal_toolchain = formal_toolchain_deployment_manifest()
+        command_environment = project_provider_command_environment()
+        command_environment[PROVIDER_COMMAND_ENV_DIGEST_ENV] = (
+            provider_command_environment_sha256(command_environment)
+        )
+        command_environment[FORMAL_TOOLCHAIN_CONTRACT_SHA256_ENV] = str(
+            formal_toolchain["manifest_sha256"]
+        )
+        command_environment.update(
+            {
+                IMPLEMENTATION_CHECKPOINT_DIR_ENV: str(checkpoint_dir),
+                IMPLEMENTATION_TASK_ID_ENV: task.task_id,
+                IMPLEMENTATION_TASK_CID_ENV: self._canonical_ref(task),
+                IMPLEMENTATION_ATTEMPT_ENV: str(int(attempt)),
+            }
+        )
+        if (
+            terminal_receipt_fd >= 3
+            and _provider_labels_from_implementation_command(command)
+            == ["grok"]
+        ):
+            command_environment[GROK_TERMINAL_RECEIPT_FD_ENV] = str(
+                terminal_receipt_fd
+            )
+        return command_environment
+
+    def _validation_python_dependency_preflight(
+        self,
+        task: PortalTask,
+    ) -> dict[str, object]:
+        """Probe the exact authoritative Python before provider dispatch."""
+
+        additional_modules = task_validation_python_modules(task)
+        try:
+            return preflight_validation_python_modules(
+                additional_modules,
+            )
+        except ValidationRuntimeError as exc:
+            return {
+                "schema": VALIDATION_PYTHON_MODULE_PREFLIGHT_SCHEMA,
+                "passed": False,
+                "reason": "validation_python_module_preflight_invalid",
+                "required_modules": [
+                    "pytest",
+                    *additional_modules,
+                ],
+                "missing_modules": [],
+                "failed_modules": {},
+                "exception_type": type(exc).__name__,
+                "error": str(exc)[-1000:],
+                "action": (
+                    "repair the configured validation Python/module contract "
+                    "before restarting the supervisor"
+                ),
+            }
+
+    def _defer_validation_python_dependency_preflight(
+        self,
+        task: PortalTask,
+        state: PortalTaskState,
+        receipt: Mapping[str, object],
+    ) -> dict[str, Any]:
+        """Persist an actionable non-consuming dependency deferral."""
+
+        attempt = self._task_attempt(state, task)
+        canonical_task_cid = self._canonical_ref(task)
+        self.task_queue.defer(
+            canonical_task_cid,
+            VALIDATION_PYTHON_PREFLIGHT_BACKOFF_SECONDS,
+            reason="validation_python_dependency_preflight_failed",
+        )
+        self.task_queue.save()
+        current = PortalTaskState.load(self.state_path)
+        owns_idle_projection = (
+            current.active_task_id == task.task_id
+            and current.active_task_cid == canonical_task_cid
+            and not current.implementation_in_progress
+        )
+        if owns_idle_projection:
+            self._clear_active_execution_state(current, clear_task=True)
+            current.selectable_ready_task_ids = [
+                task_id
+                for task_id in current.selectable_ready_task_ids
+                if task_id != task.task_id
+            ]
+            current.selectable_ready_count = len(
+                current.selectable_ready_task_ids
+            )
+            current.eligible_ready_task_ids = [
+                task_id
+                for task_id in current.eligible_ready_task_ids
+                if task_id != task.task_id
+            ]
+            current.eligible_ready_count = len(
+                current.eligible_ready_task_ids
+            )
+            current.selection_idle_reason = (
+                "validation_python_dependency_preflight_failed"
+            )
+            current.save(self.state_path)
+            state.__dict__.update(asdict(current))
+        result: dict[str, Any] = {
+            "skipped": True,
+            "deferred": True,
+            "reason": "validation_python_dependency_preflight_failed",
+            "task_id": task.task_id,
+            "canonical_task_cid": canonical_task_cid,
+            "attempt": attempt,
+            "attempt_consumed": False,
+            "provider_dispatched": False,
+            "infrastructure_failure": True,
+            "backoff_seconds": (
+                VALIDATION_PYTHON_PREFLIGHT_BACKOFF_SECONDS
+            ),
+            "active_task_cleared": owns_idle_projection,
+            "validation_python_preflight": dict(receipt),
         }
+        for key in (
+            "required_modules",
+            "missing_modules",
+            "failed_modules",
+            "python_executable",
+            "action",
+        ):
+            value = receipt.get(key)
+            if value not in (None, "", (), [], {}):
+                result[key] = value
+        self._record_event("implementation_retry_deferred", result)
+        return result
 
     def _implementation_progress_observer(
         self,
@@ -44932,39 +42988,6 @@ class PortalImplementationDaemon:
 
         if not isinstance(failure, Mapping):
             raise TypeError("implementation failure must be a mapping")
-
-        def bounded_items(
-            value: Any,
-            *,
-            limit: int,
-            paths: bool = False,
-        ) -> list[str]:
-            if not isinstance(
-                value,
-                (list, tuple, set, frozenset),
-            ):
-                return []
-            values = (
-                sorted(value, key=lambda item: str(item))
-                if isinstance(value, (set, frozenset))
-                else value
-            )
-            items: list[str] = []
-            for raw_item in values:
-                item = str(raw_item or "").strip()
-                if paths:
-                    item = normalize_retry_validation_path(item)
-                if not item:
-                    continue
-                item = item[
-                    :MAX_PERSISTED_VALIDATION_FAILURE_ITEM_CHARS
-                ]
-                if item not in items:
-                    items.append(item)
-                if len(items) >= limit:
-                    break
-            return items
-
         selected: dict[str, Any] = {}
         for key in (
             "kind",
@@ -44990,7 +43013,7 @@ class PortalImplementationDaemon:
                 selected[key] = value
         validation = failure.get("validation_result")
         if isinstance(validation, Mapping):
-            validation_projection = {
+            selected["validation"] = {
                 key: validation[key]
                 for key in (
                     "passed",
@@ -45002,43 +43025,6 @@ class PortalImplementationDaemon:
                 )
                 if validation.get(key) not in (None, "", (), [], {})
             }
-            for key, limit, paths in (
-                (
-                    "failed_tests",
-                    MAX_PERSISTED_VALIDATION_FAILED_TESTS,
-                    False,
-                ),
-                (
-                    "failed_test_paths",
-                    MAX_PERSISTED_VALIDATION_FAILED_TEST_PATHS,
-                    True,
-                ),
-                (
-                    "exception_types",
-                    MAX_PERSISTED_VALIDATION_EXCEPTION_TYPES,
-                    False,
-                ),
-                (
-                    "validation_impact_paths",
-                    MAX_PERSISTED_VALIDATION_IMPACT_PATHS,
-                    True,
-                ),
-            ):
-                items = bounded_items(
-                    validation.get(key),
-                    limit=limit,
-                    paths=paths,
-                )
-                if items:
-                    validation_projection[key] = items
-            failure_head = str(
-                validation.get("failure_head") or ""
-            ).strip()
-            if failure_head:
-                validation_projection["failure_head"] = failure_head[
-                    :MAX_PERSISTED_VALIDATION_FAILURE_HEAD_CHARS
-                ]
-            selected["validation"] = validation_projection
             proposal = validation.get("proposal_gate")
             if isinstance(proposal, Mapping):
                 selected["proposal_gate"] = {
@@ -45070,28 +43056,77 @@ class PortalImplementationDaemon:
         if not selected:
             selected = {"kind": "implementation_failure", "reason": "unknown"}
         encoded = canonical_json(selected).encode("utf-8")
-        if len(encoded) <= 16_384:
+        maximum_bytes = 16_384
+        if len(encoded) <= maximum_bytes:
             return selected
 
-        source_failure_sha256 = hashlib.sha256(encoded).hexdigest()
+        # Reviewed failures can repeat the same bounded prompt addendum at the
+        # top level, in ``failure_review``, and again below ``validation``.
+        # Raising here loses the useful diagnosis and turns an ordinary retry
+        # into a supervisor failure.  Project verbose evidence deterministically
+        # instead: retain authority/identity fields and actionable paths,
+        # commands, and head/tail guidance while bounding every variable-width
+        # field.  The source identity makes truncation explicit and auditable.
+        truncated_fields: set[str] = set()
 
-        def bounded_text(value: Any, *, limit: int) -> str:
-            text = str(value or "").strip()
-            if len(text.encode("utf-8")) <= limit:
+        def bounded_text(value: Any, *, limit: int, field: str) -> str:
+            if isinstance(value, (set, frozenset)):
+                text = canonical_json(
+                    sorted(value, key=lambda item: canonical_json(item))
+                ).strip()
+            elif isinstance(value, (Mapping, Sequence)) and not isinstance(
+                value,
+                (str, bytes, bytearray),
+            ):
+                # Structured values in a nominal scalar field are malformed,
+                # but still project them canonically so insertion order cannot
+                # change the diagnostic identity.
+                text = canonical_json(value).strip()
+            else:
+                text = str(value or "").strip()
+            if len(canonical_json(text).encode("utf-8")) <= limit:
                 return text
-            marker = "...<truncated>"
-            budget = max(0, limit - len(marker.encode("utf-8")))
-            prefix = text.encode("utf-8")[:budget].decode(
-                "utf-8",
-                errors="ignore",
-            )
-            return prefix.rstrip() + marker
+            truncated_fields.add(field)
+            marker = " ...<truncated>... "
+
+            def candidate(kept_characters: int) -> str:
+                head_characters = (kept_characters * 2) // 3
+                tail_characters = kept_characters - head_characters
+                head = text[:head_characters]
+                tail = text[-tail_characters:] if tail_characters else ""
+                return head.rstrip() + marker + tail.lstrip()
+
+            # Budget the canonical JSON representation, not raw UTF-8: control
+            # characters may expand sixfold as ``\u0000`` escapes.
+            low = 0
+            high = len(text)
+            result = marker.strip()
+            while low <= high:
+                midpoint = (low + high) // 2
+                projected = candidate(midpoint)
+                if len(canonical_json(projected).encode("utf-8")) <= limit:
+                    result = projected
+                    low = midpoint + 1
+                else:
+                    high = midpoint - 1
+            return result
+
+        def bounded_scalar(value: Any, *, limit: int, field: str) -> Any:
+            if value is None or isinstance(value, (bool, float)):
+                return value
+            if isinstance(value, int):
+                if len(canonical_json(value).encode("utf-8")) <= limit:
+                    return value
+                truncated_fields.add(field)
+                return bounded_text(value, limit=limit, field=field)
+            return bounded_text(value, limit=limit, field=field)
 
         def bounded_strings(
             value: Any,
             *,
-            count: int = 16,
-            width: int = 512,
+            count: int,
+            width: int,
+            field: str,
         ) -> list[str]:
             if isinstance(value, Sequence) and not isinstance(
                 value,
@@ -45102,17 +43137,29 @@ class PortalImplementationDaemon:
                 candidates = (value,)
             else:
                 candidates = ()
+            if len(candidates) > count:
+                truncated_fields.add(field)
             result: list[str] = []
-            for item in candidates[:count]:
-                text = bounded_text(item, limit=width)
-                if text and text not in result:
-                    result.append(text)
+            for index, item in enumerate(candidates[:count]):
+                bounded = bounded_text(
+                    item,
+                    limit=width,
+                    field=f"{field}[{index}]",
+                )
+                if bounded:
+                    result.append(bounded)
             return result
 
-        def compact_review(value: Any) -> dict[str, Any]:
+        def project_review(
+            value: Any,
+            *,
+            field: str,
+            include_guidance: bool,
+            minimal: bool = False,
+        ) -> dict[str, Any]:
             if not isinstance(value, Mapping):
                 return {}
-            compact: dict[str, Any] = {}
+            result: dict[str, Any] = {}
             for name in (
                 "receipt_id",
                 "task_id",
@@ -45120,40 +43167,49 @@ class PortalImplementationDaemon:
                 "decision",
                 "accepted",
                 "policy_version",
+                "proof_authoritative",
+                "completion_authoritative",
             ):
-                raw = value.get(name)
-                if raw in (None, "", (), [], {}):
-                    continue
-                compact[name] = (
-                    raw
-                    if isinstance(raw, (bool, int))
-                    else bounded_text(raw, limit=512)
+                item = value.get(name)
+                if item not in (None, "", (), [], {}):
+                    result[name] = bounded_scalar(
+                        item,
+                        limit=192,
+                        field=f"{field}.{name}",
+                    )
+            sequence_limits = {
+                "reason_codes": (4 if minimal else 6, 96),
+                "finding_codes": (4 if minimal else 6, 96),
+                "missing_expected_outputs": (2 if minimal else 4, 192),
+                "out_of_scope_paths": (1 if minimal else 2, 192),
+                "justified_paths": (1 if minimal else 2, 192),
+                "denied_paths": (2, 192),
+                "contract_gap_paths": (2, 192),
+                "failed_commands": (1, 256),
+            }
+            for name, (count, width) in sequence_limits.items():
+                items = bounded_strings(
+                    value.get(name),
+                    count=count,
+                    width=width,
+                    field=f"{field}.{name}",
                 )
-            for name in (
-                "reason_codes",
-                "finding_codes",
-                "missing_expected_outputs",
-                "out_of_scope_paths",
-                "justified_paths",
-                "denied_paths",
-                "contract_gap_paths",
-                "failed_commands",
-            ):
-                values = bounded_strings(value.get(name))
-                if values:
-                    compact[name] = values
-            addendum = bounded_text(
-                value.get("next_attempt_prompt_addendum"),
-                limit=2_048,
-            )
-            if addendum:
-                compact["next_attempt_prompt_addendum"] = addendum
-            return compact
+                if items:
+                    result[name] = items
+            addendum = value.get("next_attempt_prompt_addendum")
+            if include_guidance and addendum not in (None, ""):
+                result["next_attempt_prompt_addendum"] = bounded_text(
+                    addendum,
+                    limit=1_536 if minimal else 2_048,
+                    field=f"{field}.next_attempt_prompt_addendum",
+                )
+            elif addendum not in (None, ""):
+                truncated_fields.add(
+                    f"{field}.next_attempt_prompt_addendum"
+                )
+            return result
 
-        compact: dict[str, Any] = {
-            "truncated": True,
-            "source_failure_sha256": source_failure_sha256,
-        }
+        bounded: dict[str, Any] = {}
         for name in (
             "kind",
             "reason",
@@ -45163,156 +43219,396 @@ class PortalImplementationDaemon:
             "counterexample_id",
             "timeout_reason",
         ):
-            raw = selected.get(name)
-            if raw in (None, "", (), [], {}):
-                continue
-            compact[name] = (
-                raw
-                if isinstance(raw, (bool, int))
-                else bounded_text(raw, limit=512)
+            value = selected.get(name)
+            if value not in (None, "", (), [], {}):
+                bounded[name] = bounded_scalar(
+                    value,
+                    limit=192,
+                    field=name,
+                )
+        for name, count, width in (
+            ("counterexample_ids", 2, 128),
+            ("reason_codes", 6, 96),
+            ("failed_commands", 2, 256),
+            ("failing_checks", 2, 192),
+            ("missing_outputs", 4, 192),
+        ):
+            values = bounded_strings(
+                selected.get(name),
+                count=count,
+                width=width,
+                field=name,
             )
-        for name in (
-            "counterexample_ids",
-            "reason_codes",
-            "failed_commands",
-            "failing_checks",
-            "missing_outputs",
-        ):
-            values = bounded_strings(selected.get(name))
             if values:
-                compact[name] = values
-        for name in (
-            "next_attempt_prompt_addendum",
-            "validation_environment_guidance",
-        ):
-            text = bounded_text(selected.get(name), limit=2_048)
-            if text:
-                compact[name] = text
-        review = compact_review(selected.get("failure_review"))
+                bounded[name] = values
+
+        root_addendum = selected.get("next_attempt_prompt_addendum")
+        if root_addendum not in (None, ""):
+            bounded["next_attempt_prompt_addendum"] = bounded_text(
+                root_addendum,
+                limit=2_048,
+                field="next_attempt_prompt_addendum",
+            )
+        environment_guidance = selected.get(
+            "validation_environment_guidance"
+        )
+        if environment_guidance not in (None, ""):
+            bounded["validation_environment_guidance"] = bounded_text(
+                environment_guidance,
+                limit=512,
+                field="validation_environment_guidance",
+            )
+
+        review_source = selected.get("failure_review")
+        review_addendum = (
+            review_source.get("next_attempt_prompt_addendum")
+            if isinstance(review_source, Mapping)
+            else None
+        )
+        review = project_review(
+            review_source,
+            field="failure_review",
+            include_guidance=(
+                review_addendum not in (None, "", root_addendum)
+            ),
+        )
         if review:
-            compact["failure_review"] = review
+            bounded["failure_review"] = review
 
         validation = selected.get("validation")
         if isinstance(validation, Mapping):
             compact_validation: dict[str, Any] = {}
             for name in ("passed", "returncode", "reason"):
-                raw = validation.get(name)
-                if raw in (None, "", (), [], {}):
-                    continue
-                compact_validation[name] = (
-                    raw
-                    if isinstance(raw, (bool, int))
-                    else bounded_text(raw, limit=512)
+                value = validation.get(name)
+                if value not in (None, "", (), [], {}):
+                    compact_validation[name] = bounded_scalar(
+                        value,
+                        limit=192,
+                        field=f"validation.{name}",
+                    )
+            for name, count, width in (
+                ("reason_codes", 4, 96),
+                ("failed_commands", 1, 256),
+            ):
+                values = bounded_strings(
+                    validation.get(name),
+                    count=count,
+                    width=width,
+                    field=f"validation.{name}",
                 )
-            for name in ("reason_codes", "failed_commands"):
-                values = bounded_strings(validation.get(name))
                 if values:
                     compact_validation[name] = values
-            validation_review = compact_review(
-                validation.get("failure_review")
+            nested_review = project_review(
+                validation.get("failure_review"),
+                field="validation.failure_review",
+                include_guidance=(
+                    validation.get("failure_review", {}).get(
+                        "next_attempt_prompt_addendum"
+                    )
+                    not in (None, "", root_addendum, review_addendum)
+                    if isinstance(validation.get("failure_review"), Mapping)
+                    else False
+                ),
+                minimal=True,
             )
-            if validation_review:
-                compact_validation["failure_review"] = validation_review
+            if nested_review:
+                compact_validation["failure_review"] = nested_review
             if compact_validation:
-                compact["validation"] = compact_validation
+                bounded["validation"] = compact_validation
 
-        for field_name in ("proposal_gate", "scope_adjudication"):
-            source = selected.get(field_name)
-            if not isinstance(source, Mapping):
-                continue
-            projection: dict[str, Any] = {}
+        proposal = selected.get("proposal_gate")
+        if isinstance(proposal, Mapping):
+            compact_proposal: dict[str, Any] = {}
             for name in (
-                "accepted",
                 "proposal_id",
                 "policy_id",
                 "receipt_id",
                 "repository_tree_id",
             ):
-                raw = source.get(name)
-                if raw in (None, "", (), [], {}):
-                    continue
-                projection[name] = (
-                    raw
-                    if isinstance(raw, (bool, int))
-                    else bounded_text(raw, limit=512)
+                value = proposal.get(name)
+                if value not in (None, "", (), [], {}):
+                    compact_proposal[name] = bounded_scalar(
+                        value,
+                        limit=192,
+                        field=f"proposal_gate.{name}",
+                    )
+            reason_codes = bounded_strings(
+                proposal.get("reason_codes"),
+                count=4,
+                width=96,
+                field="proposal_gate.reason_codes",
+            )
+            if reason_codes:
+                compact_proposal["reason_codes"] = reason_codes
+            if compact_proposal:
+                bounded["proposal_gate"] = compact_proposal
+
+        scope = selected.get("scope_adjudication")
+        if isinstance(scope, Mapping):
+            compact_scope: dict[str, Any] = {}
+            for name in ("accepted", "receipt_id", "proposal_id"):
+                value = scope.get(name)
+                if value not in (None, "", (), [], {}):
+                    compact_scope[name] = bounded_scalar(
+                        value,
+                        limit=192,
+                        field=f"scope_adjudication.{name}",
+                    )
+            for name in ("authorized_paths", "denied_paths"):
+                values = bounded_strings(
+                    scope.get(name),
+                    count=2,
+                    width=192,
+                    field=f"scope_adjudication.{name}",
                 )
-            for name in (
-                "reason_codes",
-                "authorized_paths",
-                "denied_paths",
-            ):
-                values = bounded_strings(source.get(name))
                 if values:
-                    projection[name] = values
-            if projection:
-                compact[field_name] = projection
+                    compact_scope[name] = values
+            if scope.get("decisions") not in (None, "", (), [], {}):
+                truncated_fields.add("scope_adjudication.decisions")
+            if compact_scope:
+                bounded["scope_adjudication"] = compact_scope
+
+        timeout_policy = selected.get("timeout_policy")
+        if isinstance(timeout_policy, Mapping):
+            compact_timeout: dict[str, Any] = {}
+            for name in (
+                "configured_timeout_seconds",
+                "progress_timeout_seconds",
+                "max_timeout_seconds",
+                "progress_aware",
+                "source",
+            ):
+                value = timeout_policy.get(name)
+                if value not in (None, "", (), [], {}):
+                    compact_timeout[name] = bounded_scalar(
+                        value,
+                        limit=128,
+                        field=f"timeout_policy.{name}",
+                    )
+            if compact_timeout:
+                bounded["timeout_policy"] = compact_timeout
 
         checkpoint = selected.get("checkpoint_manifest")
         if isinstance(checkpoint, Mapping):
-            checkpoint_projection = {
-                name: checkpoint[name]
-                for name in (
-                    "schema",
-                    "manifest_cid",
-                    "file_count",
-                    "total_size_bytes",
-                    "truncated",
-                )
-                if checkpoint.get(name) not in (None, "", (), [], {})
+            compact_checkpoint: dict[str, Any] = {}
+            for name in (
+                "schema",
+                "task_id",
+                "canonical_task_cid",
+                "file_count",
+                "total_size_bytes",
+                "truncated",
+                "manifest_cid",
+            ):
+                value = checkpoint.get(name)
+                if value not in (None, "", (), [], {}):
+                    compact_checkpoint[name] = bounded_scalar(
+                        value,
+                        limit=192,
+                        field=f"checkpoint_manifest.{name}",
+                    )
+            if checkpoint.get("files") not in (None, "", (), [], {}):
+                truncated_fields.add("checkpoint_manifest.files")
+            if compact_checkpoint:
+                bounded["checkpoint_manifest"] = compact_checkpoint
+
+        source_failure_id = content_identity(selected)
+
+        def normalization_metadata(projection: str) -> dict[str, Any]:
+            fields = sorted(truncated_fields)
+            return {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "bounded-implementation-failure@1"
+                ),
+                "projection": projection,
+                "source_failure_id": source_failure_id,
+                "source_bytes": len(encoded),
+                "maximum_bytes": maximum_bytes,
+                "truncated_field_count": len(fields),
+                "truncated_fields": [
+                    bounded_text(
+                        field,
+                        limit=96,
+                        field="normalization.truncated_fields",
+                    )
+                    for field in fields[:12]
+                ],
             }
-            if checkpoint_projection:
-                compact["checkpoint_manifest"] = checkpoint_projection
 
-        compact_encoded = canonical_json(compact).encode("utf-8")
-        if len(compact_encoded) <= 16_384:
-            return compact
+        bounded["normalization"] = normalization_metadata("bounded")
+        if len(canonical_json(bounded).encode("utf-8")) <= maximum_bytes:
+            return bounded
 
-        # The compact projection above is intentionally generous enough for
-        # normal rescue guidance.  This final projection guarantees the hard
-        # persistence bound even when every retained collection is adversarially
-        # wide, while preserving the typed reason and proposal identities.
-        minimal = {
-            key: compact[key]
-            for key in (
+        # A hostile or unusually broad reviewed failure can still contain many
+        # individually useful fields.  The minimal projection keeps the retry
+        # decision, reasons, paths, commands, and guidance plus the immutable
+        # source identity, while dropping lower-priority duplicated context.
+        minimal: dict[str, Any] = {
+            name: bounded[name]
+            for name in (
                 "kind",
                 "reason",
                 "returncode",
                 "exception_type",
                 "phase",
                 "timeout_reason",
-                "source_failure_sha256",
             )
-            if key in compact
+            if name in bounded
         }
-        minimal["truncated"] = True
-        minimal["reason_codes"] = bounded_strings(
-            compact.get("reason_codes"),
-            count=8,
-            width=256,
+        minimal_review = project_review(
+            review_source,
+            field="failure_review",
+            include_guidance=(
+                review_addendum not in (None, "", root_addendum)
+            ),
+            minimal=True,
         )
-        proposal_gate = compact.get("proposal_gate")
-        if isinstance(proposal_gate, Mapping):
-            minimal_proposal_gate = {
-                name: proposal_gate[name]
-                for name in (
-                    "accepted",
-                    "proposal_id",
-                    "policy_id",
-                    "receipt_id",
-                    "repository_tree_id",
-                )
-                if proposal_gate.get(name) not in (None, "", (), [], {})
-            }
-            minimal_reason_codes = bounded_strings(
-                proposal_gate.get("reason_codes"),
-                count=8,
-                width=256,
+        if minimal_review:
+            minimal["failure_review"] = minimal_review
+        for output_name, sources in (
+            (
+                "reason_codes",
+                (
+                    selected.get("reason_codes"),
+                    (
+                        selected.get("failure_review", {}).get("reason_codes")
+                        if isinstance(selected.get("failure_review"), Mapping)
+                        else ()
+                    ),
+                ),
+            ),
+            (
+                "missing_outputs",
+                (
+                    selected.get("missing_outputs"),
+                    (
+                        selected.get("failure_review", {}).get(
+                            "missing_expected_outputs"
+                        )
+                        if isinstance(selected.get("failure_review"), Mapping)
+                        else ()
+                    ),
+                ),
+            ),
+            (
+                "failed_commands",
+                (
+                    selected.get("failed_commands"),
+                    (
+                        selected.get("failure_review", {}).get("failed_commands")
+                        if isinstance(selected.get("failure_review"), Mapping)
+                        else ()
+                    ),
+                ),
+            ),
+        ):
+            merged: list[Any] = []
+            for source in sources:
+                if isinstance(source, Sequence) and not isinstance(
+                    source,
+                    (str, bytes, bytearray),
+                ):
+                    merged.extend(source)
+                elif source not in (None, ""):
+                    merged.append(source)
+            values = bounded_strings(
+                merged,
+                count=4 if output_name != "failed_commands" else 2,
+                width=192 if output_name != "failed_commands" else 256,
+                field=output_name,
             )
-            if minimal_reason_codes:
-                minimal_proposal_gate["reason_codes"] = minimal_reason_codes
-            if minimal_proposal_gate:
-                minimal["proposal_gate"] = minimal_proposal_gate
-        return minimal
+            if values:
+                minimal[output_name] = list(dict.fromkeys(values))
+        retry_guidance = root_addendum
+        if retry_guidance in (None, "") and isinstance(
+            selected.get("failure_review"), Mapping
+        ):
+            retry_guidance = selected["failure_review"].get(
+                "next_attempt_prompt_addendum"
+            )
+        if retry_guidance not in (None, ""):
+            minimal["next_attempt_prompt_addendum"] = bounded_text(
+                retry_guidance,
+                limit=1_536,
+                field="next_attempt_prompt_addendum",
+            )
+        if isinstance(validation, Mapping):
+            minimal_validation = {
+                name: bounded_scalar(
+                    validation[name],
+                    limit=128,
+                    field=f"validation.{name}",
+                )
+                for name in ("passed", "returncode", "reason")
+                if validation.get(name) not in (None, "", (), [], {})
+            }
+            if minimal_validation:
+                minimal["validation"] = minimal_validation
+        minimal["normalization"] = normalization_metadata("minimal")
+        minimal_encoded = canonical_json(minimal).encode("utf-8")
+        if len(minimal_encoded) <= maximum_bytes:
+            return minimal
+
+        # Last-resort projection has a fixed small shape and therefore cannot
+        # turn valid diagnostic input into a supervisor exception. It retains
+        # the reviewed action, its source identity, and bounded retry guidance.
+        source_review = (
+            selected.get("failure_review")
+            if isinstance(selected.get("failure_review"), Mapping)
+            else {}
+        )
+        emergency_review: dict[str, Any] = {}
+        for name in ("receipt_id", "decision", "accepted", "policy_version"):
+            value = source_review.get(name)
+            if value not in (None, "", (), [], {}):
+                emergency_review[name] = bounded_scalar(
+                    value,
+                    limit=128,
+                    field=f"failure_review.{name}",
+                )
+        for name, count, width in (
+            ("reason_codes", 4, 96),
+            ("missing_expected_outputs", 2, 160),
+            ("denied_paths", 2, 160),
+            ("failed_commands", 1, 192),
+        ):
+            values = bounded_strings(
+                source_review.get(name),
+                count=count,
+                width=width,
+                field=f"failure_review.{name}",
+            )
+            if values:
+                emergency_review[name] = values
+        emergency: dict[str, Any] = {}
+        for name in ("kind", "reason", "returncode", "exception_type", "phase"):
+            value = selected.get(name)
+            if value not in (None, "", (), [], {}):
+                emergency[name] = bounded_scalar(
+                    value,
+                    limit=128,
+                    field=name,
+                )
+        if emergency_review:
+            emergency["failure_review"] = emergency_review
+        if retry_guidance not in (None, ""):
+            emergency["next_attempt_prompt_addendum"] = bounded_text(
+                retry_guidance,
+                limit=512,
+                field="next_attempt_prompt_addendum",
+            )
+        emergency["normalization"] = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "bounded-implementation-failure@1"
+            ),
+            "projection": "emergency",
+            "source_failure_id": source_failure_id,
+            "source_bytes": len(encoded),
+            "maximum_bytes": maximum_bytes,
+        }
+        return emergency
 
     @staticmethod
     def _implementation_context_file_stem(task: PortalTask) -> str:
@@ -45352,10 +43648,14 @@ class PortalImplementationDaemon:
                         raise ValueError(
                             "persisted base context is not receipt-bound"
                         )
-                    self._implementation_loaded_parents[key] = (
-                        parent,
-                        receipt.receipt_id,
+                    self._implementation_base_contexts[key] = (
+                        ContextCompileResult(
+                            parent,
+                            receipt,
+                            receipt.decisions,
+                        )
                     )
+                    self._implementation_loaded_parents.pop(key, None)
                 except (TypeError, ValueError):
                     # A malformed/stale sidecar is an invalidation, never an
                     # excuse to dispatch unverified inherited context.
@@ -45412,6 +43712,58 @@ class PortalImplementationDaemon:
             return base.capsule, base.receipt.receipt_id
         return self._implementation_loaded_parents.get(key)
 
+    def _persist_implementation_diagnostic_sidecars(
+        self,
+        task: PortalTask,
+        receipt: ImplementationDiagnosticReceipt,
+    ) -> None:
+        """Persist one diagnostic and its matching retry-state projection."""
+
+        key = self._canonical_ref(task)
+        self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
+        path = self.implementation_log_dir / (
+            self._implementation_context_file_stem(task)
+            + "-diagnostic-receipt.json"
+        )
+        _shared_atomic_write_json(path, receipt.to_record())
+        state_path = self.implementation_log_dir / (
+            self._implementation_context_file_stem(task)
+            + "-diagnostic-state.json"
+        )
+        _shared_atomic_write_json(
+            state_path,
+            {
+                "schema": "implementation-diagnostic-state.v1",
+                "diagnostic_receipt_id": receipt.receipt_id,
+                "repeat_count": self._implementation_diagnostic_repeats.get(
+                    key,
+                    1,
+                ),
+                "not_before": self._implementation_retry_not_before.get(
+                    key,
+                    0.0,
+                ),
+            },
+        )
+
+    @staticmethod
+    def _fresh_retry_context_matches_diagnostic(
+        capsule: ContextCapsule,
+        diagnostic: ImplementationDiagnosticReceipt,
+        *,
+        repair_round: int,
+    ) -> bool:
+        """Return whether a full parent already carries this exact retry."""
+
+        prefix = f"retry-fresh-{int(repair_round)}:"
+        return any(
+            item.required
+            and item.kind == "implementation-fresh-retry-context"
+            and item.reference_id.startswith(prefix)
+            and diagnostic.failure_id in item.coverage_ids
+            for item in capsule.evidence
+        )
+
     def record_implementation_failure_context(
         self,
         task: PortalTask,
@@ -45453,27 +43805,7 @@ class PortalImplementationDaemon:
             self._implementation_diagnostic_repeats[key] = 1
             self._implementation_retry_not_before.pop(key, None)
         self._implementation_diagnostics[key] = receipt
-        self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
-        path = self.implementation_log_dir / (
-            re.sub(r"[^a-z0-9._-]+", "-", task.task_id.lower()).strip("-")
-            + "-diagnostic-receipt.json"
-        )
-        _shared_atomic_write_json(path, receipt.to_record())
-        state_path = self.implementation_log_dir / (
-            self._implementation_context_file_stem(task)
-            + "-diagnostic-state.json"
-        )
-        _shared_atomic_write_json(
-            state_path,
-            {
-                "schema": "implementation-diagnostic-state.v1",
-                "diagnostic_receipt_id": receipt.receipt_id,
-                "repeat_count": self._implementation_diagnostic_repeats[key],
-                "not_before": self._implementation_retry_not_before.get(
-                    key, 0.0
-                ),
-            },
-        )
+        self._persist_implementation_diagnostic_sidecars(task, receipt)
         return receipt
 
     def _record_failed_attempt_retry_context(
@@ -45544,7 +43876,6 @@ class PortalImplementationDaemon:
                     "out_of_scope_paths",
                     "justified_paths",
                     "denied_paths",
-                    "contract_gap_paths",
                     "failed_commands",
                     "next_attempt_prompt_addendum",
                     "policy_version",
@@ -45589,12 +43920,271 @@ class PortalImplementationDaemon:
             unresolved_requirements=unresolved,
         )
 
+    @staticmethod
+    def _implementation_retry_diagnostic_projections(
+        diagnostic: ImplementationDiagnosticReceipt,
+    ) -> tuple[tuple[str, dict[str, Any]], ...]:
+        """Return progressively smaller, receipt-bound retry evidence.
+
+        The durable diagnostic remains complete and content addressed on disk.
+        A provider retry only needs a bounded semantic projection because the
+        retry capsule separately binds the exact diagnostic receipt, changed
+        paths/symbols, and unresolved requirements.  Progressive projections
+        prevent a verbose validation transcript from making an otherwise
+        valid retry impossible while retaining a minimal actionable failure.
+        """
+
+        failure = dict(diagnostic.failure)
+
+        def bounded_text(value: Any, *, limit: int) -> str:
+            text = str(value or "").strip()
+            if len(text) <= limit:
+                return text
+            marker = "...<truncated>"
+            return text[: max(0, limit - len(marker))].rstrip() + marker
+
+        def bounded_strings(
+            value: Any,
+            *,
+            count: int,
+            width: int,
+        ) -> list[str]:
+            if isinstance(value, Sequence) and not isinstance(
+                value,
+                (str, bytes, bytearray),
+            ):
+                candidates = value
+            elif value not in (None, ""):
+                candidates = (value,)
+            else:
+                candidates = ()
+            return [
+                bounded_text(item, limit=width)
+                for item in candidates[:count]
+                if bounded_text(item, limit=width)
+            ]
+
+        def selected_scalar_fields(
+            source: Mapping[str, Any],
+            names: Sequence[str],
+        ) -> dict[str, Any]:
+            return {
+                name: source[name]
+                for name in names
+                if source.get(name) not in (None, "", (), [], {})
+            }
+
+        compact_failure = selected_scalar_fields(
+            failure,
+            (
+                "kind",
+                "reason",
+                "returncode",
+                "exception_type",
+                "phase",
+                "counterexample_id",
+                "timeout_reason",
+                "timeout_policy",
+            ),
+        )
+        for name in (
+            "counterexample_ids",
+            "reason_codes",
+            "failed_commands",
+            "failing_checks",
+            "missing_outputs",
+        ):
+            values = bounded_strings(
+                failure.get(name),
+                count=16,
+                width=1_024,
+            )
+            if values:
+                compact_failure[name] = values
+        addendum = bounded_text(
+            failure.get("next_attempt_prompt_addendum"),
+            limit=2_048,
+        )
+        if addendum:
+            compact_failure["next_attempt_prompt_addendum"] = addendum
+
+        review = failure.get("failure_review")
+        if isinstance(review, Mapping):
+            compact_review = selected_scalar_fields(
+                review,
+                (
+                    "receipt_id",
+                    "decision",
+                    "accepted",
+                    "policy_version",
+                ),
+            )
+            for name in (
+                "reason_codes",
+                "finding_codes",
+                "missing_expected_outputs",
+                "out_of_scope_paths",
+                "justified_paths",
+                "denied_paths",
+                "failed_commands",
+            ):
+                values = bounded_strings(
+                    review.get(name),
+                    count=16,
+                    width=1_024,
+                )
+                if values:
+                    compact_review[name] = values
+            review_addendum = bounded_text(
+                review.get("next_attempt_prompt_addendum"),
+                limit=2_048,
+            )
+            if review_addendum:
+                compact_review["next_attempt_prompt_addendum"] = (
+                    review_addendum
+                )
+            if compact_review:
+                compact_failure["failure_review"] = compact_review
+
+        validation = failure.get("validation")
+        if isinstance(validation, Mapping):
+            compact_validation = selected_scalar_fields(
+                validation,
+                ("passed", "returncode", "reason"),
+            )
+            for name in ("reason_codes", "failed_commands"):
+                values = bounded_strings(
+                    validation.get(name),
+                    count=16,
+                    width=1_024,
+                )
+                if values:
+                    compact_validation[name] = values
+            if compact_validation:
+                compact_failure["validation"] = compact_validation
+
+        for field_name in ("proposal_gate", "scope_adjudication"):
+            source = failure.get(field_name)
+            if not isinstance(source, Mapping):
+                continue
+            compact = selected_scalar_fields(
+                source,
+                (
+                    "accepted",
+                    "proposal_id",
+                    "policy_id",
+                    "receipt_id",
+                    "repository_tree_id",
+                ),
+            )
+            for name in (
+                "reason_codes",
+                "authorized_paths",
+                "denied_paths",
+            ):
+                values = bounded_strings(
+                    source.get(name),
+                    count=16,
+                    width=1_024,
+                )
+                if values:
+                    compact[name] = values
+            if compact:
+                compact_failure[field_name] = compact
+
+        minimal_failure = selected_scalar_fields(
+            failure,
+            (
+                "kind",
+                "reason",
+                "returncode",
+                "exception_type",
+                "phase",
+                "timeout_reason",
+            ),
+        )
+        minimal_review = review if isinstance(review, Mapping) else {}
+        for output_name, sources in (
+            (
+                "reason_codes",
+                (failure.get("reason_codes"), minimal_review.get("reason_codes")),
+            ),
+            (
+                "missing_outputs",
+                (
+                    failure.get("missing_outputs"),
+                    minimal_review.get("missing_expected_outputs"),
+                ),
+            ),
+            (
+                "denied_paths",
+                (
+                    minimal_review.get("denied_paths"),
+                    (
+                        failure.get("scope_adjudication", {}).get(
+                            "denied_paths"
+                        )
+                        if isinstance(
+                            failure.get("scope_adjudication"),
+                            Mapping,
+                        )
+                        else ()
+                    ),
+                ),
+            ),
+            (
+                "failed_commands",
+                (
+                    failure.get("failed_commands"),
+                    minimal_review.get("failed_commands"),
+                ),
+            ),
+        ):
+            values: list[str] = []
+            for source in sources:
+                values.extend(
+                    bounded_strings(source, count=4, width=256)
+                )
+            values = list(dict.fromkeys(values))[:4]
+            if values:
+                minimal_failure[output_name] = values
+        minimal_addendum = bounded_text(
+            failure.get("next_attempt_prompt_addendum")
+            or minimal_review.get("next_attempt_prompt_addendum"),
+            limit=512,
+        )
+        if minimal_addendum:
+            minimal_failure["next_attempt_prompt_addendum"] = minimal_addendum
+
+        binding = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "implementation-retry-diagnostic-projection@1"
+            ),
+            "diagnostic_receipt_id": diagnostic.receipt_id,
+            "failure_id": diagnostic.failure_id,
+        }
+        candidates = (
+            ("full", diagnostic.to_record()),
+            ("compact", {**binding, "failure": compact_failure}),
+            ("minimal", {**binding, "failure": minimal_failure}),
+        )
+        projections: list[tuple[str, dict[str, Any]]] = []
+        seen: set[str] = set()
+        for name, payload in candidates:
+            encoded = canonical_json(payload)
+            if encoded in seen:
+                continue
+            seen.add(encoded)
+            projections.append((name, payload))
+        return tuple(projections)
+
     def _compile_implementation_retry_context(
         self,
         task: PortalTask,
         attempt: int,
         diagnostic: ImplementationDiagnosticReceipt,
-    ) -> RetryContextResult:
+    ) -> RetryContextResult | ContextCompileResult:
         """Compile one bounded semantic delta from the retained base context."""
 
         parent = self._implementation_parent(task)
@@ -45620,17 +44210,6 @@ class PortalImplementationDaemon:
             raise RuntimeError(
                 "implementation retry parent invalidated by changed repository tree"
             )
-        failure_text = canonical_json(diagnostic.to_record())
-        failure_references = build_text_context_references(
-            failure_text,
-            reference_prefix=f"retry-failure-{repair_round}",
-            kind="implementation-failure",
-            repository_id=repository_id,
-            tree_id=tree_id,
-            priority=1_000,
-            chunk_bytes=8_192,
-            coverage_ids=diagnostic.unresolved_requirements,
-        )
         provider_window, configured_budget, prompt_byte_limit = (
             self._implementation_provider_context_window_for_task(task)
         )
@@ -45680,25 +44259,74 @@ class PortalImplementationDaemon:
             provider_max_input_tokens=self.implementation_provider_max_input_tokens,
             provider_max_input_bytes=prompt_byte_limit,
         )
+        result: RetryContextResult | None = None
+        projection_name = ""
+        attempted_projections: list[str] = []
+        last_budget_error: Exception | None = None
+        rescue_projection_name = ""
+        rescue_projection: dict[str, Any] | None = None
         try:
-            result = compile_retry_context(
-                compiler,
-                parent_capsule,
-                prior_decision_id=prior_decision_id,
-                diagnostic_receipt_id=diagnostic.receipt_id,
-                evidence=(*parent_capsule.evidence, *failure_references),
-                failure_evidence_ids=tuple(
-                    item.reference_id for item in failure_references
-                ),
-                changed_files=diagnostic.changed_files,
-                changed_symbols=diagnostic.changed_symbols,
-                unresolved_requirement_ids=diagnostic.unresolved_requirements,
-                repair_round=repair_round,
-                max_repair_rounds=self.implementation_max_repair_rounds,
-                repository_id=repository_id,
-                tree_id=tree_id,
-                cancelled=self.implementation_cancelled,
-            )
+            for (
+                candidate_name,
+                diagnostic_projection,
+            ) in self._implementation_retry_diagnostic_projections(
+                diagnostic
+            ):
+                attempted_projections.append(candidate_name)
+                # Retain only the smallest candidate reached.  If the exact
+                # parent is already at its immutable ceiling, every valid
+                # delta can fail because compile_delta remeasures the complete
+                # parent plus new evidence.  A single fresh-context rescue
+                # below may replace optional parent evidence with this exact,
+                # receipt-bound projection; it never retries unboundedly or
+                # changes the task's authority-bearing core.
+                rescue_projection_name = candidate_name
+                rescue_projection = diagnostic_projection
+                failure_references = build_text_context_references(
+                    canonical_json(diagnostic_projection),
+                    reference_prefix=f"retry-failure-{repair_round}",
+                    kind="implementation-failure",
+                    repository_id=repository_id,
+                    tree_id=tree_id,
+                    priority=1_000,
+                    chunk_bytes=8_192,
+                    coverage_ids=diagnostic.unresolved_requirements,
+                )
+                try:
+                    result = compile_retry_context(
+                        compiler,
+                        parent_capsule,
+                        prior_decision_id=prior_decision_id,
+                        diagnostic_receipt_id=diagnostic.receipt_id,
+                        evidence=(
+                            *parent_capsule.evidence,
+                            *failure_references,
+                        ),
+                        failure_evidence_ids=tuple(
+                            item.reference_id
+                            for item in failure_references
+                        ),
+                        changed_files=diagnostic.changed_files,
+                        changed_symbols=diagnostic.changed_symbols,
+                        unresolved_requirement_ids=(
+                            diagnostic.unresolved_requirements
+                        ),
+                        repair_round=repair_round,
+                        max_repair_rounds=(
+                            self.implementation_max_repair_rounds
+                        ),
+                        repository_id=repository_id,
+                        tree_id=tree_id,
+                        cancelled=self.implementation_cancelled,
+                    )
+                except (
+                    ContextBoundsError,
+                    ContextDeltaBudgetError,
+                ) as exc:
+                    last_budget_error = exc
+                    continue
+                projection_name = candidate_name
+                break
         except ContextExpansionCancelled as exc:
             raise ImplementationRetryDeferred(
                 "implementation retry cancelled during compilation"
@@ -45709,6 +44337,415 @@ class PortalImplementationDaemon:
             raise ImplementationRetryDeferred(
                 "implementation context byte budget exhausted"
             ) from exc
+        if result is None:
+            # A delta's full-reconstruction check can be impossible even when
+            # the immutable core plus the minimum failure diagnosis fits: the
+            # prior compiler was allowed to fill all remaining budget with
+            # optional evidence.  Recompile exactly once as a full provider
+            # context under the stricter parent/configured budget.  The fresh
+            # capsule preserves every authority-bearing identity and required
+            # parent reference, while ordinary optional evidence competes for
+            # space after one bounded sequence of content-addressed retry
+            # binding projections.
+            if rescue_projection is None:
+                raise ImplementationRetryDeferred(
+                    "implementation retry context budget exhausted",
+                    backoff_seconds=300,
+                ) from last_budget_error
+
+            def bounded_retry_values(
+                values: Sequence[str],
+                *,
+                count: int = 16,
+                width: int = 256,
+            ) -> list[str]:
+                marker = "...<truncated>"
+                bounded: list[str] = []
+                for value in values[:count]:
+                    text = str(value)
+                    if len(text) > width:
+                        text = text[: width - len(marker)].rstrip() + marker
+                    bounded.append(text)
+                return bounded
+
+            detailed_rescue_binding = {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "implementation-fresh-retry-context@1"
+                ),
+                "mode": "bounded_fresh_context_rescue",
+                "parent_capsule_id": parent_capsule.capsule_id,
+                "parent_invariant_core_id": (
+                    parent_capsule.invariant_core_id
+                ),
+                "prior_decision_id": prior_decision_id,
+                "diagnostic_receipt_id": diagnostic.receipt_id,
+                "diagnostic_failure_id": diagnostic.failure_id,
+                "diagnostic_projection": rescue_projection_name,
+                "failure": rescue_projection,
+                "repair_round": repair_round,
+                "max_repair_rounds": self.implementation_max_repair_rounds,
+                # The receipt ID binds the complete sequences.  Include a
+                # bounded actionable prefix and an identity for each complete
+                # sequence so large diagnostics cannot regain unbounded input
+                # authority through this rescue path.
+                "changed_files": bounded_retry_values(
+                    diagnostic.changed_files
+                ),
+                "changed_files_id": content_identity(
+                    list(diagnostic.changed_files)
+                ),
+                "changed_symbols": bounded_retry_values(
+                    diagnostic.changed_symbols
+                ),
+                "changed_symbols_id": content_identity(
+                    list(diagnostic.changed_symbols)
+                ),
+                "unresolved_requirement_ids": bounded_retry_values(
+                    diagnostic.unresolved_requirements
+                ),
+                "unresolved_requirements_id": content_identity(
+                    list(diagnostic.unresolved_requirements)
+                ),
+            }
+
+            # The detailed v1 binding predates content-addressed diagnostic
+            # receipts and repeats the projection envelope plus literal
+            # changed-file/symbol/requirement prefixes.  Keep it as the first
+            # candidate for compatibility, but let a receipt-bound projection
+            # remove only those duplicates when an immutable task core leaves
+            # insufficient room.  The exact diagnostic receipt transitively
+            # binds every omitted literal; the independent sequence identities
+            # below make that relationship directly auditable.
+            rescue_binding_candidates: list[
+                tuple[str, dict[str, Any]]
+            ] = [("detailed", detailed_rescue_binding)]
+            projected_failure = rescue_projection.get("failure")
+            projection_is_bound = (
+                rescue_projection.get("schema")
+                == (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "implementation-retry-diagnostic-projection@1"
+                )
+                and rescue_projection.get("diagnostic_receipt_id")
+                == diagnostic.receipt_id
+                and rescue_projection.get("failure_id")
+                == diagnostic.failure_id
+                and isinstance(projected_failure, Mapping)
+            )
+            if projection_is_bound:
+                receipt_bound_core = {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "implementation-fresh-retry-context@2"
+                    ),
+                    "mode": "bounded_fresh_context_rescue",
+                    "parent_capsule_id": parent_capsule.capsule_id,
+                    "parent_invariant_core_id": (
+                        parent_capsule.invariant_core_id
+                    ),
+                    "prior_decision_id": prior_decision_id,
+                    "diagnostic_receipt_id": diagnostic.receipt_id,
+                    "diagnostic_failure_id": diagnostic.failure_id,
+                    "diagnostic_projection": rescue_projection_name,
+                    "repair_round": repair_round,
+                    "max_repair_rounds": (
+                        self.implementation_max_repair_rounds
+                    ),
+                    "changed_files_id": content_identity(
+                        list(diagnostic.changed_files)
+                    ),
+                    "changed_symbols_id": content_identity(
+                        list(diagnostic.changed_symbols)
+                    ),
+                    "unresolved_requirements_id": content_identity(
+                        list(diagnostic.unresolved_requirements)
+                    ),
+                }
+                receipt_bound_failure = dict(projected_failure)
+                rescue_binding_candidates.append(
+                    (
+                        "receipt_bound_actionable",
+                        {
+                            **receipt_bound_core,
+                            "failure": receipt_bound_failure,
+                        },
+                    )
+                )
+
+                def compact_rescue_failure(
+                    source: Mapping[str, Any],
+                    *,
+                    addendum_limit: int,
+                ) -> dict[str, Any]:
+                    compact = {
+                        name: source[name]
+                        for name in (
+                            "kind",
+                            "reason",
+                            "returncode",
+                            "exception_type",
+                            "phase",
+                            "timeout_reason",
+                        )
+                        if source.get(name) not in (
+                            None,
+                            "",
+                            (),
+                            [],
+                            {},
+                        )
+                    }
+                    for name in (
+                        "reason_codes",
+                        "missing_outputs",
+                        "denied_paths",
+                        "failed_commands",
+                    ):
+                        raw_values = source.get(name)
+                        values = (
+                            raw_values
+                            if isinstance(raw_values, Sequence)
+                            and not isinstance(
+                                raw_values,
+                                (str, bytes, bytearray),
+                            )
+                            else ()
+                        )
+                        bounded = bounded_retry_values(
+                            values,
+                            count=2,
+                            width=256,
+                        )
+                        if bounded:
+                            compact[name] = bounded
+                    addendum = str(
+                        source.get("next_attempt_prompt_addendum") or ""
+                    ).strip()
+                    if addendum and addendum_limit > 0:
+                        marker = "...<truncated>"
+                        if len(addendum) > addendum_limit:
+                            addendum = (
+                                addendum[
+                                    : addendum_limit - len(marker)
+                                ].rstrip()
+                                + marker
+                            )
+                        compact["next_attempt_prompt_addendum"] = addendum
+                    return compact
+
+                rescue_binding_candidates.extend(
+                    (
+                        (
+                            "receipt_bound_compact",
+                            {
+                                **receipt_bound_core,
+                                "failure": compact_rescue_failure(
+                                    receipt_bound_failure,
+                                    addendum_limit=256,
+                                ),
+                            },
+                        ),
+                        (
+                            "receipt_bound_minimal",
+                            {
+                                **receipt_bound_core,
+                                "failure": compact_rescue_failure(
+                                    receipt_bound_failure,
+                                    addendum_limit=0,
+                                ),
+                            },
+                        ),
+                    )
+                )
+
+            unique_rescue_bindings: list[
+                tuple[str, dict[str, Any]]
+            ] = []
+            seen_rescue_bindings: set[str] = set()
+            for candidate_name, candidate_binding in (
+                rescue_binding_candidates
+            ):
+                encoded = canonical_json(candidate_binding)
+                if encoded in seen_rescue_bindings:
+                    continue
+                seen_rescue_bindings.add(encoded)
+                unique_rescue_bindings.append(
+                    (candidate_name, candidate_binding)
+                )
+
+            fresh_result: ContextCompileResult | None = None
+            rescue_references = ()
+            selected_rescue_binding = ""
+            attempted_rescue_bindings: list[str] = []
+            rescue_budget_error: Exception | None = last_budget_error
+            for candidate_name, candidate_binding in unique_rescue_bindings:
+                attempted_rescue_bindings.append(candidate_name)
+                try:
+                    candidate_references = build_text_context_references(
+                        canonical_json(candidate_binding),
+                        reference_prefix=f"retry-fresh-{repair_round}",
+                        kind="implementation-fresh-retry-context",
+                        repository_id=repository_id,
+                        tree_id=tree_id,
+                        priority=1_000,
+                        required=True,
+                        chunk_bytes=8_192,
+                        coverage_ids=(
+                            diagnostic.failure_id,
+                            *diagnostic.unresolved_requirements[:15],
+                        ),
+                    )
+                    candidate_result = compiler.compile(
+                        repository_id=parent_capsule.repository_id,
+                        tree_id=parent_capsule.tree_id,
+                        objective_id=parent_capsule.objective_id,
+                        objective_revision=(
+                            parent_capsule.objective_revision
+                        ),
+                        policy_id=parent_capsule.policy_id,
+                        policy_revision=parent_capsule.policy_revision,
+                        caller=parent_capsule.caller,
+                        stage=parent_capsule.stage,
+                        goal=parent_capsule.goal,
+                        authority=parent_capsule.authority,
+                        scope=parent_capsule.scope,
+                        acceptance=parent_capsule.acceptance,
+                        evidence=(
+                            *parent_capsule.evidence,
+                            *candidate_references,
+                        ),
+                    )
+                except (
+                    ContextBoundsError,
+                    RequiredContextOverflowError,
+                ) as exc:
+                    rescue_budget_error = exc
+                    continue
+                fresh_result = candidate_result
+                rescue_references = candidate_references
+                selected_rescue_binding = candidate_name
+                break
+            if fresh_result is None:
+                raise ImplementationRetryDeferred(
+                    "implementation retry context budget exhausted",
+                    backoff_seconds=300,
+                ) from rescue_budget_error
+
+            identity_fields = (
+                "repository_id",
+                "tree_id",
+                "objective_id",
+                "objective_revision",
+                "policy_id",
+                "policy_revision",
+                "caller",
+                "stage",
+            )
+            if any(
+                getattr(fresh_result.capsule, name)
+                != getattr(parent_capsule, name)
+                for name in identity_fields
+            ):
+                raise RuntimeError(
+                    "fresh retry context changed an immutable context identity"
+                )
+            if (
+                fresh_result.capsule.invariant_core_id
+                != parent_capsule.invariant_core_id
+                or fresh_result.capsule.invariant_core
+                != parent_capsule.invariant_core
+            ):
+                raise RuntimeError(
+                    "fresh retry context changed the authority-bearing core"
+                )
+            parent_budget = parent_capsule.budget
+            rescue_budget = fresh_result.capsule.budget
+            if (
+                rescue_budget.max_input_tokens
+                > parent_budget.max_input_tokens
+                or rescue_budget.max_items > parent_budget.max_items
+                or rescue_budget.max_item_bytes
+                > parent_budget.max_item_bytes
+                or rescue_budget.max_serialized_bytes
+                > parent_budget.max_serialized_bytes
+                or rescue_budget.max_depth > parent_budget.max_depth
+                or rescue_budget.max_text_bytes
+                > parent_budget.max_text_bytes
+                or rescue_budget.reserved_output_tokens
+                < parent_budget.reserved_output_tokens
+                or rescue_budget.reserved_tool_tokens
+                < parent_budget.reserved_tool_tokens
+            ):
+                raise RuntimeError(
+                    "fresh retry context widened its immutable parent budget"
+                )
+            selected_ids = {
+                item.reference_id for item in fresh_result.capsule.evidence
+            }
+            rescue_ids = {
+                item.reference_id for item in rescue_references
+            }
+            parent_required_ids = {
+                item.reference_id
+                for item in parent_capsule.evidence
+                if item.required
+            }
+            if (
+                not rescue_ids.issubset(selected_ids)
+                or not parent_required_ids.issubset(selected_ids)
+            ):
+                raise RuntimeError(
+                    "fresh retry context lost required retry evidence"
+                )
+            allowed_ids = {
+                item.reference_id for item in parent_capsule.evidence
+            } | rescue_ids
+            if not selected_ids.issubset(allowed_ids):
+                raise RuntimeError(
+                    "fresh retry context introduced unauthorized evidence"
+                )
+
+            self._last_implementation_context = fresh_result
+            self._last_implementation_retry = None
+            key = self._canonical_ref(task)
+            self._implementation_base_contexts[key] = fresh_result
+            self._implementation_loaded_parents.pop(key, None)
+            rebound_diagnostic = replace(
+                diagnostic,
+                prior_decision_id=fresh_result.receipt.receipt_id,
+            )
+            self._implementation_diagnostics[key] = rebound_diagnostic
+            self._decision_runtime_route(
+                "retry",
+                {
+                    "task_id": task.task_id,
+                    "attempt": int(attempt),
+                    "mode": "bounded_fresh_context_rescue",
+                    "repair_round": int(repair_round),
+                    "prior_decision_id": prior_decision_id,
+                    "diagnostic_receipt_id": diagnostic.receipt_id,
+                    "rebound_diagnostic_receipt_id": (
+                        rebound_diagnostic.receipt_id
+                    ),
+                    "parent_capsule_id": parent_capsule.capsule_id,
+                    "parent_invariant_core_id": (
+                        parent_capsule.invariant_core_id
+                    ),
+                    "context_receipt_id": (
+                        fresh_result.receipt.receipt_id
+                    ),
+                    "fresh_capsule_id": fresh_result.capsule.capsule_id,
+                    "diagnostic_projection": rescue_projection_name,
+                    "diagnostic_projection_attempts": attempted_projections,
+                    "rescue_binding_projection": selected_rescue_binding,
+                    "rescue_binding_projection_attempts": (
+                        attempted_rescue_bindings
+                    ),
+                    "reason": "delta_full_reconstruction_budget",
+                },
+            )
+            return fresh_result
         self._last_implementation_context = result.delta_result
         self._last_implementation_retry = result
         self._decision_runtime_route(
@@ -45720,6 +44757,8 @@ class PortalImplementationDaemon:
                 "prior_decision_id": prior_decision_id,
                 "diagnostic_receipt_id": diagnostic.receipt_id,
                 "context_receipt_id": result.delta_result.receipt.receipt_id,
+                "diagnostic_projection": projection_name,
+                "diagnostic_projection_attempts": attempted_projections,
             },
         )
         return result
@@ -45737,6 +44776,7 @@ class PortalImplementationDaemon:
             repo_root=self.repo_root,
         )
         declared_output_paths = task_declared_output_paths(task)
+        additional_allowed_paths = task_additional_allowed_paths(task)
         evidence_output_paths = task_evidence_output_paths(task)
         expected_output_paths = (
             tuple(completion_scope)
@@ -45796,6 +44836,11 @@ class PortalImplementationDaemon:
                 *rules,
                 "An explicit validation test target absent from the baseline is an implied task output. Add substantive regression coverage there; placeholders or weakened assertions will fail scope adjudication.",
             )
+        if additional_allowed_paths:
+            rules = (
+                *rules,
+                "Paths declared in Allowed paths may be changed when required by the task, but they are not mandatory expected outputs.",
+            )
         if (
             completion_scope is None
             and len(declared_output_paths) > 3
@@ -45807,9 +44852,15 @@ class PortalImplementationDaemon:
             )
         protected_edit_paths = tuple(self.implementation_protected_paths)
         base_allowed_edit_paths = tuple(
-            completion_scope
+            (
+                *completion_scope,
+                *additional_allowed_paths,
+            )
             if completion_scope is not None
-            else declared_output_paths
+            else (
+                *declared_output_paths,
+                *additional_allowed_paths,
+            )
         )
         allowed_edit_paths = tuple(
             dict.fromkeys(
@@ -45852,6 +44903,8 @@ class PortalImplementationDaemon:
                 if implied_validation_paths
                 else "task_output_and_evidence_exact"
                 if evidence_output_paths
+                else "task_output_and_allowed_exact"
+                if additional_allowed_paths
                 else "task_output_exact"
             ),
             "allowed_paths": allowed_edit_paths,
@@ -46111,6 +45164,28 @@ class PortalImplementationDaemon:
             _shared_atomic_write_json(
                 base_receipt_path, result.receipt.to_dict()
             )
+            diagnostic = self._implementation_diagnostics.get(
+                self._canonical_ref(task)
+            )
+            if (
+                attempt > 1
+                and diagnostic is not None
+                and diagnostic.prior_decision_id
+                == result.receipt.receipt_id
+                and self._fresh_retry_context_matches_diagnostic(
+                    result.capsule,
+                    diagnostic,
+                    repair_round=attempt - 1,
+                )
+            ):
+                # Publish the rebound diagnosis only after its new base
+                # capsule and receipt are durable.  A crash before this point
+                # leaves the previous base/diagnostic pair fail-closed rather
+                # than a diagnosis naming an unpublished parent.
+                self._persist_implementation_diagnostic_sidecars(
+                    task,
+                    diagnostic,
+                )
         if self._last_implementation_retry is not None:
             retry_path = (
                 self.implementation_log_dir
@@ -46145,8 +45220,16 @@ class PortalImplementationDaemon:
         python = json.dumps(
             str(contract["python_interpreter"]), ensure_ascii=True
         )
+        required_python_modules = json.dumps(
+            list(contract["required_python_modules"]),
+            ensure_ascii=True,
+        )
         override = json.dumps(
             str(contract["path_override_environment_variable"]),
+            ensure_ascii=True,
+        )
+        formal_toolchain_identity = json.dumps(
+            str(contract["formal_toolchain_contract_sha256"]),
             ensure_ascii=True,
         )
         return (
@@ -46155,6 +45238,13 @@ class PortalImplementationDaemon:
             "inherited `PATH` is ignored.\n"
             f"- The canonical Python interpreter target is exactly {python}; "
             "the validation runner may expose it through a sealed launcher.\n"
+            "- Before an implementation attempt or model dispatch, that exact "
+            "interpreter must import "
+            f"{required_python_modules} through the private validation "
+            "environment. Operators may add interpreter-level requirements "
+            f"with `${VALIDATION_PYTHON_MODULES_ENV}`; a task may add them "
+            f"with `{VALIDATION_PYTHON_MODULES_METADATA_KEY}` metadata. "
+            "Missing imports defer without consuming the task attempt.\n"
             "- Each validation command receives a fresh private `HOME` whose "
             "directory name starts with "
             "`ipfs-accelerate-validation-home-`. Its XDG paths are exactly "
@@ -46166,11 +45256,25 @@ class PortalImplementationDaemon:
             f"through {override} before supervisor dispatch. Every entry and "
             "ancestor must pass the existing non-writable toolchain check; "
             "user-writable tool directories are rejected.\n"
+            "- The provider preflight and authoritative validation formal-"
+            "toolchain deployment identity must both equal "
+            f"{formal_toolchain_identity}. A mismatch, missing required "
+            "executable, or writable managed root blocks before evidence "
+            "generation; stage reviewed toolchains under a root-owned/read-"
+            "only root rather than using a profile-home installation.\n"
             "- Judge external-tool availability and write semantic assertions "
             "against this exact environment, not a successful provider-side "
             "probe. If a required prover is absent, report a dependency/"
             "capability gap or add an approved digest-bound deployment; never "
-            "claim usability or weaken mandatory tests."
+            "claim usability or weaken mandatory tests.\n"
+            "- Grok shell tools may seal their own `PATH`. When "
+            f"`${PROVIDER_COMMAND_ENV_WRAPPER_ENV}` is present, first run "
+            f"`\"${PROVIDER_COMMAND_ENV_WRAPPER_ENV}\" --preflight "
+            "<bare-command>`, then run provider-side discovery or evidence "
+            f"generation as `\"${PROVIDER_COMMAND_ENV_WRAPPER_ENV}\" -- "
+            "<command> ...`. The digest-bound wrapper restores only the "
+            "declared non-secret provider command environment; it does not "
+            "bypass or replace authoritative validation."
         )
 
     def _implementation_prompt_policy_appendix(self, task: PortalTask) -> str:
@@ -46210,6 +45314,7 @@ class PortalImplementationDaemon:
                 backoff_seconds=300,
             )
         rendered = ""
+        fresh_retry_context = False
         if attempt > 1:
             if attempt - 1 > self.implementation_max_repair_rounds:
                 raise ImplementationRetryDeferred(
@@ -46235,24 +45340,73 @@ class PortalImplementationDaemon:
                     result = self._compile_implementation_context(task, attempt)
                     rendered = render_context_capsule(result.capsule)
                 else:
-                    repeats = self._implementation_diagnostic_repeats.get(key, 1)
-                    if repeats >= self.implementation_max_repair_rounds:
-                        raise ImplementationRetryDeferred(
-                            "identical implementation failure escalated"
+                    repair_round = attempt - 1
+                    if self._fresh_retry_context_matches_diagnostic(
+                        parent[0],
+                        diagnostic,
+                        repair_round=repair_round,
+                    ):
+                        result = self._implementation_base_contexts.get(key)
+                        if not isinstance(result, ContextCompileResult):
+                            raise ImplementationRetryDeferred(
+                                "fresh retry base receipt is unavailable",
+                                backoff_seconds=300,
+                            )
+                        self._last_implementation_context = result
+                        self._last_implementation_retry = None
+                        rendered = render_context_capsule(result.capsule)
+                        fresh_retry_context = True
+                        self._decision_runtime_route(
+                            "retry",
+                            {
+                                "task_id": task.task_id,
+                                "attempt": int(attempt),
+                                "mode": "bounded_fresh_context_reuse",
+                                "repair_round": int(repair_round),
+                                "diagnostic_receipt_id": (
+                                    diagnostic.receipt_id
+                                ),
+                                "context_receipt_id": (
+                                    result.receipt.receipt_id
+                                ),
+                                "fresh_capsule_id": (
+                                    result.capsule.capsule_id
+                                ),
+                            },
                         )
-                    not_before = self._implementation_retry_not_before.get(key, 0.0)
-                    if not_before > time.time():
-                        raise ImplementationRetryDeferred(
-                            "identical implementation failure backoff",
-                            backoff_seconds=max(
-                                1,
-                                int(not_before - time.time() + 0.999),
-                            ),
+                    else:
+                        repeats = self._implementation_diagnostic_repeats.get(
+                            key,
+                            1,
                         )
-                    result = self._compile_implementation_retry_context(
-                        task, attempt, diagnostic
-                    )
-                    rendered = render_retry_context(result.capsule)
+                        if repeats >= self.implementation_max_repair_rounds:
+                            raise ImplementationRetryDeferred(
+                                "identical implementation failure escalated"
+                            )
+                        not_before = self._implementation_retry_not_before.get(
+                            key,
+                            0.0,
+                        )
+                        if not_before > time.time():
+                            raise ImplementationRetryDeferred(
+                                "identical implementation failure backoff",
+                                backoff_seconds=max(
+                                    1,
+                                    int(not_before - time.time() + 0.999),
+                                ),
+                            )
+                        result = self._compile_implementation_retry_context(
+                            task, attempt, diagnostic
+                        )
+                        fresh_retry_context = isinstance(
+                            result,
+                            ContextCompileResult,
+                        )
+                        rendered = (
+                            render_retry_context(result.capsule)
+                            if isinstance(result, RetryContextResult)
+                            else render_context_capsule(result.capsule)
+                        )
         if not rendered:
             result = self._compile_implementation_context(task, attempt)
             rendered = render_context_capsule(result.capsule)
@@ -46277,22 +45431,42 @@ class PortalImplementationDaemon:
                     f"{addendum}\n"
                 )
                 byte_limit = self._task_llm_context_budget_bytes(task)
+                candidate_bytes = len(candidate.encode("utf-8"))
+                candidate_tokens, candidate_token_limit = (
+                    self._implementation_prompt_token_usage(task, candidate)
+                )
                 if (
-                    byte_limit is None
-                    or len(candidate.encode("utf-8")) <= byte_limit
+                    not fresh_retry_context
+                    and (
+                        byte_limit is None
+                        or candidate_bytes <= byte_limit
+                    )
+                    and candidate_tokens <= candidate_token_limit
                 ):
                     rendered = candidate
                 else:
                     self._decision_runtime_route(
-                        "implementation_context_addendum_omitted",
+                        "implementation_context",
                         {
                             "task_id": task.task_id,
                             "attempt": int(attempt),
-                            "reason": "provider_input_byte_budget",
-                            "provider_input_byte_limit": byte_limit,
-                            "candidate_input_bytes": len(
-                                candidate.encode("utf-8")
+                            "mode": "deterministic_addendum_omitted",
+                            "reason": (
+                                "receipt_bound_fresh_retry_context"
+                                if fresh_retry_context
+                                else "provider_input_byte_budget"
+                                if (
+                                    byte_limit is not None
+                                    and candidate_bytes > byte_limit
+                                )
+                                else "provider_input_token_budget"
                             ),
+                            "provider_input_byte_limit": byte_limit,
+                            "candidate_input_bytes": candidate_bytes,
+                            "provider_input_token_limit": (
+                                candidate_token_limit
+                            ),
+                            "candidate_input_tokens": candidate_tokens,
                         },
                     )
             seed_guidance = str(
@@ -46305,6 +45479,7 @@ class PortalImplementationDaemon:
                     f"{seed_guidance}\n"
                 )
         self._require_implementation_prompt_byte_budget(task, rendered)
+        self._require_implementation_prompt_token_budget(task, rendered)
         if attempt > 1 and seed_guidance:
             # One-shot after the bounded prompt is accepted; failed budget
             # admission must retain the recovery guidance for diagnosis.
@@ -46619,6 +45794,87 @@ class PortalImplementationDaemon:
             and str(receipt.get("retired_task_reason") or "").startswith("off_mission_")
         }
 
+    @staticmethod
+    def _task_boolean_metadata_resolution(
+        task: PortalTask,
+        key: str,
+        *,
+        default: bool,
+    ) -> tuple[bool | None, str]:
+        """Resolve one optional task boolean without widening malformed input."""
+
+        normalized_key = normalize_task_metadata_key(key)
+        matches = [
+            value
+            for metadata_key, value in task.metadata.items()
+            if normalize_task_metadata_key(metadata_key) == normalized_key
+        ]
+        if not matches:
+            return default, ""
+        if len(matches) != 1 or matches[0] == AMBIGUOUS_TASK_BOOLEAN_METADATA:
+            return None, "ambiguous"
+        value = matches[0]
+        if isinstance(value, bool):
+            return value, ""
+        if isinstance(value, int) and value in {0, 1}:
+            return bool(value), ""
+        if isinstance(value, str):
+            normalized_value = value.strip().lower()
+            if normalized_value in {"1", "true", "yes", "on"}:
+                return True, ""
+            if normalized_value in {"0", "false", "no", "off"}:
+                return False, ""
+        return None, "invalid"
+
+    @classmethod
+    def _task_boolean_metadata(
+        cls,
+        task: PortalTask,
+        key: str,
+        *,
+        default: bool,
+    ) -> bool | None:
+        value, _condition = cls._task_boolean_metadata_resolution(
+            task,
+            key,
+            default=default,
+        )
+        return value
+
+    @classmethod
+    def _task_direct_implementation_blockers(
+        cls,
+        task: PortalTask,
+    ) -> tuple[str, ...]:
+        """Return stable reasons that forbid direct implementation."""
+
+        is_schedulable, schedulable_condition = (
+            cls._task_boolean_metadata_resolution(
+                task,
+                "is schedulable",
+                default=True,
+            )
+        )
+        review_only, review_condition = cls._task_boolean_metadata_resolution(
+            task,
+            "review only",
+            default=False,
+        )
+        blockers: list[str] = []
+        if schedulable_condition:
+            blockers.append(f"{schedulable_condition}_is_schedulable")
+        elif is_schedulable is False:
+            blockers.append("task_marked_unschedulable")
+        if review_condition:
+            blockers.append(f"{review_condition}_review_only")
+        elif review_only is True:
+            blockers.append("task_marked_review_only")
+        return tuple(blockers)
+
+    @classmethod
+    def _task_direct_implementation_allowed(cls, task: PortalTask) -> bool:
+        return not cls._task_direct_implementation_blockers(task)
+
     def _selection_scope(
         self,
         tasks: list[PortalTask],
@@ -46626,13 +45882,40 @@ class PortalImplementationDaemon:
         strategy: dict[str, Any],
     ) -> dict[str, Any]:
         selectable_ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
+        noncompleted_tasks = [
+            task
+            for task in tasks
+            if resolved_statuses.get(task.task_id) != "completed"
+        ]
+        policy_ineligible = [
+            task
+            for task in noncompleted_tasks
+            if self._task_direct_implementation_blockers(task)
+        ]
+        policy_eligible_ready = [
+            task
+            for task in selectable_ready
+            if self._task_direct_implementation_allowed(task)
+        ]
         strict_deprioritized = self._strict_off_mission_deprioritized_task_ids(strategy)
-        strict_ready = [task.task_id for task in selectable_ready if task.task_id in strict_deprioritized]
-        eligible_ready = [task.task_id for task in selectable_ready if task.task_id not in strict_deprioritized]
+        strict_ready = [
+            task.task_id
+            for task in policy_eligible_ready
+            if task.task_id in strict_deprioritized
+        ]
+        eligible_ready = [
+            task.task_id
+            for task in policy_eligible_ready
+            if task.task_id not in strict_deprioritized
+        ]
         reason = ""
         if not eligible_ready:
             if strict_ready:
                 reason = "all_selectable_ready_tasks_deprioritized_as_off_mission"
+            elif selectable_ready and not policy_eligible_ready:
+                reason = "all_selectable_ready_tasks_ineligible_by_task_metadata"
+            elif policy_ineligible and len(policy_ineligible) == len(noncompleted_tasks):
+                reason = "all_selectable_ready_tasks_ineligible_by_task_metadata"
             elif selectable_ready:
                 reason = "no_eligible_ready_tasks_after_selection_filters"
             else:
@@ -46651,11 +45934,13 @@ class PortalImplementationDaemon:
         strategy: dict[str, Any],
         unresolved_merge_failures: dict[str, dict[str, Any]],
         recent_outcomes: dict[str, dict[str, Any]],
-        *,
-        all_tasks: Sequence[PortalTask] | None = None,
-        downstream_unlock_by_task: Mapping[str, int] | None = None,
     ) -> PortalTask | None:
-        ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
+        ready = [
+            task
+            for task in tasks
+            if resolved_statuses.get(task.task_id) == "ready"
+            and self._task_direct_implementation_allowed(task)
+        ]
         # The durable queue is authoritative across isolated lane state dirs.
         # Consult both canonical and display identities for compatibility with
         # queue records written before canonical task ids were introduced.
@@ -46723,19 +46008,6 @@ class PortalImplementationDaemon:
         }
         deprioritized = {str(item) for item in strategy.get("deprioritized_tasks", [])}
         blocked_strategy_task_ids = {str(item) for item in strategy.get("blocked_tasks", [])}
-        if downstream_unlock_by_task is None:
-            graph_tasks = list(all_tasks) if all_tasks is not None else list(tasks)
-            incomplete_ids = {
-                task.task_id
-                for task in graph_tasks
-                if resolved_statuses.get(task.task_id, task.status) != "completed"
-            }
-            unlock_counts = downstream_unlock_counts(
-                graph_tasks,
-                incomplete_task_ids=incomplete_ids,
-            )
-        else:
-            unlock_counts = dict(downstream_unlock_by_task)
 
         def sort_key(task: PortalTask) -> tuple[Any, ...]:
             selection_penalty = self.task_queue.get_penalty(self._canonical_ref(task))
@@ -46746,12 +46018,9 @@ class PortalImplementationDaemon:
             retry_repair_source_id, _failure_kind = retry_budget_repair_source(task)
             vector_rank = self._todo_vector_selection_rank(task, vector_context)
             work_surface_rank = self._task_work_surface_rank(task)
-            # Prefer critical-path blockers: higher transitive unlock first.
-            critical_path_rank = -int(unlock_counts.get(task.task_id, 0))
             return (
                 selection_penalty,
                 PRIORITY_ORDER.get(task.priority, 99),
-                critical_path_rank,
                 0 if retry_repair_source_id in blocked_strategy_task_ids else 1,
                 1 if task.task_id in deprioritized else 0,
                 focus_order.get(task.track, len(focus_order)),
@@ -46766,93 +46035,12 @@ class PortalImplementationDaemon:
         self.task_queue.record_selection(self._canonical_ref(selected))
         return selected
 
-    @staticmethod
-    def _implementation_finished_event_payload(
-        payload: Mapping[str, Any],
-    ) -> dict[str, Any]:
-        """Bound large setup receipts in the terminal event projection.
-
-        The returned implementation result and the earlier
-        ``implementation_started`` event retain the complete dependency
-        preflight receipt.  A terminal event can also carry diagnostic receipt
-        references, which intentionally gives it the stricter receipt-bearing
-        event limit.  Preserve the receipt identity and decision here without
-        duplicating its potentially large per-project metadata graph.
-        """
-
-        projected = dict(payload)
-        raw_setup = projected.get("workspace_setup")
-        if not isinstance(raw_setup, Mapping):
-            return projected
-        setup = dict(raw_setup)
-        raw_preflight = setup.get(
-            "validation_project_dependency_preflight"
-        )
-        if not isinstance(raw_preflight, Mapping):
-            projected["workspace_setup"] = setup
-            return projected
-
-        def bounded_count(field: str) -> int:
-            value = raw_preflight.get(field)
-            if isinstance(value, Sequence) and not isinstance(
-                value,
-                (str, bytes, bytearray),
-            ):
-                return len(value)
-            return 0
-
-        def bounded_int(field: str) -> int:
-            try:
-                return max(0, int(raw_preflight.get(field) or 0))
-            except (TypeError, ValueError):
-                return 0
-
-        setup["validation_project_dependency_preflight"] = {
-            "schema": str(raw_preflight.get("schema") or "")[:512],
-            "receipt_id": str(
-                raw_preflight.get("receipt_id") or ""
-            )[:1024],
-            "retry_fingerprint": str(
-                raw_preflight.get("retry_fingerprint") or ""
-            )[:1024],
-            "passed": raw_preflight.get("passed") is True,
-            "applicable": raw_preflight.get("applicable") is True,
-            "reason": str(raw_preflight.get("reason") or "")[:1000],
-            "automatic_install_attempted": (
-                raw_preflight.get("automatic_install_attempted") is True
-            ),
-            "probe_scope": str(
-                raw_preflight.get("probe_scope") or ""
-            )[:512],
-            "validation_command_count": bounded_int(
-                "validation_command_count"
-            ),
-            "project_count": bounded_count("projects"),
-            "project_root_count": bounded_count("project_roots"),
-            "missing_count": bounded_count("missing_requirements"),
-            "incompatible_count": bounded_count(
-                "incompatible_requirements"
-            ),
-            "invalid_requirement_count": bounded_count(
-                "invalid_requirements"
-            ),
-            "invalid_command_count": bounded_count("invalid_commands"),
-            "event_projection_compacted": True,
-            "full_receipt_event": "implementation_started",
-        }
-        projected["workspace_setup"] = setup
-        return projected
-
     def _record_event(
         self,
         event_type: str,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        enriched = (
-            self._implementation_finished_event_payload(payload)
-            if event_type == "implementation_finished"
-            else dict(payload)
-        )
+        enriched = dict(payload)
         task_source_identity = self._task_source_identity_record()
         if task_source_identity is not None:
             enriched.setdefault("task_source_identity", task_source_identity)
@@ -46862,13 +46050,9 @@ class PortalImplementationDaemon:
             enriched.setdefault("canonical_task_key", identity.canonical_task_key)
             enriched.setdefault("canonical_task_cid", identity.canonical_task_cid)
             enriched.setdefault("board_namespace", identity.board_namespace)
-        recorded = append_jsonl_event(
-            self.events_path,
-            event_type,
-            enriched,
-        )
+        event = append_jsonl_event(self.events_path, event_type, enriched)
         self._invalidate_event_cache()
-        return dict(recorded)
+        return event
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -46967,8 +46151,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=default_llm_merge_resolver_command(),
         help=(
             "Command invoked with merge-conflict repair prompts on stdin. "
-            "Defaults to the packaged Grok-first, quota-gated Codex resolver; "
-            "legacy unsealed routes may override it when "
+            "Defaults to the packaged Codex/Copilot resolver, unless "
             f"{LLM_MERGE_RESOLVER_COMMAND_ENV} is set."
         ),
     )

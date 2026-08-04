@@ -1,0 +1,386 @@
+{
+  "schema_version": "secpal-operator-compatibility-receipt/v1",
+  "interface": "SecPALOperatorCompatibilityReceipt@1",
+  "certification_class": "operator_compatibility_only",
+  "status": "operator_compatibility_observed_non_authoritative",
+  "observed_at": "2026-08-03T22:30:00Z",
+  "description": "Offline replay of all 18 Microsoft SecPAL research-release samples on an operator-supplied Mono runtime; compatibility evidence only.",
+  "scope": {
+    "operator_compatibility_only": true,
+    "completes_fvt_086": false,
+    "completes_fvt_g219": false,
+    "vendor_sample_suite_only": true
+  },
+  "vendor_supported_platform": false,
+  "arbitrary_policy_interface_verified": false,
+  "production_use_permitted": false,
+  "live_authority": false,
+  "deployment_ready": false,
+  "verified_inputs": {
+    "msi": {
+      "name": "SecPal_Research_Release.msi",
+      "bytes": 2458624,
+      "sha256": "c1988b9f1f6a2fb602bac4fc777a1765e59e74126285a095684a4743ea683159",
+      "identity_verified": true
+    },
+    "sample_runner": {
+      "name": "SecPalSamples.exe",
+      "bytes": 55368,
+      "sha256": "9a46e3bbf7bc58f0b9964814def3dd1224cd3893bfc34c72c13f3b8190599a07",
+      "identity_verified": true
+    },
+    "authorization_library": {
+      "name": "Microsoft.Research.SecPal.Dll",
+      "bytes": 403528,
+      "sha256": "2afacfc4121332c7fec5df32911e9a8b8d9926807af15d8c71b41a2928ee8b0a",
+      "identity_verified": true
+    },
+    "audit_viewer": {
+      "name": "AuditLogViewer.exe",
+      "bytes": 321608,
+      "sha256": "46a85221d2ab794b2b36e2f491c918edc35778a8bdafcd3dcbddb4aa18bdab92",
+      "identity_verified": true
+    },
+    "eula": {
+      "name": "EULA.rtf",
+      "bytes": 92171,
+      "sha256": "de075e7848fb737b9da3cfec5ce7c906742f4767fa04ed2bc38e69e2dd5e4fad",
+      "identity_verified": true
+    }
+  },
+  "provenance_binding": {
+    "publisher": "Microsoft Corporation",
+    "product_name": "Microsoft SecPAL Research Release",
+    "msi_product_version": "1.0.0",
+    "msi_product_code": "{957BD905-629C-45B0-AA93-EC1AAD218115}",
+    "authenticode_subject": "Microsoft Corporation",
+    "authenticode_description": "Microsoft.Research.Secpal",
+    "authenticode_timestamp_utc": "2007-06-09T03:54:32Z",
+    "signature_verification_basis": "operator_reviewed_out_of_band",
+    "signature_reverified_by_this_offline_script": false
+  },
+  "license_evidence": {
+    "eula_identity_bound": true,
+    "explicit_acceptance_supplied": true,
+    "acceptance_scope": "local_research_compatibility_run_only",
+    "research_code_not_intended_for_live_environment": true,
+    "software_redistribution_permitted_by_receipt": false,
+    "production_use_authorized_by_receipt": false
+  },
+  "execution_contract": {
+    "network_or_download_requested": false,
+    "installer_invoked": false,
+    "temporary_working_directories": true,
+    "attempts_per_scenario": 2,
+    "per_process_timeout_seconds": 15.0,
+    "normalizations": [
+      "line_endings_and_trailing_newline",
+      "temporary_working_directory",
+      "machine_identifier",
+      "uuid",
+      "utc_timestamp",
+      "generated_xml_crypto_value"
+    ],
+    "raw_output_retained": false
+  },
+  "operator_runtime": {
+    "implementation": "Mono",
+    "version": "6.8.0.105",
+    "reported_architecture": "arm64",
+    "host_system": "linux",
+    "host_machine": "aarch64",
+    "mono_executable_sha256": "f5d05cd9bf71656612886a8474c7f457851b332a960005d06fac935850a0ab12",
+    "mscorlib_sha256": "ceb40e23c27c375243851853475bda4a6c0a8719433830eb3df1f01a585adf6b",
+    "mono_config_sha256": "bc703f0be6ea2f9ac58994be4cb6a27c1112ec2c791e07a4eb817b286e2875b3",
+    "mono_native_library_sha256": "c17a6cdf9212496d678252659a3160fa7eb087966242be3606cbcb26faeb21fd",
+    "runtime_identity_recorded": true,
+    "vendor_supported_runtime": false
+  },
+  "scenarios": [
+    {
+      "name": "AttributeScenario",
+      "attempt_count": 2,
+      "return_codes": [
+        0,
+        0
+      ],
+      "required_markers_present": true,
+      "replay_equal_after_normalization": true,
+      "normalized_stdout_sha256": "630e3bee86a516b60a2866c559563cfd039b51de951b9d3157811babd4ec4191",
+      "normalized_stderr_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "normalized_observation_sha256": "60766f7a0061ebe258891de363cf66cd15997f032f6868758f2a8d4382ef72ea",
+      "side_effect_file_count": 0,
+      "side_effect_manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "AuditLogScenario",
+      "attempt_count": 2,
+      "return_codes": [
+        0,
+        0
+      ],
+      "required_markers_present": true,
+      "replay_equal_after_normalization": true,
+      "normalized_stdout_sha256": "630e3bee86a516b60a2866c559563cfd039b51de951b9d3157811babd4ec4191",
+      "normalized_stderr_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "normalized_observation_sha256": "ac37d19defdbc433b8fbb6425a97eb1e376c7c06cfe590693b98dbcb1bed8beb",
+      "side_effect_file_count": 2,
+      "side_effect_manifest_sha256": "e9daa08208f05977b02fff374181d33d87f317e88683b747a9fd62954a8f87b1"
+    },
+    {
+      "name": "AuthorizationQueryTemplateScenario",
+      "attempt_count": 2,
+      "return_codes": [
+        0,
+        0
+      ],
+      "required_markers_present": true,
+      "replay_equal_after_normalization": true,
+      "normalized_stdout_sha256": "440c8c48da3081f7832a45944312caff495550033f7b923c70b19d62af7ce75f",
+      "normalized_stderr_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "normalized_observation_sha256": "633079d2edf59ab3f8494447d7bd6f95960e359ac61fceb8d799e1143c629f37",
+      "side_effect_file_count": 0,
+      "side_effect_manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "CanActAsScenario",
+      "attempt_count": 2,
+      "return_codes": [
+        0,
+        0
+      ],
+      "required_markers_present": true,
+      "replay_equal_after_normalization": true,
+      "normalized_stdout_sha256": "1a317334f2cd8871d9df48b6170e112547ced769a73a6611ed1d55cb636a13fa",
+      "normalized_stderr_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "normalized_observation_sha256": "a0d0f9164845076671ef005e8197ecc71d0009965b592bfbe35019b7c5e2c292",
+      "side_effect_file_count": 0,
+      "side_effect_manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "CapabilityScenario",
+      "attempt_count": 2,
+      "return_codes": [
+        0,
+        0
+      ],
+      "required_markers_present": true,
+      "replay_equal_after_normalization": true,
+      "normalized_stdout_sha256": "be229bd05af20e5d81b25fac7974e425a5bf3190390f9488c4c707b2abbce897",
+      "normalized_stderr_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "normalized_observation_sha256": "5c4370b1fd15107507824ee193774af1d28a92372a7163936c3d75695e207b58",
+      "side_effect_file_count": 0,
+      "side_effect_manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "CodeAuthorizationScenario",
+      "attempt_count": 2,
+      "return_codes": [
+        0,
+        0
+      ],
+      "required_markers_present": true,
+      "replay_equal_after_normalization": true,
+      "normalized_stdout_sha256": "cac181f7195356f6d21530b8634f949432724a8bba213edafeb7983db02c8147",
+      "normalized_stderr_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "normalized_observation_sha256": "2f7adf77b2f86e05dbda3addb036ae2cdd0319608e2130eb6f778af1da1227e7",
+      "side_effect_file_count": 0,
+      "side_effect_manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "DelegationScenario",
+      "attempt_count": 2,
+      "return_codes": [
+        0,
+        0
+      ],
+      "required_markers_present": true,
+      "replay_equal_after_normalization": true,
+      "normalized_stdout_sha256": "ffb3890e0c3191271481b730f7727595f77663cbca8dd010488efd9881a9211e",
+      "normalized_stderr_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "normalized_observation_sha256": "49f1fae78ed04ebc42c372230e4add9e7425d00ddba86dae935fc6a0d4539ce8",
+      "side_effect_file_count": 0,
+      "side_effect_manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "ExclusionScenario",
+      "attempt_count": 2,
+      "return_codes": [
+        0,
+        0
+      ],
+      "required_markers_present": true,
+      "replay_equal_after_normalization": true,
+      "normalized_stdout_sha256": "50bcffff4932e3285ed3878de5ea8634082d6c05d2ed1528166b43fa9a6e0e75",
+      "normalized_stderr_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "normalized_observation_sha256": "fb25b205a8790f2782b36f33f441e29f8897076ef054b92e23a398d3e9291926",
+      "side_effect_file_count": 0,
+      "side_effect_manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "ExistsQuantifierScenario",
+      "attempt_count": 2,
+      "return_codes": [
+        0,
+        0
+      ],
+      "required_markers_present": true,
+      "replay_equal_after_normalization": true,
+      "normalized_stdout_sha256": "60bb6d51645716a5811241ba6aa612f0d3e117e9f99099cf35a7973b928fcdfc",
+      "normalized_stderr_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "normalized_observation_sha256": "f34549eedc70bedc2bd0b08e9989e49275d27e4e822d75bcf893f7adaa4e0206",
+      "side_effect_file_count": 0,
+      "side_effect_manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "PrincipalIdentityScenario",
+      "attempt_count": 2,
+      "return_codes": [
+        0,
+        0
+      ],
+      "required_markers_present": true,
+      "replay_equal_after_normalization": true,
+      "normalized_stdout_sha256": "7dccc7c4bac4a18e817a36423b31093f4216a093ebd90bfa3d2e393f1deda74c",
+      "normalized_stderr_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "normalized_observation_sha256": "b8582be99551ca08e7d412eb9632aee1c8c68f1557d1f60580120f81c9525074",
+      "side_effect_file_count": 0,
+      "side_effect_manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "RevocationScenario",
+      "attempt_count": 2,
+      "return_codes": [
+        0,
+        0
+      ],
+      "required_markers_present": true,
+      "replay_equal_after_normalization": true,
+      "normalized_stdout_sha256": "45eeac0460dc18c40fd13ca6a37627d7694f4403760ee0aba2ecafb40ede9c0b",
+      "normalized_stderr_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "normalized_observation_sha256": "722cc3d3eba261ff584a683769d2f9c4355748343a6432d1b9b0d3da262c339b",
+      "side_effect_file_count": 0,
+      "side_effect_manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "RoleBasedScenario",
+      "attempt_count": 2,
+      "return_codes": [
+        0,
+        0
+      ],
+      "required_markers_present": true,
+      "replay_equal_after_normalization": true,
+      "normalized_stdout_sha256": "160885ea6c5143b8caeaf6081ff1ba4d66e7ce6ef7b0b8da77953ba57c384bbe",
+      "normalized_stderr_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "normalized_observation_sha256": "f2e81ba65431d2175cc4efac3b22050ccefce6e77c07ab2e4c0b82c2e2f8dc64",
+      "side_effect_file_count": 0,
+      "side_effect_manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "RoleExclusionScenario",
+      "attempt_count": 2,
+      "return_codes": [
+        0,
+        0
+      ],
+      "required_markers_present": true,
+      "replay_equal_after_normalization": true,
+      "normalized_stdout_sha256": "9bf2d74bf9bbe166bc19197fa48aa45ed788c7b1a57aeb323ad569b9cd27b6bb",
+      "normalized_stderr_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "normalized_observation_sha256": "7764c6c407e197f8ec00aada8f795a87e9fadf783a4199baac08a96784d6820c",
+      "side_effect_file_count": 0,
+      "side_effect_manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "SerializedScenario",
+      "attempt_count": 2,
+      "return_codes": [
+        0,
+        0
+      ],
+      "required_markers_present": true,
+      "replay_equal_after_normalization": true,
+      "normalized_stdout_sha256": "187eeaf5fc6ed738cdc6a9d2f90e05c4bad820020133e2febb429366fc14b94c",
+      "normalized_stderr_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "normalized_observation_sha256": "ee51c96bb25988e38f296d66c21a2cdbfa063df8da921c95be5bb920c7fc5038",
+      "side_effect_file_count": 0,
+      "side_effect_manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "TwoLevelDelegationScenario",
+      "attempt_count": 2,
+      "return_codes": [
+        0,
+        0
+      ],
+      "required_markers_present": true,
+      "replay_equal_after_normalization": true,
+      "normalized_stdout_sha256": "4c39d2250b75f95c1ecefda293ccbe274d613dca8e22988a77f690cb1d98a0bc",
+      "normalized_stderr_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "normalized_observation_sha256": "2299ae1476c26b5a907d49807783d2882043d6bed1459dd08aae380408b2eafe",
+      "side_effect_file_count": 0,
+      "side_effect_manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "TwoManScenario",
+      "attempt_count": 2,
+      "return_codes": [
+        0,
+        0
+      ],
+      "required_markers_present": true,
+      "replay_equal_after_normalization": true,
+      "normalized_stdout_sha256": "9a500f3b3426d9a7fb0ee7320db853e9407f523be466feb1008c2b38858dd9dc",
+      "normalized_stderr_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "normalized_observation_sha256": "168e2b14da6badf1ac6877ce5676e9ef6ed8e6ac45bb15c851d5359af3ec19cc",
+      "side_effect_file_count": 0,
+      "side_effect_manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "UserAndApplicationScenario",
+      "attempt_count": 2,
+      "return_codes": [
+        0,
+        0
+      ],
+      "required_markers_present": true,
+      "replay_equal_after_normalization": true,
+      "normalized_stdout_sha256": "29523415780904ca471f1e697c018f2792a7c16d1c6ac4b171dc7a032a58041b",
+      "normalized_stderr_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "normalized_observation_sha256": "e437c62bff1d0ca7fe59d83bdc017f9e69744b7f13405b66b85fac5c48815257",
+      "side_effect_file_count": 0,
+      "side_effect_manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "UserOrApplicationScenario",
+      "attempt_count": 2,
+      "return_codes": [
+        0,
+        0
+      ],
+      "required_markers_present": true,
+      "replay_equal_after_normalization": true,
+      "normalized_stdout_sha256": "ce020f0b525064c295f810b25dd730e8f7676700ee44fb5bb423404015605207",
+      "normalized_stderr_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "normalized_observation_sha256": "555d8a4580f7346093f6540764abdb137374ba1d4221485acb29f8475404c234",
+      "side_effect_file_count": 0,
+      "side_effect_manifest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    }
+  ],
+  "normalized_suite_sha256": "48634428795a984ab9d8971b2945ecf57a054e99e883e7579882962e8e0eaabf",
+  "missing_comprehensive_cases": [
+    "arbitrary policy and query submission through the public Logic API",
+    "expected-denial and no-proof outcomes independent of vendor samples",
+    "malformed policy, malformed query, and parser diagnostic behavior",
+    "adversarial delegation cycles, depth limits, and resource exhaustion",
+    "deterministic temporal-boundary behavior for DateTime.UtcNow sample facts",
+    "cross-runtime conformance on a Microsoft-supported Windows and .NET Framework host",
+    "concurrent and persistent audit-store isolation and recovery",
+    "lazy-installer lifecycle, rollback, and clean-install public-package behavior",
+    "license and patent review authorizing any production deployment",
+    "vendor-supported Linux and arm64 execution"
+  ],
+  "authority_ceiling": "operator_compatibility_only_no_live_or_production_elevation",
+  "receipt_sha256": "4cf041f954c285bd36fe745fa5c2dc4c9be989a35b25a475391ebd8d78032e03"
+}

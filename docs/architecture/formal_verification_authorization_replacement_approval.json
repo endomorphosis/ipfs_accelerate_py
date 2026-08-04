@@ -1,0 +1,67 @@
+{
+  "agent_authored_approval_forbidden": true,
+  "approval_complete": false,
+  "binding": {
+    "adversarial_receipt_digest_sha256": null,
+    "approval_scope": null,
+    "clean_room_record_digest_sha256": null,
+    "dependency_license_inventory_digest_sha256": null,
+    "expiry_or_review_at": null,
+    "implementation_commit": null,
+    "implementation_tree": null,
+    "operational_controls": null,
+    "patent_ip_disposition": null,
+    "residual_risks": null,
+    "revocation_mechanism": null,
+    "semantic_receipt_digest_sha256": null,
+    "supported_platforms": null,
+    "threat_model_digest_sha256": null
+  },
+  "blockers": [
+    "deployment_owner_approval_missing",
+    "legal_ip_review_missing",
+    "security_review_missing",
+    "signed_current_tree_envelope_missing",
+    "signed_external_approval_envelope_not_bound"
+  ],
+  "deployment_owner_approval_complete": false,
+  "disclosures": {
+    "does_not_claim_microsoft_secpal_authority": true,
+    "does_not_complete_fvt_g219": true,
+    "does_not_embed_privileged_review_material": true
+  },
+  "goal_id": "FVT-G232",
+  "interface": "AuthorizationReplacementExternalApproval@1",
+  "legal_approval_complete": false,
+  "observed_at": "2026-08-04T17:03:16Z",
+  "policy": {
+    "completion_authority": "external",
+    "implementation_agents_may_not_author_or_forge": true,
+    "implementation_agents_may_validate_only": true,
+    "missing_expired_wrong_tree_self_approved_unsigned_ambiguous_or_revoked_fail_closed": true
+  },
+  "program": "formal-verification-tactician/authorization-replacement-approval",
+  "receipt_digest_sha256": "5355e478022b3ea8936eaa3672c1d0452fab6f8b2259fec5c73e72bdd3d758c6",
+  "schema_version": "authorization-replacement-external-approval/v1",
+  "security_approval_complete": false,
+  "self_approval_forbidden": true,
+  "signers": {
+    "deployment_owner": {
+      "identity": null,
+      "signature_digest_sha256": null,
+      "signed": false
+    },
+    "legal_ip_reviewer": {
+      "identity": null,
+      "signature_digest_sha256": null,
+      "signed": false
+    },
+    "security_reviewer": {
+      "identity": null,
+      "signature_digest_sha256": null,
+      "signed": false
+    }
+  },
+  "status": "external_approval_pending",
+  "task_id": "FVT-099B"
+}

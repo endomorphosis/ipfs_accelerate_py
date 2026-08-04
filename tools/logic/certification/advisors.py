@@ -31,6 +31,7 @@ import sys
 import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Final
 
@@ -1242,7 +1243,12 @@ def certify_live_ergoai_vendor(
             tool_id="ergoai",
             reason_codes=[] if identity_ok else [str(probe.get("probe_error") or "identity_failed")],
             bindings={
-                "executable_path": resolved_executable or None,
+                # Host absolute paths are never public evidence; bind platform only.
+                "executable_path": (
+                    "<managed-ergoai-executable-redacted>"
+                    if resolved_executable
+                    else None
+                ),
                 "platform": selected_platform,
             },
         )
@@ -1263,7 +1269,11 @@ def certify_live_ergoai_vendor(
             tool_id="ergoai",
             reason_codes=[] if provenance_ok else list(probe.get("reason_codes") or ()),
             bindings={
-                "identity_manifest_path": probe.get("identity_manifest_path"),
+                "identity_manifest_path": (
+                    "<managed-identity-manifest-redacted>"
+                    if probe.get("identity_manifest_path")
+                    else None
+                ),
                 "is_hermetic_advisor_shim": bool(
                     probe.get("is_hermetic_advisor_shim")
                 ),
@@ -1272,6 +1282,12 @@ def certify_live_ergoai_vendor(
     )
 
     semantic_checks = semantics.get("checks") or {}
+    # Console output digests are non-deterministic across ErgoAI runs; public
+    # and re-derivable evidence binds program/query digests and the suite-level
+    # normalized semantic evidence digest instead of raw stdout bytes.
+    normalized_semantic_digest = semantics.get(
+        "normalized_evidence_digest_sha256"
+    )
     for kind in ("positive", "negative", "mutation", "replay"):
         observed = semantic_checks.get(kind) or {}
         if not observed and kind == "positive":
@@ -1296,13 +1312,17 @@ def certify_live_ergoai_vendor(
                 tool_id="ergoai",
                 reason_codes=[] if passed else [f"{kind}_semantic_check_failed"],
                 bindings={
-                    key: observed.get(key)
-                    for key in (
-                        "returncode",
-                        "program_digest_sha256",
-                        "query_digest_sha256",
-                        "output_digest_sha256",
-                    )
+                    "returncode": observed.get("returncode"),
+                    "program_digest_sha256": observed.get(
+                        "program_digest_sha256"
+                    ),
+                    "query_digest_sha256": observed.get("query_digest_sha256"),
+                    "normalized_semantic_digest_sha256": (
+                        normalized_semantic_digest
+                    ),
+                    "comparison_scope": (
+                        "normalized_semantics_not_console_bytes"
+                    ),
                 },
             )
         )
@@ -1435,10 +1455,18 @@ def certify_live_ergoai_vendor(
         "install_attempted": False,
         "download_attempted": False,
         "selected_platform": selected_platform,
-        "executable_path": resolved_executable or None,
-        "identity_manifest_path": str(identity_manifest_path)
-        if identity_manifest_path.is_file()
-        else None,
+        # Public receipts never embed host-private or repository absolute paths.
+        # Identity is bound by release digests and the identity-manifest digest.
+        "executable_path": (
+            "<managed-ergoai-executable-redacted>"
+            if resolved_executable
+            else None
+        ),
+        "identity_manifest_path": (
+            "<managed-identity-manifest-redacted>"
+            if identity_manifest_path.is_file()
+            else None
+        ),
         "identity_manifest_digest_sha256": identity_manifest_digest,
         "managed_identity": manifest_projection,
         "semantic_evidence_digest_sha256": semantics.get(
@@ -1447,7 +1475,7 @@ def certify_live_ergoai_vendor(
         "checks": [check.to_dict() for check in checks],
         "block_reasons": block_reasons,
         "source_binding": {
-            "repo_root": str(root),
+            "repo_root": "<repo-root-redacted>",
             "release_url": getattr(
                 advisors_installer, "ERGOAI_RELEASE_URL", ""
             ),
@@ -1458,6 +1486,7 @@ def certify_live_ergoai_vendor(
                 advisors_installer, "ERGOAI_RELEASE_TAG", ""
             ),
         },
+        "observed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     payload["receipt_digest_sha256"] = content_digest(payload)
     return payload
@@ -1792,6 +1821,7 @@ def build_ergoai_live_toolchain_contract(
         "replay_bound": False,
     }
     live_vendor_execution = False
+    probe: dict[str, Any] = {}
     if run_semantics and advisors_installer is not None:
         resolved_root = advisors_installer.expand_user_local_root(install_root)
         probe = advisors_installer.probe_ergoai_identity(
@@ -1992,6 +2022,49 @@ def build_ergoai_live_toolchain_contract(
             "scope": "environment_guard_and_no_certifier_network_code_path",
         },
     }
+    # Bind managed tool identity (digests only; no host paths) so AVR can
+    # independently re-derive executable provenance without ambient PATH claims.
+    manifest = probe.get("manifest") if isinstance(probe, Mapping) else None
+    if not isinstance(manifest, Mapping):
+        manifest = {}
+    managed_identity = {
+        key: manifest.get(key)
+        for key in (
+            "schema_version",
+            "tool_id",
+            "version",
+            "selected_platform",
+            "release_tag",
+            "release_url",
+            "release_artifact_sha256",
+            "release_artifact_size_bytes",
+            "vendor_executable_sha256",
+            "xsb_configuration",
+            "xsb_executable_sha256",
+            "launcher_sha256",
+            "identity_digest_sha256",
+            "license_components",
+            "checksum_verified",
+            "is_live_vendor",
+            "is_hermetic_advisor_shim",
+            "atomic_publish",
+            "relocatable_install",
+            "install_publication_model",
+        )
+    }
+    payload["managed_identity"] = managed_identity
+    payload["executable_sha256"] = managed_identity.get(
+        "vendor_executable_sha256"
+    )
+    payload["identity"] = {
+        "executable_sha256": managed_identity.get("vendor_executable_sha256"),
+        "launcher_sha256": managed_identity.get("launcher_sha256"),
+    }
+    payload["managed_vendor_live_evidence"] = bool(live_vendor_execution)
+    payload["vendor_certified"] = bool(contract_passed and live_vendor_execution)
+    payload["observed_at"] = datetime.now(timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     payload["receipt_digest_sha256"] = content_digest(payload)
     return payload
 
