@@ -1208,6 +1208,8 @@ class WorktreeLifecycleStore:
 
         Safe for periodic recovery: unexpired live claims are left alone.
         Optional ``task_id_prefix`` limits reclaim to one board (e.g. ``UIR-``).
+        Also repairs task-index files that still advertise a nonterminal state
+        after the workspace record has already been terminalized.
         """
 
         recovered: list[WorkspaceLifecycleRecord] = []
@@ -1217,15 +1219,79 @@ class WorktreeLifecycleStore:
                 continue
             if prefix and not str(record.task_id).startswith(prefix):
                 continue
-            updated = self.reclaim_stale(
-                record.workspace_path,
-                reclaimer_lease_id=reclaimer_lease_id
-                or new_lease_id(seed="expired-auto-reclaim"),
-                reason=reason,
-            )
+            # Missing / zero expires_at means the lease was never published
+            # correctly — treat as immediately reclaimable abandoned claim.
+            expires_at = float(getattr(record, "expires_at", 0.0) or 0.0)
+            if expires_at <= 0.0:
+                updated = self.reclaim_stale(
+                    record.workspace_path,
+                    reclaimer_lease_id=reclaimer_lease_id
+                    or new_lease_id(seed="expired-auto-reclaim-zero-lease"),
+                    reason=f"{reason}:zero_or_missing_expires_at",
+                )
+            else:
+                updated = self.reclaim_stale(
+                    record.workspace_path,
+                    reclaimer_lease_id=reclaimer_lease_id
+                    or new_lease_id(seed="expired-auto-reclaim"),
+                    reason=reason,
+                )
             if updated is not None and updated.is_terminal:
                 recovered.append(updated)
+        # Repair task-index drift (index nonterminal while workspace terminal).
+        self.reconcile_stale_task_indexes(task_id_prefix=prefix)
         return recovered
+
+    def reconcile_stale_task_indexes(
+        self,
+        *,
+        task_id_prefix: str = "",
+    ) -> int:
+        """Rewrite task-attempt index entries that lag a terminal workspace.
+
+        Index files are secondary pointers. When a workspace record is already
+        terminal but the index still says ``active``/``preparing``, operators
+        and external tools misread the board as claimed. Align the index.
+        """
+
+        assert self.store_dir is not None
+        if not self.store_dir.is_dir():
+            return 0
+        repaired = 0
+        prefix = str(task_id_prefix or "")
+        for path in sorted(self.store_dir.glob("task-*.json")):
+            payload = _load_json_dict(path)
+            if payload is None:
+                continue
+            task_id = str(payload.get("task_id") or "")
+            if prefix and not task_id.startswith(prefix):
+                continue
+            state_value = str(payload.get("state") or "")
+            if state_value in {"", WorkspaceLifecycleState.TERMINAL.value}:
+                continue
+            workspace = str(payload.get("workspace_path") or "")
+            if not workspace:
+                continue
+            record = self.load_workspace(workspace)
+            if record is None or not record.is_terminal:
+                continue
+            _atomic_write_json(
+                path,
+                {
+                    "schema": WORKTREE_LIFECYCLE_SCHEMA,
+                    "workspace_path": record.workspace_path,
+                    "record_id": record.record_id,
+                    "task_id": record.task_id,
+                    "canonical_task_cid": record.canonical_task_cid,
+                    "attempt": record.attempt,
+                    "fence": record.fence,
+                    "lease_id": record.lease_id,
+                    "state": record.state.value,
+                    "terminal_reason": record.terminal_reason,
+                },
+            )
+            repaired += 1
+        return repaired
 
     def reclaim_dead_owner_for_controlled_restart(
         self,
