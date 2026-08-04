@@ -68,7 +68,11 @@ _SECRET_TEXT_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
     re.compile(
         r"(?i)\btoken\s*[:=]\s*['\"][A-Za-z0-9._\-+/=]{12,}['\"]"
     ),
-    re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", re.IGNORECASE),
+    re.compile(
+        r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----"
+        r"(?:[A-Za-z0-9+/=\s]+)"
+        r"-----END [A-Z0-9 ]*PRIVATE KEY-----"
+    ),
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(r"\b(?:ghp|github_pat)_[A-Za-z0-9_]{20,}\b"),
 )
@@ -749,6 +753,94 @@ def _residuals(source: bytes, slices: Sequence[Mapping[str, Any]]) -> list[dict[
     return result
 
 
+
+def _top_level_python_symbols(text: str) -> tuple[str, ...]:
+    """Return deterministic top-level class/function names for budgeted slicing."""
+
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return ()
+    names: list[str] = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.append(node.name)
+    return tuple(sorted(set(names)))
+
+
+def _visible_slice_bytes(
+    text: str,
+    source: bytes,
+    *,
+    symbols: Sequence[str],
+    max_candidate_bytes: int,
+) -> int:
+    """Return merged visible byte length for the requested symbols."""
+
+    candidates = _python_candidates(text, source, symbols=symbols)
+    compact = tuple(
+        _signature_candidate(source, candidate, max_bytes=max_candidate_bytes)
+        for candidate in _merge_candidates(candidates)
+    )
+    return sum(candidate.end - candidate.start for candidate in compact)
+
+
+def _budgeted_top_level_python_symbols(
+    text: str,
+    source: bytes,
+    *,
+    max_visible_bytes: int,
+) -> tuple[str, ...]:
+    """Select a deterministic top-level subset that fits the visible budget.
+
+    Large modules (for example ``entrypoints/contracts.py``) cannot be attached
+    whole-file to a production implement packet.  When operators omit symbol
+    hints, greedily keep the smallest top-level definitions first so more
+    interface-adjacent types fit under ``max_visible_bytes``.  Ties break by
+    name so the selection is stable across runs.
+    """
+
+    names = _top_level_python_symbols(text)
+    if not names:
+        return ()
+    budget = max(1, int(max_visible_bytes))
+    # Match the post-selection compaction used by ``_source_record``.
+    header_cap = DEFAULT_WHOLE_FILE_BYTES
+
+    sized: list[tuple[int, str]] = []
+    for name in names:
+        try:
+            body_bytes = _visible_slice_bytes(
+                text,
+                source,
+                symbols=(name,),
+                max_candidate_bytes=header_cap,
+            )
+        except ProductionContextSliceError:
+            continue
+        sized.append((body_bytes, name))
+    if not sized:
+        return ()
+    # Prefer compact definitions so more names fit; stable name order on ties.
+    sized.sort(key=lambda item: (item[0], item[1]))
+
+    selected: list[str] = []
+    for _size, name in sized:
+        trial = tuple(sorted({*selected, name}))
+        try:
+            total = _visible_slice_bytes(
+                text,
+                source,
+                symbols=trial,
+                max_candidate_bytes=header_cap,
+            )
+        except ProductionContextSliceError:
+            continue
+        if total <= budget:
+            selected.append(name)
+    return tuple(sorted(selected))
+
+
 def _source_record(
     *,
     path: str,
@@ -770,7 +862,15 @@ def _source_record(
         ) from exc
     _assert_secret_free(text)
     language = "python" if path.endswith((".py", ".pyi")) else "text"
-    if len(source) <= whole_file_bytes:
+    # utf8-bytes-ceil-div-4@1: refuse whole-file when the raw blob alone cannot
+    # fit a conservative prompt headroom.  This keeps large contract modules
+    # (e.g. entrypoints/contracts.py) from blocking new-file tasks that only
+    # need a few related symbols.
+    estimated_tokens = (len(source) + 3) // 4
+    whole_file_ok = len(source) <= whole_file_bytes and estimated_tokens <= max(
+        1, whole_file_bytes // 4
+    )
+    if whole_file_ok:
         selection = {
             "mode": "whole-file@1",
             "qualified_symbols": [],
@@ -781,6 +881,19 @@ def _source_record(
         )
     elif language == "python":
         normalized_symbols = tuple(sorted(set(symbol_hints)))
+        if not normalized_symbols:
+            # Budget-fit a deterministic subset of top-level definitions so
+            # oversized modules remain implementable without operator hints.
+            normalized_symbols = _budgeted_top_level_python_symbols(
+                text,
+                source,
+                max_visible_bytes=max(4_096, whole_file_bytes // 2),
+            )
+        if not normalized_symbols:
+            _fail(
+                "symbol_scope_required",
+                "large Python sources require exact qualified symbol hints",
+            )
         selection = {
             "mode": "python-qualified-symbols@1",
             "qualified_symbols": list(normalized_symbols),
@@ -1099,6 +1212,13 @@ def build_production_context_slice(
         total_source_bytes += len(baseline_bytes)
         if total_source_bytes > max_source_bytes:
             _fail("scope_too_broad", "declared source exceeds its byte bound")
+        # Cap whole-file inclusion by remaining provider prompt headroom so a
+        # single oversized read path cannot exhaust the budget for new effects.
+        context_limit = max_provider_prompt_tokens - reserved_prompt_tokens
+        budgeted_whole = min(
+            whole_file_bytes,
+            max(4_096, context_limit * 3),
+        )
         sources.append(
             _source_record(
                 path=path,
@@ -1107,7 +1227,7 @@ def build_production_context_slice(
                 source=baseline_bytes,
                 effect=path in effects,
                 symbol_hints=tuple(hints.get(path, ())),
-                whole_file_bytes=whole_file_bytes,
+                whole_file_bytes=budgeted_whole,
             )
         )
 
