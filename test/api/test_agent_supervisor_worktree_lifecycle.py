@@ -7,6 +7,7 @@ import multiprocessing as mp
 import os
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -51,20 +52,24 @@ def _store(
     *,
     lease_seconds: float = 60.0,
     startup_grace_seconds: float = 5.0,
+    dead_owner_reclaim_grace_seconds: float | None = None,
     clock: FakeClock | None = None,
     proc_root: Path | None = None,
 ) -> WorktreeLifecycleStore:
     repo = tmp_path / "repo"
     repo.mkdir(exist_ok=True)
     (repo / ".git").mkdir(exist_ok=True)
-    return WorktreeLifecycleStore(
-        repo_root=repo,
-        lease_seconds=lease_seconds,
-        startup_grace_seconds=startup_grace_seconds,
-        clock=clock or FakeClock(),
-        proc_root=proc_root or Path("/proc"),
-        store_dir=tmp_path / "lifecycle",
-    )
+    kwargs: dict[str, Any] = {
+        "repo_root": repo,
+        "lease_seconds": lease_seconds,
+        "startup_grace_seconds": startup_grace_seconds,
+        "clock": clock or FakeClock(),
+        "proc_root": proc_root or Path("/proc"),
+        "store_dir": tmp_path / "lifecycle",
+    }
+    if dead_owner_reclaim_grace_seconds is not None:
+        kwargs["dead_owner_reclaim_grace_seconds"] = dead_owner_reclaim_grace_seconds
+    return WorktreeLifecycleStore(**kwargs)
 
 
 def test_requirement_id_is_stable() -> None:
@@ -168,9 +173,7 @@ def test_peer_cleanup_skips_preparing_even_when_branch_merged(tmp_path: Path) ->
         caller_lease_id="peer-lease",
     )
     assert not decision.allowed
-    assert "nonterminal_preparing" in decision.reason or decision.reason.endswith(
-        "owner_alive"
-    )
+    assert "nonterminal_preparing" in decision.reason or decision.reason.endswith("owner_alive")
     assert decision.provider_call_allowed is False
     assert decision.attempt_consumed is False
 
@@ -194,16 +197,24 @@ def test_stale_reclamation_requires_expiry_and_advances_fence(tmp_path: Path) ->
         owner=dead_owner,
     )
     early = store.evaluate_cleanup(workspace_path=workspace)
-    assert not early.allowed
+    # PREPARING + dead owner reclaims after startup grace (0 here) without
+    # waiting the full multi-hour lease / dead-owner grace.
     assert early.reason in {
         "owner_dead_lease_unexpired",
         "preparing_startup_grace",
+        "stale_preparing_dead_owner_after_startup_grace",
     }
-    clock.advance(11.0)
-    decision = store.authorize_cleanup(
-        workspace_path=workspace,
-        caller_lease_id="reclaimer",
-    )
+    if early.reason == "stale_preparing_dead_owner_after_startup_grace":
+        decision = store.authorize_cleanup(
+            workspace_path=workspace,
+            caller_lease_id="reclaimer",
+        )
+    else:
+        clock.advance(11.0)
+        decision = store.authorize_cleanup(
+            workspace_path=workspace,
+            caller_lease_id="reclaimer",
+        )
     assert decision.allowed
     assert decision.reason == "reclaimed_stale_record"
     assert decision.record is not None
@@ -264,9 +275,13 @@ def test_controlled_restart_reclaims_only_dead_same_lane_owner(
         state_dir=str(lane_state),
     )
 
-    assert store.evaluate_cleanup(
-        workspace_path=dead_workspace
-    ).reason == "owner_dead_lease_unexpired"
+    # With startup_grace=0, abandoned PREPARING claims reclaim immediately
+    # when the owner is dead (progress recovery). Controlled restart still
+    # only recovers the exact lane state directory.
+    assert store.evaluate_cleanup(workspace_path=dead_workspace).reason in {
+        "owner_dead_lease_unexpired",
+        "stale_preparing_dead_owner_after_startup_grace",
+    }
     assert (
         store.reclaim_dead_owner_for_controlled_restart(
             dead_workspace,
@@ -489,9 +504,7 @@ def test_duplicate_attempts_do_not_leak_candidate_workspace_guards(
     )
     assert store.store_dir is not None
     initial_guards = {
-        path.name
-        for path in store.store_dir.iterdir()
-        if path.name.endswith(".update.lock")
+        path.name for path in store.store_dir.iterdir() if path.name.endswith(".update.lock")
     }
 
     for index in range(20):
@@ -512,9 +525,7 @@ def test_duplicate_attempts_do_not_leak_candidate_workspace_guards(
         assert store.load_workspace(candidate) is None
 
     final_guards = {
-        path.name
-        for path in store.store_dir.iterdir()
-        if path.name.endswith(".update.lock")
+        path.name for path in store.store_dir.iterdir() if path.name.endswith(".update.lock")
     }
     assert final_guards == initial_guards
     assert store.load_workspace(original_workspace) == original
@@ -772,20 +783,12 @@ def test_settling_and_active_also_block_peer_cleanup(tmp_path: Path) -> None:
         branch="implementation/s",
         merge_target="main",
     )
-    active = store.mark_active(
-        workspace, lease_id=record.lease_id, expected_fence=record.fence
-    )
-    deny_active = store.evaluate_cleanup(
-        workspace_path=workspace, caller_lease_id="peer"
-    )
+    active = store.mark_active(workspace, lease_id=record.lease_id, expected_fence=record.fence)
+    deny_active = store.evaluate_cleanup(workspace_path=workspace, caller_lease_id="peer")
     assert not deny_active.allowed
     assert "active" in deny_active.reason
-    settling = store.mark_settling(
-        workspace, lease_id=active.lease_id, expected_fence=active.fence
-    )
-    deny_settling = store.evaluate_cleanup(
-        workspace_path=workspace, caller_lease_id="peer"
-    )
+    settling = store.mark_settling(workspace, lease_id=active.lease_id, expected_fence=active.fence)
+    deny_settling = store.evaluate_cleanup(workspace_path=workspace, caller_lease_id="peer")
     assert not deny_settling.allowed
     assert "settling" in deny_settling.reason
     assert settling.state is WorkspaceLifecycleState.SETTLING
@@ -905,3 +908,43 @@ def test_record_round_trip_json(tmp_path: Path) -> None:
     assert payload["state"] == "preparing"
     assert payload["attempt"] == 9
     assert payload["owner"]["pid"] == record.owner.pid
+
+
+def test_preparing_dead_owner_reclaims_after_startup_grace(tmp_path: Path) -> None:
+    """Abandoned PREPARING claims must not block progress for the full lease."""
+
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=21_600.0,
+        startup_grace_seconds=10.0,
+        dead_owner_reclaim_grace_seconds=300.0,
+        clock=clock,
+    )
+    workspace = tmp_path / "prep-dead"
+    dead_owner = ProcessBirthIdentity(
+        pid=2**30 - 11,
+        start_time_ticks=1,
+        boot_id="dead-boot",
+    )
+    record = store.begin_preparing(
+        task_id="PREP-DEAD",
+        attempt=1,
+        lane_id="lane",
+        workspace_path=workspace,
+        branch="implementation/prep-dead",
+        merge_target="main",
+        owner=dead_owner,
+    )
+    during_grace = store.evaluate_cleanup(workspace_path=workspace)
+    assert during_grace.reason == "preparing_startup_grace"
+    assert store.reclaim_stale(workspace) is None
+
+    clock.advance(11.0)
+    after = store.evaluate_cleanup(workspace_path=workspace)
+    assert after.reason == "stale_preparing_dead_owner_after_startup_grace"
+    reclaimed = store.reclaim_stale(workspace, reclaimer_lease_id="auto")
+    assert reclaimed is not None
+    assert reclaimed.state is WorkspaceLifecycleState.TERMINAL
+    assert reclaimed.fence == record.fence + 1
+    assert reclaimed.terminal_reason == "stale_preparing_dead_owner_after_startup_grace"

@@ -31,13 +31,9 @@ from .checkout_lock import git_common_dir, serialized_lock_update
 from .proof.formal_verification_contracts import content_identity
 
 
-WORKTREE_LIFECYCLE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/worktree-lifecycle-record@1"
-)
+WORKTREE_LIFECYCLE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/worktree-lifecycle-record@1"
 WORKTREE_LIFECYCLE_DIRNAME = "agent-worktree-lifecycle"
-FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID = (
-    "asi-171:fenced-cross-lane-worktree-lifecycle"
-)
+FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID = "asi-171:fenced-cross-lane-worktree-lifecycle"
 
 DEFAULT_LEASE_SECONDS = 21_600.0
 DEFAULT_STARTUP_GRACE_SECONDS = 120.0
@@ -197,9 +193,7 @@ class WorkspaceLifecycleRecord:
             raise WorktreeLifecycleError("workspace_path is required")
         if not self.branch:
             raise WorktreeLifecycleError("branch is required")
-        if not str(self.task_id or "").strip() and not str(
-            self.canonical_task_cid or ""
-        ).strip():
+        if not str(self.task_id or "").strip() and not str(self.canonical_task_cid or "").strip():
             raise WorktreeLifecycleError("task identity is required")
         if not self.record_id:
             object.__setattr__(self, "record_id", self.compute_record_id())
@@ -306,9 +300,11 @@ class WorkspaceLifecycleRecord:
 
 def _read_boot_id(*, proc_root: Path = Path("/proc")) -> str:
     try:
-        return (proc_root / "sys" / "kernel" / "random" / "boot_id").read_text(
-            encoding="ascii"
-        ).strip()
+        return (
+            (proc_root / "sys" / "kernel" / "random" / "boot_id")
+            .read_text(encoding="ascii")
+            .strip()
+        )
     except (OSError, UnicodeError):
         return ""
 
@@ -433,9 +429,9 @@ def task_attempt_index_filename(
 ) -> str:
     identity = f"{canonical_task_cid or task_id}\0{int(attempt)}"
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
-    safe = _SAFE_NAME.sub("_", (canonical_task_cid or task_id or "task")[:48]).strip(
-        "._-"
-    ) or "task"
+    safe = (
+        _SAFE_NAME.sub("_", (canonical_task_cid or task_id or "task")[:48]).strip("._-") or "task"
+    )
     return f"task-{safe}-{digest}-a{int(attempt)}.json"
 
 
@@ -645,9 +641,7 @@ class WorktreeLifecycleStore:
             raise WorktreeLifecycleError("branch is required")
         now = float(self.clock())
         owner_identity = owner or current_process_birth(proc_root=self.proc_root)
-        lease = lease_id or new_lease_id(
-            seed=f"{task_id}:{canonical_task_cid}:{attempt}:{lane_id}"
-        )
+        lease = lease_id or new_lease_id(seed=f"{task_id}:{canonical_task_cid}:{attempt}:{lane_id}")
         record_path = self.workspace_path_for(workspace)
         index_path = self.task_index_path_for(
             canonical_task_cid=canonical_task_cid,
@@ -673,9 +667,7 @@ class WorktreeLifecycleStore:
                     "task/attempt already has a nonterminal workspace claim"
                 )
             if now < float(other.expires_at):
-                raise DuplicateAttemptError(
-                    "task/attempt claim lease has not expired"
-                )
+                raise DuplicateAttemptError("task/attempt claim lease has not expired")
 
         # Serialize first on the stable task/attempt identity.  A losing lane
         # is rejected before it materializes a timestamp-specific workspace
@@ -685,19 +677,15 @@ class WorktreeLifecycleStore:
             with serialized_lock_update(record_path):
                 existing = self.load_workspace(workspace)
                 if existing is not None and existing.is_nonterminal:
-                    liveness = owner_liveness(
-                        existing.owner, proc_root=self.proc_root
-                    )
+                    liveness = owner_liveness(existing.owner, proc_root=self.proc_root)
                     expired = now >= float(existing.expires_at)
                     if liveness is OwnerLiveness.ALIVE:
                         raise DuplicateAttemptError(
-                            "workspace already claimed by live owner "
-                            f"pid={existing.owner.pid}"
+                            f"workspace already claimed by live owner pid={existing.owner.pid}"
                         )
                     if liveness is OwnerLiveness.UNKNOWN:
                         raise DuplicateAttemptError(
-                            "workspace claim exists and process inspection is "
-                            "unavailable"
+                            "workspace claim exists and process inspection is unavailable"
                         )
                     if not expired and not allow_replace_stale:
                         raise DuplicateAttemptError(
@@ -707,15 +695,12 @@ class WorktreeLifecycleStore:
                         # Owner is dead but lease still valid: only reclaim
                         # after expiry.
                         raise DuplicateAttemptError(
-                            "workspace claim lease has not expired for stale "
-                            "owner"
+                            "workspace claim lease has not expired for stale owner"
                         )
                     # Dead + expired → reclaim with fence advancement below.
                     next_fence = int(existing.fence) + 1
                 else:
-                    next_fence = (
-                        1 if existing is None else int(existing.fence) + 1
-                    )
+                    next_fence = 1 if existing is None else int(existing.fence) + 1
 
                 # Recheck after taking the workspace guard because transitions
                 # and legacy writers may update the index without this guard.
@@ -732,9 +717,7 @@ class WorktreeLifecycleStore:
                     workspace_path=workspace,
                     branch=branch_name,
                     merge_target=str(merge_target or ""),
-                    created_at=(
-                        now if existing is None else float(existing.created_at)
-                    ),
+                    created_at=(now if existing is None else float(existing.created_at)),
                     updated_at=now,
                     expires_at=now + self.lease_seconds,
                     repo_root=str(self.repo_root.resolve(strict=False)),
@@ -770,9 +753,7 @@ class WorktreeLifecycleStore:
         if str(lease_id) != str(record.lease_id):
             raise OwnershipError("lifecycle lease does not match record owner")
         if int(expected_fence) != int(record.fence):
-            raise FenceMismatchError(
-                f"expected fence {expected_fence}, found {record.fence}"
-            )
+            raise FenceMismatchError(f"expected fence {expected_fence}, found {record.fence}")
 
     def transition(
         self,
@@ -793,15 +774,11 @@ class WorktreeLifecycleStore:
             current = self.load_workspace(workspace)
             if current is None:
                 raise WorktreeLifecycleError("lifecycle record missing")
-            self._require_owner(
-                current, lease_id=lease_id, expected_fence=expected_fence
-            )
+            self._require_owner(current, lease_id=lease_id, expected_fence=expected_fence)
             if current.is_terminal and new_state is not WorkspaceLifecycleState.TERMINAL:
                 raise WorktreeLifecycleError("cannot revive a terminal lifecycle record")
             now = float(self.clock())
-            expires_at = (
-                now + self.lease_seconds if renew_lease else float(current.expires_at)
-            )
+            expires_at = now + self.lease_seconds if renew_lease else float(current.expires_at)
             # Fence advances on every authoritative mutation so concurrent
             # cleaners cannot delete against a stale view.
             updated = replace(
@@ -860,9 +837,7 @@ class WorktreeLifecycleStore:
             current = self.load_workspace(old_normalized)
             if current is None:
                 raise WorktreeLifecycleError("lifecycle record missing")
-            self._require_owner(
-                current, lease_id=lease_id, expected_fence=expected_fence
-            )
+            self._require_owner(current, lease_id=lease_id, expected_fence=expected_fence)
             return current
 
         old_path = self.workspace_path_for(old_normalized)
@@ -872,27 +847,17 @@ class WorktreeLifecycleStore:
             current = self.load_workspace(old_normalized)
             if current is None:
                 raise WorktreeLifecycleError("lifecycle record missing")
-            self._require_owner(
-                current, lease_id=lease_id, expected_fence=expected_fence
-            )
+            self._require_owner(current, lease_id=lease_id, expected_fence=expected_fence)
             if current.is_terminal:
-                raise WorktreeLifecycleError(
-                    "cannot rebind a terminal lifecycle record"
-                )
+                raise WorktreeLifecycleError("cannot rebind a terminal lifecycle record")
             existing_new = self.load_workspace(new_normalized)
             if existing_new is not None and existing_new.is_nonterminal:
-                other_live = owner_liveness(
-                    existing_new.owner, proc_root=self.proc_root
-                )
+                other_live = owner_liveness(existing_new.owner, proc_root=self.proc_root)
                 if other_live is not OwnerLiveness.DEAD:
-                    raise DuplicateAttemptError(
-                        "target workspace already has a nonterminal claim"
-                    )
+                    raise DuplicateAttemptError("target workspace already has a nonterminal claim")
                 now = float(self.clock())
                 if now < float(existing_new.expires_at):
-                    raise DuplicateAttemptError(
-                        "target workspace claim lease has not expired"
-                    )
+                    raise DuplicateAttemptError("target workspace claim lease has not expired")
             now = float(self.clock())
             updated = replace(
                 current,
@@ -1003,9 +968,7 @@ class WorktreeLifecycleStore:
             current = self.load_workspace(workspace)
             if current is None:
                 raise WorktreeLifecycleError("lifecycle record missing")
-            self._require_owner(
-                current, lease_id=lease_id, expected_fence=expected_fence
-            )
+            self._require_owner(current, lease_id=lease_id, expected_fence=expected_fence)
             if current.is_terminal:
                 raise WorktreeLifecycleError("cannot renew a terminal lifecycle record")
             now = float(self.clock())
@@ -1040,11 +1003,7 @@ class WorktreeLifecycleStore:
         if workspace_path is not None:
             record = self.load_workspace(workspace_path)
         if record is None and branch:
-            matches = [
-                item
-                for item in self.find_by_branch(branch)
-                if item.is_nonterminal
-            ]
+            matches = [item for item in self.find_by_branch(branch) if item.is_nonterminal]
             if matches:
                 # Prefer the newest nonterminal claim for the branch.
                 record = max(matches, key=lambda item: (item.updated_at, item.fence))
@@ -1095,6 +1054,11 @@ class WorktreeLifecycleStore:
         # Owner is dead. Prefer full lease expiry, but automatically reclaim
         # after a bounded dead-owner grace so crashed attempts cannot hold a
         # multi-hour claim that blocks the next implement cycle.
+        #
+        # PREPARING claims that never leave preparing after startup grace with
+        # a dead owner are abandoned setup (daemon crash mid-claim). Reclaim
+        # those immediately once startup grace elapses — waiting the full
+        # dead-owner grace (minutes) thrashingly blocks the ready task.
         age = clock_now - float(record.created_at)
         expired = clock_now >= float(record.expires_at)
         if not expired:
@@ -1105,6 +1069,18 @@ class WorktreeLifecycleStore:
                 return CleanupDecision(
                     disposition=CleanupDisposition.DENY,
                     reason="preparing_startup_grace",
+                    record=record,
+                    failure_kind=LifecycleFailureKind.LIFECYCLE_RACE,
+                    provider_call_allowed=False,
+                    attempt_consumed=False,
+                )
+            if (
+                record.state is WorkspaceLifecycleState.PREPARING
+                and age >= self.startup_grace_seconds
+            ):
+                return CleanupDecision(
+                    disposition=CleanupDisposition.RECLAIM_THEN_ALLOW,
+                    reason="stale_preparing_dead_owner_after_startup_grace",
                     record=record,
                     failure_kind=LifecycleFailureKind.LIFECYCLE_RACE,
                     provider_call_allowed=False,
@@ -1137,7 +1113,6 @@ class WorktreeLifecycleStore:
             attempt_consumed=False,
         )
 
-
     def reclaim_dead_owner_claims_for_task(
         self,
         *,
@@ -1163,13 +1138,12 @@ class WorktreeLifecycleStore:
                 continue
             if str(payload.get("task_id") or "") != str(task_id):
                 continue
-            if canonical_task_cid and str(
-                payload.get("canonical_task_cid") or ""
-            ) not in {"", str(canonical_task_cid)}:
+            if canonical_task_cid and str(payload.get("canonical_task_cid") or "") not in {
+                "",
+                str(canonical_task_cid),
+            }:
                 # Keep exact-task reclaim when a cid is supplied.
-                if str(payload.get("canonical_task_cid") or "") != str(
-                    canonical_task_cid
-                ):
+                if str(payload.get("canonical_task_cid") or "") != str(canonical_task_cid):
                     continue
             workspace = str(payload.get("workspace_path") or "")
             if not workspace:
@@ -1197,9 +1171,7 @@ class WorktreeLifecycleStore:
                         "state": getattr(
                             getattr(result, "state", None), "value", str(result.state)
                         ),
-                        "terminal_reason": str(
-                            getattr(result, "terminal_reason", "") or ""
-                        ),
+                        "terminal_reason": str(getattr(result, "terminal_reason", "") or ""),
                     }
                 )
         return reclaimed
@@ -1212,10 +1184,13 @@ class WorktreeLifecycleStore:
         reason: str = "stale_reclamation",
         now: float | None = None,
     ) -> WorkspaceLifecycleRecord | None:
-        """Advance fence and mark terminal when owner is dead and lease expired.
+        """Advance fence and mark terminal when owner is dead and reclaimable.
 
         Returns the terminal record on success, or None if reclamation was
-        refused (live owner, unexpired lease, missing record, etc.).
+        refused (live owner, unexpired lease within grace, missing record, etc.).
+
+        PREPARING claims with a dead owner reclaim after startup grace so a
+        crashed setup cannot block progress for the full multi-hour lease.
         """
 
         clock_now = float(self.clock() if now is None else now)
@@ -1231,17 +1206,22 @@ class WorktreeLifecycleStore:
                 return None
             age = clock_now - float(current.created_at)
             expired = clock_now >= float(current.expires_at)
-            if (
-                not expired
-                and age < float(self.dead_owner_reclaim_grace_seconds)
-            ):
+            preparing_stuck = (
+                current.state is WorkspaceLifecycleState.PREPARING
+                and age >= float(self.startup_grace_seconds)
+            )
+            grace_elapsed = age >= float(self.dead_owner_reclaim_grace_seconds)
+            if not expired and not preparing_stuck and not grace_elapsed:
                 return None
+            terminal_reason = str(reason or "stale_reclamation")
+            if preparing_stuck and not expired and not grace_elapsed:
+                terminal_reason = "stale_preparing_dead_owner_after_startup_grace"
             updated = replace(
                 current,
                 state=WorkspaceLifecycleState.TERMINAL,
                 fence=int(current.fence) + 1,
                 updated_at=clock_now,
-                terminal_reason=str(reason or "stale_reclamation"),
+                terminal_reason=terminal_reason,
                 lease_id=reclaimer_lease_id or current.lease_id,
             )
             _atomic_write_json(record_path, updated.to_dict())
@@ -1285,19 +1265,13 @@ class WorktreeLifecycleStore:
                 or normalize_workspace_path(current.state_dir) != expected_state
             ):
                 return None
-            if (
-                owner_liveness(current.owner, proc_root=self.proc_root)
-                is not OwnerLiveness.DEAD
-            ):
+            if owner_liveness(current.owner, proc_root=self.proc_root) is not OwnerLiveness.DEAD:
                 return None
             updated = replace(
                 current,
                 state=WorkspaceLifecycleState.TERMINAL,
                 owner=reclaimer or current_process_birth(proc_root=self.proc_root),
-                lease_id=(
-                    reclaimer_lease_id
-                    or new_lease_id(seed="controlled-restart-reclaim")
-                ),
+                lease_id=(reclaimer_lease_id or new_lease_id(seed="controlled-restart-reclaim")),
                 fence=int(current.fence) + 1,
                 updated_at=clock_now,
                 expires_at=clock_now,
@@ -1404,9 +1378,7 @@ class WorktreeLifecycleStore:
             # workspace differs from the stable pooled path supplied by the
             # caller. Reclaim the authoritative record, never the lookup hint.
             reclaim_workspace = (
-                decision.record.workspace_path
-                if decision.record is not None
-                else workspace_path
+                decision.record.workspace_path if decision.record is not None else workspace_path
             )
             reclaimed = self.reclaim_stale(
                 reclaim_workspace,
@@ -1420,10 +1392,7 @@ class WorktreeLifecycleStore:
                     branch=branch,
                     caller_lease_id=caller_lease_id,
                 )
-                if (
-                    refreshed.disposition
-                    is CleanupDisposition.RECLAIM_THEN_ALLOW
-                ):
+                if refreshed.disposition is CleanupDisposition.RECLAIM_THEN_ALLOW:
                     # Re-evaluation still requires an authoritative reclaim.
                     # Never expose that unresolved intermediate disposition as
                     # mutation authority to the caller.
