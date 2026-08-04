@@ -1,0 +1,473 @@
+{
+  "applied_at": "2026-08-04T00:50:54.445682+00:00",
+  "authority_limits": [
+    "FVT-086 supersession is not completion authority",
+    "historical discovery receipts remain immutable provenance",
+    "FVT-G219 still requires a supported production SecPAL artifact, runtime, and arbitrary-policy query interface",
+    "FVT-G232 still requires signed legal, IP, security, and deployment approval"
+  ],
+  "direct_dependents": {
+    "FVT-088": {
+      "canonical_task_cid": "baguqeeraej7hdfylgv2ifgn3pgxnnh5kd3ipqalo7nkyhcj4d3fpun7le5ua",
+      "canonical_task_key": "task/v1/227e71970b35748299bb79aed69faa1ed0f8016efb5583893c1ecafa37eb2768",
+      "depends_on": [
+        "FVT-084",
+        "FVT-085",
+        "FVT-087",
+        "FVT-101"
+      ],
+      "previous_depends_on": [
+        "FVT-084",
+        "FVT-085",
+        "FVT-086",
+        "FVT-087"
+      ],
+      "previous_task_work_contract_id": "baguqeeraebllk3dnusxdsht5gdqlveiu6qerfnh7sqjuovuqljx4tctf7u5q",
+      "previous_work_contract_id": "baguqeera5ug5xop2vsywiw6xpiqhg2khd7f2jnkv7d4ig5zq46afecvr64nq",
+      "task_work_contract_id": "baguqeera2o5lpsjbx3rwht3gsnjmzks7ocbhc47vibijfbpszx46exp5t7uq",
+      "work_contract_id": "baguqeeraqyx5stepnmgyiusurhlgsbehyv6sklz4eexadns2fdffffkmm56q"
+    },
+    "FVT-092": {
+      "canonical_task_cid": "baguqeeraikp3hrazxplac5niv4ikngrb4zuehqjbjad3qkmpbwcrflbs466q",
+      "canonical_task_key": "task/v1/429fb3c419bbd60175a8af10a69a21e66843c1214807b8298f0d8512ac32e7bd",
+      "depends_on": [
+        "FVT-101"
+      ],
+      "previous_depends_on": [
+        "FVT-086"
+      ],
+      "previous_task_work_contract_id": "baguqeerazduupc6emrgr2vrgzovyjcse2g3xa43e4ecgtruq4wm72tesafbq",
+      "previous_work_contract_id": "baguqeera43dx4xlwhdwtwqwkm5rpggbqbyrrvizxasqkoy2vgbjvjhrrlydq",
+      "task_work_contract_id": "baguqeeraa3kikrrstgwdxoyxyee3v6jed3fpaj3kowh7pbcb2tdnsfizgumq",
+      "work_contract_id": "baguqeera5pftrvr57kp2iw4a7nfoeichz3l4u74lud4uzuiydrhrvenkw4ea"
+    },
+    "FVT-099": {
+      "canonical_task_cid": "baguqeeraziap5lduyvpkekg37cbkrh2cpzgzowvuhw7whlhggv4ks5wmhbha",
+      "canonical_task_key": "task/v1/ca00feac74c55ea228dbf882a89f427e4d975ab43dbf63ace63578a976cc384e",
+      "depends_on": [
+        "FVT-092",
+        "FVT-093",
+        "FVT-095",
+        "FVT-101"
+      ],
+      "previous_depends_on": [
+        "FVT-086",
+        "FVT-092",
+        "FVT-093",
+        "FVT-095"
+      ],
+      "previous_task_work_contract_id": "baguqeeramab5pv4qbn5k64fjx6st37vz3tbvjpqao7r22nbaj3xt3gsw423a",
+      "previous_work_contract_id": "baguqeeraej2cz5ftmrx6iv5tyrwblfhdxmvx56byu5kh3555z7g7bffopoqq",
+      "task_work_contract_id": "baguqeerap5l5odm4gdlnnswt4vxsdascaffds6qtk7ztm7d45lyqiahsk7za",
+      "work_contract_id": "baguqeerank3x3pucjfmzewkszbxvuhmgtq2l5trqipr5zp3uc7xi6wwedriq"
+    }
+  },
+  "input_snapshot": [
+    {
+      "backup_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/backup/docs/architecture/formal_verification_tactician_readiness.todo.md",
+      "existed": true,
+      "path": "docs/architecture/formal_verification_tactician_readiness.todo.md",
+      "sha256": "69307afe4819d29fa0e15a92070ecda9a52824a45290534c487a312775efc0b1",
+      "size": 552167
+    },
+    {
+      "backup_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/backup/data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-secpal-live-toolchain.todo.md",
+      "existed": true,
+      "path": "data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-secpal-live-toolchain.todo.md",
+      "sha256": "65875cfa999e73d575b020c0193f273d5e47ac904c0b2843811672ad55e87b3d",
+      "size": 12056
+    },
+    {
+      "backup_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/backup/data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-end-to-end-assurance.todo.md",
+      "existed": true,
+      "path": "data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-end-to-end-assurance.todo.md",
+      "sha256": "440f57c8d90b0ac39773ecdced4519894980ee40c4e57f6cc5753a389f6ce24d",
+      "size": 6424
+    },
+    {
+      "backup_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/backup/data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-secpal-operator-compatibility.todo.md",
+      "existed": true,
+      "path": "data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-secpal-operator-compatibility.todo.md",
+      "sha256": "9baccd414d5c8b1f89a51e109116ccc404fda8453e643bf274fd07a3b68a9b27",
+      "size": 6040
+    },
+    {
+      "backup_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/backup/data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-production-authorization-replacement.todo.md",
+      "existed": true,
+      "path": "data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-production-authorization-replacement.todo.md",
+      "sha256": "1c52a84a5ea237f2d84863d80fe72120ccef86727a5b911a41590cb8cf174951",
+      "size": 6896
+    },
+    {
+      "backup_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/backup/data/agent_supervisor/formal_verification_tactician_readiness/bundles/index.json",
+      "existed": true,
+      "path": "data/agent_supervisor/formal_verification_tactician_readiness/bundles/index.json",
+      "sha256": "27f967bcaae4115b9dc81b542536a5596031fe8d0843afb849cf037a8a0767a8",
+      "size": 30233968
+    },
+    {
+      "backup_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/backup/data/agent_supervisor/formal_verification_tactician_readiness/bundles/index.duckdb",
+      "existed": true,
+      "path": "data/agent_supervisor/formal_verification_tactician_readiness/bundles/index.duckdb",
+      "sha256": "2d9997910f5a53350cead3695f62139eff597676a5b23373af79d8e7d821f6ee",
+      "size": 26226688
+    },
+    {
+      "backup_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/backup/data/agent_supervisor/formal_verification_tactician_readiness/bundles/todo_vector_index.json",
+      "existed": true,
+      "path": "data/agent_supervisor/formal_verification_tactician_readiness/bundles/todo_vector_index.json",
+      "sha256": "dd8538e29884fee15f73fef3c939f45c9e5c17b9790ba7d8a114aab634268334",
+      "size": 28246821
+    },
+    {
+      "existed": false,
+      "path": "docs/architecture/formal_verification_fvt086_to_fvt101_migration_receipt.json"
+    }
+  ],
+  "journal_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/journal.json",
+  "migration_id": "fvt086-to-fvt101-20260804T005001993372Z",
+  "output_artifacts": {
+    "data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-end-to-end-assurance.todo.md": {
+      "exists": true,
+      "sha256": "4544a16c5da77ee957eb07d9570b642fffdf4ef1636dfd150c61851e7949d84f",
+      "size": 6424
+    },
+    "data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-production-authorization-replacement.todo.md": {
+      "exists": true,
+      "sha256": "be6bde26bac5d20f03336a5a1dd64b6c6def9aa59cb8bb9ce1e4ec286611eea5",
+      "size": 6896
+    },
+    "data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-secpal-live-toolchain.todo.md": {
+      "exists": true,
+      "sha256": "ef30e0405098158f7a7075288b0d2c54af97a24148bb24b00cdfb6f9cbbe06b6",
+      "size": 12160
+    },
+    "data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-secpal-operator-compatibility.todo.md": {
+      "exists": true,
+      "sha256": "e895ca70b296f0dbfc79798e28557e571eb98f828cf7e988e4c9d7e82c5170a9",
+      "size": 6040
+    },
+    "data/agent_supervisor/formal_verification_tactician_readiness/bundles/index.duckdb": {
+      "exists": true,
+      "sha256": "080ad89846dcc7fbef2015d8335d441a49bf38861ddf3fe311af58fcfbc0c833",
+      "size": 142880768
+    },
+    "data/agent_supervisor/formal_verification_tactician_readiness/bundles/index.json": {
+      "exists": true,
+      "sha256": "c886da3b6d90b8d7a22ffef8b32560ac3daaf8e58722090f225c4f0c1c501fa3",
+      "size": 30255628
+    },
+    "data/agent_supervisor/formal_verification_tactician_readiness/bundles/todo_vector_index.json": {
+      "exists": true,
+      "sha256": "e9e796c6d13ee04cfe8e7c58fa42c162ff8ee6e44412512352c2c5b55ac8adb7",
+      "size": 28197056
+    },
+    "data/agent_supervisor/formal_verification_tactician_readiness/datasets/fvt-todo-vector-index.jsonl": {
+      "exists": true,
+      "sha256": "297974b61e25e0ee2a768a84f61a65b3f50a67b5b6f77824a89b3f51406a535a",
+      "size": 36834302
+    },
+    "data/agent_supervisor/formal_verification_tactician_readiness/datasets/fvt-todo-vector-index.manifest.json": {
+      "exists": true,
+      "sha256": "f261c0d3fa6fca9b3aedea0fafe562ebaa6e2cc4d89d4a6b33369813c2310357",
+      "size": 990
+    },
+    "data/agent_supervisor/formal_verification_tactician_readiness/datasets/fvt-todo-vector-index.parquet": {
+      "exists": false
+    },
+    "docs/architecture/formal_verification_tactician_readiness.todo.md": {
+      "exists": true,
+      "sha256": "4f5dad81358a76fa690e175175f1933ff13fa637ea2e4092e12a31f582e8575f",
+      "size": 552268
+    }
+  },
+  "preflight": {
+    "active_worker_count": 0,
+    "coordination": {
+      "active_lease_count": 0,
+      "direct_attempt_or_receipt_count": 0,
+      "direct_task_count": 3,
+      "fvt086_non_success_receipts": [
+        {
+          "receipt_cid": "baguqeerak5slzop2outgwhoc3rly4pjmm4h33xgmlvga5jeac3rfqlatdxlq",
+          "status": "cancelled"
+        },
+        {
+          "receipt_cid": "baguqeeratfgaorvp5a7of7s6huvjxd3becewvbdhr3zinrz32fkedfvkpitq",
+          "status": "cancelled"
+        }
+      ],
+      "fvt101_coordination_receipt_cid": "baguqeerapwizgvm2hydvse266xkcw2z2o3qvmli6bfkixkhsebhzouenbjcq",
+      "fvt101_profile_task_cid": "baguqeerahtowi7vlgxzi23kpb74fwmq4inyqnhsmaowo2xm3qzchh4j4arzq"
+    },
+    "fvt101_completion_receipt": {
+      "board_namespace": "formal_verification_tactician_readiness.todo.md",
+      "canonical_task_cid": "baguqeera2wbd6pcboahukx3xvm3kp3hrumumex27qhkaquhokp5t7xtlsbma",
+      "canonical_task_key": "task/v1/d5823f3c41700f455f77ab36a7ecf1a328c25f5f81d40850ee53fb3fde6b9058",
+      "event_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/formal-verification-tactician-secpal-live-toolchain/executions/82c49f6036b34d30ac148bb58d5a92746116da63fd1fdf59abaec60156de9ef6/state/agent_formal_verification_tactician_secpal_live_toolchain_events.jsonl",
+      "event_type": "implementation_finished",
+      "status": "succeeded",
+      "task_id": "FVT-101",
+      "timestamp": "2026-08-04T00:28:53.604266+00:00"
+    },
+    "manifest_generated_at": "2026-08-04T00:30:21.439399+00:00",
+    "manifest_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/lane_manifest.json",
+    "scheduler_state": "stopped"
+  },
+  "projection_refresh": {
+    "input_snapshot": [
+      {
+        "backup_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/fvt086-to-fvt101-projection-refresh-20260804T010550225135Z/backup/docs/architecture/formal_verification_tactician_readiness.todo.md",
+        "existed": true,
+        "path": "docs/architecture/formal_verification_tactician_readiness.todo.md",
+        "sha256": "4f5dad81358a76fa690e175175f1933ff13fa637ea2e4092e12a31f582e8575f",
+        "size": 552268
+      },
+      {
+        "backup_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/fvt086-to-fvt101-projection-refresh-20260804T010550225135Z/backup/data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-secpal-live-toolchain.todo.md",
+        "existed": true,
+        "path": "data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-secpal-live-toolchain.todo.md",
+        "sha256": "ef30e0405098158f7a7075288b0d2c54af97a24148bb24b00cdfb6f9cbbe06b6",
+        "size": 12160
+      },
+      {
+        "backup_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/fvt086-to-fvt101-projection-refresh-20260804T010550225135Z/backup/data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-end-to-end-assurance.todo.md",
+        "existed": true,
+        "path": "data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-end-to-end-assurance.todo.md",
+        "sha256": "4544a16c5da77ee957eb07d9570b642fffdf4ef1636dfd150c61851e7949d84f",
+        "size": 6424
+      },
+      {
+        "backup_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/fvt086-to-fvt101-projection-refresh-20260804T010550225135Z/backup/data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-secpal-operator-compatibility.todo.md",
+        "existed": true,
+        "path": "data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-secpal-operator-compatibility.todo.md",
+        "sha256": "e895ca70b296f0dbfc79798e28557e571eb98f828cf7e988e4c9d7e82c5170a9",
+        "size": 6040
+      },
+      {
+        "backup_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/fvt086-to-fvt101-projection-refresh-20260804T010550225135Z/backup/data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-production-authorization-replacement.todo.md",
+        "existed": true,
+        "path": "data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-production-authorization-replacement.todo.md",
+        "sha256": "be6bde26bac5d20f03336a5a1dd64b6c6def9aa59cb8bb9ce1e4ec286611eea5",
+        "size": 6896
+      },
+      {
+        "backup_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/fvt086-to-fvt101-projection-refresh-20260804T010550225135Z/backup/data/agent_supervisor/formal_verification_tactician_readiness/bundles/index.json",
+        "existed": true,
+        "path": "data/agent_supervisor/formal_verification_tactician_readiness/bundles/index.json",
+        "sha256": "4a45a709c5e1fd9fa3781064814a1dd1102efd2c3de8e78dcb13736cc2093881",
+        "size": 30255628
+      },
+      {
+        "backup_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/fvt086-to-fvt101-projection-refresh-20260804T010550225135Z/backup/data/agent_supervisor/formal_verification_tactician_readiness/bundles/index.duckdb",
+        "existed": true,
+        "path": "data/agent_supervisor/formal_verification_tactician_readiness/bundles/index.duckdb",
+        "sha256": "5d0d34e9b13ce99b6a9fdde12ff6442dd4e2e5321bb3134152a7e4c9c5c8a33b",
+        "size": 142618624
+      },
+      {
+        "backup_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/fvt086-to-fvt101-projection-refresh-20260804T010550225135Z/backup/data/agent_supervisor/formal_verification_tactician_readiness/bundles/todo_vector_index.json",
+        "existed": true,
+        "path": "data/agent_supervisor/formal_verification_tactician_readiness/bundles/todo_vector_index.json",
+        "sha256": "9d1a7ba7118b68b894b020ce18399518460fb51fa03483393a57f63a5d23660e",
+        "size": 28196052
+      },
+      {
+        "backup_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/fvt086-to-fvt101-projection-refresh-20260804T010550225135Z/backup/data/agent_supervisor/formal_verification_tactician_readiness/datasets/fvt-todo-vector-index.jsonl",
+        "existed": true,
+        "path": "data/agent_supervisor/formal_verification_tactician_readiness/datasets/fvt-todo-vector-index.jsonl",
+        "sha256": "8e9f5c7cadb92ebeb3c4e9e3786c8535af0011b211ba6aff7ab2b52f58a2b61b",
+        "size": 36800791
+      },
+      {
+        "backup_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/fvt086-to-fvt101-projection-refresh-20260804T010550225135Z/backup/data/agent_supervisor/formal_verification_tactician_readiness/datasets/fvt-todo-vector-index.manifest.json",
+        "existed": true,
+        "path": "data/agent_supervisor/formal_verification_tactician_readiness/datasets/fvt-todo-vector-index.manifest.json",
+        "sha256": "3e92bed1b355a66ae462caddf9e3e41a49c5fe3a4f35e971dde1525329bf450a",
+        "size": 990
+      },
+      {
+        "existed": false,
+        "path": "data/agent_supervisor/formal_verification_tactician_readiness/datasets/fvt-todo-vector-index.parquet"
+      },
+      {
+        "backup_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/fvt086-to-fvt101-projection-refresh-20260804T010550225135Z/backup/docs/architecture/formal_verification_fvt086_to_fvt101_migration_receipt.json",
+        "existed": true,
+        "path": "docs/architecture/formal_verification_fvt086_to_fvt101_migration_receipt.json",
+        "sha256": "082ef9eb488318489246d5a26056f685896f87deba95717475f1c7bf16d0d0fc",
+        "size": 15665
+      },
+      {
+        "backup_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/fvt086-to-fvt101-projection-refresh-20260804T010550225135Z/backup/data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/journal.json",
+        "existed": true,
+        "path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/journal.json",
+        "sha256": "ed149bfb6d607d4bbeb66d86c897b92d179cc03d7d56fe121f131343be31c1f8",
+        "size": 12209
+      }
+    ],
+    "journal_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/migrations/fvt086-to-fvt101/fvt086-to-fvt101-20260804T005001993372Z/fvt086-to-fvt101-projection-refresh-20260804T010550225135Z/journal.json",
+    "output_artifacts": {
+      "data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-end-to-end-assurance.todo.md": {
+        "exists": true,
+        "sha256": "4544a16c5da77ee957eb07d9570b642fffdf4ef1636dfd150c61851e7949d84f",
+        "size": 6424
+      },
+      "data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-production-authorization-replacement.todo.md": {
+        "exists": true,
+        "sha256": "be6bde26bac5d20f03336a5a1dd64b6c6def9aa59cb8bb9ce1e4ec286611eea5",
+        "size": 6896
+      },
+      "data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-secpal-live-toolchain.todo.md": {
+        "exists": true,
+        "sha256": "ef30e0405098158f7a7075288b0d2c54af97a24148bb24b00cdfb6f9cbbe06b6",
+        "size": 12160
+      },
+      "data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-secpal-operator-compatibility.todo.md": {
+        "exists": true,
+        "sha256": "e895ca70b296f0dbfc79798e28557e571eb98f828cf7e988e4c9d7e82c5170a9",
+        "size": 6040
+      },
+      "data/agent_supervisor/formal_verification_tactician_readiness/bundles/index.duckdb": {
+        "exists": true,
+        "sha256": "080ad89846dcc7fbef2015d8335d441a49bf38861ddf3fe311af58fcfbc0c833",
+        "size": 142880768
+      },
+      "data/agent_supervisor/formal_verification_tactician_readiness/bundles/index.json": {
+        "exists": true,
+        "sha256": "c886da3b6d90b8d7a22ffef8b32560ac3daaf8e58722090f225c4f0c1c501fa3",
+        "size": 30255628
+      },
+      "data/agent_supervisor/formal_verification_tactician_readiness/bundles/todo_vector_index.json": {
+        "exists": true,
+        "sha256": "e9e796c6d13ee04cfe8e7c58fa42c162ff8ee6e44412512352c2c5b55ac8adb7",
+        "size": 28197056
+      },
+      "data/agent_supervisor/formal_verification_tactician_readiness/datasets/fvt-todo-vector-index.jsonl": {
+        "exists": true,
+        "sha256": "297974b61e25e0ee2a768a84f61a65b3f50a67b5b6f77824a89b3f51406a535a",
+        "size": 36834302
+      },
+      "data/agent_supervisor/formal_verification_tactician_readiness/datasets/fvt-todo-vector-index.manifest.json": {
+        "exists": true,
+        "sha256": "f261c0d3fa6fca9b3aedea0fafe562ebaa6e2cc4d89d4a6b33369813c2310357",
+        "size": 990
+      },
+      "data/agent_supervisor/formal_verification_tactician_readiness/datasets/fvt-todo-vector-index.parquet": {
+        "exists": false
+      },
+      "docs/architecture/formal_verification_tactician_readiness.todo.md": {
+        "exists": true,
+        "sha256": "4f5dad81358a76fa690e175175f1933ff13fa637ea2e4092e12a31f582e8575f",
+        "size": 552268
+      }
+    },
+    "refresh_id": "fvt086-to-fvt101-projection-refresh-20260804T010550225135Z"
+  },
+  "projection_refreshed_at": "2026-08-04T01:06:43.949653+00:00",
+  "replacement_task": {
+    "canonical_task_cid": "baguqeera2wbd6pcboahukx3xvm3kp3hrumumex27qhkaquhokp5t7xtlsbma",
+    "completion_receipt": {
+      "board_namespace": "formal_verification_tactician_readiness.todo.md",
+      "canonical_task_cid": "baguqeera2wbd6pcboahukx3xvm3kp3hrumumex27qhkaquhokp5t7xtlsbma",
+      "canonical_task_key": "task/v1/d5823f3c41700f455f77ab36a7ecf1a328c25f5f81d40850ee53fb3fde6b9058",
+      "event_path": "data/agent_supervisor/formal_verification_tactician_readiness/live/formal-verification-tactician-secpal-live-toolchain/executions/82c49f6036b34d30ac148bb58d5a92746116da63fd1fdf59abaec60156de9ef6/state/agent_formal_verification_tactician_secpal_live_toolchain_events.jsonl",
+      "event_type": "implementation_finished",
+      "status": "succeeded",
+      "task_id": "FVT-101",
+      "timestamp": "2026-08-04T00:28:53.604266+00:00"
+    },
+    "coordination_receipt_cid": "baguqeerapwizgvm2hydvse266xkcw2z2o3qvmli6bfkixkhsebhzouenbjcq",
+    "task_id": "FVT-101"
+  },
+  "repository": {
+    "ipfs_datasets_py_head": "62c512a062155702036140d91d2658aa1a71cec3",
+    "root_branch": "agent/software-verification-prover-matrix",
+    "root_head": "071c4c3c34ec7bf2cf341016e6295dffbde29f4b"
+  },
+  "schema": "formal-verification-tactician/fvt086-to-fvt101-migration@1",
+  "source_task": {
+    "canonical_task_cid": "baguqeeram465zjadscydj5mjdh2se33udmqskmu2tfe6nco4lhbhv3emqkya",
+    "completion_authority": "none",
+    "disposition": "blocked_historical",
+    "superseded_by": "FVT-101",
+    "task_id": "FVT-086"
+  },
+  "validation": {
+    "aggregate_shard_parity": true,
+    "canonical_task_identities_preserved": true,
+    "fvt086_absent_from_execution_slices": true,
+    "fvt092_claimable": true,
+    "json_duckdb_parity": true,
+    "runtime_execution_slice_task_ids": [
+      "FVT-053",
+      "FVT-088",
+      "FVT-089",
+      "FVT-092",
+      "FVT-093",
+      "FVT-094",
+      "FVT-095",
+      "FVT-096",
+      "FVT-097",
+      "FVT-098",
+      "FVT-099",
+      "FVT-100"
+    ],
+    "vector_index_parity": true,
+    "work_contracts_rotated": {
+      "FVT-088": {
+        "canonical_task_cid": "baguqeeraej7hdfylgv2ifgn3pgxnnh5kd3ipqalo7nkyhcj4d3fpun7le5ua",
+        "canonical_task_key": "task/v1/227e71970b35748299bb79aed69faa1ed0f8016efb5583893c1ecafa37eb2768",
+        "depends_on": [
+          "FVT-084",
+          "FVT-085",
+          "FVT-087",
+          "FVT-101"
+        ],
+        "previous_depends_on": [
+          "FVT-084",
+          "FVT-085",
+          "FVT-086",
+          "FVT-087"
+        ],
+        "previous_task_work_contract_id": "baguqeeraebllk3dnusxdsht5gdqlveiu6qerfnh7sqjuovuqljx4tctf7u5q",
+        "previous_work_contract_id": "baguqeera5ug5xop2vsywiw6xpiqhg2khd7f2jnkv7d4ig5zq46afecvr64nq",
+        "task_work_contract_id": "baguqeera2o5lpsjbx3rwht3gsnjmzks7ocbhc47vibijfbpszx46exp5t7uq",
+        "work_contract_id": "baguqeeraqyx5stepnmgyiusurhlgsbehyv6sklz4eexadns2fdffffkmm56q"
+      },
+      "FVT-092": {
+        "canonical_task_cid": "baguqeeraikp3hrazxplac5niv4ikngrb4zuehqjbjad3qkmpbwcrflbs466q",
+        "canonical_task_key": "task/v1/429fb3c419bbd60175a8af10a69a21e66843c1214807b8298f0d8512ac32e7bd",
+        "depends_on": [
+          "FVT-101"
+        ],
+        "previous_depends_on": [
+          "FVT-086"
+        ],
+        "previous_task_work_contract_id": "baguqeerazduupc6emrgr2vrgzovyjcse2g3xa43e4ecgtruq4wm72tesafbq",
+        "previous_work_contract_id": "baguqeera43dx4xlwhdwtwqwkm5rpggbqbyrrvizxasqkoy2vgbjvjhrrlydq",
+        "task_work_contract_id": "baguqeeraa3kikrrstgwdxoyxyee3v6jed3fpaj3kowh7pbcb2tdnsfizgumq",
+        "work_contract_id": "baguqeera5pftrvr57kp2iw4a7nfoeichz3l4u74lud4uzuiydrhrvenkw4ea"
+      },
+      "FVT-099": {
+        "canonical_task_cid": "baguqeeraziap5lduyvpkekg37cbkrh2cpzgzowvuhw7whlhggv4ks5wmhbha",
+        "canonical_task_key": "task/v1/ca00feac74c55ea228dbf882a89f427e4d975ab43dbf63ace63578a976cc384e",
+        "depends_on": [
+          "FVT-092",
+          "FVT-093",
+          "FVT-095",
+          "FVT-101"
+        ],
+        "previous_depends_on": [
+          "FVT-086",
+          "FVT-092",
+          "FVT-093",
+          "FVT-095"
+        ],
+        "previous_task_work_contract_id": "baguqeeramab5pv4qbn5k64fjx6st37vz3tbvjpqao7r22nbaj3xt3gsw423a",
+        "previous_work_contract_id": "baguqeeraej2cz5ftmrx6iv5tyrwblfhdxmvx56byu5kh3555z7g7bffopoqq",
+        "task_work_contract_id": "baguqeerap5l5odm4gdlnnswt4vxsdascaffds6qtk7ztm7d45lyqiahsk7za",
+        "work_contract_id": "baguqeerank3x3pucjfmzewkszbxvuhmgtq2l5trqipr5zp3uc7xi6wwedriq"
+      }
+    }
+  }
+}
