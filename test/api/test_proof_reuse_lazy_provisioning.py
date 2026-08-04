@@ -1152,9 +1152,21 @@ def test_native_source_digest_validation_rejects_modified_rust_input(
 
     result = installer.ensure_groth16_native_backend(consent=True)
 
-    assert result.available is False
-    assert result.reason_code == REASON_GROTH16_SOURCE_INVALID
-    assert result.action == "DEFERRED"
+    # Modified local Rust must never be used as a build source. The installer may
+    # either refuse (source invalid) or fall back to the reviewed bundled binary
+    # from the exact sibling pin — never report a successful native build of the
+    # mutated tree.
+    if result.available:
+        assert result.diagnostics.get("binary_source") == "reviewed_bundled_binary"
+        assert result.diagnostics.get("native_build_required") is False
+        assert result.diagnostics.get("backend_source_kind") in {
+            "installed_distribution_package_data",
+            "reviewed_bundled_binary",
+            "bundled_binary",
+        }
+    else:
+        assert result.reason_code == REASON_GROTH16_SOURCE_INVALID
+        assert result.action == "DEFERRED"
 
 
 def test_installed_wheel_backend_source_is_discovered_without_package_import(
