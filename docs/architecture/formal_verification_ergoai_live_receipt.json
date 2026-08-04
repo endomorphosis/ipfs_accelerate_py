@@ -1,0 +1,906 @@
+{
+  "interface": "ErgoAILiveToolchainContract@1",
+  "schema_version": "ergoai-live-toolchain-contract/v1",
+  "goal_id": "FVT-G218",
+  "task_id": "FVT-085",
+  "program": "formal-verification-tactician/ergoai-live-toolchain",
+  "tool_id": "ergoai",
+  "locked_version": "3.0",
+  "contract_passed": true,
+  "structural_passed": true,
+  "semantic_passed": true,
+  "live_vendor_execution": true,
+  "production_certified": false,
+  "promotion_blocked": true,
+  "authority_scope": "candidate_generation_only",
+  "authority_ceiling": "advisory",
+  "grants_theorem_authority": false,
+  "grants_proof_authority": false,
+  "evidence_class": "checksummed_managed_vendor_execution_advisory_only",
+  "network_used": false,
+  "network_isolation_enforced": false,
+  "install_attempted": false,
+  "download_attempted": false,
+  "case_kinds": [
+    "entailment",
+    "non_entailment",
+    "contradiction",
+    "mutation",
+    "replay",
+    "malformed",
+    "timeout",
+    "resource_bound"
+  ],
+  "required_case_kinds": [
+    "entailment",
+    "non_entailment",
+    "contradiction",
+    "mutation",
+    "replay",
+    "malformed",
+    "timeout",
+    "resource_bound"
+  ],
+  "selected_platform": "linux-aarch64",
+  "pin": {
+    "tool_id": "ergoai",
+    "version": "3.0",
+    "platform": "linux-aarch64",
+    "artifact_url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+    "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+    "identity_kind": "immutable_release_tag",
+    "license": "Apache-2.0",
+    "source": "https://github.com/ErgoAI/ErgoEngine",
+    "package_name": "",
+    "is_checksummed": true,
+    "requires_checksum_at_install": true,
+    "release_tag": "v3.0_release",
+    "artifact_size_bytes": 53064767
+  },
+  "lock_projection": {
+    "tool": {
+      "tool_id": "ergoai",
+      "display_name": "ErgoAI/ErgoEngine",
+      "license": "Apache-2.0",
+      "source": "https://github.com/ErgoAI/ErgoEngine",
+      "identity_kind": "immutable_release_tag",
+      "installer_entry": "ensure_ergoai",
+      "executable_candidates": [
+        "ergoai",
+        "runErgo.sh",
+        "runergo"
+      ]
+    },
+    "inventory": {
+      "version": "3.0",
+      "url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+      "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+      "identity_kind": "immutable_release_tag",
+      "release_tag": "v3.0_release",
+      "artifact_size_bytes": 53064767,
+      "license_components": [
+        "Apache-2.0",
+        "LGPL-2.0"
+      ],
+      "acquisition_conditions": {
+        "requires_explicit_opt_in": true,
+        "checksum_required_before_execute": true,
+        "download_during_certification_forbidden": true,
+        "user_local_only": true,
+        "offline_after_acquisition": true,
+        "atomic_staged_install": true,
+        "relocatable_install_root": true,
+        "bounded_acquisition": true,
+        "symlink_free_install_paths": true
+      },
+      "entry_point": "runergo",
+      "identity_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false,
+        "expected_identity_substring": "ErgoAI 3.0"
+      },
+      "platforms": {
+        "linux-x86_64": {
+          "url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+          "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01"
+        },
+        "linux-aarch64": {
+          "url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+          "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01"
+        }
+      },
+      "build_dependencies": {
+        "sh": "POSIX",
+        "bash": "required_by_bundled_autoconf_scripts",
+        "make": ">=3.81",
+        "gcc": ">=4.8",
+        "cc": "observed_by_bundled_config_guess",
+        "as": "observed_compiler_driver_dependency",
+        "flex": ">=2.6",
+        "bison": ">=3.0",
+        "m4": "required_by_bison_when_regeneration_is_needed",
+        "ar": "required_by_bundled_xsb_build",
+        "ranlib": "required_by_bundled_xsb_build",
+        "ld": "required_by_bundled_xsb_build",
+        "tar": "required_by_official_self_extractor",
+        "gzip": "required_by_official_self_extractor",
+        "cp": "GNU_coreutils_copy_for_private_runtime_workspaces",
+        "dirname": "POSIX_path_resolution_for_launchers",
+        "ln": "POSIX_symlink_for_shared_immutable_xsb",
+        "mkdir": "POSIX_runtime_workspace_creation",
+        "mktemp": "private_runtime_workspace_creation",
+        "mv": "atomic_java_build_output_publication",
+        "rm": "private_runtime_workspace_cleanup",
+        "df": "required_by_official_makeself_header",
+        "tail": "required_by_official_makeself_header",
+        "awk": "required_by_official_makeself_header",
+        "head": "required_by_official_makeself_header",
+        "wc": "required_by_official_makeself_header",
+        "tr": "required_by_official_makeself_header",
+        "which": "required_by_official_configure_scripts",
+        "md5sum": "required_by_official_makeself_header",
+        "basename": "required_by_official_makeself_header",
+        "cut": "required_by_official_makeself_header",
+        "dd": "required_by_official_makeself_header",
+        "expr": "required_by_official_makeself_header",
+        "pwd": "required_by_official_configure_scripts",
+        "date": "required_by_official_configure_scripts",
+        "sed": "required_by_official_configure_scripts",
+        "grep": "required_by_official_configure_scripts",
+        "cat": "required_by_official_configure_scripts",
+        "echo": "observed_by_bundled_build_scripts",
+        "chmod": "required_by_official_configure_scripts",
+        "touch": "required_by_official_configure_scripts",
+        "uname": "required_by_bundled_xsb_build",
+        "find": "required_by_bundled_xsb_build",
+        "sort": "required_by_bundled_xsb_build",
+        "install": "required_by_bundled_xsb_build",
+        "env": "required_by_bundled_xsb_build",
+        "rmdir": "observed_by_bundled_autoconf_scripts",
+        "hostname": "observed_by_bundled_autoconf_scripts",
+        "ls": "observed_by_bundled_autoconf_scripts",
+        "diff": "observed_by_bundled_autoconf_scripts",
+        "readlink": "observed_by_official_runergo",
+        "split": "observed_by_bundled_autoconf_scripts",
+        "tee": "observed_by_bundled_autoconf_scripts",
+        "arch": "observed_by_bundled_config_guess"
+      },
+      "required_absolute_commands": [
+        "/bin/sh",
+        "/bin/bash",
+        "/bin/rm",
+        "/bin/echo",
+        "/bin/touch",
+        "/bin/uname",
+        "/bin/arch",
+        "/usr/bin/uname",
+        "/usr/bin/arch"
+      ],
+      "dependency_version_floors": {
+        "make": ">=3.81",
+        "gcc": ">=4.8",
+        "flex": ">=2.6",
+        "bison": ">=3.0"
+      },
+      "runtime_dependencies": {
+        "xsb": "bundled_with_official_release_compile_for_host",
+        "runergo": "official_entry_point",
+        "posix_shell": "required_for_launchers",
+        "private_runtime_workspace_tools": "cp_dirname_ln_mkdir_mktemp_mv_rm_required_for_isolated_consumers"
+      },
+      "optional_java_api_dependencies": {
+        "runtime": [
+          "java>=1.8",
+          "which",
+          "dirname"
+        ],
+        "build": [
+          "java>=1.8",
+          "javac",
+          "jar",
+          "which",
+          "dirname",
+          "touch"
+        ],
+        "missing_optional_capabilities_do_not_block_core_ergoai": true,
+        "managed_jdk_tool_id": "temurin-jdk",
+        "never_trust_ambient_java_home": true
+      },
+      "config_hardening": {
+        "schema_version": "ergoai-config-hardening/v1",
+        "source_sha256": "3bee8a6aa7d17854b81f14fe87cb35a5c89a0c275362266b7eef9a2e5f1fcaa4",
+        "hardened_sha256": "b21e4a85b9cc214d4e61f5204124baf2dd6daecf597dd4cd72ba040b7bc0bed9",
+        "private_xsb_workspace_required": true,
+        "exact_replacement_count": 6
+      },
+      "bound_build_environment": {
+        "schema_version": "ergoai-bound-build-environment/v1",
+        "path_model": "private-staging-only/v1",
+        "ambient_toolchain_overrides_inherited": false,
+        "allowlisted_environment_keys": [
+          "ALL_PROXY",
+          "DISPLAY",
+          "ERGOAI_MANAGED_XSB_TMPDIR",
+          "FORMAL_VERIFICATION_CERTIFY_OFFLINE",
+          "FORMAL_VERIFICATION_FORBID_DOWNLOAD",
+          "FORMAL_VERIFICATION_FORBID_INSTALL",
+          "FORMAL_VERIFICATION_FORBID_NETWORK",
+          "GIT_TERMINAL_PROMPT",
+          "HOME",
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "LANG",
+          "LC_ALL",
+          "NO_PROXY",
+          "PATH",
+          "PIP_DISABLE_PIP_VERSION_CHECK",
+          "PIP_NO_INDEX",
+          "SHELL",
+          "TERM",
+          "TMPDIR",
+          "all_proxy",
+          "http_proxy",
+          "https_proxy",
+          "no_proxy"
+        ]
+      },
+      "bound_runtime_environment_contract": {
+        "schema_version": "ergoai-bound-runtime-environment/v1",
+        "path_model": "managed-symlink-only-exact-identities/v1",
+        "ambient_path_inherited": false,
+        "symlink_only_exact_command_identities": true,
+        "optional_java_requires_complete_capability": true
+      },
+      "runtime_execution_policy": "private-ergoai-copy-shared-immutable-xsb/v1",
+      "java_consumer_policy": "private-ergoai-copy-java-consumers/v2",
+      "runtime_workspace_cleanup_policy": "normal-and-handled-signals-clean-sigkill-orphans-retained/v1",
+      "relocation_certification_scope": "executed-runtime-and-bundled-java-consumers/v1",
+      "developer_rebuild_metadata_relocated": false,
+      "install_publication_model": "staged_vendor_atomic_rename_private_runtime_workspaces_identity_commit_v4",
+      "publication_commit_point": "atomic_identity_manifest_replace",
+      "runtime_state_policy": "mutable-nonauthoritative-outside-vendor-identity/v1",
+      "lazy_install": {
+        "staged": true,
+        "checksum_verified": true,
+        "atomic": true,
+        "relocatable": true,
+        "offline_after_acquisition": true,
+        "never_on_import": true,
+        "never_during_certification": true
+      }
+    },
+    "deployment_contract": {
+      "schema_version": "formal-verification-deployment-contract/v1",
+      "status": "reviewed",
+      "artifact_kind": "release_installer",
+      "release_tag": "v3.0_release",
+      "requires_checksum_at_install": true,
+      "unsupported_platforms_fail_closed": true,
+      "supported_platforms": [
+        "linux-x86_64",
+        "linux-aarch64"
+      ],
+      "license_components": [
+        "Apache-2.0",
+        "LGPL-2.0"
+      ],
+      "required_build_commands": [
+        "sh",
+        "bash",
+        "make",
+        "gcc",
+        "cc",
+        "as",
+        "flex",
+        "bison",
+        "m4",
+        "ar",
+        "ranlib",
+        "ld",
+        "tar",
+        "gzip",
+        "cp",
+        "dirname",
+        "ln",
+        "mkdir",
+        "mktemp",
+        "mv",
+        "rm",
+        "df",
+        "tail",
+        "awk",
+        "head",
+        "wc",
+        "tr",
+        "which",
+        "md5sum",
+        "basename",
+        "cut",
+        "dd",
+        "expr",
+        "pwd",
+        "date",
+        "sed",
+        "grep",
+        "cat",
+        "echo",
+        "chmod",
+        "touch",
+        "uname",
+        "find",
+        "sort",
+        "install",
+        "env",
+        "rmdir",
+        "hostname",
+        "ls",
+        "diff",
+        "readlink",
+        "split",
+        "tee",
+        "arch"
+      ],
+      "required_absolute_commands": [
+        "/bin/sh",
+        "/bin/bash",
+        "/bin/rm",
+        "/bin/echo",
+        "/bin/touch",
+        "/bin/uname",
+        "/bin/arch",
+        "/usr/bin/uname",
+        "/usr/bin/arch"
+      ],
+      "dependency_version_floors": {
+        "make": ">=3.81",
+        "gcc": ">=4.8",
+        "flex": ">=2.6",
+        "bison": ">=3.0"
+      },
+      "runtime_dependencies": {
+        "xsb": "bundled_with_official_release_compile_for_host",
+        "runergo": "official_entry_point",
+        "posix_shell": "required_for_launchers",
+        "private_runtime_workspace_tools": "cp_dirname_ln_mkdir_mktemp_mv_rm_required_for_isolated_consumers"
+      },
+      "optional_java_api_dependencies": {
+        "runtime": [
+          "java>=1.8",
+          "which",
+          "dirname"
+        ],
+        "build": [
+          "java>=1.8",
+          "javac",
+          "jar",
+          "which",
+          "dirname",
+          "touch"
+        ],
+        "missing_optional_capabilities_do_not_block_core_ergoai": true,
+        "managed_jdk_tool_id": "temurin-jdk",
+        "never_trust_ambient_java_home": true
+      },
+      "config_hardening": {
+        "schema_version": "ergoai-config-hardening/v1",
+        "source_sha256": "3bee8a6aa7d17854b81f14fe87cb35a5c89a0c275362266b7eef9a2e5f1fcaa4",
+        "hardened_sha256": "b21e4a85b9cc214d4e61f5204124baf2dd6daecf597dd4cd72ba040b7bc0bed9",
+        "private_xsb_workspace_required": true,
+        "exact_replacement_count": 6
+      },
+      "bound_build_environment": {
+        "schema_version": "ergoai-bound-build-environment/v1",
+        "path_model": "private-staging-only/v1",
+        "ambient_toolchain_overrides_inherited": false,
+        "allowlisted_environment_keys": [
+          "ALL_PROXY",
+          "DISPLAY",
+          "ERGOAI_MANAGED_XSB_TMPDIR",
+          "FORMAL_VERIFICATION_CERTIFY_OFFLINE",
+          "FORMAL_VERIFICATION_FORBID_DOWNLOAD",
+          "FORMAL_VERIFICATION_FORBID_INSTALL",
+          "FORMAL_VERIFICATION_FORBID_NETWORK",
+          "GIT_TERMINAL_PROMPT",
+          "HOME",
+          "HTTPS_PROXY",
+          "HTTP_PROXY",
+          "LANG",
+          "LC_ALL",
+          "NO_PROXY",
+          "PATH",
+          "PIP_DISABLE_PIP_VERSION_CHECK",
+          "PIP_NO_INDEX",
+          "SHELL",
+          "TERM",
+          "TMPDIR",
+          "all_proxy",
+          "http_proxy",
+          "https_proxy",
+          "no_proxy"
+        ]
+      },
+      "bound_runtime_environment_contract": {
+        "schema_version": "ergoai-bound-runtime-environment/v1",
+        "path_model": "managed-symlink-only-exact-identities/v1",
+        "ambient_path_inherited": false,
+        "symlink_only_exact_command_identities": true,
+        "optional_java_requires_complete_capability": true
+      },
+      "runtime_execution_policy": "private-ergoai-copy-shared-immutable-xsb/v1",
+      "java_consumer_policy": "private-ergoai-copy-java-consumers/v2",
+      "runtime_workspace_cleanup_policy": "normal-and-handled-signals-clean-sigkill-orphans-retained/v1",
+      "relocation_certification_scope": "executed-runtime-and-bundled-java-consumers/v1",
+      "developer_rebuild_metadata_relocated": false,
+      "install_publication_model": "staged_vendor_atomic_rename_private_runtime_workspaces_identity_commit_v4",
+      "publication_commit_point": "atomic_identity_manifest_replace",
+      "runtime_state_policy": "mutable-nonauthoritative-outside-vendor-identity/v1",
+      "entry_point": "runergo",
+      "identity_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false,
+        "expected_identity_substring": "ErgoAI 3.0"
+      },
+      "acquisition_conditions": {
+        "requires_explicit_opt_in": true,
+        "checksum_required_before_execute": true,
+        "download_during_certification_forbidden": true,
+        "user_local_only": true,
+        "offline_after_acquisition": true,
+        "atomic_staged_install": true,
+        "relocatable_install_root": true,
+        "bounded_acquisition": true,
+        "symlink_free_install_paths": true
+      },
+      "lazy_install": {
+        "staged": true,
+        "checksum_verified": true,
+        "atomic": true,
+        "relocatable": true,
+        "offline_after_acquisition": true,
+        "never_on_import": true,
+        "never_during_certification": true
+      },
+      "authority_ceiling": "advisory",
+      "evidence_class": "proposal_or_candidate_until_independent_reconstruction",
+      "live_semantic_checks_required": [
+        "entailment",
+        "non_entailment",
+        "contradiction",
+        "mutation",
+        "replay",
+        "malformed",
+        "timeout",
+        "resource_bound"
+      ],
+      "live_toolchain_contract_interface": "ErgoAILiveToolchainContract@1",
+      "goal_id": "FVT-G218",
+      "task_id": "FVT-085",
+      "optional_java_api_managed_jdk_tool_id": "temurin-jdk",
+      "optional_java_api_never_trusts_ambient_java_home": true,
+      "optional_java_api_missing_does_not_block_core": true
+    }
+  },
+  "semantic_evidence_digest_sha256": "207fcfedb6de9c9b8cffac872e2e9355fe8b32f8ba8df7be1dbabefefb165583",
+  "checks": [
+    {
+      "check_id": "ergoai.live_toolchain.lock_binding",
+      "kind": "policy",
+      "status": "passed",
+      "expected": "official_release_pin_with_digest_license_matrix",
+      "observed": "bound",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {
+        "version": "3.0",
+        "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+        "release_tag": "v3.0_release",
+        "entry_point": "runergo",
+        "supported_platforms": [
+          "linux-x86_64",
+          "linux-aarch64"
+        ],
+        "license_components": [
+          "Apache-2.0",
+          "LGPL-2.0"
+        ],
+        "runtime_dependencies": {
+          "xsb": "bundled_with_official_release_compile_for_host",
+          "runergo": "official_entry_point",
+          "posix_shell": "required_for_launchers",
+          "private_runtime_workspace_tools": "cp_dirname_ln_mkdir_mktemp_mv_rm_required_for_isolated_consumers"
+        },
+        "build_dependencies": {
+          "sh": "POSIX",
+          "bash": "required_by_bundled_autoconf_scripts",
+          "make": ">=3.81",
+          "gcc": ">=4.8",
+          "cc": "observed_by_bundled_config_guess",
+          "as": "observed_compiler_driver_dependency",
+          "flex": ">=2.6",
+          "bison": ">=3.0",
+          "m4": "required_by_bison_when_regeneration_is_needed",
+          "ar": "required_by_bundled_xsb_build",
+          "ranlib": "required_by_bundled_xsb_build",
+          "ld": "required_by_bundled_xsb_build",
+          "tar": "required_by_official_self_extractor",
+          "gzip": "required_by_official_self_extractor",
+          "cp": "GNU_coreutils_copy_for_private_runtime_workspaces",
+          "dirname": "POSIX_path_resolution_for_launchers",
+          "ln": "POSIX_symlink_for_shared_immutable_xsb",
+          "mkdir": "POSIX_runtime_workspace_creation",
+          "mktemp": "private_runtime_workspace_creation",
+          "mv": "atomic_java_build_output_publication",
+          "rm": "private_runtime_workspace_cleanup",
+          "df": "required_by_official_makeself_header",
+          "tail": "required_by_official_makeself_header",
+          "awk": "required_by_official_makeself_header",
+          "head": "required_by_official_makeself_header",
+          "wc": "required_by_official_makeself_header",
+          "tr": "required_by_official_makeself_header",
+          "which": "required_by_official_configure_scripts",
+          "md5sum": "required_by_official_makeself_header",
+          "basename": "required_by_official_makeself_header",
+          "cut": "required_by_official_makeself_header",
+          "dd": "required_by_official_makeself_header",
+          "expr": "required_by_official_makeself_header",
+          "pwd": "required_by_official_configure_scripts",
+          "date": "required_by_official_configure_scripts",
+          "sed": "required_by_official_configure_scripts",
+          "grep": "required_by_official_configure_scripts",
+          "cat": "required_by_official_configure_scripts",
+          "echo": "observed_by_bundled_build_scripts",
+          "chmod": "required_by_official_configure_scripts",
+          "touch": "required_by_official_configure_scripts",
+          "uname": "required_by_bundled_xsb_build",
+          "find": "required_by_bundled_xsb_build",
+          "sort": "required_by_bundled_xsb_build",
+          "install": "required_by_bundled_xsb_build",
+          "env": "required_by_bundled_xsb_build",
+          "rmdir": "observed_by_bundled_autoconf_scripts",
+          "hostname": "observed_by_bundled_autoconf_scripts",
+          "ls": "observed_by_bundled_autoconf_scripts",
+          "diff": "observed_by_bundled_autoconf_scripts",
+          "readlink": "observed_by_official_runergo",
+          "split": "observed_by_bundled_autoconf_scripts",
+          "tee": "observed_by_bundled_autoconf_scripts",
+          "arch": "observed_by_bundled_config_guess"
+        },
+        "identity_probe": {
+          "method": "bounded_version_argv",
+          "argv": [
+            "--version"
+          ],
+          "timeout_seconds": 5,
+          "network": false,
+          "expected_identity_substring": "ErgoAI 3.0"
+        },
+        "acquisition_conditions": {
+          "requires_explicit_opt_in": true,
+          "checksum_required_before_execute": true,
+          "download_during_certification_forbidden": true,
+          "user_local_only": true,
+          "offline_after_acquisition": true,
+          "atomic_staged_install": true,
+          "relocatable_install_root": true,
+          "bounded_acquisition": true,
+          "symlink_free_install_paths": true
+        },
+        "lazy_install": {
+          "staged": true,
+          "checksum_verified": true,
+          "atomic": true,
+          "relocatable": true,
+          "offline_after_acquisition": true,
+          "never_on_import": true,
+          "never_during_certification": true
+        }
+      }
+    },
+    {
+      "check_id": "ergoai.live_toolchain.case_matrix",
+      "kind": "policy",
+      "status": "passed",
+      "expected": "entailment,non_entailment,contradiction,mutation,replay,malformed,timeout,resource_bound",
+      "observed": "entailment,non_entailment,contradiction,mutation,replay,malformed,timeout,resource_bound",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {}
+    },
+    {
+      "check_id": "ergoai.live_toolchain.strict_pin",
+      "kind": "install",
+      "status": "passed",
+      "expected": "ergoai=3.0/checksummed",
+      "observed": "3.0",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {
+        "tool_id": "ergoai",
+        "version": "3.0",
+        "platform": "linux-aarch64",
+        "artifact_url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+        "sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+        "identity_kind": "immutable_release_tag",
+        "license": "Apache-2.0",
+        "source": "https://github.com/ErgoAI/ErgoEngine",
+        "package_name": "",
+        "is_checksummed": true,
+        "requires_checksum_at_install": true,
+        "release_tag": "v3.0_release",
+        "artifact_size_bytes": 53064767
+      }
+    },
+    {
+      "check_id": "ergoai.live_toolchain.lazy_install_policy",
+      "kind": "install",
+      "status": "passed",
+      "expected": "explicit_yes_checksummed_user_local_no_import_install",
+      "observed": "ok",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {
+        "never_on_import": true,
+        "requires_explicit_yes": true,
+        "user_local_only": true,
+        "offline_after_acquisition": true,
+        "atomic_staged": true,
+        "relocatable": true,
+        "publication_model": "staged_vendor_atomic_rename_private_runtime_workspaces_identity_commit_v4"
+      }
+    },
+    {
+      "check_id": "ergoai.live_toolchain.wrapper_adapter",
+      "kind": "policy",
+      "status": "passed",
+      "expected": "bounded_live_adapter_advisory_only",
+      "observed": "ok",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {
+        "interface": "ErgoAILiveToolchainContract@1",
+        "authority_ceiling": "advisory",
+        "evidence_class": "proposal_or_candidate_until_independent_reconstruction",
+        "case_kinds": [
+          "entailment",
+          "non_entailment",
+          "contradiction",
+          "mutation",
+          "replay",
+          "malformed",
+          "timeout",
+          "resource_bound"
+        ],
+        "simulation_mode": true,
+        "adapter_live_vendor_execution": false
+      }
+    },
+    {
+      "check_id": "ergoai.live_toolchain.authority_boundary",
+      "kind": "authority",
+      "status": "passed",
+      "expected": "advisor_candidate_never_theorem_authority",
+      "observed": "ceiling=advisory;can_satisfy=False",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {}
+    },
+    {
+      "check_id": "ergoai.live_toolchain.case.entailment",
+      "kind": "acceptance",
+      "status": "passed",
+      "expected": "yes",
+      "observed": "yes",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {
+        "live_vendor_execution": true,
+        "program_digest_sha256": "5dad9174855ed439b31c1a9cc13c07aed8ed3374f52e23cd90cf0dd7e099cca9",
+        "query_digest_sha256": "3a9578f56c9791bdc44564b433fc4ca926fd1f9888f0be3a708008018c2423a8",
+        "timed_out": false,
+        "resource_bound_enforced": false
+      }
+    },
+    {
+      "check_id": "ergoai.live_toolchain.case.non_entailment",
+      "kind": "acceptance",
+      "status": "passed",
+      "expected": "no",
+      "observed": "no",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {
+        "live_vendor_execution": true,
+        "program_digest_sha256": "5dad9174855ed439b31c1a9cc13c07aed8ed3374f52e23cd90cf0dd7e099cca9",
+        "query_digest_sha256": "5fdc28d345595782c503fbce4cc12386aad4c459daa73676ee555a3c94d9c545",
+        "timed_out": false,
+        "resource_bound_enforced": false
+      }
+    },
+    {
+      "check_id": "ergoai.live_toolchain.case.contradiction",
+      "kind": "acceptance",
+      "status": "passed",
+      "expected": "yes",
+      "observed": "yes",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {
+        "live_vendor_execution": true,
+        "program_digest_sha256": "9ec3b566202266531727dfbe903d9c72e9be9cfcd1d059b817253002cade45ad",
+        "query_digest_sha256": "9c19c35629e58b00d2c4d85a11607f0835c81288c85045025b08d0b003f298f8",
+        "timed_out": false,
+        "resource_bound_enforced": false
+      }
+    },
+    {
+      "check_id": "ergoai.live_toolchain.case.mutation",
+      "kind": "mutation",
+      "status": "passed",
+      "expected": "no",
+      "observed": "no",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {
+        "live_vendor_execution": true,
+        "program_digest_sha256": "bdf665930802809a91156cf0a59d0be21cb70b252b736cd2dcd1ddd73eeb1dd2",
+        "query_digest_sha256": "3a9578f56c9791bdc44564b433fc4ca926fd1f9888f0be3a708008018c2423a8",
+        "timed_out": false,
+        "resource_bound_enforced": false
+      }
+    },
+    {
+      "check_id": "ergoai.live_toolchain.case.replay",
+      "kind": "replay",
+      "status": "passed",
+      "expected": "yes",
+      "observed": "yes",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {
+        "live_vendor_execution": true,
+        "program_digest_sha256": "5dad9174855ed439b31c1a9cc13c07aed8ed3374f52e23cd90cf0dd7e099cca9",
+        "query_digest_sha256": "3a9578f56c9791bdc44564b433fc4ca926fd1f9888f0be3a708008018c2423a8",
+        "timed_out": false,
+        "resource_bound_enforced": false
+      }
+    },
+    {
+      "check_id": "ergoai.live_toolchain.case.malformed",
+      "kind": "malformed",
+      "status": "passed",
+      "expected": "error",
+      "observed": "error",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {
+        "live_vendor_execution": true,
+        "program_digest_sha256": "3ef2cc39cd26fefc9c232905b5e995902c0949576f257984c79571031c172b21",
+        "query_digest_sha256": "3a9578f56c9791bdc44564b433fc4ca926fd1f9888f0be3a708008018c2423a8",
+        "timed_out": false,
+        "resource_bound_enforced": false
+      }
+    },
+    {
+      "check_id": "ergoai.live_toolchain.case.timeout",
+      "kind": "acceptance",
+      "status": "passed",
+      "expected": "timeout",
+      "observed": "timeout",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {
+        "live_vendor_execution": true,
+        "program_digest_sha256": "1ac5d0b3751ce07344423874175f319d18810f9944aadad853a31c3209df22e1",
+        "query_digest_sha256": "20eac71f6a037aa51304a6019597fb3f53413cbdfbba44314c988358f7b80a2b",
+        "timed_out": true,
+        "resource_bound_enforced": false
+      }
+    },
+    {
+      "check_id": "ergoai.live_toolchain.case.resource_bound",
+      "kind": "acceptance",
+      "status": "passed",
+      "expected": "resource_bound",
+      "observed": "resource_bound",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {
+        "live_vendor_execution": true,
+        "program_digest_sha256": "7e2c68600f7a819f7ae14761fbc290c53baac1bf8ce8d1e885a0dbd362891db6",
+        "query_digest_sha256": "1d90a9459246b285fca9a7ac3ba6a863ec6f29efca343dd97bfb1f2e9537a861",
+        "timed_out": false,
+        "resource_bound_enforced": true
+      }
+    },
+    {
+      "check_id": "ergoai.live_toolchain.replay_invariant",
+      "kind": "replay",
+      "status": "passed",
+      "expected": "same_input_same_normalized_semantic_result",
+      "observed": "normalized_semantics_match",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {
+        "comparison_scope": "normalized_semantics_not_console_bytes",
+        "replay_bound": true
+      }
+    }
+  ],
+  "block_reasons": [],
+  "policy": {
+    "never_download_during_certification": true,
+    "wrapper_fixtures_are_not_live_execution": true,
+    "advisor_verdict_never_theorem_authority": true,
+    "full_contract_requires_managed_vendor_provenance": true,
+    "offline_env_keys": [
+      "FORMAL_VERIFICATION_CERTIFY_OFFLINE",
+      "FORMAL_VERIFICATION_FORBID_DOWNLOAD",
+      "FORMAL_VERIFICATION_FORBID_INSTALL",
+      "FORMAL_VERIFICATION_FORBID_NETWORK"
+    ]
+  },
+  "env_policy": {
+    "certification_offline": true,
+    "forbid_network": true,
+    "forbid_install": true,
+    "kernel_network_namespace": false,
+    "scope": "environment_guard_and_no_certifier_network_code_path"
+  },
+  "managed_identity": {
+    "schema_version": "ergoai-managed-vendor-identity/v1",
+    "tool_id": "ergoai",
+    "version": "3.0",
+    "selected_platform": "linux-aarch64",
+    "release_tag": "v3.0_release",
+    "release_url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+    "release_artifact_sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+    "release_artifact_size_bytes": 53064767,
+    "vendor_executable_sha256": "8b48afaaf0baf79c2d6132e0099eb4c570e866ede6935a5603ee91eecc9e24c5",
+    "xsb_configuration": "aarch64-unknown-linux-gnu",
+    "xsb_executable_sha256": "8fc056027fd06556efa075373208fba995e855a74a0c0b12c37ac3760843a8c9",
+    "launcher_sha256": "9af6efe5c7cd63b67253202669506acd4055339b8a97d84e83f24bfc031d2190",
+    "identity_digest_sha256": "5f793a97419b0514936113853862b45f1007cfca94d2c268d61ef40107f88796",
+    "license_components": [
+      "Apache-2.0",
+      "LGPL-2.0"
+    ],
+    "checksum_verified": true,
+    "is_live_vendor": true,
+    "is_hermetic_advisor_shim": false,
+    "atomic_publish": true,
+    "relocatable_install": true,
+    "install_publication_model": "staged_vendor_atomic_rename_private_runtime_workspaces_identity_commit_v4"
+  },
+  "executable_sha256": "8b48afaaf0baf79c2d6132e0099eb4c570e866ede6935a5603ee91eecc9e24c5",
+  "identity": {
+    "executable_sha256": "8b48afaaf0baf79c2d6132e0099eb4c570e866ede6935a5603ee91eecc9e24c5",
+    "launcher_sha256": "9af6efe5c7cd63b67253202669506acd4055339b8a97d84e83f24bfc031d2190"
+  },
+  "managed_vendor_live_evidence": true,
+  "vendor_certified": true,
+  "observed_at": "2026-08-04T19:19:57Z",
+  "receipt_digest_sha256": "8a428527abc67adafa666e93de0592a66830cc67d6361ac729ca22585641cde5"
+}

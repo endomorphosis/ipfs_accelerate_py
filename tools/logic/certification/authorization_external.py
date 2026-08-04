@@ -26,8 +26,8 @@ distribution and missing artifact/checksum/provenance/license/runtime/
 executable/installer contracts remain explicit prerequisites for any future
 end-to-end SecPAL task.
 
-Objective validation repair (FVT-073)
--------------------------------------
+Objective validation repair (FVT-073 / FVT-101)
+-----------------------------------------------
 Path evidence for this certifier, the vendor installer, the lock pins, the
 focused tests, and the checked-in vendor receipt may already exist while the
 supervisor validation gate still needs an explicit re-proof of the full
@@ -36,6 +36,15 @@ FVT-G209 acceptance matrix.  The synthetic evidence term
 the checked-in install receipt, and
 ``test_external_authorization_vendor_certification.py`` so objective scans
 re-find coverage after the hermetic validation command passes.
+
+FVT-101 is the objective validation repair for FVT-G217 (SecPAL live
+toolchain / artifact intake).  Path evidence for
+``test_secpal_live_toolchain_contract.py`` may already exist while the
+supervisor still needs an explicit re-proof that the recovered Microsoft MSI
+binds official provenance, license-aware transactional local intake, an empty
+live platform matrix, and non-promotable operator compatibility.  The same
+synthetic evidence term is bound on ``SecPALLiveToolchainContract@1``, the
+installer prerequisite report, the lock, and the focused SecPAL live tests.
 
 External engines remain role=shadow: authorization authority stays with the
 in-process Datalog/SecPAL references (FVT-G102 / FVT-038).
@@ -137,6 +146,12 @@ VENDOR_GOAL_ID: Final = "FVT-G209"
 VENDOR_TASK_ID: Final = "FVT-055"
 # Validation-gate task that re-proves FVT-G209 when path evidence already exists.
 VENDOR_REPAIR_TASK_ID: Final = "FVT-073"
+SECPAL_LIVE_INTERFACE: Final = "SecPALLiveToolchainContract@1"
+SECPAL_LIVE_SCHEMA_VERSION: Final = "secpal-live-toolchain-contract/v1"
+SECPAL_LIVE_GOAL_ID: Final = "FVT-G217"
+SECPAL_LIVE_TASK_ID: Final = "FVT-086"
+# Validation-gate task that re-proves FVT-G217 when path evidence already exists.
+SECPAL_LIVE_REPAIR_TASK_ID: Final = "FVT-101"
 # Synthetic evidence term required by objective-scan validation gates.
 OBJECTIVE_VALIDATION_EVIDENCE: Final = "objective validation repair"
 VENDOR_PROGRAM: Final = (
@@ -152,9 +167,10 @@ SOUFFLE_REQUIRED_SOURCE_SHA256: Final = (
     authz_installer.SOUFFLE_SOURCE_ARCHIVE_SHA256
 )
 
-# Hermetic validation command bound by FVT-G209 / FVT-073.
+# Hermetic validation command bound by FVT-G209 / FVT-073 and FVT-G217 / FVT-101.
 OBJECTIVE_VALIDATION_COMMAND: Final = (
     "PYTHONPATH=ipfs_datasets_py python -m pytest "
+    "test/integration/toolchains/test_secpal_live_toolchain_contract.py "
     "test/integration/toolchains/test_external_authorization_vendor_certification.py "
     "test/integration/toolchains/test_external_authorization_toolchain_certification.py "
     "-q"
@@ -1896,6 +1912,76 @@ def _secpal_vendor_certification_block_reasons(
     return []
 
 
+def _validated_nonpromotable_secpal_evidence(
+    secpal_receipt: authz_installer.InstallReceipt | None,
+    live_readiness: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Audit SecPAL artifact/sample evidence without treating it as an engine.
+
+    The official MSI intake and the observed Mono sample run are useful
+    provenance/capability facts.  Neither supplies a reviewed arbitrary-policy
+    interface, vendor platform support, production permission, or semantic
+    certification.  This gate makes that ceiling structural.
+    """
+
+    artifact = (
+        None
+        if secpal_receipt is None or secpal_receipt.operator_artifact is None
+        else secpal_receipt.operator_artifact.to_dict()
+    )
+    if artifact is not None:
+        forbidden_true = (
+            "execution_eligible",
+            "live_certification_eligible",
+            "production_certified",
+            "redistribution_permitted",
+        )
+        if any(artifact.get(key) is True for key in forbidden_true):
+            raise ExternalAuthorizationCertificationError(
+                "SecPAL artifact-intake receipt attempted to exceed its evidence ceiling"
+            )
+        if (
+            artifact.get("schema_version")
+            != authz_installer.SECPAL_OPERATOR_ARTIFACT_RECEIPT_SCHEMA
+            or artifact.get("license_accepted") is not True
+            or artifact.get("transactional") is not True
+            or artifact.get("rollback_preserved") is not True
+        ):
+            raise ExternalAuthorizationCertificationError(
+                "SecPAL artifact-intake receipt is incomplete"
+            )
+        if artifact.get("fixture") is True:
+            raise ExternalAuthorizationCertificationError(
+                "SecPAL test fixture cannot enter vendor certification evidence"
+            )
+
+    compatibility = live_readiness.get("operator_compatibility_probe") or {}
+    if not isinstance(compatibility, Mapping):
+        raise ExternalAuthorizationCertificationError(
+            "SecPAL operator compatibility evidence must be an object"
+        )
+    if compatibility and (
+        compatibility.get("evidence_class")
+        != authz_installer.SECPAL_OPERATOR_COMPATIBILITY_EVIDENCE_CLASS
+        or compatibility.get("vendor_supported_platform") is not False
+        or compatibility.get("production_use_permitted") is not False
+        or compatibility.get("live_certification_eligible") is not False
+        or compatibility.get("contract_complete") is not False
+        or compatibility.get("arbitrary_policy_interface_verified") is not False
+    ):
+        raise ExternalAuthorizationCertificationError(
+            "SecPAL operator compatibility evidence exceeded its reviewed ceiling"
+        )
+    return {
+        "artifact_intake": artifact,
+        "artifact_intake_can_promote": False,
+        "operator_compatibility": dict(compatibility),
+        "operator_compatibility_can_promote": False,
+        "arbitrary_policy_interface_verified": False,
+        "semantic_certification_present": False,
+    }
+
+
 def certify_external_authorization_vendor(
     *,
     install_root: Path | str | None = None,
@@ -1906,6 +1992,8 @@ def certify_external_authorization_vendor(
     repo_root: Path | str | None = None,
     lock_path: Path | str | None = None,
     write_receipt_path: Path | str | None = None,
+    secpal_artifact_path: Path | str | None = None,
+    secpal_license_accepted: bool = False,
 ) -> dict[str, Any]:
     """Certify checksummed vendor Soufflé + lock-derived SecPAL exception.
 
@@ -1937,6 +2025,10 @@ def certify_external_authorization_vendor(
     secpal_receipt: authz_installer.InstallReceipt | None = None
 
     if skip_install:
+        if secpal_artifact_path is not None or secpal_license_accepted:
+            raise ExternalAuthorizationCertificationError(
+                "offline skip_install certification cannot perform SecPAL artifact intake"
+            )
         pin = authz_installer.pin_for_tool(
             TOOL_SOUFFLE, repo_root=repo_root, lock_path=lock_path
         )
@@ -1984,6 +2076,8 @@ def certify_external_authorization_vendor(
             platform_id=host,
             checksum_verified=True,
             dependency_prefix=resolved_dependency_prefix,
+            secpal_artifact_path=secpal_artifact_path,
+            secpal_license_accepted=secpal_license_accepted,
         )
         for receipt in install_bundle.receipts:
             if receipt.tool_id == TOOL_SOUFFLE:
@@ -2089,6 +2183,15 @@ def certify_external_authorization_vendor(
             "block_reasons": list(secpal_receipt.block_reasons),
         }
 
+    secpal_nonpromotable_evidence = _validated_nonpromotable_secpal_evidence(
+        secpal_receipt,
+        secpal_exception.get("live_readiness") or {},
+    )
+    secpal_exception = {
+        **secpal_exception,
+        "nonpromotable_evidence": secpal_nonpromotable_evidence,
+    }
+
     # Hermetic shadow must not satisfy vendor certification.
     hermetic_cannot_satisfy = True
     if souffle_identity.is_hermetic_shadow:
@@ -2144,7 +2247,32 @@ def certify_external_authorization_vendor(
         "combined_external_authorization_certified": (
             combined_external_authorization_certified
         ),
+        "secpal_live_toolchain_contract": {
+            "schema_version": SECPAL_LIVE_SCHEMA_VERSION,
+            "interface": SECPAL_LIVE_INTERFACE,
+            "goal_id": SECPAL_LIVE_GOAL_ID,
+            "task_id": SECPAL_LIVE_TASK_ID,
+            # FVT-101 objective validation repair: re-prove FVT-G217 acceptance.
+            "repair_task_id": SECPAL_LIVE_REPAIR_TASK_ID,
+            "objective_validation_evidence": OBJECTIVE_VALIDATION_EVIDENCE,
+            "objective_validation_repair": True,
+            "objective_validation_command": OBJECTIVE_VALIDATION_COMMAND,
+            "contract_complete": False,
+            "artifact_intake_only": True,
+            "operator_compatibility_only": True,
+            "live_semantic_runner_available": False,
+            "arbitrary_policy_interface_verified": False,
+            "production_use_permitted": False,
+            "can_promote": False,
+            "block_reasons": list(
+                (secpal_exception.get("live_readiness") or {}).get(
+                    "block_reasons"
+                )
+                or []
+            ),
+        },
         # FVT-073 objective validation repair: re-prove FVT-G209 acceptance.
+        # FVT-101 re-proves FVT-G217 via secpal_live_toolchain_contract above.
         "objective_validation_evidence": OBJECTIVE_VALIDATION_EVIDENCE,
         "objective_validation_repair": bool(certified),
         "objective_validation_command": OBJECTIVE_VALIDATION_COMMAND,
@@ -2197,6 +2325,7 @@ def certify_external_authorization_vendor(
         "secpal_live_readiness": dict(
             secpal_exception.get("live_readiness") or {}
         ),
+        "secpal_nonpromotable_evidence": secpal_nonpromotable_evidence,
         "engines": [souffle_engine.to_dict()],
         "engine_ids": [TOOL_SOUFFLE],
         "categories_exercised": categories,
@@ -2220,6 +2349,9 @@ def certify_external_authorization_vendor(
             "secpal_linux_aarch64_narrow_platform_exception": True,
             "secpal_platform_exception_does_not_satisfy_live_readiness": True,
             "secpal_requires_live_authoritative_vendor_evidence": True,
+            "secpal_artifact_intake_does_not_imply_installation": True,
+            "secpal_operator_compatibility_does_not_imply_vendor_support": True,
+            "secpal_operator_compatibility_does_not_imply_semantic_certification": True,
             "never_grants_theorem_authority": True,
             "never_grants_authorization_authority_to_shadows": True,
             "grants_theorem_authority": False,
@@ -2465,6 +2597,10 @@ def external_authorization_vendor_lane_handler(
         repo_root=kwargs.get("repo_root"),
         lock_path=kwargs.get("lock_path"),
         write_receipt_path=kwargs.get("write_receipt_path"),
+        secpal_artifact_path=kwargs.get("secpal_artifact_path"),
+        secpal_license_accepted=bool(
+            kwargs.get("secpal_license_accepted", False)
+        ),
     )
     certified = bool(result["certified"])
     return {
@@ -2657,6 +2793,11 @@ __all__ = [
     "VENDOR_GOAL_ID",
     "VENDOR_TASK_ID",
     "VENDOR_REPAIR_TASK_ID",
+    "SECPAL_LIVE_INTERFACE",
+    "SECPAL_LIVE_SCHEMA_VERSION",
+    "SECPAL_LIVE_GOAL_ID",
+    "SECPAL_LIVE_TASK_ID",
+    "SECPAL_LIVE_REPAIR_TASK_ID",
     "OBJECTIVE_VALIDATION_EVIDENCE",
     "OBJECTIVE_VALIDATION_COMMAND",
     "VENDOR_PROGRAM",

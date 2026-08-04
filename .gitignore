@@ -202,3 +202,10 @@ state/**/*.out
 !config/agent_supervisor_planner_doctor_rollout.seal.json
 !config/agent_supervisor_planner_doctor_operations.seal.json
 !config/agent_supervisor_planner_doctor_release.seal.json
+!docs/architecture/formal_verification_authorization_replacement_approval.json
+!docs/architecture/formal_verification_authorization_replacement_approval_signer_package.json
+!docs/architecture/formal_verification_authorization_replacement_project_owner_disposition.json
+!docs/architecture/formal_verification_authoritative_vendor_release.json
+!docs/architecture/formal_verification_post_remediation_delta.json
+!docs/architecture/formal_verification_production_authorization_replacement_receipt.json
+
