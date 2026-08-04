@@ -427,10 +427,12 @@ def _probe_live_activation_report(
     probe_environ: dict[str, str] | None = None
     try:
         from .proof_test_reuse_closeout_activation_measurements import (
+            _prefer_external_datasets_on_sys_path,
             apply_local_dev_e2e_authority_env,
             discover_real_groth16_fixture,
         )
 
+        _prefer_external_datasets_on_sys_path()
         probe_environ = apply_local_dev_e2e_authority_env()
         fixture = discover_real_groth16_fixture()
         artifacts_root = (

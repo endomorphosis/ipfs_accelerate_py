@@ -252,6 +252,7 @@ def materialize_local_nonproduction_e2e_manifest(
         TEST_PASS_GROTH16_PROVIDER_SOURCE_SHA256,
     )
 
+    _prefer_external_datasets_on_sys_path()
     discovery = discover_real_groth16_fixture()
     root = Path(artifacts_root) if artifacts_root else Path(discovery.artifacts_root or "")
     binary = Path(binary_path) if binary_path else Path(discovery.binary_path or "")
@@ -350,6 +351,26 @@ def materialize_local_nonproduction_e2e_manifest(
     }
 
 
+def _prefer_external_datasets_on_sys_path() -> None:
+    """Prefer monorepo external/ipfs_datasets over accelerate nested submodule.
+
+    ``external/ipfs_accelerate/ipfs_datasets_py`` can shadow the real package
+    when accelerate is first on ``sys.path``, hiding test_pass_groth16_provider.
+    """
+
+    candidates = [
+        Path(__file__).resolve().parents[4] / "external" / "ipfs_datasets",
+        Path(__file__).resolve().parents[5] / "external" / "ipfs_datasets",
+    ]
+    for candidate in candidates:
+        if candidate.is_dir():
+            text = str(candidate)
+            while text in sys.path:
+                sys.path.remove(text)
+            sys.path.insert(0, text)
+            return
+
+
 def apply_local_dev_e2e_authority_env(
     environ: dict[str, str] | None = None,
 ) -> dict[str, str]:
@@ -362,6 +383,7 @@ def apply_local_dev_e2e_authority_env(
 
     import os
 
+    _prefer_external_datasets_on_sys_path()
     env = dict(environ if environ is not None else os.environ)
     enabled = str(env.get("PTR_CLOSEOUT_DEV_E2E", "")).strip().lower() in {
         "1",
