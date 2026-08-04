@@ -1127,6 +1127,9 @@ def test_in_scope_sensitive_test_source_still_rejects_secret_content(
         "super-secret-value",
         "should-not-appear",
         "env://WALLET_RPC_TOKEN",
+        "integration-test-key-not-secret",
+        "unit-test-key-not-secret",
+        "token-beta-different",
     ),
 )
 def test_in_scope_security_test_accepts_explicit_synthetic_secret_canary(
@@ -1163,6 +1166,9 @@ def test_in_scope_security_test_accepts_explicit_synthetic_secret_canary(
         "super-secret-value",
         "should-not-appear",
         "env://WALLET_RPC_TOKEN",
+        "integration-test-key-not-secret",
+        "unit-test-key-not-secret",
+        "token-beta-different",
     ),
 )
 def test_production_source_still_rejects_synthetic_secret_canary(
@@ -1181,6 +1187,68 @@ def test_production_source_still_rejects_synthetic_secret_canary(
         policy=_policy(
             allowed_paths=(path,),
             task_owned_paths=(path,),
+        ),
+    )
+
+    assert not result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(result)
+
+
+def test_in_scope_fixture_accepts_explicit_unquoted_synthetic_secret_canary() -> None:
+    path = "tests/fixtures/uspto/private_import/prohibited/credential_blob.txt"
+    result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                path,
+                before=None,
+                after=(
+                    "BEGIN USPTO CREDENTIAL BLOB\n"
+                    "mfa_secret=SYNTHETIC-NOT-REAL\n"
+                    "password=not-a-real-password\n"
+                ),
+                change_kind=DiffChangeKind.ADD,
+                old_path="",
+            )
+        ),
+        policy=_policy(
+            allowed_paths=("tests/fixtures/uspto/private_import",),
+            task_owned_paths=("tests/fixtures/uspto/private_import",),
+        ),
+    )
+
+    assert result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN not in _finding_codes(result)
+
+
+@pytest.mark.parametrize(
+    "fixture_content",
+    (
+        "password=abcd-efgh-ijkl-1234\n",
+        (
+            "-----BEGIN PRIVATE KEY-----\n"
+            "abcdefghijklmnop\n"
+            "-----END PRIVATE KEY-----\n"
+        ),
+    ),
+    ids=("concrete-secret", "private-key"),
+)
+def test_in_scope_fixture_still_rejects_concrete_secret_content(
+    fixture_content: str,
+) -> None:
+    path = "tests/fixtures/uspto/private_import/prohibited/credential_blob.txt"
+    result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                path,
+                before=None,
+                after=fixture_content,
+                change_kind=DiffChangeKind.ADD,
+                old_path="",
+            )
+        ),
+        policy=_policy(
+            allowed_paths=("tests/fixtures/uspto/private_import",),
+            task_owned_paths=("tests/fixtures/uspto/private_import",),
         ),
     )
 

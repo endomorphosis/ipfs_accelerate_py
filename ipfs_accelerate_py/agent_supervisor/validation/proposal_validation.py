@@ -2899,6 +2899,11 @@ _SYNTHETIC_TEST_SECRET_CANARY_RE = re.compile(
     r"""(?:secret|api[-_ ]?key|access[-_ ]?token|auth[-_ ]?token|"""
     r"""refresh[-_ ]?token|client[-_ ]?secret|password)"""
     r"""(?:[-_ ]value)?|"""
+    r"""(?:integration|unit)[-_ ]test[-_ ](?:api[-_ ]?)?key"""
+    r"""[-_ ]not[-_ ]secret|"""
+    r"""(?:token|key)[-_ ](?:alpha|beta)(?:[-_ ]different)?|"""
+    r"""not[-_ ]a[-_ ]real[-_ ]"""
+    r"""(?:password|secret|api[-_ ]?key|access[-_ ]?token)|"""
     r"""should[-_ ]not[-_ ]appear"""
     r""")$"""
 )
@@ -2980,6 +2985,25 @@ def _is_scoped_python_test_source(
         path.endswith((".py", ".pyi"))
         and _is_test_path(path)
         and policy.path_is_in_scope(path)
+    )
+
+
+def _is_scoped_test_fixture(
+    path: str,
+    policy: ProposalValidationPolicy,
+) -> bool:
+    """Return whether ``path`` is inside a task-owned test-fixture tree.
+
+    Fixture files may need inert credential-shaped canaries to prove that an
+    importer rejects prohibited material.  The content exception remains
+    narrower than ordinary test-source authority: it applies only below the
+    conventional fixture roots, only inside both policy scope envelopes, and
+    only to exact synthetic values recognized below.  Private keys and
+    concrete credential values remain forbidden.
+    """
+
+    return path.startswith(("test/fixtures/", "tests/fixtures/")) and (
+        policy.path_is_in_scope(path)
     )
 
 
@@ -3095,12 +3119,12 @@ def _is_concrete_secret_value(
 
 
 def _is_synthetic_test_secret_canary(raw_value: str) -> bool:
-    """Return whether a quoted value is an explicit non-credential test value."""
+    """Return whether a value is an explicit non-credential test canary."""
 
-    quoted = _QUOTED_SECRET_VALUE_RE.fullmatch(raw_value.strip())
-    if not quoted:
-        return False
-    value = quoted.group("value").strip()
+    value = raw_value.strip()
+    quoted = _QUOTED_SECRET_VALUE_RE.fullmatch(value)
+    if quoted:
+        value = quoted.group("value").strip()
     return bool(
         _SYNTHETIC_TEST_SECRET_CANARY_RE.fullmatch(value)
         or _SYNTHETIC_TEST_SECRET_REFERENCE_RE.fullmatch(value)
@@ -3862,9 +3886,15 @@ class ProposalValidator:
                 entry.path,
                 policy,
             )
+            scoped_test_fixture = _is_scoped_test_fixture(
+                entry.path,
+                policy,
+            )
             sensitive_content = _entry_introduces_secret(
                 entry,
-                allow_synthetic_test_canaries=scoped_python_test_source,
+                allow_synthetic_test_canaries=(
+                    scoped_python_test_source or scoped_test_fixture
+                ),
             )
             path_requires_secret_authority = (
                 sensitive_path
