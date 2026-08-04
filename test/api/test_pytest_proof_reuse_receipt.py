@@ -598,10 +598,12 @@ def test_finalize_swallows_unexpected_internal_errors(monkeypatch: pytest.Monkey
     def _boom(*_args: Any, **_kwargs: Any) -> Any:
         raise RuntimeError("unexpected")
 
-    monkeypatch.setattr(
-        "ipfs_accelerate_py.testing.proof_reuse.receipt.TestPassReceipt",
-        _boom,
-    )
+    # Patch the imported module object directly. The package root uses a lazy
+    # facade that does not expose ``testing`` as a nested attribute path for
+    # monkeypatch.resolve (``ipfs_accelerate_py.testing...``).
+    from ipfs_accelerate_py.testing.proof_reuse import receipt as receipt_module
+
+    monkeypatch.setattr(receipt_module, "TestPassReceipt", _boom)
     result = finalize_test_pass_receipt(
         collector,
         locator=locator,

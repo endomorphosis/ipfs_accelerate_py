@@ -34,6 +34,10 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement.proof_reuse_benchmark 
 from ipfs_accelerate_py.agent_supervisor.validation.proof_test_reuse_current_tree_gate import (
     FINAL_GATE_ACCEPTANCE_CRITERION,
     FINAL_GATE_GOAL_ID,
+    PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT,
+    PRODUCTION_RUNTIME_ACTIVATION_ID,
+    PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID,
+    PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS,
     REQUIRED_ADVERSARIAL_POPULATIONS,
     REQUIRED_ANALYZERS,
     REQUIRED_CHILD_GOAL_IDS,
@@ -41,6 +45,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.proof_test_reuse_current_tre
     REQUIRED_SUPERVISOR_LANE_IDS,
     ROOT_ACCEPTANCE_CRITERION,
     ROOT_GOAL_ID,
+    SEALED_PRODUCTION_TASK_COUNT,
     ProofTestReuseCurrentTreeGate,
     ProofTestReuseCurrentTreeGateDecision,
     ProofTestReuseCurrentTreeGateError,
@@ -681,6 +686,38 @@ def _valid_gate_packet(
                 for lane_id in sorted(REQUIRED_SUPERVISOR_LANE_IDS)
             ],
         ),
+        # Production 66-task population requires fresh PTR-149 repair evidence.
+        "repair_evidence": _bound_record(
+            policy_cid=gate.policy_cid,
+            authority="authoritative",
+            repair_id=PRODUCTION_RUNTIME_ACTIVATION_ID,
+            producer_task_id=PRODUCTION_RUNTIME_ACTIVATION_PRODUCER_TASK_ID,
+            repair_task_ids=sorted(PRODUCTION_RUNTIME_ACTIVATION_TASK_IDS),
+            passed=True,
+            false_skips=0,
+            zero_false_skip_assurance=True,
+            activation_e2e_passed=True,
+            zero_injection_default_path=True,
+            three_repository_cold_warm=True,
+            real_groth16_certificate=True,
+            measured_subprocess_benchmark=True,
+            historical_activation_claims_superseded=True,
+            controller_owned_receipt_candidate_context=True,
+            retained_proof_bearing_issuance_material=True,
+            exact_reviewed_source_binary_capability_circuit_key_identities=True,
+            locally_verified_current_v4_certificate=True,
+            supervisor_healthy=True,
+            sealed_task_count=SEALED_PRODUCTION_TASK_COUNT,
+            requirement_id=PRODUCTION_RUNTIME_ACTIVATION_EVIDENCE_REQUIREMENT,
+            evidence_cid="repair:production-runtime-activation",
+            injected=False,
+            pseudo_certificate=False,
+            synthetic_timing=False,
+            service_injection=False,
+            structural_only_verification=False,
+            activation_gap=False,
+            activation_gap_present=False,
+        ),
     }
 
 
@@ -690,10 +727,6 @@ def _valid_gate_packet(
 
 
 def test_sealed_population_is_exact_and_includes_closeout_tasks() -> None:
-    from ipfs_accelerate_py.agent_supervisor.validation.proof_test_reuse_current_tree_gate import (
-        SEALED_PRODUCTION_TASK_COUNT,
-    )
-
     assert len(REQUIRED_PTR_TASK_IDS) == SEALED_PRODUCTION_TASK_COUNT
     for task_id in (
         "PTR-108",

@@ -535,14 +535,24 @@ def test_tampered_configured_datasets_verifier_runs_no_process(
     assert process_calls == []
 
 
-def test_failed_pip_install_is_memoized_without_retry() -> None:
+def test_failed_pip_install_is_memoized_without_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     process_calls: list[Any] = []
 
     def runner(*args: Any, **kwargs: Any) -> Any:
         process_calls.append((args, kwargs))
         return SimpleNamespace(returncode=1)
 
-    installer = AllowlistedPipInstaller(runner=runner, environ={})
+    # Use an empty private provision root and disable cache activation so the
+    # installer always reaches the injected runner once.
+    installer = AllowlistedPipInstaller(
+        runner=runner,
+        environ={},
+        provision_root=tmp_path / "provision",
+    )
+    monkeypatch.setattr(installer, "activate_cached_dependency", lambda _dep: False)
 
     assert installer.install(JSONSCHEMA_DEPENDENCY) is False
     assert installer.install(JSONSCHEMA_DEPENDENCY) is False

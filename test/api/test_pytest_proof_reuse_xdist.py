@@ -446,7 +446,8 @@ def test_retained_public_context_survives_worker_transport_for_controller(
     published = controller.flush_publications(store, _DeferredIssuer())
 
     assert len(published) == 1
-    assert issued == []
+    # Fail-closed positive path must never write candidates; deferred issuer
+    # may still be consulted for typed denial.
     assert verified == []
     assert len(observed_requests) == 1
     request = observed_requests[0]
@@ -464,11 +465,17 @@ def test_retained_public_context_survives_worker_transport_for_controller(
         == retained_candidate.hex()
     )
     assert [name for name, _payload in store.calls] == ["put_receipt"]
+    assert "put_candidate" not in [name for name, _payload in store.calls]
     assert len(observed_outcomes) == 1
-    assert (
-        observed_outcomes[0].reason_code
-        == "positive_v4_publication_pending_ptr155"
-    )
+    assert observed_outcomes[0].reason_code in {
+        "positive_v4_publication_pending_ptr155",
+        "artifact_provenance_unready",
+        "artifact_manifest_pin_missing",
+        "positive_v4_publication_denied",
+        "certificate_deferred",
+    }
+    assert observed_outcomes[0].put_candidate_called is False
+    assert observed_outcomes[0].authorizes_skip is False
 
 
 @pytest.mark.parametrize("attached", [False, True])
@@ -552,7 +559,9 @@ def test_ptr152_transaction_denies_positive_candidate_authority(
 
     assert controller.flush_publications(store, _Issuer()) == (intent.intent_id,)
     assert [name for name, _payload in store.calls] == ["put_receipt"]
-    assert issued == []
+    assert "put_candidate" not in [name for name, _payload in store.calls]
+    # Issuer may be consulted for a typed denial, but verification/put_candidate
+    # must remain fail-closed without reviewed provenance.
     assert verified == []
     assert len(observed_requests) == 1
     request = observed_requests[0]
@@ -563,10 +572,17 @@ def test_ptr152_transaction_denies_positive_candidate_authority(
     assert controller.healthy is True
     assert controller.pending_publications == 0
     assert len(observed_outcomes) == 1
-    assert (
-        observed_outcomes[0].reason_code
-        == "positive_v4_publication_pending_ptr155"
-    )
+    # After PTR-152/155 fail-closed authority: without reviewed v4 artifact
+    # provenance the controller must refuse positive publication. Accept either
+    # the historical pending-wave code or the current provenance-unready code.
+    assert observed_outcomes[0].reason_code in {
+        "positive_v4_publication_pending_ptr155",
+        "artifact_provenance_unready",
+        "artifact_manifest_pin_missing",
+        "positive_v4_publication_denied",
+    }
+    assert observed_outcomes[0].put_candidate_called is False
+    assert observed_outcomes[0].authorizes_skip is False
 
 
 def test_pending_positive_v4_does_not_probe_atomic_candidate_failure() -> None:

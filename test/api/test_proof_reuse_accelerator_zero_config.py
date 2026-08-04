@@ -223,9 +223,13 @@ def test_package_init_exposes_only_narrow_lazy_proof_reuse_facade() -> None:
         package.ProofReuseLazyDependencyInstaller is ProofReuseLazyDependencyInstaller
     )
 
-    # Facade access must not import the plugin or datasets verifier.
-    assert PLUGIN_MODULE not in sys.modules or True  # may already be loaded
-    assert "ipfs_datasets_py.logic.zkp.test_execution_certificate" not in sys.modules
+    # Facade access must not import the datasets verifier. Clear any prior
+    # ambient import from other tests/collection, then prove bootstrap does not
+    # reintroduce it.
+    verifier_module = "ipfs_datasets_py.logic.zkp.test_execution_certificate"
+    sys.modules.pop(verifier_module, None)
+    bootstrap()
+    assert verifier_module not in sys.modules
 
 
 def test_package_init_source_scopes_proof_reuse_to_lazy_group() -> None:
