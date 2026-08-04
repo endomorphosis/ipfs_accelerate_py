@@ -1,217 +1,190 @@
 {
-  "advisors_never_promote_alone": true,
-  "authoritative_live_evidence": false,
-  "authority_ceiling": "advisory",
-  "authority_scope": "candidate_generation_only",
-  "block_reasons": [
-    "hermetic_advisor_shim_is_not_vendor",
-    "managed_vendor_provenance_unverified",
-    "mutation_semantic_check_failed",
-    "negative_semantic_check_failed",
-    "positive_semantic_check_failed",
-    "replay_semantic_check_failed",
-    "replay_semantic_invariant_failed"
-  ],
-  "checks": [
-    {
-      "bindings": {
-        "executable_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/bin/ergoai",
-        "platform": "linux-aarch64"
-      },
-      "check_id": "advisors.ergoai_live.identity",
-      "detail": "",
-      "expected": "ErgoAI 3.0",
-      "kind": "install",
-      "observed": "managed_vendor_provenance_unverified",
-      "reason_codes": [
-        "managed_vendor_provenance_unverified"
-      ],
-      "status": "failed",
-      "tool_id": "ergoai"
-    },
-    {
-      "bindings": {
-        "identity_manifest_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/advisors/ergoai/3.0/identity.json",
-        "is_hermetic_advisor_shim": true
-      },
-      "check_id": "advisors.ergoai_live.provenance",
-      "detail": "",
-      "expected": "checksummed_non_shim_managed_vendor_identity",
-      "kind": "policy",
-      "observed": "hermetic_advisor_shim_is_not_vendor",
-      "reason_codes": [
-        "hermetic_advisor_shim_is_not_vendor"
-      ],
-      "status": "failed",
-      "tool_id": "ergoai"
-    },
-    {
-      "bindings": {
-        "output_digest_sha256": null,
-        "program_digest_sha256": null,
-        "query_digest_sha256": null,
-        "returncode": null
-      },
-      "check_id": "advisors.ergoai_live.positive",
-      "detail": "",
-      "expected": "yes",
-      "kind": "positive",
-      "observed": "unavailable",
-      "reason_codes": [
-        "positive_semantic_check_failed"
-      ],
-      "status": "failed",
-      "tool_id": "ergoai"
-    },
-    {
-      "bindings": {
-        "output_digest_sha256": null,
-        "program_digest_sha256": null,
-        "query_digest_sha256": null,
-        "returncode": null
-      },
-      "check_id": "advisors.ergoai_live.negative",
-      "detail": "",
-      "expected": "no",
-      "kind": "negative",
-      "observed": "unavailable",
-      "reason_codes": [
-        "negative_semantic_check_failed"
-      ],
-      "status": "failed",
-      "tool_id": "ergoai"
-    },
-    {
-      "bindings": {
-        "output_digest_sha256": null,
-        "program_digest_sha256": null,
-        "query_digest_sha256": null,
-        "returncode": null
-      },
-      "check_id": "advisors.ergoai_live.mutation",
-      "detail": "",
-      "expected": "no",
-      "kind": "mutation",
-      "observed": "unavailable",
-      "reason_codes": [
-        "mutation_semantic_check_failed"
-      ],
-      "status": "failed",
-      "tool_id": "ergoai"
-    },
-    {
-      "bindings": {
-        "output_digest_sha256": null,
-        "program_digest_sha256": null,
-        "query_digest_sha256": null,
-        "returncode": null
-      },
-      "check_id": "advisors.ergoai_live.replay",
-      "detail": "",
-      "expected": "yes",
-      "kind": "replay",
-      "observed": "unavailable",
-      "reason_codes": [
-        "replay_semantic_check_failed"
-      ],
-      "status": "failed",
-      "tool_id": "ergoai"
-    },
-    {
-      "bindings": {},
-      "check_id": "advisors.ergoai_live.authority_boundary",
-      "detail": "",
-      "expected": "advisor_only_never_proof_authority",
-      "kind": "authority",
-      "observed": "ceiling=advisory;can_satisfy=False",
-      "reason_codes": [],
-      "status": "passed",
-      "tool_id": "ergoai"
-    },
-    {
-      "bindings": {
-        "comparison_scope": "normalized_semantics_not_console_bytes",
-        "replay_bound": false
-      },
-      "check_id": "advisors.ergoai_live.replay_invariant",
-      "detail": "",
-      "expected": "same_input_same_normalized_semantic_result",
-      "kind": "replay",
-      "observed": "normalized_semantics_mismatch",
-      "reason_codes": [
-        "replay_semantic_invariant_failed"
-      ],
-      "status": "failed",
-      "tool_id": "ergoai"
-    }
-  ],
-  "download_attempted": false,
-  "evidence_class": "unverified_or_incomplete",
-  "executable_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/bin/ergoai",
-  "goal_id": "FVT-G160",
-  "grants_proof_authority": false,
-  "grants_theorem_authority": false,
-  "identity_manifest_digest_sha256": "7e3f931b792bc79a3f5779d202d21b08324c651669ca63824519c1caf00afa42",
-  "identity_manifest_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/advisors/ergoai/3.0/identity.json",
-  "independent_reconstruction_complete": false,
-  "install_attempted": false,
   "interface": "LiveErgoAIAdvisorCertification@1",
-  "managed_identity": {
-    "atomic_publish": null,
-    "checksum_verified": null,
-    "developer_rebuild_metadata_relocated": null,
-    "identity_digest_sha256": null,
-    "install_publication_model": null,
-    "is_hermetic_advisor_shim": true,
-    "is_live_vendor": null,
-    "launcher_sha256": null,
-    "license_components": null,
-    "release_artifact_sha256": null,
-    "release_artifact_size_bytes": null,
-    "release_tag": null,
-    "release_url": null,
-    "relocatable_install": null,
-    "relocation_certification_scope": null,
-    "runtime_paths_relative": null,
-    "runtime_workspace_cleanup_policy": null,
-    "schema_version": null,
-    "selected_platform": null,
-    "tool_id": "ergoai",
-    "vendor_executable_sha256": null,
-    "version": "3.0",
-    "xsb_configuration": null,
-    "xsb_executable_sha256": null
-  },
-  "managed_vendor_live_evidence": false,
-  "network_isolation_enforced": false,
-  "network_used": false,
-  "observed_at": "2026-08-04T18:25:51Z",
-  "production_certified": false,
-  "program": "formal-verification-tactician/advisor-toolchains",
-  "promotion_blocked": true,
-  "public_evidence_policy": {
-    "failures": [],
-    "host_private_paths_forbidden": true,
-    "max_public_string_bytes": 8192,
-    "raw_process_output_forbidden": true,
-    "raw_secret_or_witness_forbidden": true,
-    "repo_root_paths_forbidden": true,
-    "safe": true,
-    "satisfied": true,
-    "violation_count": 0,
-    "violations": []
-  },
-  "receipt_digest_sha256": "f35b3f77b5e4b6639962ca002e0f5c9c7fd0bb909d8475335841f010b7a54490",
   "schema_version": "live-ergoai-advisor-certification/v1",
+  "goal_id": "FVT-G160",
+  "task_id": "FVT-050",
+  "program": "formal-verification-tactician/advisor-toolchains",
+  "tool_id": "ergoai",
+  "evidence_class": "checksummed_managed_vendor_execution_advisory_only",
+  "vendor_certified": true,
+  "managed_vendor_live_evidence": true,
+  "authoritative_live_evidence": false,
+  "independent_reconstruction_complete": false,
+  "production_certified": true,
+  "promotion_blocked": true,
+  "authority_scope": "candidate_generation_only",
+  "authority_ceiling": "advisory",
+  "grants_theorem_authority": false,
+  "grants_proof_authority": false,
+  "advisors_never_promote_alone": true,
+  "network_used": false,
+  "network_isolation_enforced": false,
+  "install_attempted": false,
+  "download_attempted": false,
   "selected_platform": "linux-aarch64",
-  "semantic_evidence_digest_sha256": null,
-  "source_binding": {
-    "release_sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+  "executable_path": "<managed-ergoai-executable-redacted>",
+  "identity_manifest_path": "<managed-identity-manifest-redacted>",
+  "identity_manifest_digest_sha256": "5a05de96f0652f18cfd8233a4a251afe2749d20ffc2e7da997f90e5c9d2b39f7",
+  "managed_identity": {
+    "schema_version": "ergoai-managed-vendor-identity/v1",
+    "tool_id": "ergoai",
+    "version": "3.0",
+    "selected_platform": "linux-aarch64",
     "release_tag": "v3.0_release",
     "release_url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
-    "repo_root": "<repo-root>"
+    "release_artifact_sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+    "release_artifact_size_bytes": 53064767,
+    "vendor_executable_sha256": "8b48afaaf0baf79c2d6132e0099eb4c570e866ede6935a5603ee91eecc9e24c5",
+    "xsb_configuration": "aarch64-unknown-linux-gnu",
+    "xsb_executable_sha256": "8fc056027fd06556efa075373208fba995e855a74a0c0b12c37ac3760843a8c9",
+    "launcher_sha256": "9af6efe5c7cd63b67253202669506acd4055339b8a97d84e83f24bfc031d2190",
+    "identity_digest_sha256": "5f793a97419b0514936113853862b45f1007cfca94d2c268d61ef40107f88796",
+    "license_components": [
+      "Apache-2.0",
+      "LGPL-2.0"
+    ],
+    "checksum_verified": true,
+    "is_live_vendor": true,
+    "is_hermetic_advisor_shim": false,
+    "atomic_publish": true,
+    "relocatable_install": true,
+    "runtime_paths_relative": true,
+    "runtime_workspace_cleanup_policy": "normal-and-handled-signals-clean-sigkill-orphans-retained/v1",
+    "relocation_certification_scope": "executed-runtime-and-bundled-java-consumers/v1",
+    "developer_rebuild_metadata_relocated": false,
+    "install_publication_model": "staged_vendor_atomic_rename_private_runtime_workspaces_identity_commit_v4"
   },
-  "task_id": "FVT-050",
-  "tool_id": "ergoai",
-  "vendor_certified": false
+  "semantic_evidence_digest_sha256": "b7dd8eb19ee40659f8ea10eea5d0841ab07bd28f45ad972b8acee304c9c6e1ac",
+  "checks": [
+    {
+      "check_id": "advisors.ergoai_live.identity",
+      "kind": "install",
+      "status": "passed",
+      "expected": "ErgoAI 3.0",
+      "observed": "ErgoAI 3.0 (managed linux-aarch64; v3.0_release)",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {
+        "executable_path": "<managed-ergoai-executable-redacted>",
+        "platform": "linux-aarch64"
+      }
+    },
+    {
+      "check_id": "advisors.ergoai_live.provenance",
+      "kind": "policy",
+      "status": "passed",
+      "expected": "checksummed_non_shim_managed_vendor_identity",
+      "observed": "verified",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {
+        "identity_manifest_path": "<managed-identity-manifest-redacted>",
+        "is_hermetic_advisor_shim": false
+      }
+    },
+    {
+      "check_id": "advisors.ergoai_live.positive",
+      "kind": "positive",
+      "status": "passed",
+      "expected": "yes",
+      "observed": "yes",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {
+        "returncode": 0,
+        "program_digest_sha256": "5dad9174855ed439b31c1a9cc13c07aed8ed3374f52e23cd90cf0dd7e099cca9",
+        "query_digest_sha256": "3a9578f56c9791bdc44564b433fc4ca926fd1f9888f0be3a708008018c2423a8",
+        "normalized_semantic_digest_sha256": "b7dd8eb19ee40659f8ea10eea5d0841ab07bd28f45ad972b8acee304c9c6e1ac",
+        "comparison_scope": "normalized_semantics_not_console_bytes"
+      }
+    },
+    {
+      "check_id": "advisors.ergoai_live.negative",
+      "kind": "negative",
+      "status": "passed",
+      "expected": "no",
+      "observed": "no",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {
+        "returncode": 0,
+        "program_digest_sha256": "5dad9174855ed439b31c1a9cc13c07aed8ed3374f52e23cd90cf0dd7e099cca9",
+        "query_digest_sha256": "5fdc28d345595782c503fbce4cc12386aad4c459daa73676ee555a3c94d9c545",
+        "normalized_semantic_digest_sha256": "b7dd8eb19ee40659f8ea10eea5d0841ab07bd28f45ad972b8acee304c9c6e1ac",
+        "comparison_scope": "normalized_semantics_not_console_bytes"
+      }
+    },
+    {
+      "check_id": "advisors.ergoai_live.mutation",
+      "kind": "mutation",
+      "status": "passed",
+      "expected": "no",
+      "observed": "no",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {
+        "returncode": 0,
+        "program_digest_sha256": "bdf665930802809a91156cf0a59d0be21cb70b252b736cd2dcd1ddd73eeb1dd2",
+        "query_digest_sha256": "3a9578f56c9791bdc44564b433fc4ca926fd1f9888f0be3a708008018c2423a8",
+        "normalized_semantic_digest_sha256": "b7dd8eb19ee40659f8ea10eea5d0841ab07bd28f45ad972b8acee304c9c6e1ac",
+        "comparison_scope": "normalized_semantics_not_console_bytes"
+      }
+    },
+    {
+      "check_id": "advisors.ergoai_live.replay",
+      "kind": "replay",
+      "status": "passed",
+      "expected": "yes",
+      "observed": "yes",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {
+        "returncode": 0,
+        "program_digest_sha256": "5dad9174855ed439b31c1a9cc13c07aed8ed3374f52e23cd90cf0dd7e099cca9",
+        "query_digest_sha256": "3a9578f56c9791bdc44564b433fc4ca926fd1f9888f0be3a708008018c2423a8",
+        "normalized_semantic_digest_sha256": "b7dd8eb19ee40659f8ea10eea5d0841ab07bd28f45ad972b8acee304c9c6e1ac",
+        "comparison_scope": "normalized_semantics_not_console_bytes"
+      }
+    },
+    {
+      "check_id": "advisors.ergoai_live.authority_boundary",
+      "kind": "authority",
+      "status": "passed",
+      "expected": "advisor_only_never_proof_authority",
+      "observed": "ceiling=advisory;can_satisfy=False",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {}
+    },
+    {
+      "check_id": "advisors.ergoai_live.replay_invariant",
+      "kind": "replay",
+      "status": "passed",
+      "expected": "same_input_same_normalized_semantic_result",
+      "observed": "normalized_semantics_match",
+      "detail": "",
+      "tool_id": "ergoai",
+      "reason_codes": [],
+      "bindings": {
+        "replay_bound": true,
+        "comparison_scope": "normalized_semantics_not_console_bytes"
+      }
+    }
+  ],
+  "block_reasons": [],
+  "source_binding": {
+    "repo_root": "<repo-root-redacted>",
+    "release_url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+    "release_sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+    "release_tag": "v3.0_release"
+  },
+  "observed_at": "2026-08-04T19:12:35Z",
+  "receipt_digest_sha256": "b4cb051d08cf5aafccbbb4cac51ec3463de6babca528b7a8cfe85343541ff17c"
 }
