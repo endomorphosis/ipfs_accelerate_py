@@ -6,15 +6,15 @@
   "completion_goal_id": "FVT-G090",
   "task_id": "FVT-036",
   "program": "formal-verification-tactician/readiness",
-  "observed_at": "2026-08-04T18:31:05Z",
+  "observed_at": "2026-08-04T21:20:49Z",
   "binding_mode": "current_tree_content_identity",
   "source": {
-    "parent_commit": "d791eb4428730867a5595035ab6fb0a50528f0e2",
-    "parent_tree": "a6660ce1fc9738a7dd7e2ab265d127a5ac618a11",
-    "datasets_gitlink": "f3b091e63320877c271244d88423d111f9d82608",
-    "datasets_embedded_head": "f3b091e63320877c271244d88423d111f9d82608",
+    "parent_commit": "a1bd4f63f5b2c649486847f35686f94690c08260",
+    "parent_tree": "312600760a95a8592eac468434fa1b1835930dc5",
+    "datasets_gitlink": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
+    "datasets_embedded_head": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
     "datasets_origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-    "parent_origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
+    "parent_origin_main": "03ebf4daf2e0d260c7924be0c4d48b63d5083f47",
     "binding_mode": "current_tree_content_identity"
   },
   "acceptance": {
@@ -292,20 +292,20 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "d791eb4428730867a5595035ab6fb0a50528f0e2",
-        "tree": "a6660ce1fc9738a7dd7e2ab265d127a5ac618a11",
-        "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
+        "commit": "a1bd4f63f5b2c649486847f35686f94690c08260",
+        "tree": "312600760a95a8592eac468434fa1b1835930dc5",
+        "origin_main": "03ebf4daf2e0d260c7924be0c4d48b63d5083f47",
         "clean": false,
         "matches_origin_main": false
       },
       "gitlink": {
         "path": "ipfs_datasets_py",
         "mode": "160000",
-        "commit": "f3b091e63320877c271244d88423d111f9d82608"
+        "commit": "6fecc4b4bb58e41170518cc0624c69e5629d6577"
       },
       "embedded_checkout": {
         "path": "ipfs_datasets_py",
-        "head": "f3b091e63320877c271244d88423d111f9d82608",
+        "head": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
         "clean": true,
         "matches_gitlink": true,
         "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
@@ -1281,7 +1281,7 @@
     "receipt_builder": {
       "path": "tools/logic/build_formal_verification_tactician_receipt.py",
       "present": true,
-      "content_identity": "sha256:d61d4582677b0ba7bf973969be0b62fa66c87a82090dfe0a509b944a297aae44"
+      "content_identity": "sha256:c6050e7de0315162b4527c959a7e2dd540e3ade67d348b41bb7684d1fd924d4c"
     },
     "completion_test": {
       "path": "test/api/test_formal_verification_tactician_readiness_completion.py",
@@ -4588,5 +4588,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:686c58836e0497664a306804579740d14cff64ac00a506f7020203a373cafe71"
+  "receipt_identity": "sha256:6407179fef96a527ae03e8c8aad6d915e8800ad16c1e5f7fadf87a7b39ed6e01"
 }
