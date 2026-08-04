@@ -87,11 +87,13 @@ PYTHON_DEPENDENCY_SPECS: Final[Mapping[str, PythonDependencySpec]] = MappingProx
             dependency_id="z3",
             import_name="z3",
             distribution="z3-solver",
-            requirement="z3-solver>=4.12.0,<5.0.0",
+            requirement="z3-solver>=4.13.4.0,<=4.15.4.0",
             executable="z3",
             executable_required=True,
-            minimum_version=(4, 12, 0),
-            maximum_version_exclusive=(5, 0, 0),
+            minimum_version=(4, 13, 4),
+            # Exclusive upper bound one patch past the last manylinux_2_34
+            # aarch64 wheel line we accept for bookworm CI images.
+            maximum_version_exclusive=(4, 15, 5),
         ),
         "cvc5": PythonDependencySpec(
             dependency_id="cvc5",
@@ -835,9 +837,7 @@ def _datasets_installer_environment() -> dict[str, str]:
     datasets_root = Path(__file__).resolve().parents[3] / "ipfs_datasets_py"
     if (datasets_root / "ipfs_datasets_py" / "logic").is_dir():
         existing = str(env.get("PYTHONPATH", "") or "")
-        env["PYTHONPATH"] = os.pathsep.join(
-            part for part in (str(datasets_root), existing) if part
-        )
+        env["PYTHONPATH"] = os.pathsep.join(part for part in (str(datasets_root), existing) if part)
     return env
 
 
@@ -1094,11 +1094,7 @@ def contract_repair_toolchain_environment(
         return bindings
     existing_path = str(env.get("PATH", "") or "")
     bindings["PATH"] = os.pathsep.join(
-        dict.fromkeys(
-            part
-            for part in (*bin_directories, *existing_path.split(os.pathsep))
-            if part
-        )
+        dict.fromkeys(part for part in (*bin_directories, *existing_path.split(os.pathsep)) if part)
     )
     return bindings
 
@@ -1110,10 +1106,7 @@ def ensure_contract_repair_dependencies(
 ) -> tuple[ContractRepairDependencyReceipt, ...]:
     """Resolve the requested closed dependency set."""
 
-    selected = tuple(
-        dependency_ids
-        or (*PYTHON_DEPENDENCY_SPECS.keys(), "cvc5_cli", "typescript")
-    )
+    selected = tuple(dependency_ids or (*PYTHON_DEPENDENCY_SPECS.keys(), "cvc5_cli", "typescript"))
     receipts: list[ContractRepairDependencyReceipt] = []
     for dependency_id in selected:
         if dependency_id == "typescript":
