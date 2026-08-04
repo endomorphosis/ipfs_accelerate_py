@@ -4669,7 +4669,9 @@ def live_runtime_activation_inventory(
     return {
         "automatic_plugin_discovery": True,
         "ordinary_enabled_run_effective_action": "run",
-        "default_identity_services_injected": False,
+        # Honest: default composition injects identity when the factory path
+        # produced a non-None handle (mode-enabled compose or explicit inject).
+        "default_identity_services_injected": identity_configured,
         "default_identity_service_factory_configured": identity_configured,
         "production_identity_injector_configured": identity_configured,
         "required_identity_providers": [
