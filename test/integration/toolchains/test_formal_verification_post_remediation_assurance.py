@@ -376,7 +376,19 @@ def test_authoritative_vendor_release_stays_assessment_complete_not_deployable()
     assert matrix_binding.get("interface_valid") is True
     assert "secpal_authoritative_live_receipt_bound" in release["blockers"]
     assert "secpal_production_use_permitted" in release["blockers"]
-    assert "every_readiness_axis_jointly_ready" in release["blockers"]
+    # External Microsoft SecPAL is reference-only for the replacement stack:
+    # required-row joint readiness may pass while production use stays blocked.
+    assert release["claims"].get("external_secpal_is_reference_only") is True
+    assert release["claims"].get(
+        "required_matrix_readiness_excludes_unsupported_external_secpal"
+    ) is True
+    assert release["claims"].get(
+        "replacement_stack_required_rows_jointly_ready"
+    ) is True
+    assert release["claims"].get(
+        "all_lock_rows_jointly_ready_including_external_secpal"
+    ) is False
+    assert "every_readiness_axis_jointly_ready" not in release["blockers"]
 
 
 def test_builder_and_certifier_deltas_agree(
