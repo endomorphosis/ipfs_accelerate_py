@@ -6,15 +6,15 @@
   "completion_goal_id": "FVT-G090",
   "task_id": "FVT-036",
   "program": "formal-verification-tactician/readiness",
-  "observed_at": "2026-08-04T23:00:22Z",
+  "observed_at": "2026-08-04T23:10:21Z",
   "binding_mode": "current_tree_content_identity",
   "source": {
-    "parent_commit": "ae51827b9d0975264416098d7d323137e94e2522",
-    "parent_tree": "fe62a31568ec26a6458e13d07541c343e39f3900",
+    "parent_commit": "fa16a60981da7ecd3178b60c443b644d15ecea40",
+    "parent_tree": "5c1d76ba8a348cbab00d8c6b09eb162c44ddef0a",
     "datasets_gitlink": "4d20019a7289aed53e85d7b1f5718afd092190bf",
     "datasets_embedded_head": "4d20019a7289aed53e85d7b1f5718afd092190bf",
     "datasets_origin_main": "4d20019a7289aed53e85d7b1f5718afd092190bf",
-    "parent_origin_main": "ff4dcf9e9f3a03396036a45b21c449ab81316683",
+    "parent_origin_main": "72908c74d48927e997bf4827266bd7d1520f9f1c",
     "binding_mode": "current_tree_content_identity"
   },
   "acceptance": {
@@ -304,9 +304,9 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "ae51827b9d0975264416098d7d323137e94e2522",
-        "tree": "fe62a31568ec26a6458e13d07541c343e39f3900",
-        "origin_main": "ff4dcf9e9f3a03396036a45b21c449ab81316683",
+        "commit": "fa16a60981da7ecd3178b60c443b644d15ecea40",
+        "tree": "5c1d76ba8a348cbab00d8c6b09eb162c44ddef0a",
+        "origin_main": "72908c74d48927e997bf4827266bd7d1520f9f1c",
         "clean": false,
         "matches_origin_main": false
       },
@@ -1292,7 +1292,7 @@
     "receipt_builder": {
       "path": "tools/logic/build_formal_verification_tactician_receipt.py",
       "present": true,
-      "content_identity": "sha256:baa9ba76c46259c8e1156c205c0635b4f46065fbe337f1c9de42f724dad56c13"
+      "content_identity": "sha256:7832a9c63f0ca4917f5a7485559fb94421b16a72f50072e3ed6f529aea5c1f2e"
     },
     "completion_test": {
       "path": "test/api/test_formal_verification_tactician_readiness_completion.py",
@@ -4599,5 +4599,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:87e089a7127847eedcbc543736bd10af6c02e488a129333d38537e1459400519"
+  "receipt_identity": "sha256:6e3aeaa4dc356c2add1457e409a961484533f21638fefb16750c48d5cb98d2d9"
 }
