@@ -3183,6 +3183,80 @@ def test_auto_clears_shared_todo_board_content_change(tmp_path: Path) -> None:
     assert not daemon._implementation_protected_incident_path().exists()
 
 
+def test_mid_attempt_admits_shared_todo_board_content_change(
+    tmp_path: Path,
+) -> None:
+    """Peer board rewrites must not abort an in-flight ephemeral attempt."""
+
+    todo_rel = "docs/architecture/example.todo.md"
+    worktrees = tmp_path / "worktrees"
+    workspace = worktrees / "workspace-ephemeral"
+    worktrees.mkdir()
+    workspace.mkdir()
+    (workspace / todo_rel).parent.mkdir(parents=True)
+    (workspace / todo_rel).write_text("# board copy\n", encoding="utf-8")
+    todo = tmp_path / todo_rel
+    todo.parent.mkdir(parents=True)
+    todo.write_text("# board v1\n", encoding="utf-8")
+
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+        worktree_root=worktrees,
+        implement=True,
+        implementation_command="implementation-command-that-must-not-run",
+        implementation_protected_paths=(todo_rel,),
+    )
+    before = daemon._implementation_protected_path_snapshot(workspace)
+    todo.write_text("# board v2 peer rewrite\n", encoding="utf-8")
+    after = daemon._implementation_protected_path_snapshot(workspace)
+    mutations = daemon._implementation_protected_path_mutations(before, after)
+    assert mutations
+    assert any(
+        m.get("path") == todo_rel and m.get("scope") == "shared_checkout"
+        for m in mutations
+    )
+
+    daemon._persist_implementation_protected_snapshot(
+        task=type("T", (), {"task_id": "EX-LIVE"})(),
+        attempt=1,
+        workspace_path=workspace,
+        snapshot=before,
+    )
+    violation = daemon._implementation_protected_path_violation(
+        task_id="EX-LIVE",
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+        after=after,
+        latch=True,
+    )
+    assert violation == {}
+    assert not daemon._implementation_protected_incident_path().exists()
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert any(
+        event.get("type") == "implementation_protected_path_stall_admitted"
+        for event in events
+    )
+    active = json.loads(
+        daemon._implementation_protected_active_snapshot_path().read_text(
+            encoding="utf-8"
+        )
+    )
+    # Baseline advanced so the peer rewrite is not re-detected next check.
+    refreshed = active["snapshot"]["shared_checkout"]["paths"][todo_rel]
+    assert refreshed.get("sha256") == after["shared_checkout"]["paths"][todo_rel].get(
+        "sha256"
+    )
+
+
 def test_auto_clears_content_preserving_identity_thrash(tmp_path: Path) -> None:
     """Hardlink/nlink thrash with identical content must not stall lanes."""
 

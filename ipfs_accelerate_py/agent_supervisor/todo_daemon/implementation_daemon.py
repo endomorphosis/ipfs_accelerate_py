@@ -6403,6 +6403,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 mutations=mutations,
             )
             if concurrent_update:
+                self._refresh_active_protected_snapshot_after_admitted_update(
+                    after=after,
+                    task_id=resolved_task_id,
+                    attempt=attempt,
+                )
                 self._record_event(
                     "implementation_protected_path_concurrent_update_accepted",
                     {
@@ -6410,6 +6415,27 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         "attempt": attempt,
                         "workspace_path": str(workspace_path),
                         **concurrent_update,
+                    },
+                )
+                return {}
+            stall_admit = self._admit_auto_clearable_protected_path_stall(
+                mutations=mutations,
+                workspace_path=workspace_path,
+                after=after,
+            )
+            if stall_admit:
+                self._refresh_active_protected_snapshot_after_admitted_update(
+                    after=after,
+                    task_id=resolved_task_id,
+                    attempt=attempt,
+                )
+                self._record_event(
+                    "implementation_protected_path_stall_admitted",
+                    {
+                        "task_id": resolved_task_id,
+                        "attempt": attempt,
+                        "workspace_path": str(workspace_path),
+                        **stall_admit,
                     },
                 )
                 return {}
@@ -6575,6 +6601,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
             return {}
         if concurrent_update:
+            self._refresh_active_protected_snapshot_after_admitted_update(
+                after=after,
+                task_id=resolved_task_id,
+                attempt=attempt,
+            )
             self._record_event(
                 "implementation_protected_path_concurrent_update_accepted",
                 {
@@ -6585,6 +6616,27 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 },
             )
             return {}
+        stall_admit = self._admit_auto_clearable_protected_path_stall(
+            mutations=mutations,
+            workspace_path=workspace_path,
+            after=after,
+        )
+        if stall_admit:
+            self._refresh_active_protected_snapshot_after_admitted_update(
+                after=after,
+                task_id=resolved_task_id,
+                attempt=attempt,
+            )
+            self._record_event(
+                "implementation_protected_path_stall_admitted",
+                {
+                    "task_id": resolved_task_id,
+                    "attempt": attempt,
+                    "workspace_path": str(workspace_path),
+                    **stall_admit,
+                },
+            )
+            return {}
         return self._implementation_protected_mutation_payload(
             task_id=resolved_task_id,
             attempt=attempt,
@@ -6592,6 +6644,105 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             before=comparison_before,
             after=after,
         )
+
+    def _admit_auto_clearable_protected_path_stall(
+        self,
+        *,
+        mutations: Sequence[Mapping[str, Any]],
+        workspace_path: Path,
+        after: Mapping[str, Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        """Admit known-benign protected thrash mid-attempt without aborting work.
+
+        Peer supervisors routinely rewrite the shared ``*.todo.md`` board and
+        flip identity metadata while another lane is implementing. Post-latch
+        auto-clear already classifies those mutations, but the attempt was
+        already killed. Admit the same classes *before* latching so multi-lane
+        boards can finish.
+        """
+
+        protected = set(self.implementation_protected_paths)
+        if not mutations or not protected:
+            return {}
+        class_codes: list[str] = []
+        mutated_paths: list[str] = []
+        for item in mutations:
+            if not isinstance(item, Mapping):
+                return {}
+            code = self._protected_mutation_is_auto_clearable_stall(
+                item,
+                protected=protected,
+            )
+            if code is None:
+                return {}
+            class_codes.append(code)
+            path = str(item.get("path") or "").strip()
+            if path:
+                mutated_paths.append(path)
+        if not class_codes:
+            return {}
+        # Shared checkout must still hold every touched protected path.
+        for relative in sorted(set(mutated_paths)):
+            try:
+                shared = (self.repo_root / relative).resolve()
+                if not shared.is_file():
+                    return {}
+                shared.relative_to(self.repo_root.resolve())
+            except (OSError, ValueError):
+                return {}
+        # Prefer ephemeral workspaces; shared-root implementations still admit
+        # pure shared board thrash (auto-clear already allows that).
+        try:
+            is_repo_root = workspace_path.resolve() == self.repo_root.resolve()
+        except (OSError, RuntimeError):
+            is_repo_root = False
+        if is_repo_root and any(
+            code.startswith("workspace_") for code in class_codes
+        ):
+            return {}
+        return {
+            "reason": "auto_clearable_protected_path_stall_admitted",
+            "class_codes": sorted(set(class_codes)),
+            "mutated_paths": sorted(set(mutated_paths)),
+            "after_git_head": str(
+                ((after.get("shared_checkout") or {}) if isinstance(after.get("shared_checkout"), Mapping) else {}).get(
+                    "git_head"
+                )
+                or ""
+            ),
+        }
+
+    def _refresh_active_protected_snapshot_after_admitted_update(
+        self,
+        *,
+        after: Mapping[str, Mapping[str, Any]],
+        task_id: str,
+        attempt: int,
+    ) -> None:
+        """Advance the active fence baseline after a trusted concurrent update."""
+
+        path = self._implementation_protected_active_snapshot_path()
+        active = load_json_dict(path)
+        if not isinstance(active, dict):
+            return
+        if str(active.get("task_id") or "") != str(task_id or ""):
+            return
+        try:
+            if int(active.get("attempt") or 0) != int(attempt or 0):
+                return
+        except (TypeError, ValueError):
+            return
+        snapshot = active.get("snapshot")
+        if not isinstance(snapshot, Mapping):
+            return
+        refreshed = dict(snapshot)
+        for scope in ("shared_checkout", "workspace"):
+            scope_after = after.get(scope)
+            if isinstance(scope_after, Mapping):
+                refreshed[scope] = dict(scope_after)
+        active["snapshot"] = refreshed
+        active["recorded_at"] = utc_now()
+        write_json_atomic(path, active)
 
     def _implementation_protected_path_mutations(
         self,
