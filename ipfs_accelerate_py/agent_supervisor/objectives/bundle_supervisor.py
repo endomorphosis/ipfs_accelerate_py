@@ -10,6 +10,7 @@ import json
 import logging
 import math
 import os
+import re
 import shlex
 import signal
 import subprocess
@@ -3890,6 +3891,178 @@ def _bundle_lane_pythonpath(repo_root: Path, *, existing: str = "") -> str:
     return os.pathsep.join(dict.fromkeys(entries))
 
 
+_TERMINAL_BOARD_STATUSES = frozenset({"completed", "complete", "done"})
+
+
+def parse_task_board_statuses(todo_text: str) -> dict[str, dict[str, Any]]:
+    """Parse ``## TASK-ID`` board blocks into status + dependency metadata."""
+
+    tasks: dict[str, dict[str, Any]] = {}
+    for block in re.split(r"(?=^##\s+\S+)", str(todo_text or ""), flags=re.M):
+        heading = re.match(r"^##\s+(\S+)\s*(.*)$", block, re.M)
+        if heading is None:
+            continue
+        task_id = str(heading.group(1) or "").strip()
+        if not task_id or task_id.lower() in {"agent", "wave", "notes"}:
+            continue
+        status_match = re.search(r"^- Status:\s*(\S+)", block, re.M)
+        deps: list[str] = []
+        for line in block.splitlines():
+            if line.startswith("- Depends on:"):
+                rest = line.split(":", 1)[1].strip()
+                if rest:
+                    deps = [
+                        part.strip()
+                        for part in re.split(r"[, ]+", rest)
+                        if part.strip() and not part.strip().startswith("-")
+                    ]
+                break
+        tasks[task_id] = {
+            "status": str(status_match.group(1) if status_match else "todo")
+            .strip()
+            .lower(),
+            "deps": deps,
+            "title": str(heading.group(2) or "").strip(),
+        }
+    return tasks
+
+
+def advance_eligible_bundle_index_from_board(
+    *,
+    eligible_index_path: Path,
+    catalog_index_path: Path,
+    todo_path: Path,
+    repo_root: Path | None = None,
+) -> dict[str, Any]:
+    """Rewrite the live eligible index from board readiness + full catalog.
+
+    Soft-completed wave tasks leave dependents blocked when the live index only
+    contains the finished wave (unknown prerequisites).  This rebuild includes:
+
+    * every open task whose board dependencies are completed
+    * every completed dependency bundle those open tasks need for claimability
+
+    Completions remain non-authoritative board status; the rewrite only unblocks
+    discovery so implement work can continue.
+    """
+
+    eligible_path = Path(eligible_index_path)
+    catalog_path = Path(catalog_index_path)
+    board_path = Path(todo_path)
+    if not catalog_path.is_file():
+        raise FileNotFoundError(f"bundle catalog missing: {catalog_path}")
+    if not board_path.is_file():
+        raise FileNotFoundError(f"task board missing: {board_path}")
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    if not isinstance(catalog, Mapping) or not isinstance(catalog.get("bundles"), Mapping):
+        raise ValueError("bundle catalog must contain a bundles object")
+    board = parse_task_board_statuses(board_path.read_text(encoding="utf-8"))
+    completed = {
+        task_id
+        for task_id, info in board.items()
+        if str(info.get("status") or "") in _TERMINAL_BOARD_STATUSES
+    }
+    ready = [
+        task_id
+        for task_id, info in board.items()
+        if str(info.get("status") or "") not in _TERMINAL_BOARD_STATUSES
+        and str(info.get("status") or "") != "blocked"
+        and all(dep in completed for dep in info.get("deps") or ())
+    ]
+    needed = set(ready)
+    for task_id in ready:
+        needed.update(board.get(task_id, {}).get("deps") or ())
+
+    updated_bundles: dict[str, Any] = {}
+    for bundle_key, bundle in catalog["bundles"].items():
+        if not isinstance(bundle, Mapping):
+            continue
+        cloned = json.loads(json.dumps(bundle))
+        include = False
+        for task in cloned.get("tasks") or []:
+            if not isinstance(task, dict):
+                continue
+            task_id = str(task.get("task_id") or "")
+            if task_id in board:
+                task["status"] = board[task_id]["status"]
+                deps = board[task_id].get("deps") or []
+                if deps:
+                    task["depends_on"] = list(deps)
+            if task_id in needed:
+                include = True
+        if not include:
+            continue
+        only_completed = all(
+            isinstance(task, dict)
+            and str(task.get("task_id") or "") in completed
+            for task in (cloned.get("tasks") or [])
+        )
+        if only_completed:
+            # Dependency context only — do not re-launch finished wave work.
+            cloned["is_schedulable"] = False
+            cloned["completed_member_task_ids"] = [
+                str(task.get("task_id"))
+                for task in (cloned.get("tasks") or [])
+                if isinstance(task, dict) and task.get("task_id")
+            ]
+        updated_bundles[str(bundle_key)] = cloned
+
+    git_head = ""
+    root = Path(repo_root) if repo_root is not None else board_path.parent
+    try:
+        head = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if head.returncode == 0:
+            git_head = head.stdout.strip()
+    except OSError:
+        git_head = ""
+
+    payload = {
+        "schema": catalog.get("schema")
+        or "ipfs_accelerate_py.agent_supervisor.prompt-entrypoint-bundles@1",
+        "generated_at": utc_now(),
+        "source_todo": catalog.get("source_todo")
+        or repo_relative_path(root, board_path),
+        "plan_root_cid": catalog.get("plan_root_cid"),
+        "repository_tree_id": catalog.get("repository_tree_id"),
+        "query_store": catalog.get("query_store"),
+        "git_head": git_head,
+        "bundles": updated_bundles,
+        "wave": "board-advanced",
+        "ready_task_ids": list(ready),
+        "completed_task_ids": sorted(completed),
+        "catalog_index_path": str(catalog_path),
+        "board_sha256": _taskboard_sha256(board_path),
+    }
+    previous = ""
+    if eligible_path.is_file():
+        try:
+            previous = eligible_path.read_text(encoding="utf-8")
+        except OSError:
+            previous = ""
+    text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    changed = previous != text
+    if changed:
+        eligible_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = eligible_path.with_name(f".{eligible_path.name}.{os.getpid()}.tmp")
+        temporary.write_text(text, encoding="utf-8")
+        os.replace(temporary, eligible_path)
+    return {
+        "changed": changed,
+        "ready_task_ids": list(ready),
+        "completed_task_ids": sorted(completed),
+        "bundle_keys": sorted(updated_bundles),
+        "eligible_index_path": str(eligible_path),
+        "catalog_index_path": str(catalog_path),
+        "board_path": str(board_path),
+    }
+
+
 def check_lane_health(
     lanes: Sequence[BundleLaneSpec],
     *,
@@ -4015,6 +4188,7 @@ class DynamicBundleScheduler:
         bundle_index_refresh_command: str = "",
         bundle_index_refresh_timeout_seconds: float = 60.0,
         bundle_index_refresher: Callable[[], Any] | None = None,
+        bundle_catalog_path: Path | None = None,
         resource_policy: ResourcePolicy | dict[str, Any] | None = None,
         **lane_options: Any,
     ) -> None:
@@ -4099,7 +4273,21 @@ class DynamicBundleScheduler:
             raise ValueError(
                 "bundle_index_refresh_timeout_seconds must be positive"
             )
+        catalog_candidate = (
+            Path(bundle_catalog_path).resolve()
+            if bundle_catalog_path is not None
+            else (self.bundle_index_path.parent.parent / "bundles" / "index.json")
+        )
+        self.bundle_catalog_path = (
+            catalog_candidate if catalog_candidate.is_file() else None
+        )
         self._bundle_index_refresher = bundle_index_refresher
+        if (
+            self._bundle_index_refresher is None
+            and not self.bundle_index_refresh_command
+            and self.bundle_catalog_path is not None
+        ):
+            self._bundle_index_refresher = self._default_board_advance_refresher
         self._running: dict[str, RunningBundleLane] = {}
         self._stop_event = threading.Event()
         self._lock = threading.RLock()
@@ -4571,6 +4759,57 @@ class DynamicBundleScheduler:
             for lane in base_lanes
         ]
 
+    def _default_board_advance_refresher(self) -> None:
+        """Advance the live eligible index from board readiness + full catalog."""
+
+        catalog = self.bundle_catalog_path
+        if catalog is None:
+            return
+        todo_path: Path | None = None
+        try:
+            current = json.loads(self.bundle_index_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            current = {}
+        if isinstance(current, Mapping):
+            source_todo = str(current.get("source_todo") or "").strip()
+            if source_todo:
+                candidate = Path(source_todo)
+                if not candidate.is_absolute():
+                    candidate = self.repo_root / candidate
+                if candidate.is_file():
+                    todo_path = candidate
+        if todo_path is None:
+            try:
+                catalog_payload = json.loads(catalog.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                catalog_payload = {}
+            source_todo = str(
+                (catalog_payload or {}).get("source_todo") or ""
+            ).strip()
+            if source_todo:
+                candidate = Path(source_todo)
+                if not candidate.is_absolute():
+                    candidate = self.repo_root / candidate
+                if candidate.is_file():
+                    todo_path = candidate
+        if todo_path is None:
+            raise ValueError(
+                "board-advance refresh could not resolve source todo path"
+            )
+        report = advance_eligible_bundle_index_from_board(
+            eligible_index_path=self.bundle_index_path,
+            catalog_index_path=catalog,
+            todo_path=todo_path,
+            repo_root=self.repo_root,
+        )
+        if report.get("changed"):
+            logger.info(
+                "Advanced eligible bundle index: ready=%s completed=%s bundles=%s",
+                report.get("ready_task_ids"),
+                report.get("completed_task_ids"),
+                report.get("bundle_keys"),
+            )
+
     def _refresh_bundle_index_if_needed(self) -> bool:
         """Refresh a derived index before applying changed merge evidence."""
 
@@ -4589,6 +4828,17 @@ class DynamicBundleScheduler:
             capture_output=True,
             check=False,
         )
+        board_digest = ""
+        try:
+            current = json.loads(self.bundle_index_path.read_text(encoding="utf-8"))
+            source_todo = str((current or {}).get("source_todo") or "").strip()
+            if source_todo:
+                board = Path(source_todo)
+                if not board.is_absolute():
+                    board = self.repo_root / board
+                board_digest = _taskboard_sha256(board) if board.is_file() else ""
+        except (OSError, json.JSONDecodeError, TypeError):
+            board_digest = ""
         source_revision = tuple(
             [
                 *receipt_revision,
@@ -4597,6 +4847,7 @@ class DynamicBundleScheduler:
                     0,
                     0,
                 ),
+                (f"board:{board_digest}", 0, 0),
             ]
         )
         if (
@@ -6120,6 +6371,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=60.0,
         help="Positive timeout for the optional bundle-index refresh command",
     )
+    parser.add_argument(
+        "--bundle-catalog-path",
+        type=Path,
+        default=None,
+        help=(
+            "Full bundle catalog used to auto-advance the live eligible index "
+            "when the board soft-completes wave tasks (defaults to "
+            "<index-parent>/../bundles/index.json when present)"
+        ),
+    )
     parser.add_argument("--once", action="store_true", help="Run one reconciliation cycle and exit")
     implement_group = parser.add_mutually_exclusive_group()
     implement_group.add_argument("--implement", dest="implement", action="store_true")
@@ -6409,6 +6670,7 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
                 "bundle_index_refresh_timeout_seconds",
                 60.0,
             ),
+            bundle_catalog_path=getattr(args, "bundle_catalog_path", None),
             resource_policy={
                 "max_lanes": getattr(args, "max_lanes", 1) or 1,
                 "max_cpu_percent": getattr(args, "max_cpu_percent", 90),
