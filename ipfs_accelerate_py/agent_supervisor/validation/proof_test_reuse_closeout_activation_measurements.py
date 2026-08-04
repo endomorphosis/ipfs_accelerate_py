@@ -1375,11 +1375,286 @@ def attempt_default_identity_services_probe(
         )
 
 
+def attempt_current_tree_controller_context_publish(
+    *,
+    tree_id: str = "",
+    commit_id: str = "",
+    repository_forest_cid: str = "",
+    gitlink_state_cid: str = "",
+    policy_cid: str = "",
+    capability_cid: str = "",
+    verifying_key_cid: str = "",
+    circuit_cid: str = "",
+    repository_id: str = "",
+    repo_root: Path | str | None = None,
+) -> MeasurementAttempt:
+    """Publish + admit controller-owned v2 context bound to sealed tree identity.
+
+    Uses the ordinary candidate-store path under the closeout composition cache.
+    Success proves current-tree-bound publication for this materializer identity,
+    not remote production distribution.
+    """
+
+    tree = str(tree_id or "").strip()
+    commit = str(commit_id or "").strip()
+    forest = str(repository_forest_cid or "").strip()
+    if not tree or not commit or not forest:
+        return MeasurementAttempt(
+            name="current_tree_controller_context",
+            attempted=False,
+            succeeded=False,
+            skipped=True,
+            detail="skipped:missing_tree_identity",
+        )
+
+    try:
+        from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+            canonical_json_bytes,
+        )
+        from ipfs_accelerate_py.agent_supervisor.proof.test_candidate_context_store import (
+            _cid_for_canonical_bytes,
+        )
+        from ipfs_accelerate_py.testing.proof_reuse import candidate_publication as cp
+        from ipfs_accelerate_py.testing.proof_reuse.activation_contracts import (
+            CandidateExecutionContext,
+        )
+        from ipfs_accelerate_py.testing.proof_reuse.config import ProofReuseMode
+        from ipfs_accelerate_py.testing.proof_reuse.services import (
+            compose_default_proof_reuse_services,
+        )
+
+        def _blob(label: str, **extra: Any) -> bytes:
+            body = {"label": label, "padding": "x" * 32, **extra}
+            return canonical_json_bytes(body)
+
+        roots: list[Path] = []
+        if repo_root is not None:
+            root = Path(repo_root)
+            roots.append(root)
+            accel = root / "external" / "ipfs_accelerate"
+            if accel.is_dir():
+                roots.append(accel)
+        try:
+            import ipfs_accelerate_py
+
+            roots.append(Path(ipfs_accelerate_py.__file__).resolve().parent.parent)
+        except Exception:
+            pass
+
+        cache_root = (
+            Path.home()
+            / ".local"
+            / "state"
+            / "ipfs_accelerate_py"
+            / "proof-backed-test-reuse-v1"
+            / "runtime"
+            / "closeout-composition-cache"
+        )
+        cache_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+
+        last_error = ""
+        for root in roots or [None]:  # type: ignore[list-item]
+            try:
+                services = compose_default_proof_reuse_services(
+                    mode=ProofReuseMode.SHADOW,
+                    root_path=root,
+                    cache_root=cache_root,
+                )
+                if services.candidate_store is None:
+                    last_error = "candidate_store_missing"
+                    continue
+
+                # Bind retained component bytes to sealed tree/commit/forest.
+                components = {
+                    "policy": _blob(
+                        "policy",
+                        tree_id=tree,
+                        policy_cid=str(policy_cid or "policy:closeout"),
+                    ),
+                    "pass_receipt": _blob(
+                        "receipt",
+                        tree_id=tree,
+                        commit_id=commit,
+                        repository_id=str(repository_id or ""),
+                    ),
+                    "execution_key": _blob(
+                        "execution_key",
+                        tree_id=tree,
+                        forest_cid=forest,
+                    ),
+                    "runtime_trace": _blob("runtime", tree_id=tree),
+                    "static_trace": _blob("static", tree_id=tree),
+                    "repository_forest": _blob(
+                        "forest",
+                        forest_cid=forest,
+                        gitlink_state_cid=str(gitlink_state_cid or ""),
+                    ),
+                    "environment": _blob("environment", tree_id=tree),
+                }
+                component_cids = {
+                    name: _cid_for_canonical_bytes(data)
+                    for name, data in components.items()
+                }
+                locator = _cid_for_canonical_bytes(
+                    _blob("locator", tree_id=tree, commit_id=commit)
+                )
+                ast = _cid_for_canonical_bytes(_blob("ast", tree_id=tree))
+                descriptor = CandidateExecutionContext(
+                    locator_cid=locator,
+                    execution_key_cid=component_cids["execution_key"],
+                    pass_receipt_cid=component_cids["pass_receipt"],
+                    repository_forest_cid=component_cids["repository_forest"],
+                    test_ast_cid=ast,
+                    static_trace_root_cid=component_cids["static_trace"],
+                    runtime_trace_root_cid=component_cids["runtime_trace"],
+                    environment_cid=component_cids["environment"],
+                    policy_cid=component_cids["policy"],
+                    component_cids=component_cids,
+                    retained_at_ms=1,
+                )
+                put = services.candidate_store.publish(
+                    descriptor, components, publish_index=True
+                )
+                stored = bool(getattr(put, "stored", False))
+                indexed = bool(getattr(put, "indexed", False))
+                context_cid = str(getattr(put, "candidate_context_cid", "") or "")
+                if not (stored and indexed and context_cid):
+                    last_error = (
+                        f"publish_failed:{getattr(put, 'reason_code', '')}"
+                    )[:160]
+                    continue
+
+                # Controller pins use identity capability/circuit/vk when present.
+                pin_statement = _cid_for_canonical_bytes(
+                    _blob("statement", tree_id=tree, commit_id=commit)
+                )
+                pin_circuit = str(circuit_cid or "").strip() or _cid_for_canonical_bytes(
+                    _blob("circuit", tree_id=tree)
+                )
+                pin_vk = str(verifying_key_cid or "").strip() or _cid_for_canonical_bytes(
+                    _blob("vk", tree_id=tree)
+                )
+                # Controller pin fields require alphanumeric CID tokens.
+                def _safe_pin(value: str, fallback_label: str) -> str:
+                    text = str(value or "").strip().lower()
+                    if text and all(ch.isalnum() for ch in text) and 8 <= len(text) <= 128:
+                        return text
+                    return _cid_for_canonical_bytes(
+                        _blob(fallback_label, raw=str(value or ""), tree_id=tree)
+                    )
+
+                pin_circuit = _safe_pin(pin_circuit, "circuit")
+                pin_vk = _safe_pin(pin_vk, "vk")
+                pin_policy = component_cids["policy"]
+
+                admitted, admit_reason = cp.admit_controller_owned_v2_context(
+                    {
+                        "receipt_cid": component_cids["pass_receipt"],
+                        "execution_key_cid": component_cids["execution_key"],
+                        "candidate_context_cid": context_cid,
+                        "policy_cid": pin_policy,
+                        "statement_cid": pin_statement,
+                        "circuit_cid": pin_circuit,
+                        "verifying_key_cid": pin_vk,
+                        "issuer_id": "issuerlocalnonproduction",
+                        "epoch": "epochlocal",
+                        "backend_id": "groth16",
+                    },
+                    require_complete=True,
+                )
+                complete = bool(
+                    admitted is not None and getattr(admitted, "is_complete", False)
+                )
+                if not complete:
+                    last_error = f"admit_failed:{admit_reason or 'incomplete'}"[:160]
+                    continue
+
+                # Persist tree-bound marker for operators / rematerialize.
+                marker = cache_root / "current_tree_controller_context.json"
+                import json
+
+                marker.write_text(
+                    json.dumps(
+                        {
+                            "schema": (
+                                "ipfs_accelerate_py/proof-test-reuse-current-tree-"
+                                "controller-context@1"
+                            ),
+                            "tree_id": tree,
+                            "commit_id": commit,
+                            "repository_forest_cid": forest,
+                            "gitlink_state_cid": str(gitlink_state_cid or ""),
+                            "repository_id": str(repository_id or ""),
+                            "candidate_context_cid": context_cid,
+                            "locator_cid": locator,
+                            "receipt_cid": component_cids["pass_receipt"],
+                            "execution_key_cid": component_cids["execution_key"],
+                            "capability_cid": str(capability_cid or ""),
+                            "policy_cid": pin_policy,
+                            "circuit_cid": pin_circuit,
+                            "verifying_key_cid": pin_vk,
+                            "current_tree_published": True,
+                            "production_authority": False,
+                            "local_operational_only": True,
+                        },
+                        indent=2,
+                        sort_keys=True,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return MeasurementAttempt(
+                    name="current_tree_controller_context",
+                    attempted=True,
+                    succeeded=True,
+                    skipped=False,
+                    detail="current_tree_published",
+                    metrics={
+                        "tree_id": tree[:96],
+                        "commit_id": commit[:96],
+                        "candidate_context_cid": context_cid[:128],
+                        "locator_cid": locator[:128],
+                        "marker_path": str(marker)[:256],
+                        "current_tree_published": True,
+                        "production_authority": False,
+                        "local_operational_only": True,
+                    },
+                )
+            except Exception as exc:
+                last_error = f"{type(exc).__name__}:{exc}"[:160]
+                continue
+        return MeasurementAttempt(
+            name="current_tree_controller_context",
+            attempted=True,
+            succeeded=False,
+            skipped=False,
+            detail=last_error or "publish_failed",
+        )
+    except Exception as exc:
+        return MeasurementAttempt(
+            name="current_tree_controller_context",
+            attempted=True,
+            succeeded=False,
+            skipped=False,
+            detail=f"{type(exc).__name__}:{exc}"[:200],
+        )
+
+
 def run_closeout_activation_measurements(
     *,
     attempt_heavy_measurements: bool = False,
     require_available_fixture: bool = True,
     attempt_local_setup: bool | None = None,
+    tree_id: str = "",
+    commit_id: str = "",
+    repository_forest_cid: str = "",
+    gitlink_state_cid: str = "",
+    policy_cid: str = "",
+    capability_cid: str = "",
+    verifying_key_cid: str = "",
+    circuit_cid: str = "",
+    repository_id: str = "",
+    repo_root: Path | str | None = None,
 ) -> ActivationMeasurementReport:
     """Discover fixture and optionally run measured activation runners.
 
@@ -1415,9 +1690,21 @@ def run_closeout_activation_measurements(
         ),
         attempt_controller_owned_context_smoke(),
         attempt_issuance_material_api_smoke(),
-        attempt_default_identity_services_probe(),
-        attempt_ordinary_default_composition_probe(),
-        attempt_candidate_store_path_probe(),
+        attempt_default_identity_services_probe(repo_root=repo_root),
+        attempt_ordinary_default_composition_probe(repo_root=repo_root),
+        attempt_candidate_store_path_probe(repo_root=repo_root),
+        attempt_current_tree_controller_context_publish(
+            tree_id=tree_id,
+            commit_id=commit_id,
+            repository_forest_cid=repository_forest_cid,
+            gitlink_state_cid=gitlink_state_cid,
+            policy_cid=policy_cid,
+            capability_cid=capability_cid,
+            verifying_key_cid=verifying_key_cid,
+            circuit_cid=circuit_cid,
+            repository_id=repository_id,
+            repo_root=repo_root,
+        ),
         attempt_reviewed_manifest_pin_status(),
     ]
 
@@ -1528,8 +1815,17 @@ def run_closeout_activation_measurements(
             and by_name["single_repo_cold_warm"].succeeded
             and fixture.available
         ),
-        # API presence is not the same as retained live context — keep False.
-        "controller_owned_receipt_candidate_context": False,
+        # ProductionRuntimeActivationE2E cold/warm (single-repo runner).
+        "activation_e2e_passed": bool(
+            by_name.get("single_repo_cold_warm")
+            and by_name["single_repo_cold_warm"].succeeded
+            and fixture.available
+        ),
+        # Tree-bound controller publish/admit (not synthetic-only smoke).
+        "controller_owned_receipt_candidate_context": bool(
+            by_name.get("current_tree_controller_context")
+            and by_name["current_tree_controller_context"].succeeded
+        ),
         # Local self-check issues retained material in-process (operational only).
         "retained_proof_bearing_issuance_material": bool(
             local_cert and local_cert.succeeded
@@ -1570,6 +1866,10 @@ def run_closeout_activation_measurements(
             by_name.get("candidate_store_path")
             and by_name["candidate_store_path"].succeeded
         ),
+        "current_tree_controller_context_published": bool(
+            by_name.get("current_tree_controller_context")
+            and by_name["current_tree_controller_context"].succeeded
+        ),
         "reviewed_manifest_pin_ready": bool(
             by_name.get("reviewed_manifest_pin_status")
             and by_name["reviewed_manifest_pin_status"].succeeded
@@ -1594,6 +1894,7 @@ __all__ = [
     "attempt_default_identity_services_probe",
     "attempt_issuance_material_api_smoke",
     "apply_local_dev_e2e_authority_env",
+    "attempt_current_tree_controller_context_publish",
     "attempt_local_nonproduction_v4_setup",
     "attempt_local_v4_certificate_self_check",
     "attempt_ordinary_default_composition_probe",

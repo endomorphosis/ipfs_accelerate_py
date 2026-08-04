@@ -787,6 +787,16 @@ def produce_closeout_activation_probe(
         measurements = run_closeout_activation_measurements(
             attempt_heavy_measurements=bool(attempt_heavy_measurements),
             require_available_fixture=True,
+            tree_id=identity.git_tree_id,
+            commit_id=identity.git_commit_id,
+            repository_forest_cid=identity.repository_forest_cid,
+            gitlink_state_cid=identity.gitlink_state_cid,
+            policy_cid=identity.policy_cid,
+            capability_cid=identity.capability_cid,
+            verifying_key_cid=identity.verifying_key_cid,
+            circuit_cid=identity.circuit_cid,
+            repository_id=identity.repository_id,
+            repo_root=repo_root,
         )
         measurement_report = measurements.to_dict()
         measurement_claims = dict(measurements.claims_supported)
@@ -893,21 +903,32 @@ def produce_closeout_activation_probe(
                     )
                 )
             elif claim.field == "controller_owned_receipt_candidate_context":
-                # Path readiness (publish+admit smoke) is observed only; current-tree
-                # publication remains operator-owned and unproven here.
+                # Prove only when tree-bound publish+admit succeeded for this identity.
+                tree_published = bool(
+                    measurement_claims.get(
+                        "controller_owned_receipt_candidate_context"
+                    )
+                    or measurement_claims.get(
+                        "current_tree_controller_context_published"
+                    )
+                )
                 path_ready = bool(
-                    measurement_claims.get("candidate_publish_and_controller_admit_ready")
+                    tree_published
+                    or measurement_claims.get(
+                        "candidate_publish_and_controller_admit_ready"
+                    )
                     or measurement_claims.get("controller_owned_context_api_ready")
                 )
                 updated.append(
                     ActivationClaimAssessment(
                         field=claim.field,
                         observed=bool(claim.observed or path_ready),
-                        proven=False,
+                        proven=tree_published,
                         detail=(
-                            f"{claim.detail}; path_ready={path_ready}; current_tree_published=False"
+                            f"{claim.detail}; path_ready={path_ready}; "
+                            f"current_tree_published={tree_published}"
                         ),
-                        operator_action=claim.operator_action,
+                        operator_action="" if tree_published else claim.operator_action,
                     )
                 )
             else:
