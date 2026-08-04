@@ -1821,6 +1821,7 @@ def build_ergoai_live_toolchain_contract(
         "replay_bound": False,
     }
     live_vendor_execution = False
+    probe: dict[str, Any] = {}
     if run_semantics and advisors_installer is not None:
         resolved_root = advisors_installer.expand_user_local_root(install_root)
         probe = advisors_installer.probe_ergoai_identity(
@@ -2021,6 +2022,49 @@ def build_ergoai_live_toolchain_contract(
             "scope": "environment_guard_and_no_certifier_network_code_path",
         },
     }
+    # Bind managed tool identity (digests only; no host paths) so AVR can
+    # independently re-derive executable provenance without ambient PATH claims.
+    manifest = probe.get("manifest") if isinstance(probe, Mapping) else None
+    if not isinstance(manifest, Mapping):
+        manifest = {}
+    managed_identity = {
+        key: manifest.get(key)
+        for key in (
+            "schema_version",
+            "tool_id",
+            "version",
+            "selected_platform",
+            "release_tag",
+            "release_url",
+            "release_artifact_sha256",
+            "release_artifact_size_bytes",
+            "vendor_executable_sha256",
+            "xsb_configuration",
+            "xsb_executable_sha256",
+            "launcher_sha256",
+            "identity_digest_sha256",
+            "license_components",
+            "checksum_verified",
+            "is_live_vendor",
+            "is_hermetic_advisor_shim",
+            "atomic_publish",
+            "relocatable_install",
+            "install_publication_model",
+        )
+    }
+    payload["managed_identity"] = managed_identity
+    payload["executable_sha256"] = managed_identity.get(
+        "vendor_executable_sha256"
+    )
+    payload["identity"] = {
+        "executable_sha256": managed_identity.get("vendor_executable_sha256"),
+        "launcher_sha256": managed_identity.get("launcher_sha256"),
+    }
+    payload["managed_vendor_live_evidence"] = bool(live_vendor_execution)
+    payload["vendor_certified"] = bool(contract_passed and live_vendor_execution)
+    payload["observed_at"] = datetime.now(timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     payload["receipt_digest_sha256"] = content_digest(payload)
     return payload
 

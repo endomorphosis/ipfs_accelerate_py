@@ -869,6 +869,38 @@
     "kernel_network_namespace": false,
     "scope": "environment_guard_and_no_certifier_network_code_path"
   },
-  "receipt_digest_sha256": "a0c1217e0aa7a7b3e5678d8adc617c56389b9a3a5308b9397912600201dba1ed",
-  "observed_at": "2026-08-04T19:14:37Z"
+  "managed_identity": {
+    "schema_version": "ergoai-managed-vendor-identity/v1",
+    "tool_id": "ergoai",
+    "version": "3.0",
+    "selected_platform": "linux-aarch64",
+    "release_tag": "v3.0_release",
+    "release_url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+    "release_artifact_sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+    "release_artifact_size_bytes": 53064767,
+    "vendor_executable_sha256": "8b48afaaf0baf79c2d6132e0099eb4c570e866ede6935a5603ee91eecc9e24c5",
+    "xsb_configuration": "aarch64-unknown-linux-gnu",
+    "xsb_executable_sha256": "8fc056027fd06556efa075373208fba995e855a74a0c0b12c37ac3760843a8c9",
+    "launcher_sha256": "9af6efe5c7cd63b67253202669506acd4055339b8a97d84e83f24bfc031d2190",
+    "identity_digest_sha256": "5f793a97419b0514936113853862b45f1007cfca94d2c268d61ef40107f88796",
+    "license_components": [
+      "Apache-2.0",
+      "LGPL-2.0"
+    ],
+    "checksum_verified": true,
+    "is_live_vendor": true,
+    "is_hermetic_advisor_shim": false,
+    "atomic_publish": true,
+    "relocatable_install": true,
+    "install_publication_model": "staged_vendor_atomic_rename_private_runtime_workspaces_identity_commit_v4"
+  },
+  "executable_sha256": "8b48afaaf0baf79c2d6132e0099eb4c570e866ede6935a5603ee91eecc9e24c5",
+  "identity": {
+    "executable_sha256": "8b48afaaf0baf79c2d6132e0099eb4c570e866ede6935a5603ee91eecc9e24c5",
+    "launcher_sha256": "9af6efe5c7cd63b67253202669506acd4055339b8a97d84e83f24bfc031d2190"
+  },
+  "managed_vendor_live_evidence": true,
+  "vendor_certified": true,
+  "observed_at": "2026-08-04T19:19:57Z",
+  "receipt_digest_sha256": "8a428527abc67adafa666e93de0592a66830cc67d6361ac729ca22585641cde5"
 }

@@ -10536,23 +10536,33 @@ def _authoritative_case_audit(
     ]
     passed: set[str] = set()
     failed: set[str] = set()
+    required_set = set(required)
+    # Prefer case_id / check_id over generic CheckResult.kind values such as
+    # "acceptance" or "policy" that would otherwise hide the required case name.
     for row in rows:
-        kind = _authoritative_case_kind(
-            row.get("kind")
-            or row.get("case_kind")
-            or row.get("case_id")
-            or row.get("check_id")
-        )
-        # Check ids often contain a namespace prefix; accept an exact required
-        # suffix while keeping each required kind independently represented.
-        matched = kind if kind in set(required) else next(
-            (
-                expected
-                for expected in sorted(required, key=len, reverse=True)
-                if kind.endswith(f"_{expected}")
-            ),
-            None,
-        )
+        matched: str | None = None
+        for source in (
+            row.get("case_kind"),
+            row.get("case_id"),
+            row.get("check_id"),
+            row.get("kind"),
+        ):
+            kind = _authoritative_case_kind(source)
+            if not kind:
+                continue
+            if kind in required_set:
+                matched = kind
+                break
+            matched = next(
+                (
+                    expected
+                    for expected in sorted(required_set, key=len, reverse=True)
+                    if kind.endswith(f"_{expected}")
+                ),
+                None,
+            )
+            if matched is not None:
+                break
         if matched is None:
             continue
         status = str(row.get("status") or "").lower()
