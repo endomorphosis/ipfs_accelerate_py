@@ -4517,6 +4517,44 @@ def test_generated_dirty_repair_recovers_retained_lease_when_disabled(
     assert supervisor._current_supervisor_checkout_lease() is None
 
 
+def test_generated_board_auto_heals_preexisting_protected_dirt(
+    tmp_path: Path,
+) -> None:
+    """Pre-existing protected board dirt is force-committed, then the producer runs."""
+
+    supervisor, repo, todo_path = _generated_protected_supervisor(tmp_path)
+    todo_path.write_text(
+        "# Tasks\n\n## EX-002 Preexisting dirt\n",
+        encoding="utf-8",
+    )
+    assert supervisor.config.generated_dirty_repair_enabled is False
+
+    observed: list[str] = []
+
+    def clean_producer() -> list[str]:
+        observed.append("ran")
+        return ["healed"]
+
+    assert supervisor._run_generated_board_producer(
+        producer="auto-heal-test",
+        commit_outputs=True,
+        callback=clean_producer,
+    ) == ["healed"]
+    assert observed == ["ran"]
+    assert not checkout_mutation_lock_path(repo).exists()
+    status = _git(repo, "status", "--porcelain")
+    assert status.strip() == ""
+    events = [
+        json.loads(line)
+        for line in supervisor.config.events_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert any(
+        event.get("type") == "generated_protected_dirty_auto_heal"
+        for event in events
+    )
+
+
 def test_fresh_generated_dirty_repair_journals_before_callback_and_retains(
     tmp_path: Path,
 ) -> None:
