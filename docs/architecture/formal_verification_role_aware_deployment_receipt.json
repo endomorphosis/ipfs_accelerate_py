@@ -1,136 +1,964 @@
 {
-  "schema_version": "formal-verification-role-aware-deployment-receipt/v1",
-  "interface": "RoleAwareFormalVerificationRelease@1",
-  "program_interface": "FormalVerificationTacticianRelease@1",
-  "program_goal_id": "FVT-G000",
-  "goal_id": "FVT-G214",
-  "task_id": "FVT-067",
-  "program": "formal-verification-tactician/toolchain-release-finalizer",
-  "observed_at": "2026-08-04T21:49:27Z",
+  "acceptance": {
+    "artifacts_present": true,
+    "authority_ceiling_respected": true,
+    "candidate_digest_bound": true,
+    "candidate_digest_material_bound": false,
+    "circular_tree_identity_forbidden": true,
+    "completion_receipt_bound": true,
+    "datasets_gitlink_bound": true,
+    "event_chain_continuous": true,
+    "g213_expected_outputs_bound": true,
+    "g213_terminal_receipt_bound": true,
+    "hard_zero_gates_clear": true,
+    "hard_zero_gates_derived": true,
+    "merged_commit_bound": true,
+    "never_claims_current_task_future_event": true,
+    "no_install_during_offline_certification": true,
+    "origin_publication_bound": true,
+    "platform_exceptions_derived_and_narrow": true,
+    "public_surfaces_bound": true,
+    "publication_bound": true,
+    "quarantines_bound": true,
+    "release_candidate_bound": false,
+    "release_candidate_merge_blob_bound": true,
+    "required_elevations_complete": false,
+    "role_aware_certificate_bound": true,
+    "source_tree_bound": true,
+    "supported_capability_closure": false,
+    "synthetic_evidence_cannot_certify_production": true,
+    "validation_result_bound": true
+  },
+  "artifacts": {
+    "completion_receipt": {
+      "content_identity": "sha256:87e089a7127847eedcbc543736bd10af6c02e488a129333d38537e1459400519",
+      "path": "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
+      "present": true
+    },
+    "deployment_receipt": {
+      "path": "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
+      "present_before_generation": true,
+      "publication_identity": "self:receipt_identity"
+    },
+    "finalizer": {
+      "content_identity": "sha256:a3b4f7120eddb15b9e6a10c38fcb02acc3807b480074e29b50a41067fe290927",
+      "path": "tools/logic/finalize_formal_verification_deployment.py",
+      "present": true
+    },
+    "post_merge_test": {
+      "content_identity": "sha256:e7fe26b284115c810fdbd42f8cbd1052e6ff611f0918d299c3ee1f49c13b97d3",
+      "path": "test/integration/test_formal_verification_role_aware_post_merge_attestation.py",
+      "present": true
+    },
+    "release_candidate": {
+      "content_identity": "sha256:9ccda9f2d765802475857005d41ae0e2c0be49daa6c5be39ea98bf6f9ac45beb",
+      "file_sha256": "sha256:21a174efba2db036d923067227e60ea38aa84f73eee3e3b122b66e8d1a71a9da",
+      "path": "docs/architecture/formal_verification_role_aware_release_candidate.json",
+      "present": true
+    },
+    "toolchain_certificate": {
+      "content_identity": "sha256:537c99cffd192159f4f65b31e5b0005e152c7a92660872c02621f824a343509f",
+      "path": "docs/architecture/formal_verification_toolchain_certificate.json",
+      "present": true,
+      "role_aware_digest": "df6356080f1068736bc10485359d894448af79d4502601bc75de9488c3ee8c5f"
+    }
+  },
   "binding_mode": "post_merge_external_content_addressed_attestation",
-  "publication_mode": "external_content_addressed",
-  "status": "role_aware_deployment_blocked",
-  "readiness_stage": "blocked",
+  "claims": {
+    "current_task_future_event": false,
+    "deployment": false,
+    "max_stage": "blocked",
+    "merge": true,
+    "post_merge_attestation": false,
+    "self_referential_current_tree": false
+  },
+  "completion": {
+    "child_goal_count": 86,
+    "child_goals_bound": 85,
+    "completion_goal_id": "FVT-G090",
+    "deployment_status": "machine_specific_partial",
+    "implementation_status": "complete",
+    "interface": "FormalVerificationTacticianCompletionReceipt@1",
+    "receipt_identity": "sha256:87e089a7127847eedcbc543736bd10af6c02e488a129333d38537e1459400519",
+    "task_id": "FVT-036"
+  },
+  "deployment_blockers": [
+    "candidate_digest_material_bound",
+    "managed:apalache:full_semantic_check_set_missing_or_failed",
+    "managed:apalache:locked_version_mismatch",
+    "managed:apalache:semantic_evidence_below_authority_ceiling",
+    "managed:apalache:semantic_receipt_not_bound",
+    "managed:apalache:supported_managed_installation_missing_or_shim_only",
+    "managed:autohyper:full_semantic_check_set_missing_or_failed",
+    "managed:autohyper:locked_version_mismatch",
+    "managed:autohyper:semantic_evidence_below_authority_ceiling",
+    "managed:autohyper:semantic_receipt_not_bound",
+    "managed:autohyper:supported_managed_installation_missing_or_shim_only",
+    "managed:coq:full_semantic_check_set_missing_or_failed",
+    "managed:coq:locked_version_mismatch",
+    "managed:coq:semantic_evidence_below_authority_ceiling",
+    "managed:coq:semantic_receipt_not_bound",
+    "managed:coq:supported_managed_installation_missing_or_shim_only",
+    "managed:eprover:full_semantic_check_set_missing_or_failed",
+    "managed:eprover:locked_version_mismatch",
+    "managed:eprover:semantic_evidence_below_authority_ceiling",
+    "managed:eprover:semantic_receipt_not_bound",
+    "managed:eprover:supported_managed_installation_missing_or_shim_only",
+    "managed:ergoai:locked_version_mismatch",
+    "managed:ergoai:supported_managed_installation_missing_or_shim_only",
+    "managed:hyperltl:full_semantic_check_set_missing_or_failed",
+    "managed:hyperltl:locked_version_mismatch",
+    "managed:hyperltl:semantic_evidence_below_authority_ceiling",
+    "managed:hyperltl:semantic_receipt_not_bound",
+    "managed:hyperltl:supported_managed_installation_missing_or_shim_only",
+    "managed:isabelle:full_semantic_check_set_missing_or_failed",
+    "managed:isabelle:locked_version_mismatch",
+    "managed:isabelle:semantic_evidence_below_authority_ceiling",
+    "managed:isabelle:semantic_receipt_not_bound",
+    "managed:isabelle:supported_managed_installation_missing_or_shim_only",
+    "managed:maude:locked_version_mismatch",
+    "managed:maude:supported_managed_installation_missing_or_shim_only",
+    "managed:mchyper:full_semantic_check_set_missing_or_failed",
+    "managed:mchyper:locked_version_mismatch",
+    "managed:mchyper:semantic_evidence_below_authority_ceiling",
+    "managed:mchyper:semantic_receipt_not_bound",
+    "managed:mchyper:supported_managed_installation_missing_or_shim_only",
+    "managed:opam:locked_version_mismatch",
+    "managed:opam:supported_managed_installation_missing_or_shim_only",
+    "managed:proverif:full_semantic_check_set_missing_or_failed",
+    "managed:proverif:locked_version_mismatch",
+    "managed:proverif:semantic_evidence_below_authority_ceiling",
+    "managed:proverif:semantic_receipt_not_bound",
+    "managed:proverif:supported_managed_installation_missing_or_shim_only",
+    "managed:runtime-mtl-external:locked_version_mismatch",
+    "managed:runtime-mtl-external:semantic_evidence_below_authority_ceiling",
+    "managed:runtime-mtl-external:supported_managed_installation_missing_or_shim_only",
+    "managed:secpal:full_semantic_check_set_missing_or_failed",
+    "managed:secpal:locked_version_mismatch",
+    "managed:secpal:supported_managed_installation_missing_or_shim_only",
+    "managed:souffle:full_semantic_check_set_missing_or_failed",
+    "managed:souffle:locked_version_mismatch",
+    "managed:souffle:supported_managed_installation_missing_or_shim_only",
+    "managed:stack:locked_version_mismatch",
+    "managed:stack:supported_managed_installation_missing_or_shim_only",
+    "managed:tamarin:full_semantic_check_set_missing_or_failed",
+    "managed:tamarin:locked_version_mismatch",
+    "managed:tamarin:semantic_evidence_below_authority_ceiling",
+    "managed:tamarin:semantic_receipt_not_bound",
+    "managed:tamarin:supported_managed_installation_missing_or_shim_only",
+    "managed:temurin-jdk:locked_version_mismatch",
+    "managed:tlc:full_semantic_check_set_missing_or_failed",
+    "managed:tlc:locked_version_mismatch",
+    "managed:tlc:semantic_evidence_below_authority_ceiling",
+    "managed:tlc:semantic_receipt_not_bound",
+    "managed:tlc:supported_managed_installation_missing_or_shim_only",
+    "managed:vampire:full_semantic_check_set_missing_or_failed",
+    "managed:vampire:locked_version_mismatch",
+    "managed:vampire:semantic_evidence_below_authority_ceiling",
+    "managed:vampire:semantic_receipt_not_bound",
+    "managed:vampire:supported_managed_installation_missing_or_shim_only",
+    "release_candidate_bound",
+    "release_candidate_digest_material_invalid",
+    "supported_capability_closure"
+  ],
   "description": "Fail-closed post-merge deployment attestation (FVT-G214). Binds the FVT-G213 release candidate, its durable terminal supervisor completion receipt, and publishes either an external content-addressed attestation or a receipt commit with a strictly limited generated-artifact diff. Never attests the current task's future event and never claims deployment-ready without terminal evidence.",
-  "source": {
-    "model": "two_phase_source_then_attestation_publication/v1",
-    "certified_source_commit": "2c6964f8874c56dd8b33a453cf25795be16b3c9a",
-    "certified_source_tree": "cd36d3370adf4ddbb8f5f9635ac04354dbea9154",
-    "datasets_gitlink": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
-    "datasets_embedded_head": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
-    "source_commit_bound": true,
-    "source_candidate_clean": false,
-    "dirty_paths_at_certification": [
-      "docs/architecture/formal_verification_tactician_benchmark.json",
-      "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
-      "tools/logic/build_formal_verification_tactician_receipt.py"
+  "disclosures": {
+    "assurance_ceilings": {
+      "absent_terminal_evidence_is_never_deployment_ready": true,
+      "advisor_support_shadow_cannot_certify": true,
+      "fixture_is_not_production_certified": true,
+      "path_presence_is_not_usability": true,
+      "release_candidate_is_not_deployment_certificate": true,
+      "source_presence_is_not_usability": true,
+      "synthetic_evidence_cannot_certify_production": true,
+      "unavailable_cannot_count_as_complete": true
+    },
+    "merely_usable_tools": [
+      "datalog-authorization",
+      "java",
+      "runtime-mtl",
+      "secpal-authorization",
+      "symbolicai"
     ],
-    "non_attestation_dirty_paths": [
-      "docs/architecture/formal_verification_tactician_benchmark.json",
-      "tools/logic/build_formal_verification_tactician_receipt.py"
+    "missing_required_elevations": [
+      "runtime-mtl",
+      "datalog-authorization",
+      "secpal-authorization",
+      "coq",
+      "isabelle"
     ],
-    "attestation_paths": [
+    "remaining_bounds": [
+      "Post-merge attestation requires durable FVT-066 terminal member completion and a reachable published merge commit.",
+      "External content-addressed publication never hashes the tree containing this receipt.",
+      "Receipt-commit publication must parent on the certified release commit and limit the diff to generated artifacts.",
+      "FVT-067 never attests its own future merge event."
+    ],
+    "supported_managed_capability_blockers": [
+      {
+        "artifact_classes": [],
+        "authority_ceiling": "bounded",
+        "category": "capability",
+        "evidence_class": "unavailable",
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ],
+        "role": "authority",
+        "tool_id": "apalache"
+      },
+      {
+        "artifact_classes": [],
+        "authority_ceiling": "bounded",
+        "category": "capability",
+        "evidence_class": "unavailable",
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ],
+        "role": "authority",
+        "tool_id": "autohyper"
+      },
+      {
+        "artifact_classes": [],
+        "authority_ceiling": "kernel",
+        "category": "capability",
+        "evidence_class": "external_prover_installation_pending",
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ],
+        "role": "authority",
+        "tool_id": "coq"
+      },
+      {
+        "artifact_classes": [],
+        "authority_ceiling": "reconstruction",
+        "category": "capability",
+        "evidence_class": "unavailable",
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ],
+        "role": "authority",
+        "tool_id": "eprover"
+      },
+      {
+        "artifact_classes": [
+          "repository_source"
+        ],
+        "authority_ceiling": "advisory",
+        "category": "capability",
+        "evidence_class": "proposal_only_semantics",
+        "reasons": [
+          "locked_version_mismatch",
+          "supported_managed_installation_missing_or_shim_only"
+        ],
+        "role": "advisor",
+        "tool_id": "ergoai"
+      },
+      {
+        "artifact_classes": [],
+        "authority_ceiling": "bounded",
+        "category": "capability",
+        "evidence_class": "unavailable",
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ],
+        "role": "authority",
+        "tool_id": "hyperltl"
+      },
+      {
+        "artifact_classes": [],
+        "authority_ceiling": "kernel",
+        "category": "capability",
+        "evidence_class": "external_prover_installation_pending",
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ],
+        "role": "authority",
+        "tool_id": "isabelle"
+      },
+      {
+        "artifact_classes": [],
+        "authority_ceiling": "bounded",
+        "category": "capability",
+        "evidence_class": "unavailable",
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ],
+        "role": "authority",
+        "tool_id": "mchyper"
+      },
+      {
+        "artifact_classes": [],
+        "authority_ceiling": "protocol",
+        "category": "capability",
+        "evidence_class": "unavailable",
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ],
+        "role": "authority",
+        "tool_id": "proverif"
+      },
+      {
+        "artifact_classes": [
+          "generated_hermetic_shim",
+          "repository_source"
+        ],
+        "authority_ceiling": "finite_trace",
+        "category": "capability",
+        "evidence_class": "hermetic_adapter_shim",
+        "reasons": [
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "supported_managed_installation_missing_or_shim_only"
+        ],
+        "role": "authority",
+        "tool_id": "runtime-mtl-external"
+      },
+      {
+        "artifact_classes": [],
+        "authority_ceiling": "none",
+        "category": "capability",
+        "evidence_class": "unavailable",
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "supported_managed_installation_missing_or_shim_only"
+        ],
+        "role": "shadow",
+        "tool_id": "secpal"
+      },
+      {
+        "artifact_classes": [],
+        "authority_ceiling": "none",
+        "category": "capability",
+        "evidence_class": "unavailable",
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "supported_managed_installation_missing_or_shim_only"
+        ],
+        "role": "shadow",
+        "tool_id": "souffle"
+      },
+      {
+        "artifact_classes": [],
+        "authority_ceiling": "protocol",
+        "category": "capability",
+        "evidence_class": "unavailable",
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ],
+        "role": "authority",
+        "tool_id": "tamarin"
+      },
+      {
+        "artifact_classes": [],
+        "authority_ceiling": "bounded",
+        "category": "capability",
+        "evidence_class": "unavailable",
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ],
+        "role": "authority",
+        "tool_id": "tlc"
+      },
+      {
+        "artifact_classes": [],
+        "authority_ceiling": "reconstruction",
+        "category": "capability",
+        "evidence_class": "unavailable",
+        "reasons": [
+          "full_semantic_check_set_missing_or_failed",
+          "locked_version_mismatch",
+          "semantic_evidence_below_authority_ceiling",
+          "semantic_receipt_not_bound",
+          "supported_managed_installation_missing_or_shim_only"
+        ],
+        "role": "authority",
+        "tool_id": "vampire"
+      }
+    ],
+    "supported_managed_dependency_blockers": [
+      {
+        "artifact_classes": [],
+        "authority_ceiling": "none",
+        "category": "dependency",
+        "evidence_class": "unavailable",
+        "reasons": [
+          "locked_version_mismatch",
+          "supported_managed_installation_missing_or_shim_only"
+        ],
+        "role": "support",
+        "tool_id": "maude"
+      },
+      {
+        "artifact_classes": [],
+        "authority_ceiling": "none",
+        "category": "dependency",
+        "evidence_class": "unavailable",
+        "reasons": [
+          "locked_version_mismatch",
+          "supported_managed_installation_missing_or_shim_only"
+        ],
+        "role": "support",
+        "tool_id": "opam"
+      },
+      {
+        "artifact_classes": [],
+        "authority_ceiling": "none",
+        "category": "dependency",
+        "evidence_class": "unavailable",
+        "reasons": [
+          "locked_version_mismatch",
+          "supported_managed_installation_missing_or_shim_only"
+        ],
+        "role": "support",
+        "tool_id": "stack"
+      },
+      {
+        "artifact_classes": [
+          "native_or_managed_binary"
+        ],
+        "authority_ceiling": "none",
+        "category": "dependency",
+        "evidence_class": "version_mismatch",
+        "reasons": [
+          "locked_version_mismatch"
+        ],
+        "role": "support",
+        "tool_id": "temurin-jdk"
+      }
+    ],
+    "unavailable_tools": [
+      "apalache",
+      "autohyper",
+      "coq",
+      "eprover",
+      "ergoai",
+      "hyperltl",
+      "isabelle",
+      "maude",
+      "mchyper",
+      "opam",
+      "proverif",
+      "runtime-mtl-external",
+      "secpal",
+      "souffle",
+      "stack",
+      "tamarin",
+      "tlc",
+      "vampire"
+    ]
+  },
+  "elevations": {
+    "elevated_tool_ids": [
+      "lean",
+      "zkp-circuit"
+    ],
+    "merely_usable_tool_ids": [
+      "datalog-authorization",
+      "java",
+      "runtime-mtl",
+      "secpal-authorization",
+      "symbolicai"
+    ],
+    "missing_required": [
+      "runtime-mtl",
+      "datalog-authorization",
+      "secpal-authorization",
+      "coq",
+      "isabelle"
+    ],
+    "production_certified_tool_ids": [
+      "cvc5",
+      "lean",
+      "z3",
+      "zkp-circuit"
+    ],
+    "required": [
+      "lean",
+      "runtime-mtl",
+      "datalog-authorization",
+      "secpal-authorization",
+      "coq",
+      "isabelle"
+    ]
+  },
+  "goal_id": "FVT-G214",
+  "hard_zero_gates": {
+    "authority_boundary_violations": 0,
+    "derivation": {
+      "benchmark_evidence": {
+        "authoritative": true,
+        "authority_anchor": {
+          "bound": true,
+          "content_id": "sha256:3f9c4269ee718b98453f621c9ff7614616ea0cd99d48baaab3060b9a98a998f0",
+          "failures": [],
+          "goal_id": "FVT-G063",
+          "interface": "GoalTacticianAuthoritativeBenchmarkEvidence@1",
+          "present": true,
+          "report_id": "goal-tactician-bench-b9506430763dc4be6319e83a28e56a4ad4fd10e7b6a83ab14d86c5aa33c0fd4a",
+          "schema": "ipfs_accelerate_py.agent_supervisor.goal_tactician_authoritative_benchmark_evidence@1",
+          "verifier": {
+            "bound": true,
+            "function": "verify_authoritative_benchmark_evidence",
+            "path": "ipfs_accelerate_py/agent_supervisor/proof/goal_tactician_metrics.py",
+            "present": true,
+            "sha256": "sha256:097608f90002bae389517aa64ca2dd9bb50f62edbeb588f14bf0232c6a7822a7"
+          }
+        },
+        "branch_live_cohort_pending_main_merge": false,
+        "evidence_classes": [
+          "live"
+        ],
+        "failures": [],
+        "hard_gates": {
+          "authority": {
+            "actual_bps": 10000,
+            "required_bps": 10000,
+            "status": "pass"
+          },
+          "correctness": {
+            "actual_bps": 10000,
+            "required_bps": 10000,
+            "status": "pass"
+          },
+          "privacy": {
+            "actual_bps": 10000,
+            "required_bps": 10000,
+            "status": "pass"
+          }
+        },
+        "hard_zero_clearable": true,
+        "report_id": "goal-tactician-bench-b9506430763dc4be6319e83a28e56a4ad4fd10e7b6a83ab14d86c5aa33c0fd4a",
+        "report_id_valid": true
+      },
+      "benchmark_hard_gates_required_bps": 10000,
+      "branch_live_cohort_pending_main_merge": false,
+      "certificate_identity_valid": true,
+      "complete": true,
+      "fixture_or_synthetic_benchmark_cannot_clear": false,
+      "hardcoded_success_counters_forbidden": true,
+      "invalid_p0_resolutions": [],
+      "missing_measurements": [],
+      "open_baseline_findings": [
+        {
+          "id": "synthetic_examples_and_metrics",
+          "severity": "medium",
+          "status": "open",
+          "summary": "Examples and some readiness metrics remain synthetic/offline and must stay labeled."
+        }
+      ],
+      "open_baseline_findings_disclosed": 1,
+      "open_p0_findings": [],
+      "open_p0_findings_block_clearance": true,
+      "p0_gate_pressure": {
+        "authority_boundary_violations": 0,
+        "false_closure_count": 0,
+        "false_proof_count": 0,
+        "secret_or_witness_leakage_count": 0
+      },
+      "resolved_p0_findings": [
+        {
+          "id": "receipt_verification_fail_open",
+          "resolution_evidence": {
+            "failures": [],
+            "implementation_artifacts": [
+              {
+                "content_identity": "sha256:254728bfae3465e96b39be8628c67a63273ec3577fb39f17f2cfb12d93519075",
+                "implementation_commit": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
+                "path": "ipfs_datasets_py/logic/verification_api.py",
+                "repository": "ipfs_datasets_py"
+              }
+            ],
+            "implementation_commits": [
+              {
+                "commit": "2296a8a1e7cb7335c7d5417eab74d41044d3dcc1",
+                "repository": "root"
+              },
+              {
+                "commit": "a36437445a9ee2352de04a26eff0de5c802eb8d5",
+                "repository": "ipfs_datasets_py"
+              },
+              {
+                "commit": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
+                "repository": "ipfs_datasets_py"
+              }
+            ],
+            "schema_version": "formal-verification-p0-resolution-evidence/v1",
+            "valid": true,
+            "validation_tests": [
+              {
+                "content_identity": "sha256:86d003c9598f2344d5c2b352795600194e2c99f722aa922e563bc67e44aed5a4",
+                "implementation_commit": "a36437445a9ee2352de04a26eff0de5c802eb8d5",
+                "path": "tests/unit/logic/test_verification_receipt_adversarial.py",
+                "repository": "ipfs_datasets_py"
+              },
+              {
+                "content_identity": "sha256:8d07842785c02ff120edc28e2a05d60210d6e8e16c1ba8f329e04da3418dbd72",
+                "implementation_commit": "2296a8a1e7cb7335c7d5417eab74d41044d3dcc1",
+                "path": "test/api/test_logic_receipt_authority_boundary.py",
+                "repository": "root"
+              }
+            ]
+          },
+          "severity": "p0",
+          "status": "resolved",
+          "summary": "verify_receipt rejected empty, unknown-schema, forged-authority, stale, and binding-mismatched receipts after FVT-003."
+        },
+        {
+          "id": "public_counterexample_raw_leak",
+          "resolution_evidence": {
+            "failures": [],
+            "implementation_artifacts": [
+              {
+                "content_identity": "sha256:254728bfae3465e96b39be8628c67a63273ec3577fb39f17f2cfb12d93519075",
+                "implementation_commit": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
+                "path": "ipfs_datasets_py/logic/verification_api.py",
+                "repository": "ipfs_datasets_py"
+              },
+              {
+                "content_identity": "sha256:a42e976923b854724a4585f108e4272586d8a22c9694551412bd12055cc0b4d7",
+                "implementation_commit": "194f9cbcc64bb07cf4849485a7665e9285ee71c9",
+                "path": "ipfs_datasets_py/logic/software_verification/counterexamples/contracts.py",
+                "repository": "ipfs_datasets_py"
+              }
+            ],
+            "implementation_commits": [
+              {
+                "commit": "d024bb38fe123f79a0e6327545b09755c89e476a",
+                "repository": "root"
+              },
+              {
+                "commit": "194f9cbcc64bb07cf4849485a7665e9285ee71c9",
+                "repository": "ipfs_datasets_py"
+              },
+              {
+                "commit": "20a3fef9229c7f4bab7e960d489b9ce438b506ea",
+                "repository": "ipfs_datasets_py"
+              }
+            ],
+            "schema_version": "formal-verification-p0-resolution-evidence/v1",
+            "valid": true,
+            "validation_tests": [
+              {
+                "content_identity": "sha256:115c75ce3c35239d7f1de9df984f5a68c2481fae8ce90dcb31a006383a776712",
+                "implementation_commit": "194f9cbcc64bb07cf4849485a7665e9285ee71c9",
+                "path": "tests/unit/logic/test_counterexample_public_boundary.py",
+                "repository": "ipfs_datasets_py"
+              },
+              {
+                "content_identity": "sha256:4b850fae71f8d43cad2325e6c94a1d9149b878e363a9a8928d7b1fe2840d2fab",
+                "implementation_commit": "d024bb38fe123f79a0e6327545b09755c89e476a",
+                "path": "test/api/test_counterexample_cross_repository_contract.py",
+                "repository": "root"
+              }
+            ]
+          },
+          "severity": "p0",
+          "status": "resolved",
+          "summary": "Public datasets and supervisor projections now share a secret-safe semantic boundary and do not re-emit private channels."
+        },
+        {
+          "id": "structural_repair_as_closure",
+          "resolution_evidence": {
+            "failures": [],
+            "implementation_artifacts": [
+              {
+                "content_identity": "sha256:809146ebba134157fd5d9d96e07071e2377797a9cd08f8906501c7caf7d653cf",
+                "implementation_commit": "9895859501076c2e4a3f9212599dc5e27b8e285a",
+                "path": "ipfs_accelerate_py/agent_supervisor/planning/formal_replanner.py",
+                "repository": "root"
+              }
+            ],
+            "implementation_commits": [
+              {
+                "commit": "9895859501076c2e4a3f9212599dc5e27b8e285a",
+                "repository": "root"
+              },
+              {
+                "commit": "a98029cfd178f814ce23c2a0027ba425ee8b0719",
+                "repository": "root"
+              }
+            ],
+            "schema_version": "formal-verification-p0-resolution-evidence/v1",
+            "valid": true,
+            "validation_tests": [
+              {
+                "content_identity": "sha256:666580020f916ce3b6503d9ca2f75adb4a1cdf426ac078f2cbb9ce1ca1941653",
+                "implementation_commit": "a98029cfd178f814ce23c2a0027ba425ee8b0719",
+                "path": "test/api/test_agent_supervisor_formal_replanner_verifier_closure.py",
+                "repository": "root"
+              }
+            ]
+          },
+          "severity": "p0",
+          "status": "resolved",
+          "summary": "Formal replanning now requires a fresh, fully bound verifier receipt before counterexample closure."
+        }
+      ],
+      "source": "content_bound_certificate_live_benchmark_and_open_p0_baseline_findings"
+    },
+    "false_closure_count": 0,
+    "false_proof_count": 0,
+    "secret_or_witness_leakage_count": 0,
+    "unresolved_cross_provider_disagreement_count": 0
+  },
+  "interface": "RoleAwareFormalVerificationRelease@1",
+  "notes": [
+    "RoleAwareFormalVerificationRelease@1 post-merge finalizer for FVT-G214 / FVT-067 after FVT-G213 release-candidate merge.",
+    "Bulk formal certificates are bound by digest; rebuild from the live certifier rather than embedding full semantic dumps.",
+    "Sole post-merge finalizer; read live state without mutation."
+  ],
+  "observed_at": "2026-08-04T23:09:21Z",
+  "platform_exceptions": [],
+  "post_merge": {
+    "claims_own_future_event": false,
+    "current_task_id": "FVT-067",
+    "depends_on_goal": "FVT-G213",
+    "depends_on_task": "FVT-066",
+    "generated_artifact_paths": [
       "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
-      "docs/architecture/formal_verification_role_aware_release_candidate.json",
       "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
       "docs/architecture/formal_verification_toolchain_certificate.json"
     ],
-    "attestation_excluded_from_source_tree": true,
-    "publication_verification_required": true,
-    "publication_rule": "Publish the generated attestation in a descendant commit whose certified-source ancestor is this commit and whose attestation diff is restricted to declared generated receipt/certificate paths.",
-    "valid_for_attestation": false,
-    "tree_alignment": {
-      "description": "Parent commit, datasets gitlink, embedded HEAD, and origin/main are independent dimensions. Alignment of one never implies the others.",
-      "dimensions": [
-        "parent_commit",
-        "datasets_gitlink",
-        "datasets_embedded_head",
-        "datasets_origin_main",
-        "datasets_cleanliness",
-        "parent_origin_main"
+    "publication": {
+      "block_reasons": [],
+      "bound": true,
+      "circular_tree_identity_forbidden": true,
+      "mode": "external_content_addressed",
+      "output_file_sha256": null,
+      "output_observation": "deferred_until_after_atomic_write",
+      "output_path": null,
+      "output_present": null,
+      "publication_rule": "External content-addressed attestation: the receipt identity is the digest of the attestation body excluding itself; the source tree never includes this receipt. The embedded publication binds that identity through the canonical self:receipt_identity reference so no nested circular digest is required.",
+      "receipt_identity": "self:receipt_identity",
+      "receipt_identity_is_self_reference": true,
+      "receipt_identity_resolution": "top_level.receipt_identity",
+      "self_referential_current_tree_claim": false
+    },
+    "terminal": {
+      "assumed_completion_count": 10,
+      "assumed_completion_references": [
+        "FVT-054",
+        "FVT-055",
+        "FVT-056",
+        "FVT-057",
+        "FVT-058",
+        "FVT-059",
+        "FVT-060",
+        "FVT-061",
+        "FVT-063",
+        "FVT-065"
       ],
-      "parent": {
-        "path": ".",
-        "commit": "2c6964f8874c56dd8b33a453cf25795be16b3c9a",
-        "tree": "cd36d3370adf4ddbb8f5f9635ac04354dbea9154",
-        "origin_main": "03ebf4daf2e0d260c7924be0c4d48b63d5083f47",
-        "clean": false,
-        "matches_origin_main": false
+      "assumed_completion_rejected": false,
+      "block_reasons": [],
+      "bound": true,
+      "canonical_task_cid": "baguqeera5k4hpzkryg4lgkn4hn5zl7ohgzgt5w3iolbxwohlfzgucoqrdvaq",
+      "canonical_task_key": "task/v1/eab877e551c1b8b329bc3b7b95fdc7364d3edb6872c37b38eb2e4d413a111d41",
+      "claims_current_task_future_event": false,
+      "commit_binding": {
+        "failures": [],
+        "implementation_commit": "ff4dcf9e9f3a03396036a45b21c449ab81316683",
+        "implementation_commit_exists": true,
+        "implementation_is_ancestor": true,
+        "implementation_tree": "7ce69aa281e73a98659348a3f5de48afbd2f0575",
+        "merge_commit": "72908c74d48927e997bf4827266bd7d1520f9f1c",
+        "merge_commit_exists": true,
+        "merge_tree": "eea24be92d8565feb547c8609d0aa2e052871680",
+        "published_to_origin_main": true,
+        "source_trees_bound": true,
+        "target_branch_bound": true,
+        "valid": true
       },
-      "gitlink": {
-        "path": "ipfs_datasets_py",
-        "mode": "160000",
-        "commit": "6fecc4b4bb58e41170518cc0624c69e5629d6577"
+      "event_chain": {
+        "errors": [],
+        "event_count": 1,
+        "last_event_id": "sha256:4cf413714d534a035dd4ba7a3400c17903f4f4c77951f27fcbd4c53744a44711",
+        "last_sequence": 1,
+        "valid": true
       },
-      "embedded_checkout": {
-        "path": "ipfs_datasets_py",
-        "head": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
-        "clean": true,
-        "matches_gitlink": true,
-        "origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
-        "matches_origin_main": false
+      "expected_outputs": {
+        "bound": true,
+        "missing": [],
+        "required": [
+          "tools/logic/certify_formal_verification_toolchains.py",
+          "tools/logic/build_formal_verification_tactician_receipt.py",
+          "test/integration/test_formal_verification_role_aware_release_candidate.py",
+          "docs/architecture/formal_verification_role_aware_release_candidate.json"
+        ]
       },
-      "publication_gates": {
-        "parent_publication_lag": true,
-        "datasets_publication_lag": true,
-        "fetches_forbidden": true,
-        "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
+      "goal_id": "FVT-G213",
+      "member_completion_receipt_count": 1,
+      "member_completion_receipts": [
+        {
+          "assumed_completed": false,
+          "canonical_task_cid": "baguqeera5k4hpzkryg4lgkn4hn5zl7ohgzgt5w3iolbxwohlfzgucoqrdvaq",
+          "canonical_task_key": "task/v1/eab877e551c1b8b329bc3b7b95fdc7364d3edb6872c37b38eb2e4d413a111d41",
+          "completion_basis": "validated_and_merged",
+          "goal_id": "FVT-G213",
+          "implementation_commit": "ff4dcf9e9f3a03396036a45b21c449ab81316683",
+          "merge_commit": "72908c74d48927e997bf4827266bd7d1520f9f1c",
+          "schema": "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1",
+          "status": "succeeded",
+          "task_id": "FVT-066"
+        }
+      ],
+      "merge": {
+        "bound": true,
+        "implementation_commit": "ff4dcf9e9f3a03396036a45b21c449ab81316683",
+        "merge_commit": "72908c74d48927e997bf4827266bd7d1520f9f1c",
+        "merged": true,
+        "target_branch": "origin/main"
       },
-      "aligned_for_implementation": false,
-      "diagnostics": [
-        "parent_working_tree_dirty",
-        "datasets_publication_lag_vs_origin_main",
-        "parent_publication_lag_vs_origin_main"
-      ]
+      "present": true,
+      "snapshot_digest_sha256": "sha256:359174b3670bb2278148cc0b7b6ba3ca94a2bd2ad1db7eaee3a2ac28d0b4cb60",
+      "target_assumed_completion_references": [],
+      "task_id": "FVT-066",
+      "validation": {
+        "attempted": true,
+        "bound": true,
+        "passed": true,
+        "returncode": 0,
+        "target_commit": "ff4dcf9e9f3a03396036a45b21c449ab81316683"
+      }
     }
   },
+  "program": "formal-verification-tactician/toolchain-release-finalizer",
+  "program_goal_id": "FVT-G000",
+  "program_interface": "FormalVerificationTacticianRelease@1",
+  "public_evidence_policy": {
+    "failures": [],
+    "host_private_paths_forbidden": true,
+    "max_public_string_bytes": 8192,
+    "raw_process_output_forbidden": true,
+    "raw_secret_or_witness_forbidden": true,
+    "repo_root_paths_forbidden": true,
+    "safe": true,
+    "satisfied": true,
+    "violation_count": 0,
+    "violations": []
+  },
+  "publication_mode": "external_content_addressed",
+  "readiness_requirements": {
+    "artifacts_present": true,
+    "authority_ceiling_respected": true,
+    "candidate_digest_bound": true,
+    "candidate_digest_material_bound": false,
+    "completion_receipt_bound": true,
+    "datasets_gitlink_bound": true,
+    "event_chain_continuous": true,
+    "g213_expected_outputs_bound": true,
+    "g213_terminal_receipt_bound": true,
+    "hard_zero_gates_clear": true,
+    "hard_zero_gates_derived": true,
+    "merged_commit_bound": true,
+    "never_claims_current_task_future_event": true,
+    "no_install_during_offline_certification": true,
+    "origin_publication_bound": true,
+    "platform_exceptions_derived_and_narrow": true,
+    "public_surfaces_bound": true,
+    "publication_bound": true,
+    "quarantines_bound": true,
+    "release_candidate_bound": false,
+    "release_candidate_merge_blob_bound": true,
+    "role_aware_certificate_bound": true,
+    "source_tree_bound": true,
+    "supported_capability_closure": false,
+    "synthetic_evidence_cannot_certify_production": true,
+    "validation_result_bound": true
+  },
+  "readiness_stage": "blocked",
+  "receipt_identity": "sha256:68dbfcf8c144b2da84e0400c2f343129cff39f15ebaee9b00df74d0075a86d1b",
   "release_candidate": {
-    "path": "docs/architecture/formal_verification_role_aware_release_candidate.json",
-    "present": true,
-    "interface": "RoleAwareFormalVerificationReleaseCandidate@1",
-    "goal_id": "FVT-G213",
-    "task_id": "FVT-066",
-    "schema_version": "formal-verification-role-aware-release-candidate/v1",
+    "block_reasons": [
+      "release_candidate_digest_material_invalid"
+    ],
+    "bound": false,
     "checked_candidate_identity": "sha256:9ccda9f2d765802475857005d41ae0e2c0be49daa6c5be39ea98bf6f9ac45beb",
-    "live_candidate_identity": "sha256:44765ade1faad81cb3b9969ff91857633d8ad7daa881b2669a6846963843a191",
     "checked_identity_valid": true,
-    "matches_live_recompute": false,
+    "claims": {
+      "deployment": false,
+      "max_stage": "release_candidate",
+      "merge": false,
+      "merge_event_present": false,
+      "post_merge_attestation": false,
+      "self_referential_current_tree": false
+    },
     "digest_material_verification": {
-      "valid": false,
-      "digest_material_identity": "sha256:c29a3039ebfb42232b3b2c8e9746fcd7d60333e51ec847e9a2a671bde69a3748",
+      "binding_rule": "Checked candidate identity plus independently reproduced compact certificate digest material; host-dependent live recomputation is diagnostic only.",
       "checks": {
-        "required_keys_complete": true,
-        "certificate_digest_well_formed": true,
-        "certificate_digest_matches_projection": true,
+        "authority_roles_policy_digest_matches_projection": true,
+        "authority_roles_policy_digest_well_formed": true,
         "certificate_digest_matches_bound_certificate": false,
-        "tool_ids_unique": true,
-        "tool_check_digests_well_formed": true,
-        "tool_check_digests_match_projection": true,
-        "tool_artifact_digests_well_formed": true,
-        "tool_artifact_digests_match_projection": true,
+        "certificate_digest_matches_projection": true,
+        "certificate_digest_well_formed": true,
+        "lock_digest_matches_live_certificate": false,
+        "lock_digest_well_formed": true,
+        "quarantine_digest_matches_live_certificate": true,
+        "quarantine_digest_matches_projection": true,
+        "quarantine_digest_well_formed": true,
+        "required_keys_complete": true,
         "semantic_lane_ids_unique": true,
-        "semantic_receipt_digests_well_formed": true,
         "semantic_receipt_digests_match_projection": true,
-        "specialized_projection_aggregation_digest_well_formed": true,
-        "specialized_projection_aggregation_digest_recomputed": true,
-        "specialized_source_aggregation_digest_well_formed": true,
-        "specialized_source_aggregation_digest_matches_projection": true,
+        "semantic_receipt_digests_well_formed": true,
+        "specialized_composite_coverage_exact": true,
+        "specialized_fvt066_independent_audit_bound": true,
         "specialized_handler_population_exact": true,
         "specialized_handler_self_digests_recomputed": true,
-        "specialized_composite_coverage_exact": true,
+        "specialized_projection_aggregation_digest_recomputed": true,
+        "specialized_projection_aggregation_digest_well_formed": true,
         "specialized_projection_handler_digests_match": true,
-        "specialized_source_handler_digests_match": true,
         "specialized_projection_matches_live_certificate": false,
+        "specialized_source_aggregation_digest_matches_projection": true,
+        "specialized_source_aggregation_digest_well_formed": true,
         "specialized_source_binding_matches_live_certificate": false,
-        "specialized_fvt066_independent_audit_bound": true,
-        "authority_roles_policy_digest_well_formed": true,
-        "authority_roles_policy_digest_matches_projection": true,
-        "lock_digest_well_formed": true,
-        "lock_digest_matches_live_certificate": false,
-        "quarantine_digest_well_formed": true,
-        "quarantine_digest_matches_projection": true,
-        "quarantine_digest_matches_live_certificate": true
+        "specialized_source_handler_digests_match": true,
+        "tool_artifact_digests_match_projection": true,
+        "tool_artifact_digests_well_formed": true,
+        "tool_check_digests_match_projection": true,
+        "tool_check_digests_well_formed": true,
+        "tool_ids_unique": true
       },
+      "digest_material_identity": "sha256:c29a3039ebfb42232b3b2c8e9746fcd7d60333e51ec847e9a2a671bde69a3748",
       "failures": [
         "certificate_digest_matches_bound_certificate",
         "lock_digest_matches_live_certificate",
@@ -138,117 +966,144 @@
         "specialized_source_binding_matches_live_certificate"
       ],
       "live_recompute_required": false,
-      "binding_rule": "Checked candidate identity plus independently reproduced compact certificate digest material; host-dependent live recomputation is diagnostic only."
-    },
-    "bound": false,
-    "readiness_stage": "release_candidate",
-    "status": "role_aware_release_candidate_ready",
-    "claims": {
-      "merge": false,
-      "deployment": false,
-      "post_merge_attestation": false,
-      "self_referential_current_tree": false,
-      "max_stage": "release_candidate",
-      "merge_event_present": false
+      "valid": false
     },
     "file_sha256": "sha256:21a174efba2db036d923067227e60ea38aa84f73eee3e3b122b66e8d1a71a9da",
+    "goal_id": "FVT-G213",
+    "interface": "RoleAwareFormalVerificationReleaseCandidate@1",
     "live": {
-      "candidate_identity": "sha256:44765ade1faad81cb3b9969ff91857633d8ad7daa881b2669a6846963843a191",
-      "status": "role_aware_release_candidate_blocked",
-      "readiness_stage": "blocked",
       "blockers": [
-        "advisors:certifier_module_digest_mismatch",
-        "advisors:ergoai:semantic_artifact_identity_mismatch",
-        "advisors:ergoai:semantic_module_artifact_mismatch",
-        "advisors:ergoai:semantic_tool_projection_mismatch",
-        "advisors:ergoai:validated_artifact_population_mismatch",
-        "advisors:lane_semantic_outcomes_not_independently_derived",
-        "advisors:symbolicai:semantic_artifact_identity_mismatch",
-        "advisors:symbolicai:semantic_module_artifact_mismatch",
-        "advisors:symbolicai:semantic_tool_projection_mismatch",
-        "advisors:symbolicai:validated_artifact_population_mismatch",
         "checked_production_elevation_fanin_matches_live",
-        "checked_vendor_capability_readiness:runtime-mtl-external:fresh_replay_or_policy_invalid",
-        "datalog_secpal:checked_vendor:checked_vendor_fanin_fresh_replay_mismatch",
-        "elevation_decision:autohyper:outcome_not_derived",
-        "elevation_decision:hyperltl:outcome_not_derived",
-        "elevation_decision:mchyper:outcome_not_derived",
-        "elevation_decision:runtime-mtl:outcome_not_derived",
-        "global_production_authority_not_independently_derived",
-        "hyperltl:checked_vendor:checked_hyper_vendor_adapter_fresh_replay_mismatch",
-        "hyperltl:checked_vendor:checked_hyper_vendor_fanin_fresh_replay_mismatch",
-        "hyperltl:checked_vendor:checked_hyper_vendor_lane_evidence_class_mismatch",
-        "hyperltl:checked_vendor:checked_hyper_vendor_lane_policy_flag_mismatch",
-        "hyperltl:checked_vendor:checked_hyper_vendor_recorded_eligibility_mismatch",
         "hyperltl:checked_vendor:checked_hyper_vendor_sealed_root_not_authenticated",
-        "hyperltl:lane_evidence_class_mismatch",
-        "hyperltl:lane_production_elevation_allowed_mismatch",
-        "hyperltl:lane_semantic_outcomes_not_independently_derived",
-        "managed:ergoai:launcher_target_artifact_unbound",
+        "managed:apalache:full_semantic_check_set_missing_or_failed",
+        "managed:apalache:locked_version_mismatch",
+        "managed:apalache:semantic_evidence_below_authority_ceiling",
+        "managed:apalache:semantic_receipt_not_bound",
+        "managed:apalache:supported_managed_installation_missing_or_shim_only",
+        "managed:autohyper:full_semantic_check_set_missing_or_failed",
+        "managed:autohyper:locked_version_mismatch",
+        "managed:autohyper:semantic_evidence_below_authority_ceiling",
+        "managed:autohyper:semantic_receipt_not_bound",
+        "managed:autohyper:supported_managed_installation_missing_or_shim_only",
+        "managed:coq:full_semantic_check_set_missing_or_failed",
+        "managed:coq:locked_version_mismatch",
+        "managed:coq:semantic_evidence_below_authority_ceiling",
+        "managed:coq:semantic_receipt_not_bound",
+        "managed:coq:supported_managed_installation_missing_or_shim_only",
+        "managed:eprover:full_semantic_check_set_missing_or_failed",
+        "managed:eprover:locked_version_mismatch",
+        "managed:eprover:semantic_evidence_below_authority_ceiling",
+        "managed:eprover:semantic_receipt_not_bound",
+        "managed:eprover:supported_managed_installation_missing_or_shim_only",
+        "managed:ergoai:locked_version_mismatch",
         "managed:ergoai:supported_managed_installation_missing_or_shim_only",
-        "managed:secpal:full_semantic_check_set_missing_or_failed",
-        "managed:secpal:locked_version_mismatch",
-        "managed:secpal:supported_managed_installation_missing_or_shim_only",
-        "managed:souffle:full_semantic_check_set_missing_or_failed",
-        "managed_blockers_or_ready_not_derived",
-        "platform_exceptions_derived_and_narrow",
-        "production_elevation_fanin:required_elevation_audit:elevation_decision:autohyper:outcome_not_derived",
-        "production_elevation_fanin:required_elevation_audit:elevation_decision:hyperltl:outcome_not_derived",
-        "production_elevation_fanin:required_elevation_audit:elevation_decision:mchyper:outcome_not_derived",
-        "production_elevation_fanin:required_elevation_audit:elevation_decision:runtime-mtl:outcome_not_derived",
-        "production_elevation_fanin:required_elevation_audit:global_production_authority_not_independently_derived",
-        "production_elevation_fanin:required_elevation_audit:required_elevation:runtime-mtl:unsupported_promotion",
-        "production_elevation_fanin:required_elevation_audit:role_elevation_population_not_independently_derived",
-        "production_semantic_elevation_fanin_bound",
-        "production_semantic_elevation_fanin_closed",
-        "required_elevation:runtime-mtl:unsupported_promotion",
-        "required_elevation_missing:datalog-authorization",
-        "required_elevation_missing:runtime-mtl",
-        "required_elevation_missing:secpal-authorization",
-        "required_semantic_elevations_present",
-        "role_elevation_population_not_independently_derived"
-      ]
+        "managed:hyperltl:full_semantic_check_set_missing_or_failed",
+        "managed:hyperltl:locked_version_mismatch",
+        "managed:hyperltl:semantic_evidence_below_authority_ceiling",
+        "managed:hyperltl:semantic_receipt_not_bound",
+        "managed:hyperltl:supported_managed_installation_missing_or_shim_only",
+        "managed:isabelle:full_semantic_check_set_missing_or_failed",
+        "managed:isabelle:locked_version_mismatch",
+        "managed:isabelle:semantic_evidence_below_authority_ceiling",
+        "managed:isabelle:semantic_receipt_not_bound",
+        "managed:isabelle:supported_managed_installation_missing_or_shim_only",
+        "managed:maude:locked_version_mismatch",
+        "managed:maude:supported_managed_installation_missing_or_shim_only",
+        "managed:mchyper:full_semantic_check_set_missing_or_failed",
+        "managed:mchyper:locked_version_mismatch",
+        "managed:mchyper:semantic_evidence_below_authority_ceiling",
+        "managed:mchyper:semantic_receipt_not_bound",
+        "managed:mchyper:supported_managed_installation_missing_or_shim_only",
+        "managed:opam:locked_version_mismatch",
+        "managed:opam:supported_managed_installation_missing_or_shim_only",
+        "managed:proverif:full_semantic_check_set_missing_or_failed",
+        "managed:proverif:locked_version_mismatch",
+        "managed:proverif:semantic_evidence_below_authority_ceiling",
+        "managed:proverif:semantic_receipt_not_bound",
+        "managed:proverif:supported_managed_installation_missing_or_shim_only",
+        "managed:runtime-mtl-external:locked_version_mismatch",
+        "managed:runtime-mtl-external:semantic_evidence_below_authority_ceiling"
+      ],
+      "candidate_identity": "sha256:8c00cb60241681ae6371330f8c8dbc252810e7ecaf3ac3dc1a6408ba40f1c548",
+      "readiness_stage": "blocked",
+      "status": "role_aware_release_candidate_blocked"
     },
-    "block_reasons": [
-      "release_candidate_digest_material_invalid"
-    ],
+    "live_candidate_identity": "sha256:8c00cb60241681ae6371330f8c8dbc252810e7ecaf3ac3dc1a6408ba40f1c548",
+    "matches_live_recompute": false,
+    "path": "docs/architecture/formal_verification_role_aware_release_candidate.json",
+    "present": true,
     "projection": {
-      "interface": "RoleAwareFormalVerificationReleaseCandidate@1",
-      "goal_id": "FVT-G213",
-      "task_id": "FVT-066",
       "candidate_identity": "sha256:9ccda9f2d765802475857005d41ae0e2c0be49daa6c5be39ea98bf6f9ac45beb",
-      "status": "role_aware_release_candidate_ready",
-      "readiness_stage": "release_candidate",
       "digest_material": {
+        "authority_roles_policy_digest": "6fc4b21f731689f4ab3ab6e37e319978a029ab976a95e404d354d4a6f0ceaf9e",
         "certificate_digest_sha256": "802635ddf9b0b2e4017e2ebc1f7ea3add70f026bb8de2e543400cbd595a0f9ed",
-        "tool_check_digests": {
-          "apalache": "07197daa29dcafc7f617eaf1ae300f6ed3e226d92a22e0d75ef595975ef4a178",
-          "autohyper": "7b2da277ace6c0bb9558adfa6d7a517948b3fc5bc06780b5072e92b3cabb5077",
-          "coq": "1f3396402aed11d24279b438789616a0bc96cbebcbc4fa81d85af60fd027df4f",
-          "cvc5": "73d8086cdb0f5ed09d53cca87584b69a3f916ca46a16b1f57634c1ced34e57d8",
-          "datalog-authorization": "aedd02270f46bb29ce94c403509c78170bb03950da0a0a84141cf30724f3c713",
-          "eprover": "3c4e4630d13686305eed6d6be2a4b7f791d7fdff470f6647a6080a55d5850732",
-          "ergoai": "fdddf8fadb919b55148dca99463b6d64ab64debc98962f13b6abf76cb071eaae",
-          "hyperltl": "365b281a795f91bf4e8bf72b6db9dce506e9c9e8d6958d334706fd414c5fb70b",
-          "isabelle": "09606ecb1d545a6bda8681b5374aa8f6f4cd4659d066a8533e8e16704020e04a",
-          "java": "66e6d1b2b6f5746e0dee9cfd736e18081703c069326d7e7a732a7b267a90ff11",
-          "lean": "3224a33d6990b658a3a139db1d1361c13165584bfed639c791be76b95230d283",
-          "maude": "d54e0592856a6210af425e997b232be03e105d59e728ca0228cdc5c56679b49e",
-          "mchyper": "d728db07514b147f0a96efa63b8124a1507f5ae4fc3a3f126464ceebd2aa2bc4",
-          "opam": "795d1bb6eb93894cf49d6132823c4ed881ef6ffeec106de88893ea63ff88883d",
-          "proverif": "c44600a6ca45c4b2f27701a0d3e4cce856bd7740921533b7b7d82f9b8a27a690",
-          "runtime-mtl": "de491ce69724554c6e59cf44be7f3e2b9104440d747a8e4f8cfd4e6836c84821",
-          "runtime-mtl-external": "016954164436222d0b72f11232284dda66e9a4e39862940472a9ade26fb9a180",
-          "secpal": "ade16d63beaf32d61a42d72686f0b696f2600b0e3ebc1bbc1e9260e8487b7948",
-          "secpal-authorization": "9335c3b5c2f73d84b5fa90da9ac9e7f2c4e2bf7d6f03ec5ebf7170fb2735afdf",
-          "souffle": "c78ed44c31287c41ccc09f32a02f9bf35ccb20beb47aa821966ea7acb970368c",
-          "stack": "81999d21e1eb47866a36fc9cda3bdc307abc68c295185aa45c13aee1ca0232fa",
-          "symbolicai": "44317b2d7558a61d8eab46e83c0d1501ff5e7ae1630257ca3ddd8edc9bce17e4",
-          "tamarin": "da49eee8c3b361d681c3ff4c87a10544ac4768fe8a98f01a71a97bc3f0d7790a",
-          "tlc": "d75788a08c641cd294f8e322601fa6afc6d94ce14a3c71bc8408f510cd38fa33",
-          "vampire": "23a39dcd9bed9d3c604f3127844e4733632159781cecc6f3aaf55c7f7e9b21ec",
-          "z3": "703a0639d45c701592a30b8087660f1daf739f56d018ea143aa7c3c58604d817",
-          "zkp-circuit": "dbe529034fd4e84b278c7d60f7980f6c1f7b7b90e33cd666553a772b3d67b39f"
+        "checked_production_elevation_fanin_content_identity": "sha256:556345c08c0b6c9dffc3601abf142fc8bf047d041c057fce9448fe6d6421c73c",
+        "lock_digest": "a742d3df14bed6f85fdb993305218416a22523f7e318ef312bb6af1ee64f4d39",
+        "production_elevation_fanin_receipt_digest": "sha256:2348ce1c4b92fb7b656c44812b5b1cd37181048459747c68802ca5899de22bd4",
+        "quarantine_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "semantic_receipt_digests": {
+          "advisors": "e082b9a101fb584569fa8fff30f1066075abd3eaf248976969672a36ed3453af",
+          "atp": "e38a90c9d8c29a4b37e4782e3244ba9a409d08659b5f6dce0e9ae1d86e74ad90",
+          "attestation": "9a10496729b1f60f05df35c795f8f0403ed50b8a72a02c746a92a6b2499c84a6",
+          "authorization_external": "2c843acd12bdcb8a0ec231812ab91f2be7675802bcec3a00a0aab312b5c3647d",
+          "datalog_secpal": "5acd28576f3d5422b5106af9b07f86269f6ba0f2b09c4d2cf3639ee3f9f87218",
+          "hyperltl": "674ec4e9f8e81b9dd3e9a4f2f4fb73fc3358d155961b8654857dd4b234877dd8",
+          "kernel": "397faf8e1e8ea3e1e5b87dc3a4514d2736175ecf20fb5e1b3d8b9db10e697cb5",
+          "kernel_isabelle": "1016906acac8a991a7913e2cda5de2c2df8216483362859b66d36e3532c0bbe5",
+          "kernel_rocq": "ab4bb0ab30b820d7a33a28e879dbba34b090bb48adbd0efdc4bbcaa732f2f945",
+          "protocol_proverif": "01b4d90ecd167758925f31c25352f9347e9e69dd41ed84ec4a5777c4cfaa0461",
+          "protocol_tamarin": "f089db46c315ae14f13741ba04d806ae6b1492bdbd0fd808e8cc1532d0ff336e",
+          "runtime_mtl": "de605de37fb80557ecfa0f9157641e4dea082b358c2b41a63f4d7def5180e641",
+          "runtime_mtl_external": "048fb5d6a3115862aef10670f0687438f9051cb6a4439444bd4b8f36de96c286",
+          "state_model": "9f1966a55272f2af19fa0364ff1e0c3da97aab57937fd50c9d74a6951f0106e9"
+        },
+        "specialized_projection_aggregation_digest": "2ca85a58058274cac2fc602d26d826f28e412da494a3f9b7fe296e33a46a5b2d",
+        "specialized_projection_handler_digests": {
+          "atp::eprover": "0674387357d39c4005ab291959cba38c1c54f8629e166e61b6aff493980b16f9",
+          "atp::vampire": "8e03a793c01df905b3ee32d3b71b6ada9606f072070b826c23e2888eb5fa8939",
+          "attestation::zkp-circuit": "a2d782ac5e6a9921a6ff781ea7d53cdb2d657277ddcc82bf7dff81dbbb8fdfa6",
+          "datalog_secpal::datalog-authorization": "5b092d58c07adebc592ffd073556d221ca121895b2d9413dd75fd212f53a95ee",
+          "datalog_secpal::secpal": "e589b7051e3b506d36789a617d7c727f34ab345ebd927f94ab4a194024b8b5cc",
+          "datalog_secpal::secpal-authorization": "c2c00bf2f018cdf9c5bfb5f21f4b557ec2e90b3f3f93dbfb500f51d1df36b91e",
+          "datalog_secpal::souffle": "218b83196822e459ef14c828f489de7334d67f4d6d8837d2b914a4d751f4f8c0",
+          "hammer::ergoai": "39e4cea0feda8af23393deece3edd940850bf3ec6c4f5843f9dbd58d6e71dede",
+          "hammer::symbolicai": "7d13869613bcc0162d304f9361d617797f837cebcced297516ba7caf167fe1bb",
+          "hyperltl::autohyper": "22a0ab38a2ab0265fb45f23b4e5e81281a5470951053f184f369345e97de854e",
+          "hyperltl::hyperltl": "c52c94d6cdc96edcb9ef025df1aa6217e846abdef4f7c3b76211f7a783778236",
+          "hyperltl::mchyper": "314ecc1163290427d834864386335ef9fb96e182a1ed2bd879164b4eca787aef",
+          "kernel::coq": "cf1bf2b2d25d567ee50119bc053060488300996e34ab345ed45caf8d6f3e5b27",
+          "kernel::isabelle": "091b0211ea4b4fd2e975037b7553bda9a063985acbc952bbf169cde71b7bdc80",
+          "kernel::lean": "c02587db3a6d40fd2afd56b777e5d28c612bcff5f9357cd45457828c2f5ccccb",
+          "protocol::proverif": "74966adf8a90a597e3ec9f49e3a6985df8a16ce9c8d94eaa947bca524b415cc7",
+          "protocol::tamarin": "bbcb6c5f12a599f32d8d2475b08edc9c089b14e31face939e83dcdd9773916f1",
+          "runtime_mtl::runtime-mtl": "22dc643bfb704888b70d95177453061fa05fc54fb57129a13a56ca76af91b14e",
+          "runtime_mtl::runtime-mtl-external": "20419563a52cf3a4ac76840d0f13f634331e1580a668f518cdc3dcffc6f51096",
+          "tla::apalache": "625872560e479b02a8868a7a679937cc9dcd6fc12df6e2b2610a3588b74d1d69",
+          "tla::tlc": "e6947f7fdb78ec1c593a100dd78b5ef67d144a711a739b75c1d89438d8a51b3d"
+        },
+        "specialized_source_aggregation_digest": "86bc4dcdb0bd27e794e0425f684215c6256cd0f5d469f2d97435e5b32202a7eb",
+        "specialized_source_handler_digests": {
+          "atp::eprover": "528ee52b6adb804b5300238018484d7677f92513c9079e9a64c00755fdffa058",
+          "atp::vampire": "99fe3d8e1ab788ae1187b6151c95eae43ad353a177f82df0f24cb6f15b98ff10",
+          "attestation::zkp-circuit": "2533e263264d111fd17f8b8add2fb3f57187305d4d51843e7138fef117f615cf",
+          "datalog_secpal::datalog-authorization": "a8b5d5ac666f0ef60905ed706fe71f5e8db4132223f56f4adf1ff642caf3cee6",
+          "datalog_secpal::secpal": "0f86655e447046f69ef66281f59584847ec7cbd96d2785afc9e0277292de695c",
+          "datalog_secpal::secpal-authorization": "84be4ea15be64880cd1d5ecc9effed9951c194d78fe9fb09f25b236f75ffab19",
+          "datalog_secpal::souffle": "471bb564efdea5241be1bdf88531fc9c75c6719410c2d2674de78be9e298f6e5",
+          "hammer::ergoai": "acafaf6ea28df9d0fc90a682d9bf9e658ae5fc5cccc65e25a3f19e660db3de21",
+          "hammer::symbolicai": "da1330c1adb20ff12d1cfb4c792e8eb1512866395dafa0170d112992f2cf8375",
+          "hyperltl::autohyper": "23cdf2940f47b9f4d8a4806491f31ada71a9ca5f485d3f8b1b8378f38e0f8034",
+          "hyperltl::hyperltl": "eccc347d7c6403d53549f6337c045a7f039e172229a9e5b5d0f12feda0af0053",
+          "hyperltl::mchyper": "e46784ef71378b2335f08dd67bfaf469106c85f62b9467206c6c00d98991dd69",
+          "kernel::coq": "6aa9be8386469804707c32abf0d65b6009b63e35f16bca61c7c4bd2b39ca3262",
+          "kernel::isabelle": "988f29c484f83b4f09e3c7b7959b49d9fb3afa94577c1e9031bc2ac4510d2245",
+          "kernel::lean": "86d44f020f64863543ca7252b65d855cdcabd0ca3490d3c52a1d5f47325657ee",
+          "protocol::proverif": "dddae733db611830dbab82a3126cbb4c8d400069995f1e544129f1124e934fd4",
+          "protocol::tamarin": "d5e4d7a75f57cfd56c19a7ae1bd7c2c765c8861c29fc9797f6ca77430d9bdc19",
+          "runtime_mtl::runtime-mtl": "d9a1a5a23ba5cac4e34fca7e9bdffde7724837b268989b7f051ef716dd4e7c2d",
+          "runtime_mtl::runtime-mtl-external": "2e83d97211268f35987a0f4d24770de7780a5396099f51195b971a827f39d79f",
+          "tla::apalache": "f10b205f7da32efe44d9c138b832fb4e1c3f8e3cd96e07e8cf8e97efcd566df9",
+          "tla::tlc": "f79740fec23b144b02f0f043ae2677ceafaf679a60acdb1788ec7e775f341c50"
         },
         "tool_artifact_digests": {
           "apalache": [
@@ -404,505 +1259,59 @@
             "sha256:b2bcafcb82079cea9652e92bd38ca0b5231469212feb755365cc1b909c81ec96"
           ]
         },
-        "semantic_receipt_digests": {
-          "kernel": "397faf8e1e8ea3e1e5b87dc3a4514d2736175ecf20fb5e1b3d8b9db10e697cb5",
-          "kernel_rocq": "ab4bb0ab30b820d7a33a28e879dbba34b090bb48adbd0efdc4bbcaa732f2f945",
-          "kernel_isabelle": "1016906acac8a991a7913e2cda5de2c2df8216483362859b66d36e3532c0bbe5",
-          "runtime_mtl": "de605de37fb80557ecfa0f9157641e4dea082b358c2b41a63f4d7def5180e641",
-          "datalog_secpal": "5acd28576f3d5422b5106af9b07f86269f6ba0f2b09c4d2cf3639ee3f9f87218",
-          "state_model": "9f1966a55272f2af19fa0364ff1e0c3da97aab57937fd50c9d74a6951f0106e9",
-          "protocol_tamarin": "f089db46c315ae14f13741ba04d806ae6b1492bdbd0fd808e8cc1532d0ff336e",
-          "protocol_proverif": "01b4d90ecd167758925f31c25352f9347e9e69dd41ed84ec4a5777c4cfaa0461",
-          "atp": "e38a90c9d8c29a4b37e4782e3244ba9a409d08659b5f6dce0e9ae1d86e74ad90",
-          "hyperltl": "674ec4e9f8e81b9dd3e9a4f2f4fb73fc3358d155961b8654857dd4b234877dd8",
-          "runtime_mtl_external": "048fb5d6a3115862aef10670f0687438f9051cb6a4439444bd4b8f36de96c286",
-          "authorization_external": "2c843acd12bdcb8a0ec231812ab91f2be7675802bcec3a00a0aab312b5c3647d",
-          "attestation": "9a10496729b1f60f05df35c795f8f0403ed50b8a72a02c746a92a6b2499c84a6",
-          "advisors": "e082b9a101fb584569fa8fff30f1066075abd3eaf248976969672a36ed3453af"
-        },
-        "specialized_projection_aggregation_digest": "2ca85a58058274cac2fc602d26d826f28e412da494a3f9b7fe296e33a46a5b2d",
-        "specialized_source_aggregation_digest": "86bc4dcdb0bd27e794e0425f684215c6256cd0f5d469f2d97435e5b32202a7eb",
-        "specialized_projection_handler_digests": {
-          "atp::eprover": "0674387357d39c4005ab291959cba38c1c54f8629e166e61b6aff493980b16f9",
-          "atp::vampire": "8e03a793c01df905b3ee32d3b71b6ada9606f072070b826c23e2888eb5fa8939",
-          "attestation::zkp-circuit": "a2d782ac5e6a9921a6ff781ea7d53cdb2d657277ddcc82bf7dff81dbbb8fdfa6",
-          "datalog_secpal::datalog-authorization": "5b092d58c07adebc592ffd073556d221ca121895b2d9413dd75fd212f53a95ee",
-          "datalog_secpal::secpal": "e589b7051e3b506d36789a617d7c727f34ab345ebd927f94ab4a194024b8b5cc",
-          "datalog_secpal::secpal-authorization": "c2c00bf2f018cdf9c5bfb5f21f4b557ec2e90b3f3f93dbfb500f51d1df36b91e",
-          "datalog_secpal::souffle": "218b83196822e459ef14c828f489de7334d67f4d6d8837d2b914a4d751f4f8c0",
-          "hammer::ergoai": "39e4cea0feda8af23393deece3edd940850bf3ec6c4f5843f9dbd58d6e71dede",
-          "hammer::symbolicai": "7d13869613bcc0162d304f9361d617797f837cebcced297516ba7caf167fe1bb",
-          "hyperltl::autohyper": "22a0ab38a2ab0265fb45f23b4e5e81281a5470951053f184f369345e97de854e",
-          "hyperltl::hyperltl": "c52c94d6cdc96edcb9ef025df1aa6217e846abdef4f7c3b76211f7a783778236",
-          "hyperltl::mchyper": "314ecc1163290427d834864386335ef9fb96e182a1ed2bd879164b4eca787aef",
-          "kernel::coq": "cf1bf2b2d25d567ee50119bc053060488300996e34ab345ed45caf8d6f3e5b27",
-          "kernel::isabelle": "091b0211ea4b4fd2e975037b7553bda9a063985acbc952bbf169cde71b7bdc80",
-          "kernel::lean": "c02587db3a6d40fd2afd56b777e5d28c612bcff5f9357cd45457828c2f5ccccb",
-          "protocol::proverif": "74966adf8a90a597e3ec9f49e3a6985df8a16ce9c8d94eaa947bca524b415cc7",
-          "protocol::tamarin": "bbcb6c5f12a599f32d8d2475b08edc9c089b14e31face939e83dcdd9773916f1",
-          "runtime_mtl::runtime-mtl": "22dc643bfb704888b70d95177453061fa05fc54fb57129a13a56ca76af91b14e",
-          "runtime_mtl::runtime-mtl-external": "20419563a52cf3a4ac76840d0f13f634331e1580a668f518cdc3dcffc6f51096",
-          "tla::apalache": "625872560e479b02a8868a7a679937cc9dcd6fc12df6e2b2610a3588b74d1d69",
-          "tla::tlc": "e6947f7fdb78ec1c593a100dd78b5ef67d144a711a739b75c1d89438d8a51b3d"
-        },
-        "specialized_source_handler_digests": {
-          "atp::eprover": "528ee52b6adb804b5300238018484d7677f92513c9079e9a64c00755fdffa058",
-          "atp::vampire": "99fe3d8e1ab788ae1187b6151c95eae43ad353a177f82df0f24cb6f15b98ff10",
-          "attestation::zkp-circuit": "2533e263264d111fd17f8b8add2fb3f57187305d4d51843e7138fef117f615cf",
-          "datalog_secpal::datalog-authorization": "a8b5d5ac666f0ef60905ed706fe71f5e8db4132223f56f4adf1ff642caf3cee6",
-          "datalog_secpal::secpal": "0f86655e447046f69ef66281f59584847ec7cbd96d2785afc9e0277292de695c",
-          "datalog_secpal::secpal-authorization": "84be4ea15be64880cd1d5ecc9effed9951c194d78fe9fb09f25b236f75ffab19",
-          "datalog_secpal::souffle": "471bb564efdea5241be1bdf88531fc9c75c6719410c2d2674de78be9e298f6e5",
-          "hammer::ergoai": "acafaf6ea28df9d0fc90a682d9bf9e658ae5fc5cccc65e25a3f19e660db3de21",
-          "hammer::symbolicai": "da1330c1adb20ff12d1cfb4c792e8eb1512866395dafa0170d112992f2cf8375",
-          "hyperltl::autohyper": "23cdf2940f47b9f4d8a4806491f31ada71a9ca5f485d3f8b1b8378f38e0f8034",
-          "hyperltl::hyperltl": "eccc347d7c6403d53549f6337c045a7f039e172229a9e5b5d0f12feda0af0053",
-          "hyperltl::mchyper": "e46784ef71378b2335f08dd67bfaf469106c85f62b9467206c6c00d98991dd69",
-          "kernel::coq": "6aa9be8386469804707c32abf0d65b6009b63e35f16bca61c7c4bd2b39ca3262",
-          "kernel::isabelle": "988f29c484f83b4f09e3c7b7959b49d9fb3afa94577c1e9031bc2ac4510d2245",
-          "kernel::lean": "86d44f020f64863543ca7252b65d855cdcabd0ca3490d3c52a1d5f47325657ee",
-          "protocol::proverif": "dddae733db611830dbab82a3126cbb4c8d400069995f1e544129f1124e934fd4",
-          "protocol::tamarin": "d5e4d7a75f57cfd56c19a7ae1bd7c2c765c8861c29fc9797f6ca77430d9bdc19",
-          "runtime_mtl::runtime-mtl": "d9a1a5a23ba5cac4e34fca7e9bdffde7724837b268989b7f051ef716dd4e7c2d",
-          "runtime_mtl::runtime-mtl-external": "2e83d97211268f35987a0f4d24770de7780a5396099f51195b971a827f39d79f",
-          "tla::apalache": "f10b205f7da32efe44d9c138b832fb4e1c3f8e3cd96e07e8cf8e97efcd566df9",
-          "tla::tlc": "f79740fec23b144b02f0f043ae2677ceafaf679a60acdb1788ec7e775f341c50"
-        },
-        "authority_roles_policy_digest": "6fc4b21f731689f4ab3ab6e37e319978a029ab976a95e404d354d4a6f0ceaf9e",
-        "lock_digest": "a742d3df14bed6f85fdb993305218416a22523f7e318ef312bb6af1ee64f4d39",
-        "quarantine_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-        "production_elevation_fanin_receipt_digest": "sha256:2348ce1c4b92fb7b656c44812b5b1cd37181048459747c68802ca5899de22bd4",
-        "checked_production_elevation_fanin_content_identity": "sha256:556345c08c0b6c9dffc3601abf142fc8bf047d041c057fce9448fe6d6421c73c"
-      }
-    },
-    "terminal_merge_blob_binding": {
-      "bound": false,
-      "terminal_evidence_bound": false,
-      "merge_commit": null,
-      "current_blob": "a5528662ba214e220dba020fd7fae771b1343421",
-      "merged_blob": null,
-      "failures": [],
-      "binding_rule": "The candidate file bytes must equal the blob published by the verified FVT-066 terminal merge commit."
-    }
-  },
-  "post_merge": {
-    "depends_on_goal": "FVT-G213",
-    "depends_on_task": "FVT-066",
-    "terminal": {
-      "present": false,
-      "bound": false,
-      "task_id": "FVT-066",
-      "goal_id": "FVT-G213",
-      "canonical_task_cid": null,
-      "canonical_task_key": null,
-      "event_chain": {},
-      "expected_outputs": {},
-      "validation": {},
-      "merge": {},
-      "commit_binding": {},
-      "assumed_completion_references": [],
-      "assumed_completion_rejected": false,
-      "claims_current_task_future_event": false,
-      "block_reasons": [
-        "g213_terminal_evidence_missing"
-      ],
-      "snapshot_digest_sha256": null,
-      "member_completion_receipt_count": 0,
-      "member_completion_receipts": []
-    },
-    "publication": {
-      "mode": "external_content_addressed",
-      "bound": true,
-      "circular_tree_identity_forbidden": true,
-      "self_referential_current_tree_claim": false,
-      "receipt_identity": "self:receipt_identity",
-      "receipt_identity_is_self_reference": true,
-      "receipt_identity_resolution": "top_level.receipt_identity",
-      "output_path": null,
-      "output_present": null,
-      "output_file_sha256": null,
-      "output_observation": "deferred_until_after_atomic_write",
-      "publication_rule": "External content-addressed attestation: the receipt identity is the digest of the attestation body excluding itself; the source tree never includes this receipt. The embedded publication binds that identity through the canonical self:receipt_identity reference so no nested circular digest is required.",
-      "block_reasons": []
-    },
-    "generated_artifact_paths": [
-      "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
-      "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
-      "docs/architecture/formal_verification_toolchain_certificate.json"
-    ],
-    "claims_own_future_event": false,
-    "current_task_id": "FVT-067"
-  },
-  "acceptance": {
-    "release_candidate_bound": false,
-    "candidate_digest_bound": true,
-    "candidate_digest_material_bound": false,
-    "release_candidate_merge_blob_bound": false,
-    "g213_terminal_receipt_bound": false,
-    "event_chain_continuous": false,
-    "g213_expected_outputs_bound": false,
-    "validation_result_bound": false,
-    "merged_commit_bound": false,
-    "source_tree_bound": true,
-    "datasets_gitlink_bound": true,
-    "origin_publication_bound": false,
-    "supported_capability_closure": false,
-    "hard_zero_gates_clear": true,
-    "hard_zero_gates_derived": true,
-    "authority_ceiling_respected": true,
-    "quarantines_bound": true,
-    "public_surfaces_bound": true,
-    "role_aware_certificate_bound": true,
-    "completion_receipt_bound": true,
-    "synthetic_evidence_cannot_certify_production": true,
-    "no_install_during_offline_certification": true,
-    "platform_exceptions_derived_and_narrow": true,
-    "required_elevations_complete": false,
-    "artifacts_present": true,
-    "publication_bound": true,
-    "never_claims_current_task_future_event": true,
-    "circular_tree_identity_forbidden": true
-  },
-  "readiness_requirements": {
-    "release_candidate_bound": false,
-    "candidate_digest_bound": true,
-    "candidate_digest_material_bound": false,
-    "release_candidate_merge_blob_bound": false,
-    "g213_terminal_receipt_bound": false,
-    "event_chain_continuous": false,
-    "g213_expected_outputs_bound": false,
-    "validation_result_bound": false,
-    "merged_commit_bound": false,
-    "source_tree_bound": true,
-    "datasets_gitlink_bound": true,
-    "origin_publication_bound": false,
-    "supported_capability_closure": false,
-    "hard_zero_gates_clear": true,
-    "hard_zero_gates_derived": true,
-    "authority_ceiling_respected": true,
-    "quarantines_bound": true,
-    "public_surfaces_bound": true,
-    "role_aware_certificate_bound": true,
-    "completion_receipt_bound": true,
-    "synthetic_evidence_cannot_certify_production": true,
-    "no_install_during_offline_certification": true,
-    "platform_exceptions_derived_and_narrow": true,
-    "artifacts_present": true,
-    "publication_bound": true,
-    "never_claims_current_task_future_event": true
-  },
-  "deployment_blockers": [
-    "candidate_digest_material_bound",
-    "event_chain_continuous",
-    "g213_expected_outputs_bound",
-    "g213_terminal_evidence_missing",
-    "g213_terminal_receipt_bound",
-    "managed:ergoai:launcher_target_artifact_unbound",
-    "managed:ergoai:supported_managed_installation_missing_or_shim_only",
-    "managed:secpal:full_semantic_check_set_missing_or_failed",
-    "managed:secpal:locked_version_mismatch",
-    "managed:secpal:supported_managed_installation_missing_or_shim_only",
-    "managed:souffle:full_semantic_check_set_missing_or_failed",
-    "merged_commit_bound",
-    "origin_publication_bound",
-    "release_candidate_bound",
-    "release_candidate_digest_material_invalid",
-    "release_candidate_merge_blob_bound",
-    "supported_capability_closure",
-    "validation_result_bound"
-  ],
-  "hard_zero_gates": {
-    "false_proof_count": 0,
-    "false_closure_count": 0,
-    "secret_or_witness_leakage_count": 0,
-    "authority_boundary_violations": 0,
-    "unresolved_cross_provider_disagreement_count": 0,
-    "derivation": {
-      "source": "content_bound_certificate_live_benchmark_and_open_p0_baseline_findings",
-      "hardcoded_success_counters_forbidden": true,
-      "complete": true,
-      "missing_measurements": [],
-      "certificate_identity_valid": true,
-      "benchmark_evidence": {
-        "authoritative": false,
-        "hard_zero_clearable": true,
-        "branch_live_cohort_pending_main_merge": true,
-        "failures": [
-          "benchmark_authority_verifier_rejected"
-        ],
-        "hard_gates": {
-          "authority": {
-            "actual_bps": 10000,
-            "required_bps": 10000,
-            "status": "pass"
-          },
-          "correctness": {
-            "actual_bps": 10000,
-            "required_bps": 10000,
-            "status": "pass"
-          },
-          "privacy": {
-            "actual_bps": 10000,
-            "required_bps": 10000,
-            "status": "pass"
-          }
-        },
-        "evidence_classes": [
-          "live"
-        ],
-        "report_id": "goal-tactician-bench-b9506430763dc4be6319e83a28e56a4ad4fd10e7b6a83ab14d86c5aa33c0fd4a",
-        "report_id_valid": true,
-        "authority_anchor": {
-          "present": true,
-          "bound": false,
-          "schema": "ipfs_accelerate_py.agent_supervisor.goal_tactician_authoritative_benchmark_evidence@1",
-          "interface": "GoalTacticianAuthoritativeBenchmarkEvidence@1",
-          "goal_id": "FVT-G063",
-          "content_id": "sha256:2961f32361b16fe9744ebd5455cb89b997a6323da48e85ef8a5b5d55d44cdfc0",
-          "report_id": "goal-tactician-bench-b9506430763dc4be6319e83a28e56a4ad4fd10e7b6a83ab14d86c5aa33c0fd4a",
-          "verifier": {
-            "path": "ipfs_accelerate_py/agent_supervisor/proof/goal_tactician_metrics.py",
-            "function": "verify_authoritative_benchmark_evidence",
-            "present": true,
-            "sha256": "sha256:097608f90002bae389517aa64ca2dd9bb50f62edbeb588f14bf0232c6a7822a7",
-            "bound": true
-          },
-          "failures": [
-            "benchmark_authority_verifier_rejected"
-          ]
+        "tool_check_digests": {
+          "apalache": "07197daa29dcafc7f617eaf1ae300f6ed3e226d92a22e0d75ef595975ef4a178",
+          "autohyper": "7b2da277ace6c0bb9558adfa6d7a517948b3fc5bc06780b5072e92b3cabb5077",
+          "coq": "1f3396402aed11d24279b438789616a0bc96cbebcbc4fa81d85af60fd027df4f",
+          "cvc5": "73d8086cdb0f5ed09d53cca87584b69a3f916ca46a16b1f57634c1ced34e57d8",
+          "datalog-authorization": "aedd02270f46bb29ce94c403509c78170bb03950da0a0a84141cf30724f3c713",
+          "eprover": "3c4e4630d13686305eed6d6be2a4b7f791d7fdff470f6647a6080a55d5850732",
+          "ergoai": "fdddf8fadb919b55148dca99463b6d64ab64debc98962f13b6abf76cb071eaae",
+          "hyperltl": "365b281a795f91bf4e8bf72b6db9dce506e9c9e8d6958d334706fd414c5fb70b",
+          "isabelle": "09606ecb1d545a6bda8681b5374aa8f6f4cd4659d066a8533e8e16704020e04a",
+          "java": "66e6d1b2b6f5746e0dee9cfd736e18081703c069326d7e7a732a7b267a90ff11",
+          "lean": "3224a33d6990b658a3a139db1d1361c13165584bfed639c791be76b95230d283",
+          "maude": "d54e0592856a6210af425e997b232be03e105d59e728ca0228cdc5c56679b49e",
+          "mchyper": "d728db07514b147f0a96efa63b8124a1507f5ae4fc3a3f126464ceebd2aa2bc4",
+          "opam": "795d1bb6eb93894cf49d6132823c4ed881ef6ffeec106de88893ea63ff88883d",
+          "proverif": "c44600a6ca45c4b2f27701a0d3e4cce856bd7740921533b7b7d82f9b8a27a690",
+          "runtime-mtl": "de491ce69724554c6e59cf44be7f3e2b9104440d747a8e4f8cfd4e6836c84821",
+          "runtime-mtl-external": "016954164436222d0b72f11232284dda66e9a4e39862940472a9ade26fb9a180",
+          "secpal": "ade16d63beaf32d61a42d72686f0b696f2600b0e3ebc1bbc1e9260e8487b7948",
+          "secpal-authorization": "9335c3b5c2f73d84b5fa90da9ac9e7f2c4e2bf7d6f03ec5ebf7170fb2735afdf",
+          "souffle": "c78ed44c31287c41ccc09f32a02f9bf35ccb20beb47aa821966ea7acb970368c",
+          "stack": "81999d21e1eb47866a36fc9cda3bdc307abc68c295185aa45c13aee1ca0232fa",
+          "symbolicai": "44317b2d7558a61d8eab46e83c0d1501ff5e7ae1630257ca3ddd8edc9bce17e4",
+          "tamarin": "da49eee8c3b361d681c3ff4c87a10544ac4768fe8a98f01a71a97bc3f0d7790a",
+          "tlc": "d75788a08c641cd294f8e322601fa6afc6d94ce14a3c71bc8408f510cd38fa33",
+          "vampire": "23a39dcd9bed9d3c604f3127844e4733632159781cecc6f3aaf55c7f7e9b21ec",
+          "z3": "703a0639d45c701592a30b8087660f1daf739f56d018ea143aa7c3c58604d817",
+          "zkp-circuit": "dbe529034fd4e84b278c7d60f7980f6c1f7b7b90e33cd666553a772b3d67b39f"
         }
       },
-      "benchmark_hard_gates_required_bps": 10000,
-      "fixture_or_synthetic_benchmark_cannot_clear": false,
-      "branch_live_cohort_pending_main_merge": true,
-      "open_p0_findings_block_clearance": true,
-      "open_baseline_findings_disclosed": 1,
-      "open_baseline_findings": [
-        {
-          "id": "synthetic_examples_and_metrics",
-          "severity": "medium",
-          "status": "open",
-          "summary": "Examples and some readiness metrics remain synthetic/offline and must stay labeled."
-        }
-      ],
-      "open_p0_findings": [],
-      "resolved_p0_findings": [
-        {
-          "id": "receipt_verification_fail_open",
-          "severity": "p0",
-          "status": "resolved",
-          "summary": "verify_receipt rejected empty, unknown-schema, forged-authority, stale, and binding-mismatched receipts after FVT-003.",
-          "resolution_evidence": {
-            "valid": true,
-            "failures": [],
-            "schema_version": "formal-verification-p0-resolution-evidence/v1",
-            "implementation_commits": [
-              {
-                "repository": "root",
-                "commit": "2296a8a1e7cb7335c7d5417eab74d41044d3dcc1"
-              },
-              {
-                "repository": "ipfs_datasets_py",
-                "commit": "a36437445a9ee2352de04a26eff0de5c802eb8d5"
-              },
-              {
-                "repository": "ipfs_datasets_py",
-                "commit": "20a3fef9229c7f4bab7e960d489b9ce438b506ea"
-              }
-            ],
-            "implementation_artifacts": [
-              {
-                "repository": "ipfs_datasets_py",
-                "path": "ipfs_datasets_py/logic/verification_api.py",
-                "content_identity": "sha256:254728bfae3465e96b39be8628c67a63273ec3577fb39f17f2cfb12d93519075",
-                "implementation_commit": "20a3fef9229c7f4bab7e960d489b9ce438b506ea"
-              }
-            ],
-            "validation_tests": [
-              {
-                "repository": "ipfs_datasets_py",
-                "path": "tests/unit/logic/test_verification_receipt_adversarial.py",
-                "content_identity": "sha256:86d003c9598f2344d5c2b352795600194e2c99f722aa922e563bc67e44aed5a4",
-                "implementation_commit": "a36437445a9ee2352de04a26eff0de5c802eb8d5"
-              },
-              {
-                "repository": "root",
-                "path": "test/api/test_logic_receipt_authority_boundary.py",
-                "content_identity": "sha256:8d07842785c02ff120edc28e2a05d60210d6e8e16c1ba8f329e04da3418dbd72",
-                "implementation_commit": "2296a8a1e7cb7335c7d5417eab74d41044d3dcc1"
-              }
-            ]
-          }
-        },
-        {
-          "id": "public_counterexample_raw_leak",
-          "severity": "p0",
-          "status": "resolved",
-          "summary": "Public datasets and supervisor projections now share a secret-safe semantic boundary and do not re-emit private channels.",
-          "resolution_evidence": {
-            "valid": true,
-            "failures": [],
-            "schema_version": "formal-verification-p0-resolution-evidence/v1",
-            "implementation_commits": [
-              {
-                "repository": "root",
-                "commit": "d024bb38fe123f79a0e6327545b09755c89e476a"
-              },
-              {
-                "repository": "ipfs_datasets_py",
-                "commit": "194f9cbcc64bb07cf4849485a7665e9285ee71c9"
-              },
-              {
-                "repository": "ipfs_datasets_py",
-                "commit": "20a3fef9229c7f4bab7e960d489b9ce438b506ea"
-              }
-            ],
-            "implementation_artifacts": [
-              {
-                "repository": "ipfs_datasets_py",
-                "path": "ipfs_datasets_py/logic/verification_api.py",
-                "content_identity": "sha256:254728bfae3465e96b39be8628c67a63273ec3577fb39f17f2cfb12d93519075",
-                "implementation_commit": "20a3fef9229c7f4bab7e960d489b9ce438b506ea"
-              },
-              {
-                "repository": "ipfs_datasets_py",
-                "path": "ipfs_datasets_py/logic/software_verification/counterexamples/contracts.py",
-                "content_identity": "sha256:a42e976923b854724a4585f108e4272586d8a22c9694551412bd12055cc0b4d7",
-                "implementation_commit": "194f9cbcc64bb07cf4849485a7665e9285ee71c9"
-              }
-            ],
-            "validation_tests": [
-              {
-                "repository": "ipfs_datasets_py",
-                "path": "tests/unit/logic/test_counterexample_public_boundary.py",
-                "content_identity": "sha256:115c75ce3c35239d7f1de9df984f5a68c2481fae8ce90dcb31a006383a776712",
-                "implementation_commit": "194f9cbcc64bb07cf4849485a7665e9285ee71c9"
-              },
-              {
-                "repository": "root",
-                "path": "test/api/test_counterexample_cross_repository_contract.py",
-                "content_identity": "sha256:4b850fae71f8d43cad2325e6c94a1d9149b878e363a9a8928d7b1fe2840d2fab",
-                "implementation_commit": "d024bb38fe123f79a0e6327545b09755c89e476a"
-              }
-            ]
-          }
-        },
-        {
-          "id": "structural_repair_as_closure",
-          "severity": "p0",
-          "status": "resolved",
-          "summary": "Formal replanning now requires a fresh, fully bound verifier receipt before counterexample closure.",
-          "resolution_evidence": {
-            "valid": true,
-            "failures": [],
-            "schema_version": "formal-verification-p0-resolution-evidence/v1",
-            "implementation_commits": [
-              {
-                "repository": "root",
-                "commit": "a98029cfd178f814ce23c2a0027ba425ee8b0719"
-              }
-            ],
-            "implementation_artifacts": [
-              {
-                "repository": "root",
-                "path": "ipfs_accelerate_py/agent_supervisor/planning/formal_replanner.py",
-                "content_identity": "sha256:e2dc95be602210b2afd6f2c80a45f42f097342d5222b613f4afb61cf3a16ba89",
-                "implementation_commit": "a98029cfd178f814ce23c2a0027ba425ee8b0719"
-              }
-            ],
-            "validation_tests": [
-              {
-                "repository": "root",
-                "path": "test/api/test_agent_supervisor_formal_replanner_verifier_closure.py",
-                "content_identity": "sha256:666580020f916ce3b6503d9ca2f75adb4a1cdf426ac078f2cbb9ce1ca1941653",
-                "implementation_commit": "a98029cfd178f814ce23c2a0027ba425ee8b0719"
-              }
-            ]
-          }
-        }
-      ],
-      "invalid_p0_resolutions": [],
-      "p0_gate_pressure": {
-        "false_proof_count": 0,
-        "false_closure_count": 0,
-        "secret_or_witness_leakage_count": 0,
-        "authority_boundary_violations": 0
-      }
+      "goal_id": "FVT-G213",
+      "interface": "RoleAwareFormalVerificationReleaseCandidate@1",
+      "readiness_stage": "release_candidate",
+      "status": "role_aware_release_candidate_ready",
+      "task_id": "FVT-066"
+    },
+    "readiness_stage": "release_candidate",
+    "schema_version": "formal-verification-role-aware-release-candidate/v1",
+    "status": "role_aware_release_candidate_ready",
+    "task_id": "FVT-066",
+    "terminal_merge_blob_binding": {
+      "binding_rule": "The candidate file bytes must equal the blob published by the verified FVT-066 terminal merge commit.",
+      "bound": true,
+      "current_blob": "a5528662ba214e220dba020fd7fae771b1343421",
+      "failures": [],
+      "merge_commit": "72908c74d48927e997bf4827266bd7d1520f9f1c",
+      "merged_blob": "a5528662ba214e220dba020fd7fae771b1343421",
+      "terminal_evidence_bound": true
     }
   },
   "role_aware_certificate": {
-    "interface": "FormalVerificationToolchainCertificate@1",
-    "schema_version": "formal-verification-toolchain-certificate/v1",
-    "goal_id": "FVT-G060",
-    "task_id": "FVT-030",
-    "certificate_digest_sha256": "b2cf53605be790ab2efad31345a92270694377b9f7f26217db2432220fcc4344",
-    "role_aware": {
-      "enabled": true,
-      "elevated_tool_ids": [
-        "apalache",
-        "autohyper",
-        "coq",
-        "eprover",
-        "hyperltl",
-        "isabelle",
-        "lean",
-        "mchyper",
-        "proverif",
-        "runtime-mtl",
-        "tamarin",
-        "tlc",
-        "vampire",
-        "zkp-circuit"
-      ]
-    },
-    "promotion": {
-      "production_certified_tool_ids": [
-        "apalache",
-        "autohyper",
-        "coq",
-        "cvc5",
-        "eprover",
-        "hyperltl",
-        "isabelle",
-        "lean",
-        "mchyper",
-        "proverif",
-        "runtime-mtl",
-        "tamarin",
-        "tlc",
-        "vampire",
-        "z3",
-        "zkp-circuit"
-      ],
-      "merely_usable_tool_ids": [
-        "datalog-authorization",
-        "ergoai",
-        "java",
-        "maude",
-        "opam",
-        "runtime-mtl-external",
-        "secpal-authorization",
-        "souffle",
-        "stack",
-        "symbolicai",
-        "temurin-jdk"
-      ],
-      "unavailable_tool_ids": [
-        "secpal"
-      ]
-    },
     "authority_roles": {
-      "present": true,
-      "interface": "RoleAwarePromotionPolicy@1",
-      "policy_digest_sha256": "78edbfd69cdcdaab0ff4a34d260e6316ac18ee48337e9896756b1e79728d911a",
       "boundary": {
-        "support_only": [
-          "java",
-          "maude",
-          "opam",
-          "stack",
-          "temurin-jdk"
-        ],
         "advisor_or_candidate_only": [
           "autoencoder",
           "ergoai",
@@ -910,14 +1319,8 @@
           "leanstral",
           "symbolicai"
         ],
-        "shadow_checkers": [
-          "secpal",
-          "souffle"
-        ],
-        "kernel_authority": [
-          "coq",
-          "isabelle",
-          "lean"
+        "attestation_authority_only": [
+          "zkp-circuit"
         ],
         "authorization_only": [
           "datalog-authorization",
@@ -927,448 +1330,738 @@
           "runtime-mtl",
           "runtime-mtl-external"
         ],
-        "attestation_authority_only": [
-          "zkp-circuit"
+        "kernel_authority": [
+          "coq",
+          "isabelle",
+          "lean"
         ],
         "policy": {
-          "support_advisor_shadow_presence_cannot_certify": true,
           "availability_is_not_authority": true,
+          "central_certifier_not_required_for_lane_binding": true,
           "exactly_one_role_and_ceiling_per_tool": true,
           "lanes_independently_owned": true,
-          "central_certifier_not_required_for_lane_binding": true
-        }
-      }
+          "support_advisor_shadow_presence_cannot_certify": true
+        },
+        "shadow_checkers": [
+          "secpal",
+          "souffle"
+        ],
+        "support_only": [
+          "java",
+          "maude",
+          "opam",
+          "stack",
+          "temurin-jdk"
+        ]
+      },
+      "interface": "RoleAwarePromotionPolicy@1",
+      "policy_digest_sha256": "78edbfd69cdcdaab0ff4a34d260e6316ac18ee48337e9896756b1e79728d911a",
+      "present": true
+    },
+    "certificate_digest_sha256": "df6356080f1068736bc10485359d894448af79d4502601bc75de9488c3ee8c5f",
+    "certification_policy": {
+      "forbid_download": true,
+      "forbid_install": true,
+      "forbid_network": true,
+      "offline_policy_satisfied": true
     },
     "disagreement_quarantines": [],
+    "goal_id": "FVT-G060",
+    "interface": "FormalVerificationToolchainCertificate@1",
+    "managed_deployment_readiness": {
+      "all_blockers": [
+        {
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "tool_id": "apalache"
+        },
+        {
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "tool_id": "autohyper"
+        },
+        {
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "tool_id": "coq"
+        },
+        {
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "tool_id": "eprover"
+        },
+        {
+          "reasons": [
+            "locked_version_mismatch",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "tool_id": "ergoai"
+        },
+        {
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "tool_id": "hyperltl"
+        },
+        {
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "tool_id": "isabelle"
+        },
+        {
+          "reasons": [
+            "locked_version_mismatch",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "tool_id": "maude"
+        },
+        {
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "tool_id": "mchyper"
+        },
+        {
+          "reasons": [
+            "locked_version_mismatch",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "tool_id": "opam"
+        },
+        {
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "tool_id": "proverif"
+        },
+        {
+          "reasons": [
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "tool_id": "runtime-mtl-external"
+        },
+        {
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "tool_id": "secpal"
+        },
+        {
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "tool_id": "souffle"
+        },
+        {
+          "reasons": [
+            "locked_version_mismatch",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "tool_id": "stack"
+        },
+        {
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "tool_id": "tamarin"
+        },
+        {
+          "reasons": [
+            "locked_version_mismatch"
+          ],
+          "tool_id": "temurin-jdk"
+        },
+        {
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "tool_id": "tlc"
+        },
+        {
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "tool_id": "vampire"
+        }
+      ],
+      "capability_blockers": [
+        {
+          "artifact_classes": [],
+          "authority_ceiling": "bounded",
+          "category": "capability",
+          "evidence_class": "unavailable",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "role": "authority",
+          "tool_id": "apalache"
+        },
+        {
+          "artifact_classes": [],
+          "authority_ceiling": "bounded",
+          "category": "capability",
+          "evidence_class": "unavailable",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "role": "authority",
+          "tool_id": "autohyper"
+        },
+        {
+          "artifact_classes": [],
+          "authority_ceiling": "kernel",
+          "category": "capability",
+          "evidence_class": "external_prover_installation_pending",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "role": "authority",
+          "tool_id": "coq"
+        },
+        {
+          "artifact_classes": [],
+          "authority_ceiling": "reconstruction",
+          "category": "capability",
+          "evidence_class": "unavailable",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "role": "authority",
+          "tool_id": "eprover"
+        },
+        {
+          "artifact_classes": [
+            "repository_source"
+          ],
+          "authority_ceiling": "advisory",
+          "category": "capability",
+          "evidence_class": "proposal_only_semantics",
+          "reasons": [
+            "locked_version_mismatch",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "role": "advisor",
+          "tool_id": "ergoai"
+        },
+        {
+          "artifact_classes": [],
+          "authority_ceiling": "bounded",
+          "category": "capability",
+          "evidence_class": "unavailable",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "role": "authority",
+          "tool_id": "hyperltl"
+        },
+        {
+          "artifact_classes": [],
+          "authority_ceiling": "kernel",
+          "category": "capability",
+          "evidence_class": "external_prover_installation_pending",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "role": "authority",
+          "tool_id": "isabelle"
+        },
+        {
+          "artifact_classes": [],
+          "authority_ceiling": "bounded",
+          "category": "capability",
+          "evidence_class": "unavailable",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "role": "authority",
+          "tool_id": "mchyper"
+        },
+        {
+          "artifact_classes": [],
+          "authority_ceiling": "protocol",
+          "category": "capability",
+          "evidence_class": "unavailable",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "role": "authority",
+          "tool_id": "proverif"
+        },
+        {
+          "artifact_classes": [
+            "generated_hermetic_shim",
+            "repository_source"
+          ],
+          "authority_ceiling": "finite_trace",
+          "category": "capability",
+          "evidence_class": "hermetic_adapter_shim",
+          "reasons": [
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "role": "authority",
+          "tool_id": "runtime-mtl-external"
+        },
+        {
+          "artifact_classes": [],
+          "authority_ceiling": "none",
+          "category": "capability",
+          "evidence_class": "unavailable",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "role": "shadow",
+          "tool_id": "secpal"
+        },
+        {
+          "artifact_classes": [],
+          "authority_ceiling": "none",
+          "category": "capability",
+          "evidence_class": "unavailable",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "role": "shadow",
+          "tool_id": "souffle"
+        },
+        {
+          "artifact_classes": [],
+          "authority_ceiling": "protocol",
+          "category": "capability",
+          "evidence_class": "unavailable",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "role": "authority",
+          "tool_id": "tamarin"
+        },
+        {
+          "artifact_classes": [],
+          "authority_ceiling": "bounded",
+          "category": "capability",
+          "evidence_class": "unavailable",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "role": "authority",
+          "tool_id": "tlc"
+        },
+        {
+          "artifact_classes": [],
+          "authority_ceiling": "reconstruction",
+          "category": "capability",
+          "evidence_class": "unavailable",
+          "reasons": [
+            "full_semantic_check_set_missing_or_failed",
+            "locked_version_mismatch",
+            "semantic_evidence_below_authority_ceiling",
+            "semantic_receipt_not_bound",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "role": "authority",
+          "tool_id": "vampire"
+        }
+      ],
+      "dependency_blockers": [
+        {
+          "artifact_classes": [],
+          "authority_ceiling": "none",
+          "category": "dependency",
+          "evidence_class": "unavailable",
+          "reasons": [
+            "locked_version_mismatch",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "role": "support",
+          "tool_id": "maude"
+        },
+        {
+          "artifact_classes": [],
+          "authority_ceiling": "none",
+          "category": "dependency",
+          "evidence_class": "unavailable",
+          "reasons": [
+            "locked_version_mismatch",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "role": "support",
+          "tool_id": "opam"
+        },
+        {
+          "artifact_classes": [],
+          "authority_ceiling": "none",
+          "category": "dependency",
+          "evidence_class": "unavailable",
+          "reasons": [
+            "locked_version_mismatch",
+            "supported_managed_installation_missing_or_shim_only"
+          ],
+          "role": "support",
+          "tool_id": "stack"
+        },
+        {
+          "artifact_classes": [
+            "native_or_managed_binary"
+          ],
+          "authority_ceiling": "none",
+          "category": "dependency",
+          "evidence_class": "version_mismatch",
+          "reasons": [
+            "locked_version_mismatch"
+          ],
+          "role": "support",
+          "tool_id": "temurin-jdk"
+        }
+      ],
+      "host_platform": "linux-aarch64",
+      "platform_exceptions": [],
+      "ready": false,
+      "status": "supported_managed_capabilities_blocked"
+    },
+    "promotion": {
+      "merely_usable_tool_ids": [
+        "datalog-authorization",
+        "java",
+        "runtime-mtl",
+        "secpal-authorization",
+        "symbolicai"
+      ],
+      "production_certified_tool_ids": [
+        "cvc5",
+        "lean",
+        "z3",
+        "zkp-circuit"
+      ],
+      "unavailable_tool_ids": [
+        "apalache",
+        "autohyper",
+        "coq",
+        "eprover",
+        "ergoai",
+        "hyperltl",
+        "isabelle",
+        "maude",
+        "mchyper",
+        "opam",
+        "proverif",
+        "runtime-mtl-external",
+        "secpal",
+        "souffle",
+        "stack",
+        "tamarin",
+        "tlc",
+        "vampire"
+      ]
+    },
+    "public_evidence_policy": {
+      "satisfied": true
+    },
+    "role_aware": {
+      "elevated_tool_ids": [
+        "lean",
+        "zkp-circuit"
+      ],
+      "enabled": true
+    },
+    "schema_version": "formal-verification-toolchain-certificate/v1",
     "semantic_lane_results": [
       {
-        "lane_id": "kernel",
-        "status": "ran",
+        "block_reasons": [],
         "digest_sha256": "56bfbc957b51a76244e39fe774f19991831983d7ba1bc927aee0436e0d722bf9",
+        "lane_id": "kernel",
         "receipt_integrity_valid": true,
-        "block_reasons": []
+        "status": "ran"
       },
       {
+        "block_reasons": [],
+        "digest_sha256": "2471dfa812eecb72840fdc7b127d1e97582724433c09738665f81ec06d0a3882",
         "lane_id": "kernel_rocq",
-        "status": "ran",
-        "digest_sha256": "ab4bb0ab30b820d7a33a28e879dbba34b090bb48adbd0efdc4bbcaa732f2f945",
         "receipt_integrity_valid": true,
-        "block_reasons": []
+        "status": "ran"
       },
       {
+        "block_reasons": [],
+        "digest_sha256": "fce8eb3268305a6b4ba809069f01367ecc6cafb9b4dc44ed45bec7319f3c1c02",
         "lane_id": "kernel_isabelle",
-        "status": "ran",
-        "digest_sha256": "1016906acac8a991a7913e2cda5de2c2df8216483362859b66d36e3532c0bbe5",
         "receipt_integrity_valid": true,
-        "block_reasons": []
+        "status": "ran"
       },
       {
+        "block_reasons": [],
+        "digest_sha256": "2a9c7ad355cc1c04e4dea7f2fb4b3703dde25ea3d782173fa1df36f088ab5ee2",
         "lane_id": "runtime_mtl",
-        "status": "ran",
-        "digest_sha256": "f14767708fa70c292fb3a31e308f2d51debcda7a81fa7e75896702b6536fcdbf",
         "receipt_integrity_valid": true,
-        "block_reasons": []
+        "status": "ran"
       },
       {
+        "block_reasons": [],
+        "digest_sha256": "d54fc465c423e20a93728668606454f824c48916568318c1f6e4b7aaaceefdf7",
         "lane_id": "datalog_secpal",
-        "status": "ran",
-        "digest_sha256": "f4533649d1eff1baca1030039e69233392afc2b998d6184fe3b6596944a7faf1",
         "receipt_integrity_valid": true,
-        "block_reasons": []
+        "status": "ran"
       },
       {
+        "block_reasons": [],
+        "digest_sha256": "cd3825f3adc03dd8c0c1d9b93547356056687d1ba220eb5bcfad6452777d434f",
         "lane_id": "state_model",
-        "status": "ran",
-        "digest_sha256": "00815bee43d758ac70a432074feb92fd971138f7c9243de768d1e3472d169106",
         "receipt_integrity_valid": true,
-        "block_reasons": []
+        "status": "ran"
       },
       {
+        "block_reasons": [],
+        "digest_sha256": "2320e89aaa1fba5c05c442790a2e10d026eee3bc0270d3b8334367d8d2024ca4",
         "lane_id": "protocol_tamarin",
-        "status": "ran",
-        "digest_sha256": "f089db46c315ae14f13741ba04d806ae6b1492bdbd0fd808e8cc1532d0ff336e",
         "receipt_integrity_valid": true,
-        "block_reasons": []
+        "status": "ran"
       },
       {
+        "block_reasons": [],
+        "digest_sha256": "a6c4fc24c9c525ed010220f0a320b7b57db4d4e424ed0e693de8e2044841bd7a",
         "lane_id": "protocol_proverif",
-        "status": "ran",
-        "digest_sha256": "01b4d90ecd167758925f31c25352f9347e9e69dd41ed84ec4a5777c4cfaa0461",
         "receipt_integrity_valid": true,
-        "block_reasons": []
+        "status": "ran"
       },
       {
+        "block_reasons": [],
+        "digest_sha256": "9e5775e88ae65e50fd255a80e5be76528194ae96c3dd9e7a191a2968b4b5843a",
         "lane_id": "atp",
-        "status": "ran",
-        "digest_sha256": "e38a90c9d8c29a4b37e4782e3244ba9a409d08659b5f6dce0e9ae1d86e74ad90",
         "receipt_integrity_valid": true,
-        "block_reasons": []
+        "status": "ran"
       },
       {
+        "block_reasons": [],
+        "digest_sha256": "965c6f074680671a289f040cb389427c924f52283730952899a6551dc7f3ee6b",
         "lane_id": "hyperltl",
-        "status": "ran",
-        "digest_sha256": "674ec4e9f8e81b9dd3e9a4f2f4fb73fc3358d155961b8654857dd4b234877dd8",
         "receipt_integrity_valid": true,
-        "block_reasons": []
+        "status": "ran"
       },
       {
-        "lane_id": "runtime_mtl_external",
-        "status": "ran",
+        "block_reasons": [],
         "digest_sha256": "1efe2ad6dfea459191cfd7358c303b8a4d6b8e4b9272f5623a11bef671531d71",
+        "lane_id": "runtime_mtl_external",
         "receipt_integrity_valid": true,
-        "block_reasons": []
+        "status": "ran"
       },
       {
-        "lane_id": "authorization_external",
-        "status": "ran",
+        "block_reasons": [],
         "digest_sha256": "0c2b371a1a59dd4bb50421df6c56fb23e9b2d6f389ccf0190cdf38327557b5be",
+        "lane_id": "authorization_external",
         "receipt_integrity_valid": true,
-        "block_reasons": []
+        "status": "ran"
       },
       {
-        "lane_id": "attestation",
-        "status": "ran",
+        "block_reasons": [],
         "digest_sha256": "9a10496729b1f60f05df35c795f8f0403ed50b8a72a02c746a92a6b2499c84a6",
+        "lane_id": "attestation",
         "receipt_integrity_valid": true,
-        "block_reasons": []
+        "status": "ran"
       },
       {
+        "block_reasons": [],
+        "digest_sha256": "f00c57ad32fbdc4b77814e57b9e21f40f78385a09633dbf1247ec73f63e34068",
         "lane_id": "advisors",
-        "status": "ran",
-        "digest_sha256": "30afc7ca01230debcb0748873e85e1e187f2a6038e4f450a21200c98383392ce",
         "receipt_integrity_valid": true,
-        "block_reasons": []
+        "status": "ran"
       }
     ],
+    "task_id": "FVT-030",
     "tool_check_digests": {
-      "apalache": "758459ff1c0c034d502c8a5b7f2e4feb6d655324c02692dc2fe5c16d100e91b1",
-      "autohyper": "7b2da277ace6c0bb9558adfa6d7a517948b3fc5bc06780b5072e92b3cabb5077",
-      "coq": "1f3396402aed11d24279b438789616a0bc96cbebcbc4fa81d85af60fd027df4f",
+      "apalache": "80c75b16730ce2c1af8481b64fdb6ea92439ccfe3597942ee705bf696920f188",
+      "autohyper": "8a72dc5c3c5b25cb8c4cbb73402c18c51c1275b71d93f64182125d521bd62ccc",
+      "coq": "c779484da181dd4ff1740268272e9e360ff95d3798459d1a91fecb614078438f",
       "cvc5": "73d8086cdb0f5ed09d53cca87584b69a3f916ca46a16b1f57634c1ced34e57d8",
       "datalog-authorization": "aedd02270f46bb29ce94c403509c78170bb03950da0a0a84141cf30724f3c713",
-      "eprover": "3c4e4630d13686305eed6d6be2a4b7f791d7fdff470f6647a6080a55d5850732",
-      "ergoai": "08e2ee60d37ea0c431fac03c8ad05b0726c1699cd35a6d256550c833eeb304fc",
-      "hyperltl": "365b281a795f91bf4e8bf72b6db9dce506e9c9e8d6958d334706fd414c5fb70b",
-      "isabelle": "09606ecb1d545a6bda8681b5374aa8f6f4cd4659d066a8533e8e16704020e04a",
-      "java": "a2dc02405ecb06edf620c7ff499416b9f45a4da8430bdd7c70acbc302cdd045d",
+      "eprover": "13ac720fec8f1654f336fa489c87eb0f3b1d6ec23f116a9f93247d0ae9deda42",
+      "ergoai": "74bb989760994f5f878c35b833c2101e7dce83f7d593332eeb66ea4855127daf",
+      "hyperltl": "0b9ad75cfeb0000289beb07a023cc35f8c7993ab292395c814a9e20306e219e5",
+      "isabelle": "c1201f6804c6f07a531a302ec1a58599a7072b5f124c51da7174313affa08010",
+      "java": "66e6d1b2b6f5746e0dee9cfd736e18081703c069326d7e7a732a7b267a90ff11",
       "lean": "6883862b67fd16be8426a20c8563b11e2c71b9277b551fed2bcacdd6025d6c7f",
-      "maude": "d54e0592856a6210af425e997b232be03e105d59e728ca0228cdc5c56679b49e",
-      "mchyper": "d728db07514b147f0a96efa63b8124a1507f5ae4fc3a3f126464ceebd2aa2bc4",
-      "opam": "795d1bb6eb93894cf49d6132823c4ed881ef6ffeec106de88893ea63ff88883d",
-      "proverif": "c44600a6ca45c4b2f27701a0d3e4cce856bd7740921533b7b7d82f9b8a27a690",
+      "maude": "688bc082b80d77967827ab83c24b9738c92ab7c5f125079b331536e5b42ed10c",
+      "mchyper": "bb2ce0a3596b4085aca49773e4db88487136557b64ea007983b2911b19767e78",
+      "opam": "2ba5d10cfe7d668797b1d984524b35553845d8d8eb234a400f754fd526d54fd3",
+      "proverif": "9f3a6938df466e160f7201850b1697940c0e7cfa64a1c7d90e6ca3655f0cc4c1",
       "runtime-mtl": "de491ce69724554c6e59cf44be7f3e2b9104440d747a8e4f8cfd4e6836c84821",
       "runtime-mtl-external": "7b1c8458a50f370a26f636e00e28d183d1e94f1fda24ce550981f1c3a3f9eb9e",
       "secpal": "ade16d63beaf32d61a42d72686f0b696f2600b0e3ebc1bbc1e9260e8487b7948",
       "secpal-authorization": "9335c3b5c2f73d84b5fa90da9ac9e7f2c4e2bf7d6f03ec5ebf7170fb2735afdf",
-      "souffle": "c78ed44c31287c41ccc09f32a02f9bf35ccb20beb47aa821966ea7acb970368c",
-      "stack": "81999d21e1eb47866a36fc9cda3bdc307abc68c295185aa45c13aee1ca0232fa",
-      "symbolicai": "62191e4f4fb77616b44a170acb4e42373ebf92974ca182fae0de7e44c5ca67d7",
-      "tamarin": "da49eee8c3b361d681c3ff4c87a10544ac4768fe8a98f01a71a97bc3f0d7790a",
-      "temurin-jdk": "7cd6175bc51c9dbf2f45bdf059c7e0ee28f5166807d45f6581df6d8d05e8b682",
-      "tlc": "f95c0c636194f5cf68f6cebe77176ceefe95f0bae3d5886112363836338e692f",
-      "vampire": "23a39dcd9bed9d3c604f3127844e4733632159781cecc6f3aaf55c7f7e9b21ec",
+      "souffle": "93c4966d901c5dee03fbaafff82a8238989d8af25118320ce80a5bf8c8f72b71",
+      "stack": "2582d5b68e56b975b1abf876bbaa6d3ee27395afd828f2c7dfbb8ac1259e3100",
+      "symbolicai": "559e702b337869285bc5c31a46b8956fb9b46efeab1694975e13322aa8230cf7",
+      "tamarin": "b4acfdf11da9c9c8470cf3d1bb2137f102b58a41b80360a1868f5f7a8747d7c9",
+      "temurin-jdk": "122629f2ce2ea50dda3b97a807c8977b75a2933c5a15891a9fc78446520aaf01",
+      "tlc": "634efb18eb0b8f446f190ba8500d819531826f393f38f7192839ef937142b435",
+      "vampire": "814da02e0e1fd0e8c2b80e3fcfe3fc84d5a15e9f833f26e687c8ec9482342f34",
       "z3": "703a0639d45c701592a30b8087660f1daf739f56d018ea143aa7c3c58604d817",
       "zkp-circuit": "dbe529034fd4e84b278c7d60f7980f6c1f7b7b90e33cd666553a772b3d67b39f"
-    },
-    "managed_deployment_readiness": {
-      "ready": false,
-      "status": "supported_managed_capabilities_blocked",
-      "host_platform": "linux-aarch64",
-      "platform_exceptions": [],
-      "capability_blockers": [
-        {
-          "tool_id": "ergoai",
-          "category": "capability",
-          "role": "advisor",
-          "authority_ceiling": "advisory",
-          "evidence_class": "proposal_only_semantics",
-          "artifact_classes": [
-            "generated_hermetic_shim",
-            "launcher_script",
-            "repository_source"
-          ],
-          "reasons": [
-            "launcher_target_artifact_unbound",
-            "supported_managed_installation_missing_or_shim_only"
-          ]
-        },
-        {
-          "tool_id": "secpal",
-          "category": "capability",
-          "role": "shadow",
-          "authority_ceiling": "none",
-          "evidence_class": "unavailable",
-          "artifact_classes": [],
-          "reasons": [
-            "full_semantic_check_set_missing_or_failed",
-            "locked_version_mismatch",
-            "supported_managed_installation_missing_or_shim_only"
-          ]
-        },
-        {
-          "tool_id": "souffle",
-          "category": "capability",
-          "role": "shadow",
-          "authority_ceiling": "none",
-          "evidence_class": "live",
-          "artifact_classes": [
-            "launcher_script",
-            "native_or_managed_binary"
-          ],
-          "reasons": [
-            "full_semantic_check_set_missing_or_failed"
-          ]
-        }
+    }
+  },
+  "schema_version": "formal-verification-role-aware-deployment-receipt/v1",
+  "source": {
+    "attestation_excluded_from_source_tree": true,
+    "attestation_paths": [
+      "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
+      "docs/architecture/formal_verification_role_aware_release_candidate.json",
+      "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
+      "docs/architecture/formal_verification_toolchain_certificate.json"
+    ],
+    "certified_source_commit": "72908c74d48927e997bf4827266bd7d1520f9f1c",
+    "certified_source_tree": "eea24be92d8565feb547c8609d0aa2e052871680",
+    "datasets_embedded_head": "4d20019a7289aed53e85d7b1f5718afd092190bf",
+    "datasets_gitlink": "4d20019a7289aed53e85d7b1f5718afd092190bf",
+    "dirty_paths_at_certification": [
+      "docs/architecture/formal_verification_role_aware_deployment_receipt.json"
+    ],
+    "model": "two_phase_source_then_attestation_publication/v1",
+    "non_attestation_dirty_paths": [],
+    "publication_rule": "Publish the generated attestation in a descendant commit whose certified-source ancestor is this commit and whose attestation diff is restricted to declared generated receipt/certificate paths.",
+    "publication_verification_required": true,
+    "source_candidate_clean": false,
+    "source_commit_bound": true,
+    "tree_alignment": {
+      "aligned_for_implementation": false,
+      "description": "Parent commit, datasets gitlink, embedded HEAD, and origin/main are independent dimensions. Alignment of one never implies the others.",
+      "diagnostics": [
+        "parent_working_tree_dirty"
       ],
-      "dependency_blockers": [],
-      "all_blockers": [
-        {
-          "tool_id": "ergoai",
-          "reasons": [
-            "launcher_target_artifact_unbound",
-            "supported_managed_installation_missing_or_shim_only"
-          ]
-        },
-        {
-          "tool_id": "secpal",
-          "reasons": [
-            "full_semantic_check_set_missing_or_failed",
-            "locked_version_mismatch",
-            "supported_managed_installation_missing_or_shim_only"
-          ]
-        },
-        {
-          "tool_id": "souffle",
-          "reasons": [
-            "full_semantic_check_set_missing_or_failed"
-          ]
-        }
-      ]
-    },
-    "certification_policy": {
-      "offline_policy_satisfied": true,
-      "forbid_install": true,
-      "forbid_download": true,
-      "forbid_network": true
-    },
-    "public_evidence_policy": {
-      "satisfied": true
-    }
-  },
-  "completion": {
-    "interface": "FormalVerificationTacticianCompletionReceipt@1",
-    "completion_goal_id": "FVT-G090",
-    "task_id": "FVT-036",
-    "receipt_identity": "sha256:823c74faffbb7f03eff3858ee744ed29d6545a996d0424729fe5f8d1b8067610",
-    "implementation_status": "complete",
-    "deployment_status": "machine_specific_partial",
-    "child_goals_bound": 85,
-    "child_goal_count": 86
-  },
-  "elevations": {
-    "required": [
-      "lean",
-      "runtime-mtl",
-      "datalog-authorization",
-      "secpal-authorization",
-      "coq",
-      "isabelle"
-    ],
-    "elevated_tool_ids": [
-      "apalache",
-      "autohyper",
-      "coq",
-      "eprover",
-      "hyperltl",
-      "isabelle",
-      "lean",
-      "mchyper",
-      "proverif",
-      "runtime-mtl",
-      "tamarin",
-      "tlc",
-      "vampire",
-      "zkp-circuit"
-    ],
-    "missing_required": [
-      "datalog-authorization",
-      "secpal-authorization"
-    ],
-    "production_certified_tool_ids": [
-      "apalache",
-      "autohyper",
-      "coq",
-      "cvc5",
-      "eprover",
-      "hyperltl",
-      "isabelle",
-      "lean",
-      "mchyper",
-      "proverif",
-      "runtime-mtl",
-      "tamarin",
-      "tlc",
-      "vampire",
-      "z3",
-      "zkp-circuit"
-    ],
-    "merely_usable_tool_ids": [
-      "datalog-authorization",
-      "ergoai",
-      "java",
-      "maude",
-      "opam",
-      "runtime-mtl-external",
-      "secpal-authorization",
-      "souffle",
-      "stack",
-      "symbolicai",
-      "temurin-jdk"
-    ]
-  },
-  "platform_exceptions": [],
-  "artifacts": {
-    "finalizer": {
-      "path": "tools/logic/finalize_formal_verification_deployment.py",
-      "present": true,
-      "content_identity": "sha256:a3b4f7120eddb15b9e6a10c38fcb02acc3807b480074e29b50a41067fe290927"
-    },
-    "post_merge_test": {
-      "path": "test/integration/test_formal_verification_role_aware_post_merge_attestation.py",
-      "present": true,
-      "content_identity": "sha256:e7fe26b284115c810fdbd42f8cbd1052e6ff611f0918d299c3ee1f49c13b97d3"
-    },
-    "release_candidate": {
-      "path": "docs/architecture/formal_verification_role_aware_release_candidate.json",
-      "present": true,
-      "content_identity": "sha256:9ccda9f2d765802475857005d41ae0e2c0be49daa6c5be39ea98bf6f9ac45beb",
-      "file_sha256": "sha256:21a174efba2db036d923067227e60ea38aa84f73eee3e3b122b66e8d1a71a9da"
-    },
-    "completion_receipt": {
-      "path": "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
-      "present": true,
-      "content_identity": "sha256:823c74faffbb7f03eff3858ee744ed29d6545a996d0424729fe5f8d1b8067610"
-    },
-    "toolchain_certificate": {
-      "path": "docs/architecture/formal_verification_toolchain_certificate.json",
-      "present": true,
-      "content_identity": "sha256:537c99cffd192159f4f65b31e5b0005e152c7a92660872c02621f824a343509f",
-      "role_aware_digest": "b2cf53605be790ab2efad31345a92270694377b9f7f26217db2432220fcc4344"
-    },
-    "deployment_receipt": {
-      "path": "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
-      "present_before_generation": true,
-      "publication_identity": "self:receipt_identity"
-    }
-  },
-  "claims": {
-    "merge": false,
-    "deployment": false,
-    "post_merge_attestation": false,
-    "self_referential_current_tree": false,
-    "current_task_future_event": false,
-    "max_stage": "blocked"
-  },
-  "disclosures": {
-    "unavailable_tools": [
-      "secpal"
-    ],
-    "merely_usable_tools": [
-      "datalog-authorization",
-      "ergoai",
-      "java",
-      "maude",
-      "opam",
-      "runtime-mtl-external",
-      "secpal-authorization",
-      "souffle",
-      "stack",
-      "symbolicai",
-      "temurin-jdk"
-    ],
-    "missing_required_elevations": [
-      "datalog-authorization",
-      "secpal-authorization"
-    ],
-    "supported_managed_capability_blockers": [
-      {
-        "tool_id": "ergoai",
-        "category": "capability",
-        "role": "advisor",
-        "authority_ceiling": "advisory",
-        "evidence_class": "proposal_only_semantics",
-        "artifact_classes": [
-          "generated_hermetic_shim",
-          "launcher_script",
-          "repository_source"
-        ],
-        "reasons": [
-          "launcher_target_artifact_unbound",
-          "supported_managed_installation_missing_or_shim_only"
-        ]
+      "dimensions": [
+        "parent_commit",
+        "datasets_gitlink",
+        "datasets_embedded_head",
+        "datasets_origin_main",
+        "datasets_cleanliness",
+        "parent_origin_main"
+      ],
+      "embedded_checkout": {
+        "clean": true,
+        "head": "4d20019a7289aed53e85d7b1f5718afd092190bf",
+        "matches_gitlink": true,
+        "matches_origin_main": true,
+        "origin_main": "4d20019a7289aed53e85d7b1f5718afd092190bf",
+        "path": "ipfs_datasets_py"
       },
-      {
-        "tool_id": "secpal",
-        "category": "capability",
-        "role": "shadow",
-        "authority_ceiling": "none",
-        "evidence_class": "unavailable",
-        "artifact_classes": [],
-        "reasons": [
-          "full_semantic_check_set_missing_or_failed",
-          "locked_version_mismatch",
-          "supported_managed_installation_missing_or_shim_only"
-        ]
+      "gitlink": {
+        "commit": "4d20019a7289aed53e85d7b1f5718afd092190bf",
+        "mode": "160000",
+        "path": "ipfs_datasets_py"
       },
-      {
-        "tool_id": "souffle",
-        "category": "capability",
-        "role": "shadow",
-        "authority_ceiling": "none",
-        "evidence_class": "live",
-        "artifact_classes": [
-          "launcher_script",
-          "native_or_managed_binary"
-        ],
-        "reasons": [
-          "full_semantic_check_set_missing_or_failed"
-        ]
+      "parent": {
+        "clean": false,
+        "commit": "72908c74d48927e997bf4827266bd7d1520f9f1c",
+        "matches_origin_main": true,
+        "origin_main": "72908c74d48927e997bf4827266bd7d1520f9f1c",
+        "path": ".",
+        "tree": "eea24be92d8565feb547c8609d0aa2e052871680"
+      },
+      "publication_gates": {
+        "datasets_publication_lag": false,
+        "fetches_forbidden": true,
+        "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion.",
+        "parent_publication_lag": false
       }
-    ],
-    "supported_managed_dependency_blockers": [],
-    "assurance_ceilings": {
-      "path_presence_is_not_usability": true,
-      "source_presence_is_not_usability": true,
-      "fixture_is_not_production_certified": true,
-      "synthetic_evidence_cannot_certify_production": true,
-      "advisor_support_shadow_cannot_certify": true,
-      "unavailable_cannot_count_as_complete": true,
-      "release_candidate_is_not_deployment_certificate": true,
-      "absent_terminal_evidence_is_never_deployment_ready": true
     },
-    "remaining_bounds": [
-      "Post-merge attestation requires durable FVT-066 terminal member completion and a reachable published merge commit.",
-      "External content-addressed publication never hashes the tree containing this receipt.",
-      "Receipt-commit publication must parent on the certified release commit and limit the diff to generated artifacts.",
-      "FVT-067 never attests its own future merge event."
-    ]
+    "valid_for_attestation": true
   },
-  "notes": [
-    "RoleAwareFormalVerificationRelease@1 post-merge finalizer for FVT-G214 / FVT-067 after FVT-G213 release-candidate merge.",
-    "Bulk formal certificates are bound by digest; rebuild from the live certifier rather than embedding full semantic dumps.",
-    "Sole post-merge finalizer; read live state without mutation."
-  ],
-  "public_evidence_policy": {
-    "satisfied": true,
-    "safe": true,
-    "failures": [],
-    "violations": [],
-    "violation_count": 0,
-    "host_private_paths_forbidden": true,
-    "repo_root_paths_forbidden": true,
-    "raw_process_output_forbidden": true,
-    "raw_secret_or_witness_forbidden": true,
-    "max_public_string_bytes": 8192
-  },
-  "receipt_identity": "sha256:fee229fecc327d5c14367289167a83b8d8fa19adb4ae95c964bcd84cee76ed96"
+  "status": "role_aware_deployment_blocked",
+  "task_id": "FVT-067"
 }

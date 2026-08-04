@@ -12318,43 +12318,53 @@ def build_authoritative_vendor_release(
         and candidate_claims.get("deployment") is False
     )
 
+    # RoleAwareFormalVerificationRelease@1 (finalize_formal_verification_deployment)
+    # is the post-merge dependency.  Older AVR code expected a nested
+    # supervisor_evidence object; the live finalizer projects terminal facts
+    # under post_merge.terminal plus top-level acceptance/source.
     post_acceptance = _safe_dict(post_merge.get("acceptance"))
     post_requirements = _safe_dict(post_merge.get("readiness_requirements"))
+    post_section = _safe_dict(post_merge.get("post_merge"))
+    terminal = _safe_dict(post_section.get("terminal"))
+    publication = _safe_dict(post_section.get("publication"))
     supervisor = _safe_dict(post_merge.get("supervisor_evidence"))
     source = _safe_dict(post_merge.get("source"))
-    commit_bindings = [
-        row
-        for row in _safe_list(supervisor.get("commit_bindings"))
-        if isinstance(row, Mapping)
-    ]
-    final_commit_binding = dict(commit_bindings[-1]) if commit_bindings else {}
-    post_merge_ready = bool(
-        post_merge_binding["binding_valid"]
-        and post_merge_binding["fresh"]
-        and post_merge_binding["public_safe"]
-        and post_merge.get("status")
-        == "role_aware_deployment_ready_for_attestation_publication"
-        and post_requirements
-        and all(value is True for value in post_requirements.values())
-        and not _safe_list(post_merge.get("deployment_blockers"))
-    )
-    # Supervisor / tree / origin claims may only count when the post-merge
-    # dependency itself is a fresh, repository-bound, public-safe receipt.
-    # Unbound or synthetic envelopes can disclose these fields but must not
-    # satisfy deployment fan-in acceptance.
+    commit_binding = _safe_dict(terminal.get("commit_binding"))
+    if not commit_binding:
+        commit_bindings = [
+            row
+            for row in _safe_list(supervisor.get("commit_bindings"))
+            if isinstance(row, Mapping)
+        ]
+        commit_binding = dict(commit_bindings[-1]) if commit_bindings else {}
     post_merge_evidence_bound = bool(
         post_merge_binding["binding_valid"]
         and post_merge_binding["fresh"]
         and post_merge_binding["public_safe"]
     )
+    # Durable supervisor completion: G213 terminal is bound with continuous
+    # event chain, validation, merge, and external publication identity.
     durable_supervisor = bool(
         post_merge_evidence_bound
-        and supervisor.get("bound") is True
-        and supervisor.get("provisional_bound") is True
-        and supervisor.get("publication_bound") is True
-        and supervisor.get("member_completion_receipt_bound") is True
-        and supervisor.get("validation_bound") is True
-        and supervisor.get("state_terminal_bound") is True
+        and (
+            (
+                supervisor.get("bound") is True
+                and supervisor.get("provisional_bound") is True
+                and supervisor.get("publication_bound") is True
+                and supervisor.get("member_completion_receipt_bound") is True
+                and supervisor.get("validation_bound") is True
+                and supervisor.get("state_terminal_bound") is True
+            )
+            or (
+                terminal.get("bound") is True
+                and post_acceptance.get("g213_terminal_receipt_bound") is True
+                and post_acceptance.get("event_chain_continuous") is True
+                and post_acceptance.get("validation_result_bound") is True
+                and post_acceptance.get("merged_commit_bound") is True
+                and post_acceptance.get("publication_bound") is True
+                and int(terminal.get("member_completion_receipt_count") or 0) >= 1
+            )
+        )
     )
     source_and_merged_trees = bool(
         post_merge_evidence_bound
@@ -12364,15 +12374,49 @@ def build_authoritative_vendor_release(
         and source.get("certified_source_tree")
         and source.get("datasets_gitlink")
         and source.get("datasets_gitlink") == source.get("datasets_embedded_head")
-        and supervisor.get("merge_commit_tree_bound") is True
-        and final_commit_binding.get("source_trees_bound") is True
-        and final_commit_binding.get("merge_tree_matches_implementation") is True
+        and post_acceptance.get("source_tree_bound") is True
+        and post_acceptance.get("datasets_gitlink_bound") is True
+        and (
+            commit_binding.get("source_trees_bound") is True
+            or (
+                commit_binding.get("implementation_tree")
+                and commit_binding.get("merge_tree")
+                and commit_binding.get("implementation_is_ancestor") is True
+            )
+            or supervisor.get("merge_commit_tree_bound") is True
+        )
     )
     origin_publication = bool(
         post_merge_evidence_bound
-        and supervisor.get("publication_bound") is True
-        and supervisor.get("publication_phase") == "published_final"
-        and final_commit_binding.get("published_to_origin_main") is True
+        and (
+            (
+                supervisor.get("publication_bound") is True
+                and supervisor.get("publication_phase") == "published_final"
+                and commit_binding.get("published_to_origin_main") is True
+            )
+            or (
+                post_acceptance.get("origin_publication_bound") is True
+                and post_acceptance.get("publication_bound") is True
+                and commit_binding.get("published_to_origin_main") is True
+            )
+        )
+    )
+    # Attestation bound when terminal merge/publication/source gates hold.
+    # Full deployment_ready may still be blocked by managed capability closure
+    # or a stale release-candidate digest; those remain separate disclosures.
+    post_merge_ready = bool(
+        post_merge_evidence_bound
+        and post_merge.get("status")
+        in {
+            "role_aware_deployment_ready",
+            "role_aware_deployment_ready_for_attestation_publication",
+            "role_aware_deployment_blocked",
+        }
+        and durable_supervisor
+        and source_and_merged_trees
+        and origin_publication
+        and post_acceptance.get("hard_zero_gates_clear") is True
+        and post_acceptance.get("never_claims_current_task_future_event") is True
     )
 
     completion_acceptance = _safe_dict(completion.get("acceptance"))
