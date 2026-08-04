@@ -595,6 +595,50 @@ def test_redaction_key_matching_does_not_hide_nonsensitive_token_limits() -> Non
     }
 
 
+def test_text_secret_redaction_preserves_python_token_bindings() -> None:
+    """Proposal source must survive redaction when it only uses token as an identifier.
+
+    ASE2-004 failed validation after ``token: str`` and
+    ``token = _require_token(...)`` were mangled to ``[REDACTED]``.
+    """
+
+    source = """
+def _fs_safe_token(token: str) -> str:
+    if not token or token in {".", ".."}:
+        raise RunRegistryError("unsafe filesystem token")
+    return token.replace(":", "~")
+
+def _namespace_dir(self, run_namespace: str) -> Path:
+    token = _require_token(run_namespace, "run_namespace")
+    return self.registry_root / _fs_safe_token(token)
+
+def _quarantine(self) -> None:
+    token = uuid.uuid4().hex
+    path = f"{token}.json"
+"""
+    redacted = redact_provider_data(source)
+    assert "token: str" in redacted
+    assert "_require_token(run_namespace" in redacted
+    assert "uuid.uuid4().hex" in redacted
+    assert "raise RunRegistryError" in redacted
+    assert REDACTION_MARKER not in redacted
+
+    secrets = (
+        'api_key = "sk-live-abcdefghijklmnopqrstuvwxyz"\n'
+        'token = "supersecrettokenvalue"\n'
+        "Authorization: Bearer abcdefghijklmnop\n"
+        'password = "hunter2xx"\n'
+        "access_token = longopaquevalue12\n"
+    )
+    scrubbed = redact_provider_data(secrets)
+    assert REDACTION_MARKER in scrubbed
+    assert "sk-live" not in scrubbed
+    assert "supersecrettokenvalue" not in scrubbed
+    assert "abcdefghijklmnop" not in scrubbed
+    assert "hunter2xx" not in scrubbed
+    assert "longopaquevalue12" not in scrubbed
+
+
 def test_malformed_duplicate_json_and_oversized_output_are_typed() -> None:
     duplicate = ImplementationProviderRouter(
         grok_provider=lambda _request: '{"proposal":{},"proposal":{}}',

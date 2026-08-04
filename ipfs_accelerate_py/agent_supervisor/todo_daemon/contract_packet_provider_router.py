@@ -340,10 +340,21 @@ _SENSITIVE_KEYS: Final[frozenset[str]] = frozenset(
 )
 _TEXT_SECRET_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
     re.compile(r"(?i)\b(bearer)\s+[A-Za-z0-9._~+/=-]{8,}"),
+    # Credential assignment only — require a quoted secret or a long opaque
+    # literal that is not a Python call/attribute expression.  Bare type
+    # annotations (``token: str``), multi-line ``token:\n    raise ...``, and
+    # ordinary helpers (``token = _require_token(...)``) must survive when
+    # proposal file contents are redacted before write.
     re.compile(
         r"(?i)\b(api[_ -]?key|access[_ -]?token|auth[_ -]?token|"
         r"client[_ -]?secret|password|passphrase|secret|token)"
-        r"(\s*[:=]\s*)[^\s,;]{4,}"
+        r"([ \t]*[:=][ \t]*)"
+        r"(?:"
+        r"'[^'\n]{4,}'|"
+        r"\"[^\"\n]{4,}\"|"
+        r"(?!_?[A-Za-z][\w]*\s*[\(\[\.])"
+        r"[A-Za-z0-9._\-+/=]{12,}"
+        r")"
     ),
     re.compile(
         r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?"
