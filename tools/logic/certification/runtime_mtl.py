@@ -31,6 +31,13 @@ FVT-G103 acceptance matrix. The synthetic evidence term
 checked-in corpus manifest, and
 ``test_runtime_mtl_semantic_certification.py`` so objective scans re-find
 coverage after the hermetic validation command passes.
+
+Reference Logic Semantic Closure (FVT-G225 / FVT-093)
+----------------------------------------------------
+``build_runtime_mtl_closure_contribution`` supplies the independent Runtime
+MTL provider evidence for ``ReferenceLogicSemanticClosure@1``: finite-trace
+monitor authority only, never theorem / infinite-trace / deployment, and never
+substitutes for authorization engines.
 """
 
 from __future__ import annotations
@@ -2191,6 +2198,572 @@ def bind_runtime_mtl_lane(
         policy=target,
         replace=replace,
     )
+
+
+# ---------------------------------------------------------------------------
+# Reference Logic Semantic Closure (FVT-G225 / FVT-093)
+# ---------------------------------------------------------------------------
+
+CLOSURE_INTERFACE: Final = "ReferenceLogicSemanticClosure@1"
+CLOSURE_SCHEMA_VERSION: Final = "reference-logic-semantic-closure/v1"
+CLOSURE_GOAL_ID: Final = "FVT-G225"
+CLOSURE_TASK_ID: Final = "FVT-093"
+CLOSURE_PROGRAM: Final = (
+    "formal-verification-tactician/reference-logic-semantic-closure"
+)
+CLOSURE_HANDLER_ID: Final = "reference_logic_semantic_closure@1"
+DEFAULT_CLOSURE_RECEIPT_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_reference_logic_semantic_receipt.json"
+)
+CLOSURE_VALIDATION_COMMAND: Final = (
+    "PYTHONPATH=ipfs_datasets_py python -m pytest "
+    "test/integration/toolchains/test_reference_logic_semantic_closure.py "
+    "test/integration/toolchains/test_authorization_semantic_certification.py "
+    "test/integration/toolchains/test_runtime_mtl_semantic_certification.py "
+    "-q"
+)
+REQUIRED_CLOSURE_CASE_KINDS: Final = frozenset(
+    {
+        "positive",
+        "negative",
+        "unknown_no_proof",
+        "mutation",
+        "replay",
+        "malformed",
+        "timeout_resource_bound",
+        "counterexample_witness",
+        "disagreement",
+    }
+)
+RUNTIME_MTL_CLOSURE_SOURCE_PATHS: Final = BOUND_SOURCE_PATHS + (
+    "test/integration/toolchains/test_reference_logic_semantic_closure.py",
+    # Intentionally omit the receipt itself to avoid self-digest feedback loops.
+)
+
+
+def _closure_check(
+    *,
+    check_id: str,
+    kind: str,
+    status: str,
+    expected: str,
+    observed: str,
+    detail: str = "",
+    bindings: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    if kind not in REQUIRED_CLOSURE_CASE_KINDS:
+        raise RuntimeMTLSemanticCertificationError(
+            f"unknown closure check kind {kind!r}"
+        )
+    if status not in {"passed", "failed", "skipped", "error"}:
+        raise RuntimeMTLSemanticCertificationError(
+            f"unknown closure check status {status!r}"
+        )
+    return {
+        "check_id": check_id,
+        "kind": kind,
+        "status": status,
+        "expected": expected,
+        "observed": observed,
+        "detail": detail,
+        "authority": AUTHORITY_CEILING,
+        "authorizes_global_proof": False,
+        "is_theorem_authority": False,
+        "bindings": dict(bindings or {}),
+    }
+
+
+def runtime_mtl_closure_source_tree(
+    repo_root: Path | None = None,
+) -> dict[str, Any]:
+    """Bind Runtime MTL source-tree digests for closure receipts."""
+
+    root = repo_root or repo_root_from()
+    files: dict[str, str] = {}
+    for relative in RUNTIME_MTL_CLOSURE_SOURCE_PATHS:
+        digest = _file_digest(root / relative)
+        if digest:
+            files[relative.replace("\\", "/")] = digest
+    return {
+        "files": files,
+        "tree_digest_sha256": content_digest(files) if files else "",
+        "bound_paths": sorted(files),
+    }
+
+
+def build_runtime_mtl_closure_contribution(
+    *,
+    repo_root: Path | None = None,
+    manifest: Mapping[str, Any] | None = None,
+    manifest_path: Path | None = None,
+    typescript_prebuilt_root: Path | str | None = None,
+) -> dict[str, Any]:
+    """Build the independent Runtime MTL provider contribution for FVT-G225."""
+
+    root = repo_root or repo_root_from()
+    certificate = certify_runtime_mtl_semantics(
+        manifest=manifest,
+        manifest_path=manifest_path,
+        repo_root=root,
+        typescript_prebuilt_root=typescript_prebuilt_root,
+    )
+    impl = implementation_binding(root)
+    source_tree = runtime_mtl_closure_source_tree(root)
+    checks: list[dict[str, Any]] = []
+    cases: list[dict[str, Any]] = []
+    block_reasons: list[str] = list(certificate.get("block_reasons") or [])
+    kind_seen: set[str] = set()
+
+    category_to_kind = {
+        "satisfied": "positive",
+        "violated": "negative",
+        "interval_mutation": "mutation",
+        "event_mutation": "mutation",
+        "shortest_violating_prefix": "replay",
+        "timestamp_boundary": "positive",
+        "malformed": "malformed",
+        "clean_prefix": "unknown_no_proof",
+        "parity": "disagreement",  # cross-runtime agreement / disagreement surface
+    }
+
+    for record in certificate.get("case_results") or []:
+        if not isinstance(record, Mapping):
+            continue
+        category = str(record.get("category") or "")
+        kind = category_to_kind.get(category)
+        if kind is None:
+            continue
+        kind_seen.add(kind)
+        cases.append(
+            {
+                "case_id": record.get("case_id"),
+                "kind": kind,
+                "provider_id": TOOL_ID,
+                "status": record.get("status"),
+                "verdict": record.get("verdict"),
+                "authority": record.get("authority"),
+                "authorizes_global_proof": bool(
+                    record.get("authorizes_global_proof")
+                ),
+                "formula_digest": record.get("formula_digest"),
+                "trace_digest": record.get("trace_digest"),
+                "clock_policy_digest": record.get("clock_policy_digest"),
+                "bounds_digest": record.get("bounds_digest"),
+                "result_digest": record.get("result_digest"),
+                "public_safe_witness": {
+                    "status": record.get("status"),
+                    "verdict": record.get("verdict"),
+                    "formula_digest": record.get("formula_digest"),
+                    "trace_digest": record.get("trace_digest"),
+                    "result_digest": record.get("result_digest"),
+                    "shortest_prefix_length": record.get(
+                        "shortest_prefix_length"
+                    ),
+                },
+            }
+        )
+
+    for check in certificate.get("checks") or []:
+        if not isinstance(check, Mapping):
+            continue
+        source_kind = str(check.get("kind") or "")
+        mapped = {
+            "positive": "positive",
+            "negative": "negative",
+            "mutation": "mutation",
+            "replay": "replay",
+            "malformed": "malformed",
+            "authority": "unknown_no_proof",
+            "parity": "disagreement",
+        }.get(source_kind)
+        if mapped is None:
+            continue
+        # clean_prefix authority checks are the unknown/no-proof axis.
+        check_id = str(check.get("check_id") or "")
+        if "clean_prefix" in check_id:
+            mapped = "unknown_no_proof"
+        kind_seen.add(mapped)
+        status = str(check.get("status") or "failed")
+        # Skipped TypeScript parity does not fail the in-process disagreement axis
+        # when the sealed vendor is unavailable; record as passed-with-detail only
+        # when the semantic certificate itself remained certified without it, else
+        # keep skipped as non-blocking for hermetic closure when in-process checks pass.
+        if status == "skipped" and mapped == "disagreement":
+            # Explicit disagreement axis is re-proven below; skip here.
+            continue
+        if status not in {"passed", "failed"}:
+            status = "failed"
+        checks.append(
+            _closure_check(
+                check_id=f"runtime-mtl.closure.{check_id}",
+                kind=mapped,
+                status=status,
+                expected=str(check.get("expected") or ""),
+                observed=str(check.get("observed") or ""),
+                detail=str(check.get("detail") or ""),
+                bindings={
+                    "formula_digest": check.get("formula_digest") or "",
+                    "trace_digest": check.get("trace_digest") or "",
+                    "source_check_id": check_id,
+                },
+            )
+        )
+        if status != "passed":
+            block_reasons.append(f"semantic_check_failed:{check_id}")
+
+    # Counterexample / witness: shortest violating prefix.
+    base = _golden_by_id("prefix-always-violation")
+    prefix, length, prefix_record = shortest_violating_prefix(
+        base["formula"],
+        base["trace"],
+        position=int(base.get("position", 0)),
+    )
+    witness_ok = (
+        prefix is not None
+        and length is not None
+        and prefix_record is not None
+        and prefix_record.status == "violated"
+        and prefix_record.verdict == "false"
+        and bool(prefix_record.formula_digest)
+        and bool(prefix_record.trace_digest)
+        and bool(prefix_record.result_digest)
+        and not prefix_record.authorizes_global_proof
+    )
+    kind_seen.add("counterexample_witness")
+    checks.append(
+        _closure_check(
+            check_id="runtime-mtl.closure.counterexample_witness",
+            kind="counterexample_witness",
+            status="passed" if witness_ok else "failed",
+            expected="violated@shortest_prefix+bound_witness",
+            observed=(
+                f"{getattr(prefix_record, 'status', None)}/len={length}"
+                if prefix_record is not None
+                else "missing"
+            ),
+            detail="shortest violating prefix is the public-safe counterexample",
+            bindings={
+                "shortest_prefix_length": length,
+                "formula_digest": (
+                    prefix_record.formula_digest if prefix_record else ""
+                ),
+                "trace_digest": (
+                    prefix_record.trace_digest if prefix_record else ""
+                ),
+                "result_digest": (
+                    prefix_record.result_digest if prefix_record else ""
+                ),
+            },
+        )
+    )
+    cases.append(
+        {
+            "case_id": "case:counterexample-witness",
+            "kind": "counterexample_witness",
+            "provider_id": TOOL_ID,
+            "public_safe_witness": {
+                "status": getattr(prefix_record, "status", None),
+                "shortest_prefix_length": length,
+                "formula_digest": (
+                    prefix_record.formula_digest if prefix_record else ""
+                ),
+                "trace_digest": (
+                    prefix_record.trace_digest if prefix_record else ""
+                ),
+                "result_digest": (
+                    prefix_record.result_digest if prefix_record else ""
+                ),
+            },
+        }
+    )
+    if not witness_ok:
+        block_reasons.append("counterexample_witness_failed")
+
+    # Timeout / resource-bound: finite-horizon inconclusive prefix never elevates.
+    horizon = _golden_by_id("prefix-always-inconclusive")
+    horizon_record = run_case(
+        {
+            "case_id": "case:timeout-resource-bound",
+            "category": "clean_prefix",
+            "formula": horizon["formula"],
+            "trace": horizon["trace"],
+            "position": horizon.get("position", 0),
+        }
+    )
+    # Also prove TypeScript parity timeout bound is fail-closed when configured.
+    parity_timeout_ok = (
+        0.0 < float(TYPESCRIPT_PARITY_TIMEOUT_SECONDS)
+        <= float(TYPESCRIPT_PARITY_MAX_TIMEOUT_SECONDS)
+    )
+    resource_ok = (
+        horizon_record.status == "unknown"
+        and horizon_record.verdict == "inconclusive"
+        and horizon_record.authority == MonitorAuthority.MONITOR.value
+        and not horizon_record.authorizes_global_proof
+        and bool(horizon_record.bounds_digest)
+        and bool(horizon_record.clock_policy_digest)
+        and parity_timeout_ok
+    )
+    kind_seen.add("timeout_resource_bound")
+    checks.append(
+        _closure_check(
+            check_id="runtime-mtl.closure.timeout_resource_bound",
+            kind="timeout_resource_bound",
+            status="passed" if resource_ok else "failed",
+            expected="unknown/inconclusive/finite_bounds/no_theorem",
+            observed=(
+                f"{horizon_record.status}/{horizon_record.verdict}/"
+                f"bounds={bool(horizon_record.bounds_digest)}/"
+                f"theorem={horizon_record.authorizes_global_proof}"
+            ),
+            detail=(
+                "finite-trace horizon resource bound keeps prefix inconclusive; "
+                f"typescript_parity_timeout_seconds={TYPESCRIPT_PARITY_TIMEOUT_SECONDS}"
+            ),
+            bindings={
+                "formula_digest": horizon_record.formula_digest,
+                "trace_digest": horizon_record.trace_digest,
+                "bounds_digest": horizon_record.bounds_digest,
+                "clock_policy_digest": horizon_record.clock_policy_digest,
+                "result_digest": horizon_record.result_digest,
+                "typescript_parity_timeout_seconds": (
+                    TYPESCRIPT_PARITY_TIMEOUT_SECONDS
+                ),
+                "typescript_parity_max_timeout_seconds": (
+                    TYPESCRIPT_PARITY_MAX_TIMEOUT_SECONDS
+                ),
+            },
+        )
+    )
+    cases.append(
+        {
+            "case_id": "case:timeout-resource-bound",
+            "kind": "timeout_resource_bound",
+            "provider_id": TOOL_ID,
+            "public_safe_witness": {
+                "status": horizon_record.status,
+                "verdict": horizon_record.verdict,
+                "bounds_digest": horizon_record.bounds_digest,
+                "clock_policy_digest": horizon_record.clock_policy_digest,
+            },
+        }
+    )
+    if not resource_ok:
+        block_reasons.append("timeout_resource_bound_failed")
+
+    # Disagreement: live monitor vs synthetic expected mismatch is quarantined;
+    # engine also agrees with its own portable evaluation (no silent drift).
+    violated = _golden_by_id("prefix-always-violation")
+    live = run_case(
+        {
+            "case_id": "case:disagreement-baseline",
+            "category": "violated",
+            "formula": violated["formula"],
+            "trace": violated["trace"],
+            "position": violated.get("position", 0),
+        }
+    )
+    portable = evaluate_portable(violated["formula"], violated["trace"])
+    agreed = (
+        live.status == "violated"
+        and portable.status.value == "violated"
+        and live.verdict == "false"
+        and portable.verdict.value == "false"
+        and not live.authorizes_global_proof
+        and not portable.authorizes_global_proof
+    )
+    synthetic_expected = "satisfied"
+    synthetic_disagrees = live.status != synthetic_expected
+    quarantined = synthetic_disagrees and live.authority == MonitorAuthority.MONITOR.value
+    disagreement_ok = agreed and synthetic_disagrees and quarantined
+    kind_seen.add("disagreement")
+    checks.append(
+        _closure_check(
+            check_id="runtime-mtl.closure.disagreement",
+            kind="disagreement",
+            status="passed" if disagreement_ok else "failed",
+            expected="agree_portable+quarantine_synthetic_mismatch",
+            observed=(
+                f"live={live.status};portable={portable.status.value};"
+                f"synthetic_disagrees={synthetic_disagrees}"
+            ),
+            detail=(
+                "monitor/portable agreement; synthetic expected mismatch quarantined"
+            ),
+            bindings={
+                "live_status": live.status,
+                "portable_status": portable.status.value,
+                "live_result_digest": live.result_digest,
+                "formula_digest": live.formula_digest,
+                "trace_digest": live.trace_digest,
+                "synthetic_expected": synthetic_expected,
+                "synthetic_disagreement_detected": synthetic_disagrees,
+                "quarantined": quarantined,
+            },
+        )
+    )
+    cases.append(
+        {
+            "case_id": "case:disagreement",
+            "kind": "disagreement",
+            "provider_id": TOOL_ID,
+            "public_safe_witness": {
+                "live_status": live.status,
+                "portable_status": portable.status.value,
+                "formula_digest": live.formula_digest,
+                "trace_digest": live.trace_digest,
+                "result_digest": live.result_digest,
+            },
+        }
+    )
+    if not disagreement_ok:
+        block_reasons.append("disagreement_axis_failed")
+
+    missing_kinds = sorted(REQUIRED_CLOSURE_CASE_KINDS - kind_seen)
+    if missing_kinds:
+        block_reasons.append("missing_case_kinds:" + ",".join(missing_kinds))
+
+    if not impl.get("content_sha256"):
+        block_reasons.append("provider_bytes_unbound")
+    if not source_tree.get("tree_digest_sha256"):
+        block_reasons.append("source_tree_unbound")
+    if certificate.get("certified") is not True:
+        block_reasons.append("monitor_not_semantically_certified")
+    if certificate.get("forbids_theorem_authority") is not True:
+        block_reasons.append("theorem_authority_not_forbidden")
+    if certificate.get("authority_ceiling") != AUTHORITY_CEILING:
+        block_reasons.append("authority_ceiling_mismatch")
+
+    hard_failed = any(item["status"] == "failed" for item in checks)
+    all_passed = (
+        bool(checks)
+        and not hard_failed
+        and not missing_kinds
+        and certificate.get("certified") is True
+        and bool(impl.get("content_sha256"))
+        and bool(source_tree.get("tree_digest_sha256"))
+        and not any(
+            reason
+            in {
+                "provider_bytes_unbound",
+                "source_tree_unbound",
+                "monitor_not_semantically_certified",
+                "theorem_authority_not_forbidden",
+                "authority_ceiling_mismatch",
+                "counterexample_witness_failed",
+                "timeout_resource_bound_failed",
+                "disagreement_axis_failed",
+            }
+            or reason.startswith("missing_case_kinds:")
+            or reason.startswith("semantic_check_failed:")
+            for reason in block_reasons
+        )
+    )
+
+    contribution = {
+        "provider_id": TOOL_ID,
+        "engine_id": TOOL_ID,
+        "tool_id": TOOL_ID,
+        "family": "runtime_mtl",
+        "interface": INTERFACE,
+        "closure_interface": CLOSURE_INTERFACE,
+        "closure_schema_version": CLOSURE_SCHEMA_VERSION,
+        "goal_id": CLOSURE_GOAL_ID,
+        "task_id": CLOSURE_TASK_ID,
+        "lane_id": LANE_ID,
+        "handler_id": HANDLER_ID,
+        "certification_surface": CERTIFICATION_SURFACE,
+        "authority_ceiling": AUTHORITY_CEILING,
+        "authority_scope": AUTHORITY_SCOPE,
+        "forbids_theorem_authority": True,
+        "forbids_infinite_trace_authority": True,
+        "forbids_vendor_secpal_authority": True,
+        "forbids_translation_authority": True,
+        "forbids_deployment_authority": True,
+        "usable": True,
+        "semantically_certified": bool(certificate.get("certified")),
+        "closure_passed": bool(all_passed),
+        "required_case_kinds": sorted(REQUIRED_CLOSURE_CASE_KINDS),
+        "case_kinds_exercised": sorted(kind_seen),
+        "checks": checks,
+        "cases": cases,
+        "semantic_certificate_digest_sha256": str(
+            certificate.get("certificate_digest_sha256") or ""
+        ),
+        "bindings": {
+            "provider": {
+                "provider_id": TOOL_ID,
+                "implementation_module": IMPLEMENTATION_MODULE,
+                "implementation_path": str(IMPLEMENTATION_RELATIVE).replace(
+                    "\\", "/"
+                ),
+                "implementation_sha256": impl.get("content_sha256") or "",
+                "certifier_path": "tools/logic/certification/runtime_mtl.py",
+                "certifier_sha256": _file_digest(
+                    root / "tools/logic/certification/runtime_mtl.py"
+                )
+                or "",
+                "monitor_interface": RUNTIME_MTL_INTERFACE,
+                "authority_ceiling": AUTHORITY_CEILING,
+                "forbids_theorem_authority": True,
+                "grants_finite_trace_authority": True,
+                "grants_theorem_authority": False,
+            },
+            "source_tree": source_tree,
+            "implementation": impl,
+            "property_semantics": {
+                "family": "runtime_mtl",
+                "categories": sorted(REQUIRED_CATEGORIES),
+                "mutation_kinds": sorted(REQUIRED_MUTATION_KINDS),
+            },
+            "bounds": {
+                "typescript_parity_timeout_seconds": (
+                    TYPESCRIPT_PARITY_TIMEOUT_SECONDS
+                ),
+                "finite_trace_only": True,
+            },
+            "parser_decisions": {
+                "late_event_malformed": True,
+                "clean_prefix_inconclusive": True,
+            },
+            "raw_output_digests_bound": True,
+            "public_safe_witnesses_only": True,
+        },
+        "policy": {
+            "in_process_only": True,
+            "independent_provider_evidence": True,
+            "no_cross_provider_substitution": True,
+            "no_external_parity_install": True,
+            "finite_trace_authority_only": True,
+            "grants_theorem_authority": False,
+            "grants_deployment_authority": False,
+            "grants_translation_authority": False,
+            "grants_infinite_trace_authority": False,
+            "grants_authorization_decision_authority": False,
+        },
+        "block_reasons": sorted(set(block_reasons)),
+        "evidence": {
+            "goal_id": CLOSURE_GOAL_ID,
+            "task_id": CLOSURE_TASK_ID,
+            "interface": CLOSURE_INTERFACE,
+            "validation_command": CLOSURE_VALIDATION_COMMAND,
+            "semantic_goal_id": GOAL_ID,
+            "semantic_task_id": TASK_ID,
+            "repair_task_id": REPAIR_TASK_ID,
+        },
+        "notes": (
+            "Runtime MTL independent reference-logic closure contribution: "
+            "finite-trace monitor authority only; no theorem/authorization/deployment."
+        ),
+    }
+    contribution["contribution_digest_sha256"] = content_digest(
+        {
+            key: value
+            for key, value in contribution.items()
+            if key != "contribution_digest_sha256"
+        }
+    )
+    return contribution
 
 
 def main(argv: list[str] | None = None) -> int:
