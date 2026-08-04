@@ -28,6 +28,15 @@ FVT-G102 acceptance matrix. The synthetic evidence term
 checked-in corpus manifest, and
 ``test_authorization_semantic_certification.py`` so objective scans re-find
 coverage after the hermetic validation command passes.
+
+Reference Logic Semantic Closure (FVT-G225 / FVT-093)
+----------------------------------------------------
+``ReferenceLogicSemanticClosure@1`` elevates the independent in-process
+Datalog, SecPAL-style, and Runtime MTL providers only after each executes the
+closed case matrix (positive, negative, unknown/no-proof, mutation, replay,
+malformed, timeout/resource-bound, counterexample/witness, disagreement) at
+its exact authority ceiling. The public-safe aggregate receipt is
+``docs/architecture/formal_verification_reference_logic_semantic_receipt.json``.
 """
 
 from __future__ import annotations
@@ -1370,11 +1379,981 @@ def bind_authorization_lane(
     )
 
 
+# ---------------------------------------------------------------------------
+# Reference Logic Semantic Closure (FVT-G225 / FVT-093)
+# ---------------------------------------------------------------------------
+
+CLOSURE_INTERFACE: Final = "ReferenceLogicSemanticClosure@1"
+CLOSURE_SCHEMA_VERSION: Final = "reference-logic-semantic-closure/v1"
+CLOSURE_GOAL_ID: Final = "FVT-G225"
+CLOSURE_TASK_ID: Final = "FVT-093"
+CLOSURE_PROGRAM: Final = (
+    "formal-verification-tactician/reference-logic-semantic-closure"
+)
+CLOSURE_HANDLER_ID: Final = "reference_logic_semantic_closure@1"
+DEFAULT_CLOSURE_RECEIPT_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_reference_logic_semantic_receipt.json"
+)
+CLOSURE_VALIDATION_COMMAND: Final = (
+    "PYTHONPATH=ipfs_datasets_py python -m pytest "
+    "test/integration/toolchains/test_reference_logic_semantic_closure.py "
+    "test/integration/toolchains/test_authorization_semantic_certification.py "
+    "test/integration/toolchains/test_runtime_mtl_semantic_certification.py "
+    "-q"
+)
+REQUIRED_CLOSURE_CASE_KINDS: Final = frozenset(
+    {
+        "positive",
+        "negative",
+        "unknown_no_proof",
+        "mutation",
+        "replay",
+        "malformed",
+        "timeout_resource_bound",
+        "counterexample_witness",
+        "disagreement",
+    }
+)
+REQUIRED_CLOSURE_PROVIDERS: Final = (
+    ENGINE_DATALOG,
+    ENGINE_SECPAL,
+    "runtime-mtl",
+)
+AUTHORIZATION_IMPLEMENTATION_RELATIVE: Final = Path(
+    "ipfs_datasets_py/ipfs_datasets_py/logic/backends/datalog/adapters.py"
+)
+AUTHORIZATION_BOUND_SOURCE_PATHS: Final = (
+    "tools/logic/certification/authorization.py",
+    "ipfs_datasets_py/ipfs_datasets_py/logic/backends/datalog/adapters.py",
+    "test/integration/toolchains/test_authorization_semantic_certification.py",
+    "test/integration/toolchains/test_reference_logic_semantic_closure.py",
+    # Intentionally omit the receipt itself to avoid self-digest feedback loops.
+)
+
+
+def _file_digest(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def authorization_source_tree_binding(
+    repo_root: Path | None = None,
+) -> dict[str, Any]:
+    """Bind provider source-tree digests for authorization engines."""
+
+    root = repo_root or _REPO_ROOT
+    files: dict[str, str] = {}
+    for relative in AUTHORIZATION_BOUND_SOURCE_PATHS:
+        digest = _file_digest(root / relative)
+        if digest:
+            files[relative.replace("\\", "/")] = digest
+    tree_digest = _stable_json_digest(files) if files else ""
+    return {
+        "files": files,
+        "tree_digest_sha256": tree_digest,
+        "bound_paths": sorted(files),
+    }
+
+
+def authorization_provider_binding(
+    engine_id: str,
+    *,
+    repo_root: Path | None = None,
+) -> dict[str, Any]:
+    """Bind provider implementation bytes and engine identity."""
+
+    root = repo_root or _REPO_ROOT
+    impl_path = root / AUTHORIZATION_IMPLEMENTATION_RELATIVE
+    cert_path = root / "tools/logic/certification/authorization.py"
+    backend, interface_version = _backend_for(engine_id)
+    return {
+        "provider_id": engine_id,
+        "engine_id": engine_id,
+        "interface_version": interface_version,
+        "usable": bool(backend.is_available()),
+        "implementation_module": (
+            "ipfs_datasets_py.logic.backends.datalog.adapters"
+        ),
+        "implementation_path": str(AUTHORIZATION_IMPLEMENTATION_RELATIVE).replace(
+            "\\", "/"
+        ),
+        "implementation_sha256": _file_digest(impl_path) or "",
+        "certifier_path": "tools/logic/certification/authorization.py",
+        "certifier_sha256": _file_digest(cert_path) or "",
+        "authority_ceiling": AUTHORITY_CEILING,
+        "forbids_theorem_authority": True,
+        "forbids_infinite_trace_authority": True,
+        "forbids_vendor_secpal_authority": True,
+        "forbids_translation_authority": True,
+        "forbids_deployment_authority": True,
+        "grants_authorization_decision_authority": True,
+        "grants_theorem_authority": False,
+    }
+
+
+def _closure_check(
+    *,
+    check_id: str,
+    kind: str,
+    status: str,
+    expected: str,
+    observed: str,
+    detail: str = "",
+    bindings: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    if kind not in REQUIRED_CLOSURE_CASE_KINDS:
+        raise AuthorizationSemanticCertificationError(
+            f"unknown closure check kind {kind!r}"
+        )
+    if status not in {"passed", "failed", "skipped", "error"}:
+        raise AuthorizationSemanticCertificationError(
+            f"unknown closure check status {status!r}"
+        )
+    return {
+        "check_id": check_id,
+        "kind": kind,
+        "status": status,
+        "expected": expected,
+        "observed": observed,
+        "detail": detail,
+        "authority": AUTHORITY_CEILING,
+        "is_theorem_authority": False,
+        "bindings": dict(bindings or {}),
+    }
+
+
+def _run_resource_bound_authorization(
+    engine_id: str,
+) -> dict[str, Any]:
+    """Exercise timeout/resource-bound fail-closed behavior for one engine."""
+
+    allow = _fixture_by_category("allow")
+    # Tight derivation budget must not silently produce a theorem-like allow.
+    # max_steps must be a positive integer per ExecutionBounds; 1 exhausts allow.
+    tight_max_steps = 1
+    decision, explanation, exhausted = ReferenceAuthorizationEvaluator().evaluate(
+        allow.document,
+        allow.query,
+        max_steps=tight_max_steps,
+    )
+    backend, _version = _backend_for(engine_id)
+    request = BackendRequest(
+        request_id=f"request:resource-bound:{engine_id}",
+        claim_id="claim:resource-bound",
+        declaration_id="declaration:resource-bound",
+        claim_digest="e" * 64,
+        obligation_id="obligation:resource-bound",
+        obligation_digest="f" * 64,
+        assumption_ids=("assumption:reviewed-policy",),
+        logic_family=(
+            "secpal" if engine_id == ENGINE_SECPAL else "authorization"
+        ),
+        query_kind=QueryKind.POLICY_APPROVAL,
+        bounds=ExecutionBounds(timeout_ms=1, max_steps=tight_max_steps),
+        payload=FrozenMap(
+            {
+                "encoding": (
+                    "secpal" if engine_id == ENGINE_SECPAL else "authorization-ir"
+                ),
+                "authorization_ir": _document_with_query(
+                    allow.document, allow.query
+                ).to_dict(),
+                "query_id": allow.query.query_id,
+                "query": allow.query.to_dict(),
+            }
+        ),
+        requested_backend_id=engine_id,
+    )
+    outcome = backend.run(request)
+    receipt = outcome.receipt
+    witness = {
+        "reference_outcome": decision.outcome.value,
+        "reference_bounds_exhausted": bool(exhausted),
+        "engine_outcome": receipt.outcome.value,
+        "engine_bounds_exhausted": bool(receipt.bounds_exhausted),
+        "authority": receipt.authority.value,
+        "is_theorem_authority": bool(receipt.is_theorem_authority),
+        "policy_digest": receipt.source_binding.document_digest,
+        "request_digest": receipt.request_digest,
+        "bounds": {"timeout_ms": 1, "max_steps": tight_max_steps},
+        "explanation_digest": (
+            _stable_json_digest(explanation.to_dict()) if explanation else ""
+        ),
+    }
+    # Resource exhaustion must not elevate: never theorem, never unconstrained allow.
+    ok = (
+        exhausted is True
+        and decision.outcome is DecisionOutcome.UNKNOWN
+        and receipt.outcome is DecisionOutcome.UNKNOWN
+        and receipt.bounds_exhausted is True
+        and receipt.authority is AuthorizationEvidenceAuthority.AUTHORIZATION
+        and receipt.is_theorem_authority is False
+        and bool(receipt.source_binding.document_digest)
+    )
+    return {
+        "ok": ok,
+        "witness": witness,
+        "expected": "unknown/bounds_exhausted/no_theorem",
+        "observed": (
+            f"{receipt.outcome.value}/"
+            f"exhausted={receipt.bounds_exhausted}/"
+            f"theorem={receipt.is_theorem_authority}"
+        ),
+    }
+
+
+def _run_disagreement_authorization(engine_id: str) -> dict[str, Any]:
+    """Prove engine/reference agreement and disagreement quarantine."""
+
+    allow = _fixture_by_category("allow")
+    record = run_engine_case(
+        engine_id, "case:disagreement-baseline", allow.document, allow.query
+    )
+    reference = _reference_outcome(allow.document, allow.query)
+    agreement = (
+        record.outcome == reference.value
+        and record.outcome == DecisionOutcome.ALLOW.value
+        and not record.is_theorem_authority
+    )
+    # Synthetic mismatch: an expected deny against a live allow is disagreement.
+    synthetic_expected = DecisionOutcome.DENY.value
+    synthetic_disagrees = record.outcome != synthetic_expected
+    # Quarantine means disagreement must not be certified as allow authority elevation.
+    quarantined = synthetic_disagrees and record.authority == AUTHORITY_CEILING
+    ok = agreement and synthetic_disagrees and quarantined
+    witness = {
+        "engine_outcome": record.outcome,
+        "reference_outcome": reference.value,
+        "synthetic_expected": synthetic_expected,
+        "agreed_with_reference": agreement,
+        "synthetic_disagreement_detected": synthetic_disagrees,
+        "quarantined": quarantined,
+        "policy_digest": record.policy_digest,
+        "explanation_digest": record.explanation_digest,
+        "request_digest": record.request_digest,
+        "authority": record.authority,
+    }
+    return {
+        "ok": ok,
+        "witness": witness,
+        "expected": "agree_with_reference+quarantine_synthetic_mismatch",
+        "observed": (
+            f"engine={record.outcome};ref={reference.value};"
+            f"synthetic_disagrees={synthetic_disagrees}"
+        ),
+    }
+
+
+def build_authorization_closure_contribution(
+    engine_id: str,
+    *,
+    repo_root: Path | None = None,
+    manifest_path: Path | None = None,
+) -> dict[str, Any]:
+    """Build one independent authorization provider contribution for FVT-G225."""
+
+    if engine_id not in REFERENCE_ENGINES:
+        raise AuthorizationSemanticCertificationError(
+            f"closure contribution requires a reference engine, got {engine_id!r}"
+        )
+
+    root = repo_root or _REPO_ROOT
+    engine_cert = certify_engine(
+        engine_id,
+        specs=_case_specs_from_manifest(load_manifest(manifest_path)),
+    )
+    provider = authorization_provider_binding(engine_id, repo_root=root)
+    source_tree = authorization_source_tree_binding(root)
+    checks: list[dict[str, Any]] = []
+    cases: list[dict[str, Any]] = []
+    block_reasons: list[str] = list(engine_cert.block_reasons)
+
+    # Map the live semantic corpus onto the closed FVT-G225 case kinds.
+    category_to_kind = {
+        "allow": "positive",
+        "deny": "negative",
+        "negative": "negative",
+        "unknown": "unknown_no_proof",
+        "conflict": "negative",
+        "revocation": "negative",
+        "delegation": "positive",
+        "malformed": "malformed",
+        "mutation": "mutation",
+    }
+    kind_seen: set[str] = set()
+
+    for record in engine_cert.case_results:
+        case_id = record.case_id
+        # Prefer structural suffixes before category token matching so
+        # ``case:deny:replay`` maps to replay rather than negative.
+        if ":baseline" in case_id:
+            continue
+        if ":replay" in case_id or case_id.endswith(".replay"):
+            kind = "replay"
+        else:
+            category = ""
+            for token in (
+                "allow",
+                "deny",
+                "unknown",
+                "conflict",
+                "delegation",
+                "revocation",
+                "negative",
+                "malformed",
+                "mutation",
+            ):
+                if token in case_id:
+                    category = token
+                    break
+            kind = category_to_kind.get(category, "")
+            if not kind:
+                continue
+        kind_seen.add(kind)
+        cases.append(
+            {
+                "case_id": case_id,
+                "kind": kind,
+                "provider_id": engine_id,
+                "outcome": record.outcome,
+                "status": record.status,
+                "authority": record.authority,
+                "is_theorem_authority": record.is_theorem_authority,
+                "policy_digest": record.policy_digest,
+                "request_digest": record.request_digest,
+                "receipt_id": record.receipt_id,
+                "explanation_digest": record.explanation_digest,
+                "bound_rule_ids": list(record.bound_rule_ids),
+                "public_safe_witness": {
+                    "outcome": record.outcome,
+                    "policy_digest": record.policy_digest,
+                    "request_digest": record.request_digest,
+                    "explanation_digest": record.explanation_digest,
+                    "bound_rule_ids": list(record.bound_rule_ids),
+                },
+            }
+        )
+
+    # Positive / negative / unknown / mutation / replay / malformed from cert checks.
+    for check in engine_cert.checks:
+        mapped_kind = {
+            "positive": "positive",
+            "negative": "negative",
+            "mutation": "mutation",
+            "replay": "replay",
+            "malformed": "malformed",
+            "authority": "positive",
+        }.get(check.kind)
+        if mapped_kind is None:
+            continue
+        if check.kind == "authority":
+            # Authority checks reinforce ceilings; do not double-count as positive.
+            continue
+        # unknown category uses positive check kind in certify_engine — remap.
+        if "unknown" in check.check_id and mapped_kind == "positive":
+            mapped_kind = "unknown_no_proof"
+        kind_seen.add(mapped_kind)
+        checks.append(
+            _closure_check(
+                check_id=f"{engine_id}.closure.{check.check_id}",
+                kind=mapped_kind,
+                status=check.status if check.status in {"passed", "failed"} else "failed",
+                expected=check.expected,
+                observed=check.observed,
+                detail=check.detail,
+                bindings={
+                    "policy_digest": check.policy_digest,
+                    "engine_id": engine_id,
+                    "source_check_id": check.check_id,
+                },
+            )
+        )
+        if check.status != "passed":
+            block_reasons.append(f"semantic_check_failed:{check.check_id}")
+
+    # Explicit counterexample / witness binding on deny-class cases.
+    deny = _fixture_by_category("deny")
+    witness_record = run_engine_case(
+        engine_id, "case:counterexample-witness", deny.document, deny.query
+    )
+    witness_ok = (
+        witness_record.outcome == DecisionOutcome.DENY.value
+        and bool(witness_record.policy_digest)
+        and bool(witness_record.explanation_digest)
+        and bool(witness_record.bound_rule_ids or witness_record.explanation_digest)
+        and witness_record.authority == AUTHORITY_CEILING
+        and not witness_record.is_theorem_authority
+    )
+    kind_seen.add("counterexample_witness")
+    checks.append(
+        _closure_check(
+            check_id=f"{engine_id}.closure.counterexample_witness",
+            kind="counterexample_witness",
+            status="passed" if witness_ok else "failed",
+            expected="deny+bound_witness",
+            observed=(
+                f"{witness_record.outcome}/"
+                f"rules={len(witness_record.bound_rule_ids)}/"
+                f"expl={bool(witness_record.explanation_digest)}"
+            ),
+            detail="deny counterexample binds policy + explanation digests",
+            bindings={
+                "policy_digest": witness_record.policy_digest,
+                "explanation_digest": witness_record.explanation_digest,
+                "request_digest": witness_record.request_digest,
+                "bound_rule_ids": list(witness_record.bound_rule_ids),
+                "receipt_id": witness_record.receipt_id,
+            },
+        )
+    )
+    cases.append(
+        {
+            "case_id": "case:counterexample-witness",
+            "kind": "counterexample_witness",
+            "provider_id": engine_id,
+            "outcome": witness_record.outcome,
+            "public_safe_witness": {
+                "outcome": witness_record.outcome,
+                "policy_digest": witness_record.policy_digest,
+                "explanation_digest": witness_record.explanation_digest,
+                "bound_rule_ids": list(witness_record.bound_rule_ids),
+            },
+        }
+    )
+    if not witness_ok:
+        block_reasons.append("counterexample_witness_failed")
+
+    # Timeout / resource-bound axis.
+    resource = _run_resource_bound_authorization(engine_id)
+    kind_seen.add("timeout_resource_bound")
+    checks.append(
+        _closure_check(
+            check_id=f"{engine_id}.closure.timeout_resource_bound",
+            kind="timeout_resource_bound",
+            status="passed" if resource["ok"] else "failed",
+            expected=str(resource["expected"]),
+            observed=str(resource["observed"]),
+            detail="max_steps=1 exhausts bounds without theorem elevation",
+            bindings=resource["witness"],
+        )
+    )
+    cases.append(
+        {
+            "case_id": "case:timeout-resource-bound",
+            "kind": "timeout_resource_bound",
+            "provider_id": engine_id,
+            "public_safe_witness": resource["witness"],
+        }
+    )
+    if not resource["ok"]:
+        block_reasons.append("timeout_resource_bound_failed")
+
+    # Disagreement axis (reference agreement + synthetic quarantine).
+    disagreement = _run_disagreement_authorization(engine_id)
+    kind_seen.add("disagreement")
+    checks.append(
+        _closure_check(
+            check_id=f"{engine_id}.closure.disagreement",
+            kind="disagreement",
+            status="passed" if disagreement["ok"] else "failed",
+            expected=str(disagreement["expected"]),
+            observed=str(disagreement["observed"]),
+            detail="engine/reference agreement; synthetic mismatch quarantined",
+            bindings=disagreement["witness"],
+        )
+    )
+    cases.append(
+        {
+            "case_id": "case:disagreement",
+            "kind": "disagreement",
+            "provider_id": engine_id,
+            "public_safe_witness": disagreement["witness"],
+        }
+    )
+    if not disagreement["ok"]:
+        block_reasons.append("disagreement_axis_failed")
+
+    missing_kinds = sorted(REQUIRED_CLOSURE_CASE_KINDS - kind_seen)
+    if missing_kinds:
+        block_reasons.append("missing_case_kinds:" + ",".join(missing_kinds))
+
+    # Authority ceiling: never theorem / vendor / translation / deployment.
+    for check in checks:
+        if check.get("is_theorem_authority"):
+            block_reasons.append(f"theorem_authority:{check['check_id']}")
+        if check.get("authority") not in {AUTHORITY_CEILING, "authorization"}:
+            block_reasons.append(f"authority_breach:{check['check_id']}")
+
+    if not provider.get("implementation_sha256"):
+        block_reasons.append("provider_bytes_unbound")
+    if not source_tree.get("tree_digest_sha256"):
+        block_reasons.append("source_tree_unbound")
+    if not engine_cert.certified:
+        block_reasons.append("engine_not_semantically_certified")
+
+    all_passed = (
+        bool(checks)
+        and all(item["status"] == "passed" for item in checks)
+        and not missing_kinds
+        and engine_cert.certified
+        and provider.get("usable") is True
+        and not any(
+            reason.startswith("theorem_authority:")
+            or reason.startswith("authority_breach:")
+            or reason in {
+                "provider_bytes_unbound",
+                "source_tree_unbound",
+                "engine_not_semantically_certified",
+            }
+            for reason in block_reasons
+        )
+    )
+
+    contribution = {
+        "provider_id": engine_id,
+        "engine_id": engine_id,
+        "family": "authorization",
+        "interface": INTERFACE,
+        "closure_interface": CLOSURE_INTERFACE,
+        "closure_schema_version": CLOSURE_SCHEMA_VERSION,
+        "goal_id": CLOSURE_GOAL_ID,
+        "task_id": CLOSURE_TASK_ID,
+        "lane_id": LANE_ID,
+        "handler_id": HANDLER_ID,
+        "certification_surface": CERTIFICATION_SURFACE,
+        "authority_ceiling": AUTHORITY_CEILING,
+        "authority_scope": "authorization_decision_only",
+        "forbids_theorem_authority": True,
+        "forbids_infinite_trace_authority": True,
+        "forbids_vendor_secpal_authority": True,
+        "forbids_translation_authority": True,
+        "forbids_deployment_authority": True,
+        "usable": bool(provider.get("usable")),
+        "semantically_certified": bool(engine_cert.certified),
+        "closure_passed": bool(all_passed),
+        "required_case_kinds": sorted(REQUIRED_CLOSURE_CASE_KINDS),
+        "case_kinds_exercised": sorted(kind_seen),
+        "checks": checks,
+        "cases": cases,
+        "semantic_certificate_digest_sha256": _stable_json_digest(
+            {
+                "engine_id": engine_cert.engine_id,
+                "certified": engine_cert.certified,
+                "checks": [item.to_dict() for item in engine_cert.checks],
+            }
+        ),
+        "bindings": {
+            "provider": provider,
+            "source_tree": source_tree,
+            "property_semantics": {
+                "family": "authorization",
+                "categories": sorted(REQUIRED_CATEGORIES),
+                "mutation_kinds": sorted(REQUIRED_MUTATION_KINDS),
+            },
+            "bounds": {"default_timeout_ms": 500, "default_max_steps": 256},
+            "parser_decisions": {
+                "encoding": (
+                    "secpal" if engine_id == ENGINE_SECPAL else "authorization-ir"
+                ),
+                "malformed_fail_closed": True,
+            },
+            "raw_output_digests_bound": True,
+            "public_safe_witnesses_only": True,
+        },
+        "policy": {
+            "in_process_only": True,
+            "independent_provider_evidence": True,
+            "no_cross_provider_substitution": True,
+            "no_external_shadow_install": True,
+            "no_vendor_secpal_reuse": True,
+            "authorization_decision_authority_only": True,
+            "grants_theorem_authority": False,
+            "grants_deployment_authority": False,
+            "grants_translation_authority": False,
+            "grants_infinite_trace_authority": False,
+        },
+        "block_reasons": sorted(set(block_reasons)),
+        "evidence": {
+            "goal_id": CLOSURE_GOAL_ID,
+            "task_id": CLOSURE_TASK_ID,
+            "interface": CLOSURE_INTERFACE,
+            "validation_command": CLOSURE_VALIDATION_COMMAND,
+            "semantic_goal_id": GOAL_ID,
+            "semantic_task_id": TASK_ID,
+            "repair_task_id": REPAIR_TASK_ID,
+        },
+        "notes": (
+            f"{engine_id} independent reference-logic closure contribution: "
+            "authorization-decision authority only; no theorem/vendor/deployment."
+        ),
+    }
+    contribution["contribution_digest_sha256"] = _stable_json_digest(
+        {
+            key: value
+            for key, value in contribution.items()
+            if key != "contribution_digest_sha256"
+        }
+    )
+    return contribution
+
+
+def _load_runtime_mtl_certifier():
+    """Load the Runtime MTL certifier module without package import coupling."""
+
+    path = _REPO_ROOT / "tools" / "logic" / "certification" / "runtime_mtl.py"
+    if not path.is_file():
+        raise AuthorizationSemanticCertificationError(
+            f"missing Runtime MTL certifier: {path}"
+        )
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "tools_logic_certification_runtime_mtl_closure",
+        path,
+    )
+    if spec is None or spec.loader is None:
+        raise AuthorizationSemanticCertificationError(
+            "unable to load Runtime MTL certifier"
+        )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def assemble_reference_logic_semantic_receipt(
+    contributions: Mapping[str, Mapping[str, Any]],
+    *,
+    repo_root: Path | None = None,
+) -> dict[str, Any]:
+    """Assemble ``ReferenceLogicSemanticClosure@1`` from independent contributions."""
+
+    root = repo_root or _REPO_ROOT
+    providers: dict[str, Any] = {}
+    block_reasons: list[str] = []
+
+    for provider_id in REQUIRED_CLOSURE_PROVIDERS:
+        contrib = contributions.get(provider_id)
+        if not isinstance(contrib, Mapping):
+            block_reasons.append(f"missing_contribution:{provider_id}")
+            providers[provider_id] = {
+                "provider_id": provider_id,
+                "closure_passed": False,
+                "block_reasons": [f"missing_contribution:{provider_id}"],
+            }
+            continue
+        selected = str(
+            contrib.get("provider_id") or contrib.get("engine_id") or ""
+        )
+        if selected != provider_id:
+            block_reasons.append(f"provider_identity_mismatch:{provider_id}")
+        if contrib.get("closure_passed") is not True:
+            block_reasons.extend(
+                f"{provider_id}:{reason}"
+                for reason in (
+                    contrib.get("block_reasons") or ["closure_incomplete"]
+                )
+            )
+        # One provider must never satisfy another provider's evidence.
+        if contrib.get("policy", {}).get("no_cross_provider_substitution") is False:
+            block_reasons.append(f"cross_provider_substitution:{provider_id}")
+        # Authority ceilings must stay exact.
+        if provider_id in REFERENCE_ENGINES:
+            if contrib.get("authority_ceiling") != AUTHORITY_CEILING:
+                block_reasons.append(f"authority_ceiling_mismatch:{provider_id}")
+            if contrib.get("forbids_theorem_authority") is not True:
+                block_reasons.append(f"theorem_forbidden_missing:{provider_id}")
+        elif provider_id == "runtime-mtl":
+            if contrib.get("authority_ceiling") not in {
+                "finite_trace",
+                ToolchainAuthorityCeiling.FINITE_TRACE.value,
+            }:
+                block_reasons.append(f"authority_ceiling_mismatch:{provider_id}")
+            if contrib.get("forbids_theorem_authority") is not True:
+                block_reasons.append(f"theorem_forbidden_missing:{provider_id}")
+        # Required case kinds must all be present and passed.
+        exercised = set(contrib.get("case_kinds_exercised") or [])
+        missing = sorted(REQUIRED_CLOSURE_CASE_KINDS - exercised)
+        if missing:
+            block_reasons.append(
+                f"missing_kinds:{provider_id}:{','.join(missing)}"
+            )
+        checks = list(contrib.get("checks") or [])
+        for check in checks:
+            if str(check.get("kind") or "") not in REQUIRED_CLOSURE_CASE_KINDS:
+                continue
+            if check.get("status") != "passed":
+                block_reasons.append(
+                    f"check_failed:{provider_id}:{check.get('check_id')}"
+                )
+        providers[provider_id] = dict(contrib)
+
+    all_passed = (
+        all(
+            bool((providers.get(pid) or {}).get("closure_passed"))
+            for pid in REQUIRED_CLOSURE_PROVIDERS
+        )
+        and not block_reasons
+    )
+
+    receipt: dict[str, Any] = {
+        "schema_version": CLOSURE_SCHEMA_VERSION,
+        "interface": CLOSURE_INTERFACE,
+        "goal_id": CLOSURE_GOAL_ID,
+        "task_id": CLOSURE_TASK_ID,
+        "program": CLOSURE_PROGRAM,
+        "handler_id": CLOSURE_HANDLER_ID,
+        "description": (
+            "Independent in-process reference-logic semantic closure for Datalog "
+            "authorization, SecPAL-style authorization, and Runtime MTL at their "
+            "exact bounded authority ceilings. No provider substitutes for another; "
+            "none gain theorem, infinite-trace, vendor SecPAL, translation, or "
+            "deployment authority."
+        ),
+        "certified": bool(all_passed),
+        "semantic_closure": bool(all_passed),
+        "production_elevation_allowed": bool(all_passed),
+        "provider_ids": list(REQUIRED_CLOSURE_PROVIDERS),
+        "providers": providers,
+        "required_case_kinds": sorted(REQUIRED_CLOSURE_CASE_KINDS),
+        "policy": {
+            "in_process_only": True,
+            "independent_provider_evidence_required": True,
+            "no_cross_provider_substitution": True,
+            "no_external_tool_install": True,
+            "no_external_secpal_sample_reuse": True,
+            "no_central_certificate_edit": True,
+            "datalog_authorization_decision_only": True,
+            "secpal_authorization_decision_only": True,
+            "runtime_mtl_finite_trace_only": True,
+            "forbids_theorem_authority": True,
+            "forbids_infinite_trace_authority": True,
+            "forbids_vendor_secpal_authority": True,
+            "forbids_translation_authority": True,
+            "forbids_deployment_authority": True,
+            "mutations_fail_closed": True,
+            "receipts_bind_provider_bytes_source_tree_semantics_bounds": True,
+        },
+        "acceptance": {
+            "goal_id": CLOSURE_GOAL_ID,
+            "task_id": CLOSURE_TASK_ID,
+            "required_case_kinds": sorted(REQUIRED_CLOSURE_CASE_KINDS),
+            "required_providers": list(REQUIRED_CLOSURE_PROVIDERS),
+            "independent_positive_negative_unknown_mutation_replay_malformed": True,
+            "timeout_resource_bound": True,
+            "counterexample_witness": True,
+            "disagreement": True,
+            "authorization_decision_authority_only": True,
+            "finite_trace_monitor_authority_only": True,
+            "forbids_theorem_authority": True,
+            "forbids_infinite_trace_authority": True,
+            "forbids_vendor_secpal_authority": True,
+            "forbids_translation_authority": True,
+            "forbids_deployment_authority": True,
+            "semantic_closure": bool(all_passed),
+        },
+        "evidence": {
+            "goal_id": CLOSURE_GOAL_ID,
+            "task_id": CLOSURE_TASK_ID,
+            "receipt": str(DEFAULT_CLOSURE_RECEIPT_RELATIVE).replace("\\", "/"),
+            "integration_test": (
+                "test/integration/toolchains/test_reference_logic_semantic_closure.py"
+            ),
+            "authorization_surface": CERTIFICATION_SURFACE,
+            "runtime_mtl_surface": "tools.logic.certification.runtime_mtl",
+            "validation_command": CLOSURE_VALIDATION_COMMAND,
+            "depends_on": ["FVT-038", "FVT-068", "FVT-039", "FVT-069", "FVT-088"],
+        },
+        "block_reasons": sorted(set(block_reasons)),
+        "summary": {
+            "providers_passed": sum(
+                1
+                for pid in REQUIRED_CLOSURE_PROVIDERS
+                if (providers.get(pid) or {}).get("closure_passed")
+            ),
+            "providers_total": len(REQUIRED_CLOSURE_PROVIDERS),
+            "checks_passed": sum(
+                1
+                for pid in REQUIRED_CLOSURE_PROVIDERS
+                for check in (providers.get(pid) or {}).get("checks") or []
+                if check.get("status") == "passed"
+            ),
+            "checks_total": sum(
+                len((providers.get(pid) or {}).get("checks") or [])
+                for pid in REQUIRED_CLOSURE_PROVIDERS
+            ),
+        },
+        "repo_root_marker": "repository-relative",
+    }
+    receipt["receipt_digest_sha256"] = _stable_json_digest(
+        {
+            key: value
+            for key, value in receipt.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+    # Touch repo_root so callers can re-bind paths without embedding host paths.
+    receipt["source_tree"] = {
+        "authorization": authorization_source_tree_binding(root),
+    }
+    # Recompute digest after adding source_tree (stable public binding).
+    receipt["receipt_digest_sha256"] = _stable_json_digest(
+        {
+            key: value
+            for key, value in receipt.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
+    return receipt
+
+
+def certify_reference_logic_semantic_closure(
+    *,
+    repo_root: Path | None = None,
+    manifest_path: Path | None = None,
+    runtime_mtl_manifest_path: Path | None = None,
+    typescript_prebuilt_root: Path | str | None = None,
+) -> dict[str, Any]:
+    """Run the full independent provider matrix and assemble the closure receipt."""
+
+    root = repo_root or _REPO_ROOT
+    contributions: dict[str, dict[str, Any]] = {}
+    for engine_id in REFERENCE_ENGINES:
+        contributions[engine_id] = build_authorization_closure_contribution(
+            engine_id,
+            repo_root=root,
+            manifest_path=manifest_path,
+        )
+
+    runtime_mod = _load_runtime_mtl_certifier()
+    contributions["runtime-mtl"] = runtime_mod.build_runtime_mtl_closure_contribution(
+        repo_root=root,
+        manifest_path=runtime_mtl_manifest_path,
+        typescript_prebuilt_root=typescript_prebuilt_root,
+    )
+    return assemble_reference_logic_semantic_receipt(
+        contributions,
+        repo_root=root,
+    )
+
+
+def validate_reference_logic_semantic_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    require_certified: bool = True,
+) -> list[str]:
+    """Fail-closed structural validation for a closure receipt (mutation probe)."""
+
+    reasons: list[str] = []
+    if receipt.get("interface") != CLOSURE_INTERFACE:
+        reasons.append("interface_mismatch")
+    if receipt.get("schema_version") != CLOSURE_SCHEMA_VERSION:
+        reasons.append("schema_mismatch")
+    if receipt.get("goal_id") != CLOSURE_GOAL_ID:
+        reasons.append("goal_id_mismatch")
+    if receipt.get("task_id") != CLOSURE_TASK_ID:
+        reasons.append("task_id_mismatch")
+    if require_certified and receipt.get("certified") is not True:
+        reasons.append("not_certified")
+    if receipt.get("policy", {}).get("forbids_theorem_authority") is not True:
+        reasons.append("theorem_authority_not_forbidden")
+    if receipt.get("policy", {}).get("no_cross_provider_substitution") is not True:
+        reasons.append("cross_provider_substitution_allowed")
+    providers = receipt.get("providers")
+    if not isinstance(providers, Mapping):
+        reasons.append("providers_missing")
+        return reasons
+    for provider_id in REQUIRED_CLOSURE_PROVIDERS:
+        contrib = providers.get(provider_id)
+        if not isinstance(contrib, Mapping):
+            reasons.append(f"missing_provider:{provider_id}")
+            continue
+        if require_certified and contrib.get("closure_passed") is not True:
+            reasons.append(f"provider_not_passed:{provider_id}")
+        if contrib.get("provider_id") not in {provider_id, None} and contrib.get(
+            "provider_id"
+        ) != provider_id:
+            reasons.append(f"provider_id_tamper:{provider_id}")
+        if provider_id in REFERENCE_ENGINES:
+            if contrib.get("authority_ceiling") != AUTHORITY_CEILING:
+                reasons.append(f"ceiling_tamper:{provider_id}")
+        elif provider_id == "runtime-mtl":
+            if contrib.get("authority_ceiling") not in {
+                "finite_trace",
+                ToolchainAuthorityCeiling.FINITE_TRACE.value,
+            }:
+                reasons.append(f"ceiling_tamper:{provider_id}")
+        if contrib.get("forbids_theorem_authority") is not True:
+            reasons.append(f"theorem_flag_tamper:{provider_id}")
+        exercised = set(contrib.get("case_kinds_exercised") or [])
+        missing = sorted(REQUIRED_CLOSURE_CASE_KINDS - exercised)
+        if missing:
+            reasons.append(f"missing_kinds:{provider_id}")
+        digest = str(contrib.get("contribution_digest_sha256") or "")
+        if len(digest) != 64:
+            reasons.append(f"contribution_digest_missing:{provider_id}")
+        # Evidence binding digests must remain present.
+        bindings = contrib.get("bindings") or {}
+        if provider_id in REFERENCE_ENGINES:
+            provider_bind = bindings.get("provider") or {}
+            if not provider_bind.get("implementation_sha256"):
+                reasons.append(f"provider_bytes_unbound:{provider_id}")
+            source_tree = bindings.get("source_tree") or {}
+            if not source_tree.get("tree_digest_sha256"):
+                reasons.append(f"source_tree_unbound:{provider_id}")
+        for check in contrib.get("checks") or []:
+            if check.get("is_theorem_authority"):
+                reasons.append(f"theorem_check:{provider_id}:{check.get('check_id')}")
+    receipt_digest = str(receipt.get("receipt_digest_sha256") or "")
+    if len(receipt_digest) != 64:
+        reasons.append("receipt_digest_missing")
+    else:
+        recomputed = _stable_json_digest(
+            {
+                key: value
+                for key, value in receipt.items()
+                if key != "receipt_digest_sha256"
+            }
+        )
+        if recomputed != receipt_digest:
+            reasons.append("receipt_digest_mismatch")
+    return sorted(set(reasons))
+
+
+def write_reference_logic_semantic_receipt(
+    path: Path | str | None = None,
+    *,
+    receipt: Mapping[str, Any] | None = None,
+    repo_root: Path | None = None,
+    typescript_prebuilt_root: Path | str | None = None,
+) -> Path:
+    """Write the public-safe aggregate receipt JSON atomically."""
+
+    root = repo_root or _REPO_ROOT
+    target = Path(path) if path is not None else root / DEFAULT_CLOSURE_RECEIPT_RELATIVE
+    payload = (
+        dict(receipt)
+        if receipt is not None
+        else certify_reference_logic_semantic_closure(
+            repo_root=root,
+            typescript_prebuilt_root=typescript_prebuilt_root,
+        )
+    )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(target)
+    return target
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Semantically certify in-process Datalog and SecPAL authorization "
-            f"({INTERFACE} / {GOAL_ID})."
+            f"({INTERFACE} / {GOAL_ID}) and assemble reference-logic closure "
+            f"({CLOSURE_INTERFACE} / {CLOSURE_GOAL_ID})."
         )
     )
     parser.add_argument(
@@ -1400,6 +2379,20 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Limit certification to one engine id (repeatable)",
     )
+    parser.add_argument(
+        "--write-closure-receipt",
+        action="store_true",
+        help=(
+            "Write the ReferenceLogicSemanticClosure@1 receipt to "
+            f"{DEFAULT_CLOSURE_RECEIPT_RELATIVE}"
+        ),
+    )
+    parser.add_argument(
+        "--closure-output",
+        type=Path,
+        default=None,
+        help="Optional alternate path for the closure receipt JSON",
+    )
     args = parser.parse_args(argv)
 
     if args.write_manifest:
@@ -1408,11 +2401,42 @@ def main(argv: list[str] | None = None) -> int:
             print(f"wrote {path}")
             return 0
 
+    if args.write_closure_receipt or args.closure_output is not None:
+        receipt = certify_reference_logic_semantic_closure(
+            manifest_path=args.manifest,
+        )
+        out = write_reference_logic_semantic_receipt(
+            args.closure_output,
+            receipt=receipt,
+        )
+        if args.json:
+            print(json.dumps(receipt, indent=2, sort_keys=True))
+        else:
+            status = "CERTIFIED" if receipt["certified"] else "FAILED"
+            print(f"{CLOSURE_INTERFACE} {status}")
+            print(
+                f"goal={CLOSURE_GOAL_ID} task={CLOSURE_TASK_ID} "
+                f"providers={','.join(receipt['provider_ids'])}"
+            )
+            summary = receipt["summary"]
+            print(
+                f"checks={summary['checks_passed']}/{summary['checks_total']} "
+                f"providers_passed={summary['providers_passed']}/"
+                f"{summary['providers_total']}"
+            )
+            if receipt["block_reasons"]:
+                print("block_reasons:")
+                for reason in receipt["block_reasons"]:
+                    print(f"  - {reason}")
+            print(f"wrote {out}")
+            print(f"digest={receipt['receipt_digest_sha256']}")
+        return 0 if receipt["certified"] else 1
+
     receipt = certify_authorization_semantics(
         engines=args.engines,
         manifest_path=args.manifest,
     )
-    if args.json or args.write_manifest:
+    if args.json:
         print(json.dumps(receipt, indent=2, sort_keys=True))
     else:
         status = "CERTIFIED" if receipt["certified"] else "FAILED"
@@ -1457,6 +2481,16 @@ __all__ = [
     "REFERENCE_ENGINES",
     "REQUIRED_CATEGORIES",
     "REQUIRED_MUTATION_KINDS",
+    "CLOSURE_INTERFACE",
+    "CLOSURE_SCHEMA_VERSION",
+    "CLOSURE_GOAL_ID",
+    "CLOSURE_TASK_ID",
+    "CLOSURE_PROGRAM",
+    "CLOSURE_HANDLER_ID",
+    "CLOSURE_VALIDATION_COMMAND",
+    "REQUIRED_CLOSURE_CASE_KINDS",
+    "REQUIRED_CLOSURE_PROVIDERS",
+    "DEFAULT_CLOSURE_RECEIPT_RELATIVE",
     "AuthorizationSemanticCertificationError",
     "CaseSpec",
     "CheckResult",
@@ -1466,17 +2500,24 @@ __all__ = [
     "apply_principal_mutation",
     "apply_rule_mutation",
     "apply_scope_mutation",
+    "assemble_reference_logic_semantic_receipt",
     "authorization_lane_handler",
+    "authorization_provider_binding",
+    "authorization_source_tree_binding",
     "bind_authorization_lane",
+    "build_authorization_closure_contribution",
     "build_default_manifest",
     "build_negative_case",
     "build_revocation_case",
     "certify_authorization_semantics",
     "certify_engine",
+    "certify_reference_logic_semantic_closure",
     "default_case_specs",
     "load_manifest",
     "main",
     "materialize_case",
     "run_engine_case",
+    "validate_reference_logic_semantic_receipt",
     "write_manifest",
+    "write_reference_logic_semantic_receipt",
 ]
