@@ -7416,7 +7416,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             else set()
         )
         provider = (
-            os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower() or "auto"
+            os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower() or "grok"
         )
         if provider in {
             "goose",
@@ -7438,15 +7438,26 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "xai-cli",
             "grok_build",
             "grok-build",
+            "grok_only",
+            "grok-only",
+            "grok_no_fallback",
+            "grok-no-fallback",
+            "auto",
+            "grok_quota_fallback",
+            "grok-quota-fallback",
+            "grok_with_quota_fallback",
+            "grok-with-quota-fallback",
         }:
             return {"grok", "xai", "provider"} | review_labels
         if provider in {"codex", "copilot", "openai"}:
             return {"codex", "copilot", "provider"} | review_labels
         labels: set[str] = set()
-        if _goose_meta_spark_available():
-            labels.update({"goose", "meta_spark", "meta", "provider"})
+        # Default discovery still lists Grok first; Goose is never the default
+        # primary when Grok is available.
         if _grok_cli_available():
             labels.update({"grok", "xai", "provider"})
+        if _goose_meta_spark_available():
+            labels.update({"goose", "meta_spark", "meta", "provider"})
         if shutil.which("codex") or (shutil.which("copilot") and _copilot_has_auth()):
             labels.update({"codex", "copilot", "provider"})
         return (labels or {"provider"}) | review_labels
@@ -20481,6 +20492,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 ProviderReason.PROVIDER_QUOTA_EXHAUSTED.value,
                 ProviderReason.GROK_QUOTA_EXHAUSTED.value,
                 ProviderReason.GROK_UNAVAILABLE.value,
+                # Independent-review Codex outage must not burn Grok implement
+                # attempts: pause the production route until Codex capacity
+                # returns.  Grok remains the default implementer.
+                ProviderReason.CODEX_QUOTA_EXHAUSTED.value,
+                ProviderReason.CODEX_UNAVAILABLE.value,
             }
         )
         return {
@@ -27976,9 +27992,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if env_command and not declared_provider:
             return shlex.split(env_command)
 
+        # Default is Grok-first (not Goose). Explicit goose/codex pins remain.
         configured_provider = (
             os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
-            or "auto"
+            or "grok"
         )
         provider = (
             declared_provider
@@ -27986,14 +28003,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         grok_ready = _grok_cli_available()
         goose_meta_ready = _goose_meta_spark_available()
+        # Default ``grok`` and ``auto`` use Grok 4.5 primary with optional Codex
+        # only after confirmed Grok quota exhaustion. Explicit ``grok_only``
+        # pins remain fail-closed with no cross-provider fallback.
         quota_fallback_grok = provider in {
             "auto",
-            "grok_quota_fallback",
-            "grok-quota-fallback",
-            "grok_with_quota_fallback",
-            "grok-with-quota-fallback",
-        }
-        force_grok = provider in {
             "grok",
             "grok_cli",
             "grok-cli",
@@ -28001,7 +28015,34 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "grok-build",
             "xai_cli",
             "xai-cli",
+            "grok_quota_fallback",
+            "grok-quota-fallback",
+            "grok_with_quota_fallback",
+            "grok-with-quota-fallback",
         }
+        # Explicit pin of plain ``grok`` (env or task metadata) is fail-closed
+        # with no Codex fallback.  The empty-env default still uses the name
+        # ``grok`` but keeps the Grok-primary + post-quota Codex profile.
+        explicit_env = os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
+        explicit_grok_pin = (
+            str(declared_provider or explicit_env).strip().lower()
+            in {
+                "grok",
+                "grok_cli",
+                "grok-cli",
+                "grok_build",
+                "grok-build",
+                "xai_cli",
+                "xai-cli",
+                "grok_only",
+                "grok-only",
+                "grok_no_fallback",
+                "grok-no-fallback",
+            }
+        )
+        force_grok = explicit_grok_pin
+        if force_grok:
+            quota_fallback_grok = False
         prefer_goose_meta = provider in {
             "goose",
             "goose_meta",
@@ -28026,9 +28067,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         }
         force_codex = provider in {"codex", "copilot", "openai"}
 
-        # An explicitly pinned Grok route remains fail-closed and has no
-        # cross-provider fallback.  The quota-fallback profile below is the
-        # only ordinary route allowed to serialize a Codex fallback command.
+        # Explicit no-fallback Grok pin remains fail-closed.
         if force_grok:
             if not grok_ready:
                 raise RuntimeError(
@@ -28047,6 +28086,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 workspace_path=workspace_path,
                 grok_model=DEFAULT_GROK_PRIMARY_MODEL,
             )
+            # Grok is primary. Codex is attached only as a post-Grok-quota
+            # fallback when present — never as a peer primary, never Goose.
             codex = shutil.which("codex")
             if codex:
                 codex_context_window = (
