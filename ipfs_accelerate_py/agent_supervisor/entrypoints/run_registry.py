@@ -17,6 +17,10 @@ Design:
   guessing.
 * **Corruption** is quarantined.  Lookup and reconstruction never return a
   canonical-looking handle when integrity checks fail.
+* **DuckDB backend** (optional) holds mutable heads/index/current pointers while
+  immutable IPLD history (roots + handle snapshots) remains content-addressed
+  on disk.  Legacy JSON registries migrate losslessly and idempotently.
+* **Immutable replicas** are queryable but reject claim/fence/effect writes.
 
 On-disk layout under ``registry_root``::
 
@@ -28,6 +32,7 @@ On-disk layout under ``registry_root``::
         root.json                  # immutable root
         head.json                  # CAS head (revision + handle CID)
         handles/<handle_cid>.json  # full RunHandle snapshots
+    run_registry.duckdb            # optional DuckDB mutable state
 
 Restart reconstructs a complete handle by verifying root + head + snapshot.
 """
@@ -105,6 +110,7 @@ HANDLES_DIR: Final = "handles"
 ROOT_NAME: Final = "root.json"
 HEAD_NAME: Final = "head.json"
 CURRENT_NAME: Final = "current.json"
+DUCKDB_NAME: Final = "run_registry.duckdb"
 
 DEFAULT_MAX_LIST: Final = 256
 HARD_MAX_LIST: Final = 4_096
@@ -176,6 +182,10 @@ class RunIncompatibleError(RunRegistryError):
     """Raised when a handle diverges from the immutable run root."""
 
 
+class RunRegistryReadOnlyError(RunRegistryError):
+    """Raised when a write is attempted against an immutable replica."""
+
+
 class RegistryTxOutcome(str, Enum):
     COMMITTED = "committed"
     CONFLICT = "conflict"
@@ -192,6 +202,7 @@ class RegistryOperation(str, Enum):
     REPAIR = "repair"
     LOOKUP = "lookup"
     RECONSTRUCT = "reconstruct"
+    MIGRATE = "migrate"
 
 
 def _now_ms() -> int:
@@ -886,6 +897,10 @@ class RunRegistry:
         *,
         clock_ms: Callable[[], int] | None = None,
         max_list: int = DEFAULT_MAX_LIST,
+        backend: str | None = None,
+        immutable_replica: bool = False,
+        duckdb_path: str | Path | None = None,
+        auto_migrate: bool = True,
     ) -> None:
         root = Path(registry_root).expanduser().resolve()
         self.registry_root = root
@@ -897,6 +912,8 @@ class RunRegistry:
         self.max_list = int(max_list)
         self._thread_lock = threading.RLock()
         self._closed = False
+        self.immutable_replica = bool(immutable_replica)
+        self.auto_migrate = bool(auto_migrate)
         self.registry_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         (self.registry_root / QUARANTINE_DIR).mkdir(
             parents=True, exist_ok=True, mode=0o700
@@ -906,12 +923,41 @@ class RunRegistry:
         )
         self.lock_path = self.registry_root / LOCK_NAME
 
+        # Backend selection: "json" (legacy filesystem) or "duckdb".
+        requested = (backend or "json").strip().lower()
+        if requested not in {"json", "duckdb"}:
+            raise RunRegistryError(
+                f"backend must be 'json' or 'duckdb' (got {requested!r})"
+            )
+        self.backend_name = requested
+        self._duck: Any = None
+        if self.backend_name == "duckdb":
+            from .run_registry_backend import DuckDBRunRegistryBackend
+
+            db_path = (
+                Path(duckdb_path).expanduser().resolve()
+                if duckdb_path is not None
+                else self.registry_root / DUCKDB_NAME
+            )
+            self._duck = DuckDBRunRegistryBackend(
+                db_path,
+                read_only=self.immutable_replica,
+            )
+            if self.auto_migrate and not self.immutable_replica:
+                self._migrate_legacy_json_unlocked(force=False)
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
     def close(self) -> None:
         self._closed = True
+        if self._duck is not None:
+            try:
+                self._duck.close()
+            except Exception:
+                pass
+            self._duck = None
 
     def __enter__(self) -> "RunRegistry":
         return self
@@ -937,6 +983,9 @@ class RunRegistry:
             "cas_survives_restart": True,
             "corruption_policy": "quarantine_fail_closed",
             "selection_policy": "unique_compatible_or_explicit_ambiguity",
+            "mutable_state_backend": self.backend_name,
+            "immutable_replica": self.immutable_replica,
+            "immutable_history": "ipld_handle_snapshots_and_roots",
             "non_authoritative": (
                 "directory_name",
                 "pid_file",
@@ -944,6 +993,13 @@ class RunRegistry:
                 "prompt_text",
             ),
         }
+
+    def _ensure_writable(self, operation: str) -> None:
+        if self.immutable_replica:
+            raise RunRegistryReadOnlyError(
+                f"immutable replica cannot {operation}: claim, fence, and "
+                f"effect writes are rejected"
+            )
 
     # ------------------------------------------------------------------
     # Path helpers
@@ -1005,6 +1061,8 @@ class RunRegistry:
     # ------------------------------------------------------------------
 
     def _load_index(self) -> dict[str, str]:
+        if self._duck is not None:
+            return self._duck.load_index()
         path = self._index_path()
         if not path.exists():
             return {}
@@ -1023,6 +1081,9 @@ class RunRegistry:
         return result
 
     def _save_index(self, mapping: Mapping[str, str]) -> None:
+        if self._duck is not None:
+            self._duck.save_index(mapping)
+            return
         ordered = {key: mapping[key] for key in sorted(mapping)}
         payload = {
             "schema": f"{RUN_REGISTRY_SCHEMA}/index@1",
@@ -1056,7 +1117,15 @@ class RunRegistry:
         raise RunNotFoundError(f"run not found: {run_id}")
 
     def _scan_all_run_ids(self) -> list[tuple[str, str]]:
+        # Prefer DuckDB index when present; always merge filesystem scan so
+        # immutable IPLD history remains discoverable after partial migration.
         results: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        if self._duck is not None:
+            for run_id, namespace in self._duck.list_run_ids():
+                if run_id not in seen:
+                    results.append((run_id, namespace))
+                    seen.add(run_id)
         base = self.registry_root / NAMESPACES_DIR
         if not base.is_dir():
             return results
@@ -1083,11 +1152,13 @@ class RunRegistry:
                 else:
                     run_id = run_dir.name
                     namespace = ns_dir.name.replace("~", ":")
-                results.append((run_id, namespace))
+                if run_id not in seen:
+                    results.append((run_id, namespace))
+                    seen.add(run_id)
         return results
 
     # ------------------------------------------------------------------
-    # Handle snapshot IO
+    # Handle snapshot IO (immutable IPLD history on disk)
     # ------------------------------------------------------------------
 
     def _write_handle_snapshot(
@@ -1149,6 +1220,11 @@ class RunRegistry:
         return RunRootRecord.from_dict(_read_json(path))
 
     def _load_head(self, run_namespace: str, run_id: str) -> RunHeadRecord:
+        if self._duck is not None:
+            payload = self._duck.load_head(run_id)
+            if payload is not None:
+                return RunHeadRecord.from_dict(payload)
+            # Fall through to JSON head for pre-migration / hybrid state.
         path = self._head_path(run_namespace, run_id)
         if not path.exists():
             raise RunRegistryCorruptionError(
@@ -1157,6 +1233,31 @@ class RunRegistry:
                 reason_codes=("head_missing",),
             )
         return RunHeadRecord.from_dict(_read_json(path))
+
+    def _store_head(self, run_namespace: str, run_id: str, head: RunHeadRecord) -> None:
+        if self._duck is not None:
+            self._duck.store_head(run_id, run_namespace, head.to_dict())
+            return
+        _atomic_write_json(self._head_path(run_namespace, run_id), head.to_dict())
+
+    def _load_current_record(
+        self, run_namespace: str
+    ) -> NamespaceCurrentRecord | None:
+        if self._duck is not None:
+            payload = self._duck.load_current(run_namespace)
+            if payload is not None:
+                return NamespaceCurrentRecord.from_dict(payload)
+            # Hybrid: check JSON pointer if DuckDB has no row yet.
+        path = self._current_path(run_namespace)
+        if not path.exists():
+            return None
+        return NamespaceCurrentRecord.from_dict(_read_json(path))
+
+    def _store_current(self, record: NamespaceCurrentRecord) -> None:
+        if self._duck is not None:
+            self._duck.store_current(record.to_dict())
+            return
+        _atomic_write_json(self._current_path(record.run_namespace), record.to_dict())
 
     def _verify_handle_against_root(
         self, root: RunRootRecord, handle: RunHandle
@@ -1217,6 +1318,177 @@ class RunRegistry:
         return root, head, handle
 
     # ------------------------------------------------------------------
+    # Legacy JSON -> DuckDB migration (lossless + idempotent)
+    # ------------------------------------------------------------------
+
+    def migrate_legacy_json(self, *, force: bool = False) -> RegistryTransactionReceipt:
+        """Import mutable heads/index/current from legacy JSON into DuckDB.
+
+        Idempotent: re-running with the same on-disk JSON state yields the same
+        DuckDB rows and does not duplicate or rewrite immutable IPLD history.
+        """
+
+        self._ensure_writable("migrate_legacy_json")
+        if self._duck is None:
+            raise RunRegistryError("migrate_legacy_json requires backend='duckdb'")
+        with self._exclusive():
+            return self._migrate_legacy_json_unlocked(force=force)
+
+    def _migrate_legacy_json_unlocked(
+        self, *, force: bool = False
+    ) -> RegistryTransactionReceipt:
+        assert self._duck is not None
+        stamp = self.clock_ms()
+        migrated_heads = 0
+        migrated_currents = 0
+        migrated_index = 0
+
+        # Index
+        json_index_path = self._index_path()
+        if json_index_path.exists():
+            try:
+                payload = _read_json(json_index_path)
+                mapping = payload.get("runs")
+                if isinstance(mapping, Mapping):
+                    cleaned: dict[str, str] = {}
+                    for run_id, namespace in mapping.items():
+                        if isinstance(run_id, str) and isinstance(namespace, str):
+                            cleaned[run_id] = namespace
+                    existing = self._duck.load_index()
+                    if force or existing != cleaned:
+                        # Merge without dropping already-migrated entries when
+                        # force is false and sets differ only by extension.
+                        merged = dict(existing)
+                        for run_id, namespace in cleaned.items():
+                            if force or run_id not in merged:
+                                merged[run_id] = namespace
+                                migrated_index += 1
+                            elif merged[run_id] != namespace and force:
+                                merged[run_id] = namespace
+                                migrated_index += 1
+                        self._duck.save_index(merged)
+            except RunRegistryCorruptionError:
+                pass
+
+        # Heads + roots remain on disk; heads move into DuckDB.
+        for run_id, namespace in self._scan_all_run_ids_json_only():
+            head_path = self._head_path(namespace, run_id)
+            if not head_path.is_file() or head_path.is_symlink():
+                continue
+            try:
+                head_payload = _read_json(head_path)
+                head = RunHeadRecord.from_dict(head_payload)
+            except (RunRegistryError, OSError, ValueError, TypeError):
+                continue
+            existing_head = self._duck.load_head(run_id)
+            if existing_head is None:
+                self._duck.store_head(run_id, namespace, head.to_dict())
+                migrated_heads += 1
+            elif force:
+                # Prefer the higher revision; never regress on re-migration.
+                try:
+                    existing = RunHeadRecord.from_dict(existing_head)
+                except RunRegistryCorruptionError:
+                    self._duck.store_head(run_id, namespace, head.to_dict())
+                    migrated_heads += 1
+                else:
+                    if head.run_revision > existing.run_revision or (
+                        head.run_revision == existing.run_revision
+                        and head.handle_cid == existing.handle_cid
+                    ):
+                        if head.to_dict() != existing_head:
+                            self._duck.store_head(run_id, namespace, head.to_dict())
+                            migrated_heads += 1
+            # Index put for discoverability.
+            self._duck.index_put(run_id, namespace)
+
+        # Namespace current pointers.
+        base = self.registry_root / NAMESPACES_DIR
+        if base.is_dir():
+            for ns_dir in sorted(base.iterdir()):
+                if not ns_dir.is_dir() or ns_dir.name.startswith("."):
+                    continue
+                current_path = ns_dir / CURRENT_NAME
+                if not current_path.is_file() or current_path.is_symlink():
+                    continue
+                try:
+                    current = NamespaceCurrentRecord.from_dict(_read_json(current_path))
+                except (RunRegistryError, OSError, ValueError, TypeError):
+                    continue
+                existing_current = self._duck.load_current(current.run_namespace)
+                if existing_current is None:
+                    self._duck.store_current(current.to_dict())
+                    migrated_currents += 1
+                elif force:
+                    try:
+                        existing = NamespaceCurrentRecord.from_dict(existing_current)
+                    except RunRegistryCorruptionError:
+                        self._duck.store_current(current.to_dict())
+                        migrated_currents += 1
+                    else:
+                        if current.pointer_revision >= existing.pointer_revision:
+                            if current.to_dict() != existing_current:
+                                self._duck.store_current(current.to_dict())
+                                migrated_currents += 1
+
+        self._duck.mark_migration(
+            {
+                "migrated_at_ms": stamp,
+                "migrated_heads": migrated_heads,
+                "migrated_currents": migrated_currents,
+                "migrated_index_entries": migrated_index,
+                "source": "legacy_json",
+            }
+        )
+        outcome = (
+            RegistryTxOutcome.NOOP
+            if migrated_heads == 0 and migrated_currents == 0 and migrated_index == 0
+            else RegistryTxOutcome.COMMITTED
+        )
+        return RegistryTransactionReceipt(
+            operation=RegistryOperation.MIGRATE,
+            outcome=outcome,
+            run_id="",
+            run_revision=0,
+            handle_cid="",
+            integrity_cid="",
+            previous_revision=0,
+            previous_handle_cid="",
+            reason_codes=(
+                "legacy_json_migrated",
+                f"heads={migrated_heads}",
+                f"currents={migrated_currents}",
+                f"index={migrated_index}",
+            ),
+            committed_at_ms=stamp,
+        )
+
+    def _scan_all_run_ids_json_only(self) -> list[tuple[str, str]]:
+        results: list[tuple[str, str]] = []
+        base = self.registry_root / NAMESPACES_DIR
+        if not base.is_dir():
+            return results
+        for ns_dir in sorted(base.iterdir()):
+            if not ns_dir.is_dir() or ns_dir.name.startswith("."):
+                continue
+            runs = ns_dir / RUNS_DIR
+            if not runs.is_dir():
+                continue
+            for run_dir in sorted(runs.iterdir()):
+                if not run_dir.is_dir():
+                    continue
+                root_path = run_dir / ROOT_NAME
+                if root_path.is_file() and not root_path.is_symlink():
+                    try:
+                        root = RunRootRecord.from_dict(_read_json(root_path))
+                        results.append((root.run_id, root.run_namespace))
+                        continue
+                    except (RunRegistryError, OSError, ValueError, TypeError):
+                        pass
+                results.append((run_dir.name, ns_dir.name.replace("~", ":")))
+        return results
+
+    # ------------------------------------------------------------------
     # Quarantine
     # ------------------------------------------------------------------
 
@@ -1228,6 +1500,7 @@ class RunRegistry:
         reason_codes: Sequence[str],
         detail: Mapping[str, Any] | None = None,
     ) -> tuple[Path, RegistryTransactionReceipt]:
+        self._ensure_writable("quarantine")
         stamp = self.clock_ms()
         token = uuid.uuid4().hex
         safe_run = run_id if _CID_RE.match(run_id or "") else "unknown"
@@ -1277,6 +1550,15 @@ class RunRegistry:
                 snapshot["relocated_run_dir"] = str(relocated)
             except OSError:
                 snapshot["relocated_run_dir"] = ""
+
+        if self._duck is not None and run_id:
+            try:
+                head_payload = self._duck.load_head(run_id)
+                if head_payload is not None:
+                    snapshot["duckdb_head"] = head_payload
+                self._duck.delete_head(run_id)
+            except Exception:
+                pass
 
         snapshot["content_id"] = cid_for_dag_json(
             {
@@ -1338,6 +1620,7 @@ class RunRegistry:
     ) -> RegistryTransactionReceipt:
         """Persist a new immutable root and initial CAS head."""
 
+        self._ensure_writable("create")
         if not isinstance(handle, RunHandle):
             raise RunRegistryError("handle must be a RunHandle")
         namespace = _require_token(run_namespace, "run_namespace")
@@ -1362,6 +1645,10 @@ class RunRegistry:
                 raise RunExistsError(
                     f"run already registered under namespace {existing_ns}"
                 )
+            if self._duck is not None and self._duck.load_head(handle.run_id) is not None:
+                raise RunExistsError(
+                    f"run already registered in duckdb: {handle.run_id}"
+                )
 
             root = RunRootRecord.from_handle(
                 handle,
@@ -1372,7 +1659,7 @@ class RunRegistry:
             head = RunHeadRecord.from_handle(handle)
             self._write_handle_snapshot(namespace, handle)
             _atomic_write_json(root_path, root.to_dict())
-            _atomic_write_json(self._head_path(namespace, handle.run_id), head.to_dict())
+            self._store_head(namespace, handle.run_id, head)
             self._index_put(handle.run_id, namespace)
             return RegistryTransactionReceipt(
                 operation=RegistryOperation.CREATE,
@@ -1402,6 +1689,7 @@ class RunRegistry:
         immutable root fields and advance ``run_revision`` by exactly one.
         """
 
+        self._ensure_writable("cas_update")
         if not isinstance(handle, RunHandle):
             raise RunRegistryError("handle must be a RunHandle")
 
@@ -1488,15 +1776,49 @@ class RunRegistry:
                     committed_at_ms=self.clock_ms(),
                 )
 
+            # Atomic CAS via DuckDB when available: only one concurrent writer
+            # with the matching expected revision can commit.
             new_head = RunHeadRecord.from_handle(
                 handle,
                 previous_handle_cid=head.handle_cid,
                 previous_revision=head.run_revision,
             )
             self._write_handle_snapshot(namespace, handle)
-            _atomic_write_json(
-                self._head_path(namespace, handle.run_id), new_head.to_dict()
-            )
+            if self._duck is not None:
+                committed = self._duck.cas_store_head(
+                    run_id=handle.run_id,
+                    run_namespace=namespace,
+                    expected_revision=head.run_revision,
+                    expected_handle_cid=head.handle_cid,
+                    head_payload=new_head.to_dict(),
+                )
+                if not committed:
+                    # Re-read current head for conflict receipt.
+                    current_payload = self._duck.load_head(handle.run_id) or head.to_dict()
+                    try:
+                        current = RunHeadRecord.from_dict(current_payload)
+                    except RunRegistryCorruptionError:
+                        current = head
+                    receipt = RegistryTransactionReceipt(
+                        operation=RegistryOperation.CAS_UPDATE,
+                        outcome=RegistryTxOutcome.CONFLICT,
+                        run_id=handle.run_id,
+                        run_revision=current.run_revision,
+                        handle_cid=current.handle_cid,
+                        integrity_cid=current.integrity_cid,
+                        previous_revision=current.run_revision,
+                        previous_handle_cid=current.handle_cid,
+                        reason_codes=("revision_mismatch", "duckdb_cas_lost"),
+                        committed_at_ms=self.clock_ms(),
+                    )
+                    raise RunCasConflictError(
+                        "CAS conflict: concurrent update won",
+                        receipt=receipt,
+                    )
+            else:
+                _atomic_write_json(
+                    self._head_path(namespace, handle.run_id), new_head.to_dict()
+                )
             return RegistryTransactionReceipt(
                 operation=RegistryOperation.CAS_UPDATE,
                 outcome=RegistryTxOutcome.COMMITTED,
@@ -1521,6 +1843,7 @@ class RunRegistry:
     ) -> RegistryTransactionReceipt:
         """CAS-update the namespace current-run pointer."""
 
+        self._ensure_writable("set_current")
         namespace = _require_token(run_namespace, "run_namespace")
         repo = _require_nonempty(
             repository_id, "repository_id", maximum=MAX_REPOSITORY_ID_BYTES
@@ -1549,46 +1872,44 @@ class RunRegistry:
             if checkout and root.checkout_id and root.checkout_id != checkout:
                 raise RunIncompatibleError("run checkout_id does not match pointer")
 
-            current_path = self._current_path(namespace)
             previous_revision = 0
             previous_handle = ""
-            if current_path.exists():
-                try:
-                    current = NamespaceCurrentRecord.from_dict(
-                        _read_json(current_path)
-                    )
-                except RunRegistryCorruptionError as exc:
-                    # Corrupt current pointer is quarantined and rewritten.
-                    self._quarantine(
+            current: NamespaceCurrentRecord | None = None
+            try:
+                current = self._load_current_record(namespace)
+            except RunRegistryCorruptionError as exc:
+                # Corrupt current pointer is quarantined and rewritten.
+                self._quarantine(
+                    run_id=target_run,
+                    run_namespace=namespace,
+                    reason_codes=exc.reason_codes or ("current_corrupt",),
+                    detail={"message": str(exc)},
+                )
+                current = None
+
+            if current is not None:
+                previous_revision = current.pointer_revision
+                previous_handle = current.selected_run_id
+                if (
+                    expected_pointer_revision is not None
+                    and current.pointer_revision != int(expected_pointer_revision)
+                ):
+                    receipt = RegistryTransactionReceipt(
+                        operation=RegistryOperation.SET_CURRENT,
+                        outcome=RegistryTxOutcome.CONFLICT,
                         run_id=target_run,
-                        run_namespace=namespace,
-                        reason_codes=exc.reason_codes or ("current_corrupt",),
-                        detail={"path": str(current_path)},
+                        run_revision=head.run_revision,
+                        handle_cid=head.handle_cid,
+                        integrity_cid=head.integrity_cid,
+                        previous_revision=current.pointer_revision,
+                        previous_handle_cid="",
+                        reason_codes=("pointer_revision_mismatch",),
+                        committed_at_ms=self.clock_ms(),
                     )
-                    current = None
-                else:
-                    previous_revision = current.pointer_revision
-                    previous_handle = current.selected_run_id
-                    if (
-                        expected_pointer_revision is not None
-                        and current.pointer_revision != int(expected_pointer_revision)
-                    ):
-                        receipt = RegistryTransactionReceipt(
-                            operation=RegistryOperation.SET_CURRENT,
-                            outcome=RegistryTxOutcome.CONFLICT,
-                            run_id=target_run,
-                            run_revision=head.run_revision,
-                            handle_cid=head.handle_cid,
-                            integrity_cid=head.integrity_cid,
-                            previous_revision=current.pointer_revision,
-                            previous_handle_cid="",
-                            reason_codes=("pointer_revision_mismatch",),
-                            committed_at_ms=self.clock_ms(),
-                        )
-                        raise RunCasConflictError(
-                            "CAS conflict on namespace current pointer",
-                            receipt=receipt,
-                        )
+                    raise RunCasConflictError(
+                        "CAS conflict on namespace current pointer",
+                        receipt=receipt,
+                    )
             elif expected_pointer_revision not in (None, 0):
                 receipt = RegistryTransactionReceipt(
                     operation=RegistryOperation.SET_CURRENT,
@@ -1616,7 +1937,31 @@ class RunRegistry:
                 pointer_revision=previous_revision + 1,
                 updated_at_ms=self.clock_ms(),
             )
-            _atomic_write_json(current_path, record.to_dict())
+            if self._duck is not None:
+                ok = self._duck.cas_store_current(
+                    run_namespace=namespace,
+                    expected_pointer_revision=previous_revision,
+                    payload=record.to_dict(),
+                )
+                if not ok:
+                    receipt = RegistryTransactionReceipt(
+                        operation=RegistryOperation.SET_CURRENT,
+                        outcome=RegistryTxOutcome.CONFLICT,
+                        run_id=target_run,
+                        run_revision=head.run_revision,
+                        handle_cid=head.handle_cid,
+                        integrity_cid=head.integrity_cid,
+                        previous_revision=previous_revision,
+                        previous_handle_cid="",
+                        reason_codes=("pointer_revision_mismatch", "duckdb_cas_lost"),
+                        committed_at_ms=self.clock_ms(),
+                    )
+                    raise RunCasConflictError(
+                        "CAS conflict on namespace current pointer",
+                        receipt=receipt,
+                    )
+            else:
+                _atomic_write_json(self._current_path(namespace), record.to_dict())
             return RegistryTransactionReceipt(
                 operation=RegistryOperation.SET_CURRENT,
                 outcome=RegistryTxOutcome.COMMITTED,
@@ -1651,6 +1996,13 @@ class RunRegistry:
             try:
                 _root, _head, handle = self._reconstruct_unlocked(namespace, target)
             except RunRegistryCorruptionError as exc:
+                if self.immutable_replica:
+                    # Immutable replicas report corruption but never quarantine.
+                    raise RunRegistryCorruptionError(
+                        str(exc),
+                        run_id=target,
+                        reason_codes=exc.reason_codes or ("corruption",),
+                    ) from exc
                 raise self._fail_corrupt(
                     run_id=target,
                     run_namespace=namespace,
@@ -1665,6 +2017,12 @@ class RunRegistry:
             try:
                 _root, head, _handle = self._reconstruct_unlocked(namespace, target)
             except RunRegistryCorruptionError as exc:
+                if self.immutable_replica:
+                    raise RunRegistryCorruptionError(
+                        str(exc),
+                        run_id=target,
+                        reason_codes=exc.reason_codes or ("corruption",),
+                    ) from exc
                 raise self._fail_corrupt(
                     run_id=target,
                     run_namespace=namespace,
@@ -1679,6 +2037,8 @@ class RunRegistry:
             try:
                 return self._load_root(namespace, target)
             except RunRegistryCorruptionError as exc:
+                if self.immutable_replica:
+                    raise
                 raise self._fail_corrupt(
                     run_id=target,
                     run_namespace=namespace,
@@ -1778,6 +2138,9 @@ class RunRegistry:
                         found_ns, run_id
                     )
                 except RunRegistryCorruptionError as exc:
+                    if self.immutable_replica:
+                        # Immutable replicas never quarantine; skip corrupt.
+                        continue
                     # Corrupt entries are quarantined and never offered as
                     # adoption candidates (fail closed without aborting list).
                     self._quarantine(
@@ -1871,27 +2234,37 @@ class RunRegistry:
 
         namespace = _require_token(run_namespace, "run_namespace")
         with self._exclusive():
-            path = self._current_path(namespace)
-            if not path.exists():
-                return None
             try:
-                current = NamespaceCurrentRecord.from_dict(_read_json(path))
+                current = self._load_current_record(namespace)
             except RunRegistryCorruptionError as exc:
+                if self.immutable_replica:
+                    raise RunRegistryCorruptionError(
+                        "namespace current pointer is corrupt",
+                        reason_codes=exc.reason_codes or ("current_corrupt",),
+                    ) from exc
                 self._quarantine(
                     run_id="",
                     run_namespace=namespace,
                     reason_codes=exc.reason_codes or ("current_corrupt",),
-                    detail={"path": str(path)},
+                    detail={"message": str(exc)},
                 )
+                path = self._current_path(namespace)
                 try:
                     path.unlink()
                 except OSError:
                     pass
+                if self._duck is not None:
+                    try:
+                        self._duck.delete_current(namespace)
+                    except Exception:
+                        pass
                 raise RunRegistryCorruptionError(
                     "namespace current pointer is corrupt and was quarantined",
                     quarantine_path="",
                     reason_codes=exc.reason_codes or ("current_corrupt",),
                 ) from exc
+            if current is None:
+                return None
             if repository_id is not None and current.repository_id != repository_id:
                 raise RunIncompatibleError(
                     "current pointer repository_id does not match request"
@@ -1903,6 +2276,12 @@ class RunRegistry:
                     namespace, current.selected_run_id
                 )
             except RunRegistryCorruptionError as exc:
+                if self.immutable_replica:
+                    raise RunRegistryCorruptionError(
+                        str(exc),
+                        run_id=current.selected_run_id,
+                        reason_codes=exc.reason_codes or ("corruption",),
+                    ) from exc
                 raise self._fail_corrupt(
                     run_id=current.selected_run_id,
                     run_namespace=namespace,
@@ -1921,6 +2300,7 @@ class RunRegistry:
     def repair(self) -> RepairReport:
         """Bounded repair of partial registry state; quarantine the rest."""
 
+        self._ensure_writable("repair")
         repaired: list[str] = []
         quarantined: list[str] = []
         receipts: list[RegistryTransactionReceipt] = []
@@ -1931,12 +2311,16 @@ class RunRegistry:
                 root_path = self._root_path(namespace, run_id)
                 head_path = self._head_path(namespace, run_id)
                 handles_dir = self._handles_dir(namespace, run_id)
+                duck_head = (
+                    self._duck.load_head(run_id) if self._duck is not None else None
+                )
                 try:
-                    if root_path.exists() and head_path.exists():
+                    has_head = head_path.exists() or duck_head is not None
+                    if root_path.exists() and has_head:
                         self._reconstruct_unlocked(namespace, run_id)
                         self._index_put(run_id, namespace)
                         continue
-                    if root_path.exists() and not head_path.exists() and handles_dir.is_dir():
+                    if root_path.exists() and not has_head and handles_dir.is_dir():
                         root = RunRootRecord.from_dict(_read_json(root_path))
                         snapshots: list[RunHandle] = []
                         for child in sorted(handles_dir.iterdir()):
@@ -1958,7 +2342,7 @@ class RunRegistry:
                                 )
                             self._verify_handle_against_root(root, handle)
                             head = RunHeadRecord.from_handle(handle)
-                            _atomic_write_json(head_path, head.to_dict())
+                            self._store_head(namespace, run_id, head)
                             self._index_put(run_id, namespace)
                             receipt = RegistryTransactionReceipt(
                                 operation=RegistryOperation.REPAIR,
@@ -2048,6 +2432,7 @@ __all__ = (
     "RunRegistryBoundsError",
     "RunRegistryCorruptionError",
     "RunRegistryError",
+    "RunRegistryReadOnlyError",
     "RunRootRecord",
     "RunSelectionResult",
     "classify_run_candidate",
