@@ -4,7 +4,7 @@
     "clean_wheel_evidence_bound": true,
     "complete_specialized_semantic_cases_bound": true,
     "current_task_future_merge_not_claimed": true,
-    "dependencies_content_identity_bound": true,
+    "dependencies_content_identity_bound": false,
     "dependencies_fresh": true,
     "dependencies_reachable": true,
     "disagreement_quarantines_bound": true,
@@ -13,7 +13,7 @@
     "every_readiness_axis_jointly_ready": true,
     "exact_dependency_and_platform_identities_bound": true,
     "lazy_install_receipts_bound": true,
-    "no_fixture_shim_unsupported_proposal_or_stale_lane": true,
+    "no_fixture_shim_unsupported_proposal_or_stale_lane": false,
     "origin_publication_bound": false,
     "post_merge_attestation_bound_and_ready": false,
     "public_safe_envelopes_bound": true,
@@ -56,6 +56,18 @@
     "matrix:temurin-jdk@linux-aarch64:public_surface:not_applicable",
     "matrix:temurin-jdk@linux-aarch64:semantic:not_applicable",
     "matrix:z3@linux-aarch64:installer:not_applicable",
+    "post_merge_deployment_attestation:disallowed_evidence_class:external_prover_installation_pending:$.disclosures.supported_managed_capability_blockers[2].evidence_class",
+    "post_merge_deployment_attestation:disallowed_evidence_class:external_prover_installation_pending:$.disclosures.supported_managed_capability_blockers[6].evidence_class",
+    "post_merge_deployment_attestation:disallowed_evidence_class:external_prover_installation_pending:$.role_aware_certificate.managed_deployment_readiness.capability_blockers[2].evidence_class",
+    "post_merge_deployment_attestation:disallowed_evidence_class:external_prover_installation_pending:$.role_aware_certificate.managed_deployment_readiness.capability_blockers[6].evidence_class",
+    "post_merge_deployment_attestation:disallowed_evidence_class:hermetic_adapter_shim:$.disclosures.supported_managed_capability_blockers[9].evidence_class",
+    "post_merge_deployment_attestation:disallowed_evidence_class:hermetic_adapter_shim:$.role_aware_certificate.managed_deployment_readiness.capability_blockers[9].evidence_class",
+    "post_merge_deployment_attestation:disallowed_evidence_class:unavailable:$.disclosures.supported_managed_dependency_blockers[0].evidence_class",
+    "post_merge_deployment_attestation:disallowed_evidence_class:unavailable:$.disclosures.supported_managed_dependency_blockers[1].evidence_class",
+    "post_merge_deployment_attestation:disallowed_evidence_class:unavailable:$.disclosures.supported_managed_dependency_blockers[2].evidence_class",
+    "post_merge_deployment_attestation:disallowed_evidence_class:unavailable:$.role_aware_certificate.managed_deployment_readiness.dependency_blockers[0].evidence_class",
+    "post_merge_deployment_attestation:disallowed_evidence_class:unavailable:$.role_aware_certificate.managed_deployment_readiness.dependency_blockers[1].evidence_class",
+    "post_merge_deployment_attestation:disallowed_evidence_class:unavailable:$.role_aware_certificate.managed_deployment_readiness.dependency_blockers[2].evidence_class",
     "secpal:arbitrary_policy_query_cases_complete",
     "secpal:authoritative_live_evidence",
     "secpal:external:arbitrary_policy_cli_unavailable_on_host",
@@ -95,7 +107,9 @@
     "secpal:vendor_supported_platform"
   ],
   "blockers": [
+    "dependencies_content_identity_bound",
     "durable_supervisor_completion_bound",
+    "no_fixture_shim_unsupported_proposal_or_stale_lane",
     "origin_publication_bound",
     "post_merge_attestation_bound_and_ready",
     "source_and_merged_trees_bound"
@@ -128,15 +142,15 @@
       "file_sha256": "sha256:c2b972bd06437d0edf874a7f48597dd492930f2989644c07e5d202ee39a6b845",
       "fresh": true,
       "freshness": {
-        "age_seconds": 1.0,
+        "age_seconds": 597.0,
         "clock_skew_seconds": 300,
         "failures": [],
         "max_age_seconds": 86400,
-        "release_wall_clock_age_seconds": 0.644091,
+        "release_wall_clock_age_seconds": 0.826824,
         "timestamp": "2026-08-04T23:01:02Z",
         "valid": true,
-        "wall_clock_age_seconds": 1.644091,
-        "wall_clock_observed_at": "2026-08-04T23:01:03.644091Z"
+        "wall_clock_age_seconds": 597.826824,
+        "wall_clock_observed_at": "2026-08-04T23:10:59.826824Z"
       },
       "goal_id": "FVT-G220",
       "identity_valid": true,
@@ -174,15 +188,15 @@
       "file_sha256": "sha256:6517d6f52e7aa1305d6688372128dcd451302ed65b540d4355a0cd225d03a634",
       "fresh": true,
       "freshness": {
-        "age_seconds": 13266.0,
+        "age_seconds": 13862.0,
         "clock_skew_seconds": 300,
         "failures": [],
         "max_age_seconds": 86400,
-        "release_wall_clock_age_seconds": 0.644091,
+        "release_wall_clock_age_seconds": 0.826824,
         "timestamp": "2026-08-04T19:19:57Z",
         "valid": true,
-        "wall_clock_age_seconds": 13266.644091,
-        "wall_clock_observed_at": "2026-08-04T23:01:03.644091Z"
+        "wall_clock_age_seconds": 13862.826824,
+        "wall_clock_observed_at": "2026-08-04T23:10:59.826824Z"
       },
       "goal_id": "FVT-G218",
       "identity_valid": true,
@@ -211,24 +225,26 @@
       "task_id": "FVT-085"
     },
     "post_merge_deployment_attestation": {
-      "binding_failures": [],
-      "binding_valid": true,
-      "declared_identity": "sha256:fee229fecc327d5c14367289167a83b8d8fa19adb4ae95c964bcd84cee76ed96",
+      "binding_failures": [
+        "selected_repository_file_not_committed_at_head"
+      ],
+      "binding_valid": false,
+      "declared_identity": "sha256:6515052e3092c384574b60a2f3ba606dd012d7bb09374986b49d587181e54f06",
       "declared_identity_field": "receipt_identity",
       "fallback_used": false,
       "file_present": true,
-      "file_sha256": "sha256:d9c22f220d324c7b06be6062d742f14e4882c948960c21d66f020a76903ab5e1",
+      "file_sha256": "sha256:73633ecbdeb3ce38a42307b43b9c96cdd855747c8e876010ac13a3d8751372a8",
       "fresh": true,
       "freshness": {
-        "age_seconds": 4296.0,
+        "age_seconds": 17.0,
         "clock_skew_seconds": 300,
         "failures": [],
         "max_age_seconds": 86400,
-        "release_wall_clock_age_seconds": 0.644091,
-        "timestamp": "2026-08-04T21:49:27Z",
+        "release_wall_clock_age_seconds": 0.826824,
+        "timestamp": "2026-08-04T23:10:42Z",
         "valid": true,
-        "wall_clock_age_seconds": 4296.644091,
-        "wall_clock_observed_at": "2026-08-04T23:01:03.644091Z"
+        "wall_clock_age_seconds": 17.826824,
+        "wall_clock_observed_at": "2026-08-04T23:10:59.826824Z"
       },
       "goal_id": "FVT-G214",
       "identity_valid": true,
@@ -237,7 +253,7 @@
       "interface_contract_valid": true,
       "interface_valid": true,
       "path": "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
-      "payload_content_identity": "sha256:522abd0eec1f546217b6e148634026a0d6c4f703f49c8801f833b5cd0d7f90f4",
+      "payload_content_identity": "sha256:0882e1b0df8ae0eb4b853c1e016333b966d6f7a67d42b8a31e5cee9be2255138",
       "present": true,
       "public_evidence_audit": {
         "failure_count": 0,
@@ -247,10 +263,10 @@
       "public_safe": true,
       "reachable": true,
       "repository_body_matches": true,
-      "repository_content_bound": true,
-      "repository_file_committed_at_head": true,
-      "repository_head_blob": "a8632998228eabe9309b4e4cee6b6eeb9f145940",
-      "repository_working_blob": "a8632998228eabe9309b4e4cee6b6eeb9f145940",
+      "repository_content_bound": false,
+      "repository_file_committed_at_head": false,
+      "repository_head_blob": "c641b3a18ce59d952fd014d16f6281b110320848",
+      "repository_working_blob": "006ebb85e51669921253fb9bc44e014054672ada",
       "schema_version": "formal-verification-role-aware-deployment-receipt/v1",
       "source_kind": "checked_file",
       "status": "role_aware_deployment_blocked",
@@ -266,15 +282,15 @@
       "file_sha256": "sha256:21a174efba2db036d923067227e60ea38aa84f73eee3e3b122b66e8d1a71a9da",
       "fresh": true,
       "freshness": {
-        "age_seconds": 6043.0,
+        "age_seconds": 6639.0,
         "clock_skew_seconds": 300,
         "failures": [],
         "max_age_seconds": 86400,
-        "release_wall_clock_age_seconds": 0.644091,
+        "release_wall_clock_age_seconds": 0.826824,
         "timestamp": "2026-08-04T21:20:20Z",
         "valid": true,
-        "wall_clock_age_seconds": 6043.644091,
-        "wall_clock_observed_at": "2026-08-04T23:01:03.644091Z"
+        "wall_clock_age_seconds": 6639.826824,
+        "wall_clock_observed_at": "2026-08-04T23:10:59.826824Z"
       },
       "goal_id": "FVT-G213",
       "identity_valid": true,
@@ -312,15 +328,15 @@
       "file_sha256": "sha256:6ce269f01904084ce10378a7e00f073e8b0916a5636302309ab7d8e17af939c7",
       "fresh": true,
       "freshness": {
-        "age_seconds": 21467.0,
+        "age_seconds": 22063.0,
         "clock_skew_seconds": 300,
         "failures": [],
         "max_age_seconds": 86400,
-        "release_wall_clock_age_seconds": 0.644091,
+        "release_wall_clock_age_seconds": 0.826824,
         "timestamp": "2026-08-04T17:03:16Z",
         "valid": true,
-        "wall_clock_age_seconds": 21467.644091,
-        "wall_clock_observed_at": "2026-08-04T23:01:03.644091Z"
+        "wall_clock_age_seconds": 22063.826824,
+        "wall_clock_observed_at": "2026-08-04T23:10:59.826824Z"
       },
       "goal_id": "FVT-G219",
       "identity_valid": true,
@@ -351,22 +367,22 @@
     "tactician_completion": {
       "binding_failures": [],
       "binding_valid": true,
-      "declared_identity": "sha256:87e089a7127847eedcbc543736bd10af6c02e488a129333d38537e1459400519",
+      "declared_identity": "sha256:6e3aeaa4dc356c2add1457e409a961484533f21638fefb16750c48d5cb98d2d9",
       "declared_identity_field": "receipt_identity",
       "fallback_used": false,
       "file_present": true,
-      "file_sha256": "sha256:5807cf3f1f38460edb7bb6131f413d042e97c2d272a63d9335475b7f1137c0f1",
+      "file_sha256": "sha256:6f5098479dc1ade71f601ddede0d51b51e1443093553a31872a1318adf3acb4b",
       "fresh": true,
       "freshness": {
-        "age_seconds": 41.0,
+        "age_seconds": 38.0,
         "clock_skew_seconds": 300,
         "failures": [],
         "max_age_seconds": 86400,
-        "release_wall_clock_age_seconds": 0.644091,
-        "timestamp": "2026-08-04T23:00:22Z",
+        "release_wall_clock_age_seconds": 0.826824,
+        "timestamp": "2026-08-04T23:10:21Z",
         "valid": true,
-        "wall_clock_age_seconds": 41.644091,
-        "wall_clock_observed_at": "2026-08-04T23:01:03.644091Z"
+        "wall_clock_age_seconds": 38.826824,
+        "wall_clock_observed_at": "2026-08-04T23:10:59.826824Z"
       },
       "goal_id": null,
       "identity_valid": true,
@@ -375,7 +391,7 @@
       "interface_contract_valid": true,
       "interface_valid": true,
       "path": "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
-      "payload_content_identity": "sha256:096808f3f6066d52cd6918e33436132bce47b0948c935d8765900f9cc4ec1511",
+      "payload_content_identity": "sha256:8f58471b0ad352bf3fe25970db674cb175f48392d736a40a36e297bdfe1953d8",
       "present": true,
       "public_evidence_audit": {
         "failure_count": 0,
@@ -387,8 +403,8 @@
       "repository_body_matches": true,
       "repository_content_bound": true,
       "repository_file_committed_at_head": true,
-      "repository_head_blob": "6ff39389ff50b63184b2eb5f06f8849d6ff1f854",
-      "repository_working_blob": "6ff39389ff50b63184b2eb5f06f8849d6ff1f854",
+      "repository_head_blob": "ef4d68853f44cf3633ec87253dc1005d8239c4c5",
+      "repository_working_blob": "ef4d68853f44cf3633ec87253dc1005d8239c4c5",
       "schema_version": "formal-verification-tactician-completion-receipt/v1",
       "source_kind": "checked_file",
       "status": null,
@@ -401,12 +417,61 @@
     "by_dependency": {
       "end_to_end_assurance_matrix": [],
       "ergoai_managed_vendor_live": [],
-      "post_merge_deployment_attestation": [],
+      "post_merge_deployment_attestation": [
+        {
+          "path": "$.disclosures.supported_managed_capability_blockers[2].evidence_class",
+          "reason": "disallowed_evidence_class:external_prover_installation_pending"
+        },
+        {
+          "path": "$.disclosures.supported_managed_capability_blockers[6].evidence_class",
+          "reason": "disallowed_evidence_class:external_prover_installation_pending"
+        },
+        {
+          "path": "$.disclosures.supported_managed_capability_blockers[9].evidence_class",
+          "reason": "disallowed_evidence_class:hermetic_adapter_shim"
+        },
+        {
+          "path": "$.disclosures.supported_managed_dependency_blockers[0].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.disclosures.supported_managed_dependency_blockers[1].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.disclosures.supported_managed_dependency_blockers[2].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.role_aware_certificate.managed_deployment_readiness.capability_blockers[2].evidence_class",
+          "reason": "disallowed_evidence_class:external_prover_installation_pending"
+        },
+        {
+          "path": "$.role_aware_certificate.managed_deployment_readiness.capability_blockers[6].evidence_class",
+          "reason": "disallowed_evidence_class:external_prover_installation_pending"
+        },
+        {
+          "path": "$.role_aware_certificate.managed_deployment_readiness.capability_blockers[9].evidence_class",
+          "reason": "disallowed_evidence_class:hermetic_adapter_shim"
+        },
+        {
+          "path": "$.role_aware_certificate.managed_deployment_readiness.dependency_blockers[0].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.role_aware_certificate.managed_deployment_readiness.dependency_blockers[1].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.role_aware_certificate.managed_deployment_readiness.dependency_blockers[2].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        }
+      ],
       "role_aware_release_candidate": [],
       "secpal_authoritative_live": [],
       "tactician_completion": []
     },
-    "count": 0,
+    "count": 12,
     "deferred_or_role_correct_residual": {
       "end_to_end_assurance_matrix": [
         {
@@ -449,18 +514,98 @@
       "post_merge_deployment_attestation": [
         {
           "path": "$.disclosures.supported_managed_capability_blockers[0].evidence_class",
-          "reason": "disallowed_evidence_class:proposal_only_semantics"
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.disclosures.supported_managed_capability_blockers[10].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.disclosures.supported_managed_capability_blockers[11].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.disclosures.supported_managed_capability_blockers[12].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.disclosures.supported_managed_capability_blockers[13].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.disclosures.supported_managed_capability_blockers[14].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
         },
         {
           "path": "$.disclosures.supported_managed_capability_blockers[1].evidence_class",
           "reason": "disallowed_evidence_class:unavailable"
         },
         {
-          "path": "$.role_aware_certificate.managed_deployment_readiness.capability_blockers[0].evidence_class",
+          "path": "$.disclosures.supported_managed_capability_blockers[3].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.disclosures.supported_managed_capability_blockers[4].evidence_class",
           "reason": "disallowed_evidence_class:proposal_only_semantics"
         },
         {
+          "path": "$.disclosures.supported_managed_capability_blockers[5].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.disclosures.supported_managed_capability_blockers[7].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.disclosures.supported_managed_capability_blockers[8].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.role_aware_certificate.managed_deployment_readiness.capability_blockers[0].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.role_aware_certificate.managed_deployment_readiness.capability_blockers[10].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.role_aware_certificate.managed_deployment_readiness.capability_blockers[11].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.role_aware_certificate.managed_deployment_readiness.capability_blockers[12].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.role_aware_certificate.managed_deployment_readiness.capability_blockers[13].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.role_aware_certificate.managed_deployment_readiness.capability_blockers[14].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
           "path": "$.role_aware_certificate.managed_deployment_readiness.capability_blockers[1].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.role_aware_certificate.managed_deployment_readiness.capability_blockers[3].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.role_aware_certificate.managed_deployment_readiness.capability_blockers[4].evidence_class",
+          "reason": "disallowed_evidence_class:proposal_only_semantics"
+        },
+        {
+          "path": "$.role_aware_certificate.managed_deployment_readiness.capability_blockers[5].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.role_aware_certificate.managed_deployment_readiness.capability_blockers[7].evidence_class",
+          "reason": "disallowed_evidence_class:unavailable"
+        },
+        {
+          "path": "$.role_aware_certificate.managed_deployment_readiness.capability_blockers[8].evidence_class",
           "reason": "disallowed_evidence_class:unavailable"
         }
       ],
@@ -525,7 +670,7 @@
         }
       ]
     },
-    "raw_count": 27,
+    "raw_count": 59,
     "secpal_deferred_from_blocking_set": true
   },
   "end_to_end_assurance": {
@@ -1342,7 +1487,7 @@
     "This receipt never attests FVT-089's own future merge or publication.",
     "assessment_complete records a finished fail-closed fan-in; it does not imply deployment_ready when blockers remain disclosed."
   ],
-  "observed_at": "2026-08-04T23:01:03Z",
+  "observed_at": "2026-08-04T23:10:59Z",
   "policy": {
     "advisor_proposal_only_does_not_block_replacement_fanin": true,
     "advisory_ergoai_never_grants_proof_authority": true,
@@ -1842,7 +1987,7 @@
     "post_merge_ready": false,
     "source_and_merged_trees_bound": false
   },
-  "release_identity": "sha256:345bbd787ba4ba3c09dce5569c7f4b454ca74c3a909c813fe5b3d9b6616b8bec",
+  "release_identity": "sha256:a1198a1ac0800f5b022e2cabf136c610df17666aa3c4a4f76a27d01a4e0d6eb4",
   "schema_version": "formal-verification-authoritative-vendor-release/v1",
   "status": "authoritative_vendor_release_blocked",
   "task_id": "FVT-089",
@@ -1908,7 +2053,7 @@
       "raw_checks_digest_bound": true,
       "rederived_interface": "ErgoAILiveToolchainContract@1",
       "rederived_raw_checks_digest_sha256": "6b92793bf2f20581322a5ba11db246a0a2e39c9689f627cffb2aa34048ba509c",
-      "rederived_receipt_digest_sha256": "6855c2b803fbb373f8af5207799a33d84f2f7b7a672772782d8fe84b51400772",
+      "rederived_receipt_digest_sha256": "2ed89d70322245103dbac9bae4007b5b2449c510352e252b51f31518e4e89506",
       "release_artifact_identity_bound": true,
       "repository_receipt_bound": true,
       "semantic_cases": {

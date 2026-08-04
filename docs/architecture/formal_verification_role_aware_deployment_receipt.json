@@ -31,7 +31,7 @@
   },
   "artifacts": {
     "completion_receipt": {
-      "content_identity": "sha256:87e089a7127847eedcbc543736bd10af6c02e488a129333d38537e1459400519",
+      "content_identity": "sha256:6e3aeaa4dc356c2add1457e409a961484533f21638fefb16750c48d5cb98d2d9",
       "path": "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
       "present": true
     },
@@ -60,7 +60,7 @@
       "content_identity": "sha256:537c99cffd192159f4f65b31e5b0005e152c7a92660872c02621f824a343509f",
       "path": "docs/architecture/formal_verification_toolchain_certificate.json",
       "present": true,
-      "role_aware_digest": "df6356080f1068736bc10485359d894448af79d4502601bc75de9488c3ee8c5f"
+      "role_aware_digest": "de32ab5020f079438480da134cd3cde4ceb2798546334e774f222cd706a20bec"
     }
   },
   "binding_mode": "post_merge_external_content_addressed_attestation",
@@ -79,7 +79,7 @@
     "deployment_status": "machine_specific_partial",
     "implementation_status": "complete",
     "interface": "FormalVerificationTacticianCompletionReceipt@1",
-    "receipt_identity": "sha256:87e089a7127847eedcbc543736bd10af6c02e488a129333d38537e1459400519",
+    "receipt_identity": "sha256:6e3aeaa4dc356c2add1457e409a961484533f21638fefb16750c48d5cb98d2d9",
     "task_id": "FVT-036"
   },
   "deployment_blockers": [
@@ -748,7 +748,7 @@
     "Bulk formal certificates are bound by digest; rebuild from the live certifier rather than embedding full semantic dumps.",
     "Sole post-merge finalizer; read live state without mutation."
   ],
-  "observed_at": "2026-08-04T23:09:21Z",
+  "observed_at": "2026-08-04T23:10:42Z",
   "platform_exceptions": [],
   "post_merge": {
     "claims_own_future_event": false,
@@ -907,7 +907,7 @@
     "validation_result_bound": true
   },
   "readiness_stage": "blocked",
-  "receipt_identity": "sha256:68dbfcf8c144b2da84e0400c2f343129cff39f15ebaee9b00df74d0075a86d1b",
+  "receipt_identity": "sha256:6515052e3092c384574b60a2f3ba606dd012d7bb09374986b49d587181e54f06",
   "release_candidate": {
     "block_reasons": [
       "release_candidate_digest_material_invalid"
@@ -1024,11 +1024,11 @@
         "managed:runtime-mtl-external:locked_version_mismatch",
         "managed:runtime-mtl-external:semantic_evidence_below_authority_ceiling"
       ],
-      "candidate_identity": "sha256:8c00cb60241681ae6371330f8c8dbc252810e7ecaf3ac3dc1a6408ba40f1c548",
+      "candidate_identity": "sha256:76d884eb5adf85f837f2ab99a4783c2b0b558fedf29d799621041d194561f38f",
       "readiness_stage": "blocked",
       "status": "role_aware_release_candidate_blocked"
     },
-    "live_candidate_identity": "sha256:8c00cb60241681ae6371330f8c8dbc252810e7ecaf3ac3dc1a6408ba40f1c548",
+    "live_candidate_identity": "sha256:76d884eb5adf85f837f2ab99a4783c2b0b558fedf29d799621041d194561f38f",
     "matches_live_recompute": false,
     "path": "docs/architecture/formal_verification_role_aware_release_candidate.json",
     "present": true,
@@ -1358,7 +1358,7 @@
       "policy_digest_sha256": "78edbfd69cdcdaab0ff4a34d260e6316ac18ee48337e9896756b1e79728d911a",
       "present": true
     },
-    "certificate_digest_sha256": "df6356080f1068736bc10485359d894448af79d4502601bc75de9488c3ee8c5f",
+    "certificate_digest_sha256": "de32ab5020f079438480da134cd3cde4ceb2798546334e774f222cd706a20bec",
     "certification_policy": {
       "forbid_download": true,
       "forbid_install": true,
@@ -1958,7 +1958,7 @@
       },
       {
         "block_reasons": [],
-        "digest_sha256": "f00c57ad32fbdc4b77814e57b9e21f40f78385a09633dbf1247ec73f63e34068",
+        "digest_sha256": "52cebd72432349641e0a188acb6654ec4b813823a98112948f740e9e0a5a70ff",
         "lane_id": "advisors",
         "receipt_integrity_valid": true,
         "status": "ran"
@@ -1972,7 +1972,7 @@
       "cvc5": "73d8086cdb0f5ed09d53cca87584b69a3f916ca46a16b1f57634c1ced34e57d8",
       "datalog-authorization": "aedd02270f46bb29ce94c403509c78170bb03950da0a0a84141cf30724f3c713",
       "eprover": "13ac720fec8f1654f336fa489c87eb0f3b1d6ec23f116a9f93247d0ae9deda42",
-      "ergoai": "74bb989760994f5f878c35b833c2101e7dce83f7d593332eeb66ea4855127daf",
+      "ergoai": "d8b9c3e21a865eba136b9154bb435afd6616f8f2c6042cd6a996d615b618619d",
       "hyperltl": "0b9ad75cfeb0000289beb07a023cc35f8c7993ab292395c814a9e20306e219e5",
       "isabelle": "c1201f6804c6f07a531a302ec1a58599a7072b5f124c51da7174313affa08010",
       "java": "66e6d1b2b6f5746e0dee9cfd736e18081703c069326d7e7a732a7b267a90ff11",
@@ -1987,7 +1987,7 @@
       "secpal-authorization": "9335c3b5c2f73d84b5fa90da9ac9e7f2c4e2bf7d6f03ec5ebf7170fb2735afdf",
       "souffle": "93c4966d901c5dee03fbaafff82a8238989d8af25118320ce80a5bf8c8f72b71",
       "stack": "2582d5b68e56b975b1abf876bbaa6d3ee27395afd828f2c7dfbb8ac1259e3100",
-      "symbolicai": "559e702b337869285bc5c31a46b8956fb9b46efeab1694975e13322aa8230cf7",
+      "symbolicai": "9d2b82085e0cc5db3ad631be6b4b484ccb80e930f94ed58f0b904d191d773212",
       "tamarin": "b4acfdf11da9c9c8470cf3d1bb2137f102b58a41b80360a1868f5f7a8747d7c9",
       "temurin-jdk": "122629f2ce2ea50dda3b97a807c8977b75a2933c5a15891a9fc78446520aaf01",
       "tlc": "634efb18eb0b8f446f190ba8500d819531826f393f38f7192839ef937142b435",
@@ -2005,24 +2005,22 @@
       "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
       "docs/architecture/formal_verification_toolchain_certificate.json"
     ],
-    "certified_source_commit": "72908c74d48927e997bf4827266bd7d1520f9f1c",
-    "certified_source_tree": "eea24be92d8565feb547c8609d0aa2e052871680",
+    "certified_source_commit": "20b5151d4e20a5f4a585b2214e296df6223737f8",
+    "certified_source_tree": "f19e851eb5e247a1d78106bad055d2eda300fd85",
     "datasets_embedded_head": "4d20019a7289aed53e85d7b1f5718afd092190bf",
     "datasets_gitlink": "4d20019a7289aed53e85d7b1f5718afd092190bf",
-    "dirty_paths_at_certification": [
-      "docs/architecture/formal_verification_role_aware_deployment_receipt.json"
-    ],
+    "dirty_paths_at_certification": [],
     "model": "two_phase_source_then_attestation_publication/v1",
     "non_attestation_dirty_paths": [],
     "publication_rule": "Publish the generated attestation in a descendant commit whose certified-source ancestor is this commit and whose attestation diff is restricted to declared generated receipt/certificate paths.",
     "publication_verification_required": true,
-    "source_candidate_clean": false,
+    "source_candidate_clean": true,
     "source_commit_bound": true,
     "tree_alignment": {
-      "aligned_for_implementation": false,
+      "aligned_for_implementation": true,
       "description": "Parent commit, datasets gitlink, embedded HEAD, and origin/main are independent dimensions. Alignment of one never implies the others.",
       "diagnostics": [
-        "parent_working_tree_dirty"
+        "parent_publication_lag_vs_origin_main"
       ],
       "dimensions": [
         "parent_commit",
@@ -2046,18 +2044,18 @@
         "path": "ipfs_datasets_py"
       },
       "parent": {
-        "clean": false,
-        "commit": "72908c74d48927e997bf4827266bd7d1520f9f1c",
-        "matches_origin_main": true,
+        "clean": true,
+        "commit": "20b5151d4e20a5f4a585b2214e296df6223737f8",
+        "matches_origin_main": false,
         "origin_main": "72908c74d48927e997bf4827266bd7d1520f9f1c",
         "path": ".",
-        "tree": "eea24be92d8565feb547c8609d0aa2e052871680"
+        "tree": "f19e851eb5e247a1d78106bad055d2eda300fd85"
       },
       "publication_gates": {
         "datasets_publication_lag": false,
         "fetches_forbidden": true,
         "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion.",
-        "parent_publication_lag": false
+        "parent_publication_lag": true
       }
     },
     "valid_for_attestation": true
