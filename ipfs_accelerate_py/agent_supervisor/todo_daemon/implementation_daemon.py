@@ -28220,14 +28220,27 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if task is not None
             else None
         )
-        if copilot and _copilot_has_auth():
-            return _copilot_fallback_command(
-                codex=codex,
-                copilot=copilot,
-                workspace_path=workspace_path,
-                codex_context_window=codex_context_window,
-            )
-        if codex:
+        # Explicit Codex/OpenAI/Copilot pins only. Ambient discovery of Codex as
+        # a primary implementer is forbidden — Grok remains default, and Codex
+        # implement is only attached as a post-quota fallback above.
+        if force_codex:
+            if provider == "copilot":
+                if not copilot or not _copilot_has_auth():
+                    raise RuntimeError(
+                        "Implementation provider 'copilot' requires the Copilot "
+                        "CLI with authentication"
+                    )
+                return _copilot_fallback_command(
+                    codex=None,
+                    copilot=copilot,
+                    workspace_path=workspace_path,
+                    codex_context_window=codex_context_window,
+                )
+            if not codex:
+                raise RuntimeError(
+                    f"Implementation provider {provider!r} requires the Codex "
+                    "executable"
+                )
             return _codex_implementation_command(
                 codex=codex,
                 workspace_path=workspace_path,
@@ -28235,8 +28248,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         raise RuntimeError(
             "No authorized implementation provider route is configured. Use "
-            "Grok 4.5 with the quota-only fallback profile, or explicitly pin "
-            "a provider or IMPLEMENTATION_DAEMON_COMMAND."
+            "Grok 4.5 (default) with the quota-only Codex fallback, or "
+            "explicitly pin a provider / IMPLEMENTATION_DAEMON_COMMAND. Codex "
+            "is not selected by ambient discovery."
         )
 
     def _task_metadata_value(self, task: PortalTask, *keys: str) -> str:
