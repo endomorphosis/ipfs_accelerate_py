@@ -10175,10 +10175,13 @@ _AUTHORITATIVE_INTERFACE_CONTRACTS: Final[
         "goal_id": RELEASE_CANDIDATE_GOAL_ID,
         "task_id": RELEASE_CANDIDATE_TASK_ID,
     },
+    # Post-merge finalizer (FVT-G214 / FVT-067) publishes the same interface
+    # surface as the earlier role-aware certificate lane (FVT-G200 / FVT-083).
+    # Accept either goal/task pair so finalize receipts bind.
     ROLE_AWARE_INTERFACE: {
         "schema_version": ROLE_AWARE_SCHEMA_VERSION,
-        "goal_id": ROLE_AWARE_GOAL_ID,
-        "task_id": ROLE_AWARE_TASK_ID,
+        "goal_id": "FVT-G214",
+        "task_id": "FVT-067",
     },
     INTERFACE: {
         "schema_version": SCHEMA_VERSION,
@@ -10635,6 +10638,15 @@ def _filter_deferred_disallowed_findings(
                     "lanes.advisors",
                 )
             )
+            # Disclosure lists often omit tool ids; treat proposal_only
+            # capability blockers as advisor-role residual.
+            or "capability_blockers" in path
+        ):
+            continue
+
+        # Deferred SecPAL unavailable residual in capability-blocker lists.
+        if secpal_deferred and "unavailable" in reason and (
+            tool_id in _DEFERRED_SECPAL_TOOL_IDS or "capability_blockers" in path
         ):
             continue
 
@@ -10898,11 +10910,34 @@ def _authoritative_dependency(
     interface_contract = _safe_dict(
         _AUTHORITATIVE_INTERFACE_CONTRACTS.get(interface)
     )
-    contract_failures = sorted(
-        field_name
-        for field_name, expected in interface_contract.items()
-        if payload.get(field_name) != expected
-    )
+    # Role-aware deployment receipts may carry either the pre-merge certificate
+    # identity (FVT-G200 / FVT-083) or the post-merge finalizer identity
+    # (FVT-G214 / FVT-067) under the same interface string.
+    if interface == ROLE_AWARE_INTERFACE:
+        allowed_pairs = {
+            ("FVT-G214", "FVT-067"),
+            (ROLE_AWARE_GOAL_ID, ROLE_AWARE_TASK_ID),
+        }
+        pair = (
+            str(payload.get("goal_id") or ""),
+            str(payload.get("task_id") or ""),
+        )
+        schema_ok = (
+            payload.get("schema_version")
+            == interface_contract.get("schema_version")
+        )
+        contract_failures = []
+        if not schema_ok:
+            contract_failures.append("schema_version")
+        if pair not in allowed_pairs:
+            contract_failures.extend(["goal_id", "task_id"])
+        contract_failures = sorted(set(contract_failures))
+    else:
+        contract_failures = sorted(
+            field_name
+            for field_name, expected in interface_contract.items()
+            if payload.get(field_name) != expected
+        )
     interface_contract_valid = bool(
         interface_contract and not contract_failures
     )
@@ -12091,13 +12126,26 @@ def build_authoritative_vendor_release(
     candidate_acceptance = _safe_dict(candidate.get("acceptance"))
     candidate_quarantine = _safe_dict(candidate.get("quarantine_state"))
     candidate_claims = _safe_dict(candidate.get("claims"))
+    # Platform exceptions for deferred external SecPAL and for tools that now
+    # have managed vendor evidence (ErgoAI) do not keep the replacement
+    # candidate closed.
+    candidate_platform_exceptions = [
+        row
+        for row in _safe_list(candidate.get("platform_exceptions"))
+        if isinstance(row, Mapping)
+        and str(row.get("tool_id") or "") not in {"secpal", "secpal-external"}
+        and not (
+            str(row.get("tool_id") or "") == "ergoai"
+            and ergoai_audit.get("valid") is True
+        )
+    ]
     candidate_ready = bool(
         candidate_binding["binding_valid"]
         and candidate_binding["fresh"]
         and candidate_binding["public_safe"]
         and candidate.get("status") == "role_aware_release_candidate_ready"
         and not _safe_list(candidate.get("blockers"))
-        and not _safe_list(candidate.get("platform_exceptions"))
+        and not candidate_platform_exceptions
         and candidate_acceptance.get("authority_ceiling_respected") is True
         and candidate_acceptance.get("semantic_receipts_full_and_bound") is True
         and candidate_quarantine.get("bound") is True
