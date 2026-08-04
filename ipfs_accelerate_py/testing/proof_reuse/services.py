@@ -65,7 +65,7 @@ TEST_PASS_GROTH16_PROVIDER_RELATIVE_PATH: Final = (
     "ipfs_datasets_py/logic/zkp/test_pass_groth16_provider.py"
 )
 TEST_PASS_GROTH16_PROVIDER_SOURCE_SHA256: Final = (
-    "1dc53d59f5fe45722427ce55100cac973aebd6c140b7db30c5152593db7c7be0"
+    "4e00956c627a0e2e9a59ec241697a663f64a56a4a346ea05e701cf02c2e3254a"
 )
 TEST_PASS_GROTH16_CIRCUIT_IDENTITY_SHA256: Final = (
     "c674f630154212abd5e77ebeb4614dace5890b29ea7eddce44d92d5280ca472a"
@@ -260,7 +260,7 @@ DATASETS_GROTH16_TEST_PASS_CAPABILITY_PAYLOAD_SHA256: Final = (
 DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256: Final[frozenset[str]] = frozenset(
     {
         # Local operational v4 keys + reviewed bundled linux-aarch64 binary.
-        "584298451d15cf77d11ee2cf867eec9f78b1bf928f8013d497ab7f08186fe2b8",
+        "9ea0b41d2c857c064dedc7d20fde628ccdb0b2cc9c1ab52f9c5e8ffdebe6c1ef",
     }
 )
 
