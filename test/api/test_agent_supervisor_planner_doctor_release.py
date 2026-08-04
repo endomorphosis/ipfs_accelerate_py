@@ -237,8 +237,14 @@ def _patch_current_release_gaps_for_isolated_unit_receipt(
     def canonical_with_test_seals(repo_root: Path | None = None) -> release.CheckResult:
         observed = original(repo_root)
         evidence = dict(observed.evidence)
-        assert observed.status is release.CheckStatus.FAIL
-        assert evidence.get("nonterminal_statuses")
+        # Accept either incomplete boards (historical mid-stream runs) or the
+        # terminal completed board.  Isolation still forces a clean PASS body
+        # so other unit contracts do not depend on live task-status churn.
+        if observed.status is release.CheckStatus.FAIL:
+            assert evidence.get("nonterminal_statuses")
+        else:
+            assert observed.status is release.CheckStatus.PASS
+            assert evidence.get("all_tasks_completed") is True
         evidence["errors"] = []
         evidence["all_tasks_completed"] = True
         evidence["nonterminal_statuses"] = {}
@@ -425,22 +431,17 @@ def test_declared_artifacts_and_protected_anchors_pass() -> None:
 
 
 def test_canonical_board_structure_reopens_unverified_dependency_closure() -> None:
+    """Structural board invariants for the terminal release gate.
+
+    Mid-board snapshots previously froze a nonterminal task set.  As sealed
+    manuals land, that set shrinks.  This test keeps the permanent invariants
+    (43/11, unique terminal sink, terminal deps, preimages, seal verification)
+    and only requires FAIL while any canonical task is still nonterminal.
+    """
+
     result = release.check_canonical_board(_REPO_ROOT)
-    assert result.status is release.CheckStatus.FAIL
     assert result.evidence["canonical_task_count"] == 43
     assert result.evidence["goal_count"] == 11
-    assert result.evidence["all_tasks_completed"] is False
-    assert set(result.evidence["nonterminal_statuses"]) == {
-        "PDR-060",
-        "PDR-070",
-        "PDR-072",
-        "PDR-080",
-        "PDR-081",
-        "PDR-082",
-        "PDR-090",
-        "PDR-091",
-        "PDR-092",
-    }
     assert result.evidence["sinks"] == ["PDR-092"]
     assert result.evidence["terminal_goal"] == "PDR-G100"
     assert result.evidence["terminal_depends_on"] == list(
@@ -449,12 +450,33 @@ def test_canonical_board_structure_reopens_unverified_dependency_closure() -> No
     assert result.evidence["max_lanes"] == 6
     assert len(result.evidence["task_preimages"]) == 43
     assert result.evidence["task_preimage_root"].startswith("sha256:")
-    assert set(result.evidence["verified_manual_completion_seals"]) == {
+    assert "scheduler_validation_error" not in result.evidence
+
+    verified = set(result.evidence["verified_manual_completion_seals"])
+    # Baseline policy seals always verify once the authority package is sealed.
+    assert {"PDR-002", "PDR-003"} <= verified
+    # Later sealed manuals must only appear when their receipts verify; never
+    # invent unverified IDs.
+    assert verified <= {
         "PDR-002",
         "PDR-003",
+        "PDR-060",
+        "PDR-072",
+        "PDR-082",
+        "PDR-091",
+        "PDR-092",
     }
-    assert "scheduler_validation_error" not in result.evidence
-    assert "nonterminal canonical tasks" in result.detail
+
+    nonterminal = set(result.evidence["nonterminal_statuses"])
+    assert nonterminal <= set(release.EXPECTED_TASK_IDS)
+    if nonterminal:
+        assert result.status is release.CheckStatus.FAIL
+        assert result.evidence["all_tasks_completed"] is False
+        assert "nonterminal canonical tasks" in result.detail
+    else:
+        assert result.status is release.CheckStatus.PASS
+        assert result.evidence["all_tasks_completed"] is True
+        assert "PDR-092" in verified
 
 
 def test_source_reload_is_derived_from_every_declared_task_output() -> None:
@@ -916,24 +938,46 @@ def test_current_tree_release_fails_closed_on_pending_and_untrusted_evidence(
     honest_receipt: release.PlannerDoctorReleaseReceipt,
     evidence: ExternalReleaseEvidence,
 ) -> None:
+    """Honest current-tree validation stays fail-closed without authority.
+
+    After the board reaches 43/43 and seals land, ``canonical_board`` and
+    ``task_vs_objective_completion`` may PASS.  External metrics/rollback/drain
+    evidence still fails closed until authenticated, and a dirty shared tree
+    keeps ``report_only_no_write`` FAIL.  The aggregate receipt remains invalid.
+    """
+
     report = honest_receipt.to_dict()
     assert honest_receipt.valid is False
     assert report["valid"] is False
     assert set(report["checks"]) == REQUIRED_CHECKS
-    assert report["checks"]["canonical_board"]["status"] == "fail"
-    assert report["checks"]["task_vs_objective_completion"]["status"] == "fail"
-    assert report["checks"]["zero_safety_floors"]["status"] == "fail"
-    assert report["checks"]["exact_rollback"]["status"] == "fail"
-    assert report["checks"]["six_lane_supervisor_drain"]["status"] == "fail"
-    assert report["checks"]["report_only_no_write"]["status"] == "fail"
-    for name in REQUIRED_CHECKS - {
-        "canonical_board",
-        "task_vs_objective_completion",
+
+    always_fail = {
         "zero_safety_floors",
         "exact_rollback",
         "six_lane_supervisor_drain",
         "report_only_no_write",
-    }:
+    }
+    for name in always_fail:
+        assert report["checks"][name]["status"] == "fail", name
+
+    # Board/objective gates pass only once every canonical task is completed
+    # with verified seals; otherwise they must remain FAIL.
+    board_status = report["checks"]["canonical_board"]["status"]
+    objective_status = report["checks"]["task_vs_objective_completion"]["status"]
+    if board_status == "pass":
+        assert report["checks"]["canonical_board"]["evidence"][
+            "all_tasks_completed"
+        ] is True
+        assert objective_status == "pass"
+    else:
+        assert board_status == "fail"
+        assert objective_status == "fail"
+
+    conditional_fail = {
+        "canonical_board",
+        "task_vs_objective_completion",
+    }
+    for name in REQUIRED_CHECKS - always_fail - conditional_fail:
         assert report["checks"][name]["status"] == "pass", name
     assert report["checks"]["zero_safety_floors"]["evidence"][
         "metrics_authoritative"

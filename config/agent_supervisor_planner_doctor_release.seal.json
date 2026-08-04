@@ -1,0 +1,57 @@
+{
+  "artifacts": [
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/validation/planner_doctor_release.py",
+      "role": "release_module",
+      "sha256": "sha256:d31de9d5e2ada9c9f1199b306b84488f8508701b3656cba30e4794e375031832",
+      "size_bytes": 109944
+    },
+    {
+      "path": "docs/architecture/PROOF_DIRECTED_PLANNER_DOCTOR_RELEASE.md",
+      "role": "release_doc",
+      "sha256": "sha256:ce3a9f0e8ea71b9f42d8539e943f5a44f31f22a81529da97b21ef7ca4f2685a7",
+      "size_bytes": 12113
+    },
+    {
+      "path": "test/api/test_agent_supervisor_planner_doctor_release.py",
+      "role": "release_test",
+      "sha256": "sha256:f6e61baf1e0a4ade436187abac88dcb714bc3ed923dfee02b25f1b6194e72954",
+      "size_bytes": 46683
+    }
+  ],
+  "board_namespace": "agent-supervisor-proof-directed-planner-doctor-v1",
+  "decision": "sealed",
+  "grant": {
+    "allowed_actions": [
+      "activate_release_receipt"
+    ],
+    "board_namespace": "agent-supervisor-proof-directed-planner-doctor-v1",
+    "completion_authority": false,
+    "delegable": false,
+    "mutation_authority": false,
+    "policy_revision": "1",
+    "promotion_authority": false,
+    "protected_anchor_write_authority": false,
+    "task_status_authority": false,
+    "type": "release_activation"
+  },
+  "interface": "PlannerDoctorReleaseSeal@1",
+  "operator": {
+    "authority_basis": "scheduler_delegated_operator_completion@1",
+    "automatic_controller": true,
+    "candidate": false,
+    "identity": "delegated_supervisor",
+    "model": false
+  },
+  "policy_revision": "1",
+  "receipt_id": "sha256:1360f3ea64d135ebeedbd76d053d144948701e4124a1cf725fca491891fa3564",
+  "receipt_version": "1",
+  "reviewed_base": {
+    "commit": "9f62cabbd04a3a701c9c29107119a0b5d71c9ad6",
+    "git_object_format": "sha1",
+    "relation_to_activation_head": "equal_or_ancestor",
+    "tree": "a76a464416fef12bc57f3fae64af245e763d9daa"
+  },
+  "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.release_seal@1",
+  "task_id": "PDR-092"
+}

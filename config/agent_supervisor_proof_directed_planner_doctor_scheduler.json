@@ -166,7 +166,7 @@
       "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.rollout_seal@1",
       "interface": "PlannerDoctorRolloutSeal@1",
       "policy_revision": "1",
-      "expected_receipt_id": "sha256:29fbbb08897ed7f21f3bd833ac3a9151142ae5b14e05ec61593df70fa6f462ca",
+      "expected_receipt_id": "sha256:b766114e9670a08bfb489fa35fa363b3ad2e9d3a4c66a229e995abefdfd6f30f",
       "artifact_paths": {
         "rollout_module": "ipfs_accelerate_py/agent_supervisor/self_improvement/planner_doctor_rollout.py",
         "rollout_test": "test/api/test_agent_supervisor_planner_doctor_rollout.py"
@@ -183,7 +183,7 @@
       "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.operations_seal@1",
       "interface": "PlannerDoctorOperationsSeal@1",
       "policy_revision": "1",
-      "expected_receipt_id": "sha256:ca3786b65df93d521f981765b01c0edd1098eca544050677882596cc6be487e7",
+      "expected_receipt_id": "sha256:973a6a8bcdc43f1f0da44e94d9fe9c47fbcf807342d77d15bcfca4dc253239ba",
       "artifact_paths": {
         "operations_script": "scripts/ops/agent_supervisor/proof_directed_planner_doctor.py",
         "operations_guide": "docs/guides/PROOF_DIRECTED_PLANNER_DOCTOR_GUIDE.md",
@@ -199,7 +199,7 @@
       "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.release_seal@1",
       "interface": "PlannerDoctorReleaseSeal@1",
       "policy_revision": "1",
-      "expected_receipt_id": "sha256:71051a9dba502300eb865b1466d9133904f35cd3cbed851cd459ca5ffdec6986",
+      "expected_receipt_id": "sha256:1360f3ea64d135ebeedbd76d053d144948701e4124a1cf725fca491891fa3564",
       "artifact_paths": {
         "release_module": "ipfs_accelerate_py/agent_supervisor/validation/planner_doctor_release.py",
         "release_doc": "docs/architecture/PROOF_DIRECTED_PLANNER_DOCTOR_RELEASE.md",
