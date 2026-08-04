@@ -11462,6 +11462,59 @@ def test_isolated_gitlink_recording_cacheinfo_without_checkout_when_object_reach
 
 
 
+
+def test_validate_merged_submodule_state_ignores_nested_dirty_checkouts(tmp_path):
+    """Nested submodule checkout dirt must not fail post-merge validation."""
+
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    # Nested dirt inside the child submodule checkout.
+    (submodule / "ambient.txt").write_text("ambient dirt\n", encoding="utf-8")
+
+    # Add a nested submodule under child to mirror monorepo ambient dirt.
+    nested = tmp_path / "nested-src"
+    nested.mkdir()
+    _git(nested, "init")
+    _git(nested, "checkout", "-b", "main")
+    _git(nested, "config", "user.name", "Test User")
+    _git(nested, "config", "user.email", "test@example.invalid")
+    (nested / "n.txt").write_text("n\n", encoding="utf-8")
+    _git(nested, "add", "n.txt")
+    _git(nested, "commit", "-m", "nested base")
+    _git(
+        submodule,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(nested),
+        "nested_dep",
+    )
+    _git(submodule, "commit", "-am", "add nested dep")
+    nested_checkout = submodule / "nested_dep"
+    (nested_checkout / "n.txt").write_text("dirty nested\n", encoding="utf-8")
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    # Parent submodule has ordinary file dirt + nested dirty checkout.
+    validation = daemon._validate_merged_submodule_state(submodule, "libs/child")
+    assert validation["checks"]["clean"] is False
+    assert any("ambient.txt" in p for p in validation.get("dirty_paths") or [])
+
+    # Clean ordinary dirt; leave only nested submodule dirty checkout.
+    (submodule / "ambient.txt").unlink()
+    validation2 = daemon._validate_merged_submodule_state(submodule, "libs/child")
+    assert validation2["checks"]["clean"] is True, validation2
+    assert validation2.get("valid") is True
+    assert validation2["checks"].get("ambient_nested_submodule_dirt")
+
+
 def test_completion_persistence_recovery_coalesces_missing_commits(tmp_path):
     """Recovery must reconstruct merge tips stored only under proofs."""
 

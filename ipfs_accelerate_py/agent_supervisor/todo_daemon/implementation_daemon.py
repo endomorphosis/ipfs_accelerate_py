@@ -9440,12 +9440,34 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             and task.task_id not in board_completed_task_ids
         ]
         if stale_merged_completed_task_ids:
-            merged_status_repair = {
-                "updated": False,
-                "reason": "authoritative_completion_evidence_required",
-                "pending_task_ids": stale_merged_completed_task_ids,
-            }
-        pending_acceptance_task_ids = set(stale_merged_completed_task_ids)
+            merged_status_repair = self._retry_merged_pending_acceptance_completions(
+                [
+                    task
+                    for task in tasks
+                    if task.task_id in set(stale_merged_completed_task_ids)
+                ]
+            )
+            # Any task that still lacks durable board completion remains parked.
+            still_pending = [
+                task_id
+                for task_id in stale_merged_completed_task_ids
+                if task_id
+                not in set(merged_status_repair.get("completed_task_ids") or [])
+            ]
+            if still_pending and not merged_status_repair.get("completed_task_ids"):
+                merged_status_repair.setdefault(
+                    "reason",
+                    "authoritative_completion_evidence_required",
+                )
+                merged_status_repair["pending_task_ids"] = still_pending
+            elif still_pending:
+                merged_status_repair["pending_task_ids"] = still_pending
+        pending_acceptance_task_ids = {
+            task_id
+            for task_id in stale_merged_completed_task_ids
+            if task_id
+            not in set((merged_status_repair or {}).get("completed_task_ids") or [])
+        }
 
         previous_completed = set(previous.completed_task_ids)
         completed_set: set[str] = set()
@@ -38206,8 +38228,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         Checks:
         - Not in detached HEAD state
-        - Working tree is clean (no dirty files)
+        - Working tree is clean of non-ambient dirt
         - Nested submodules are initialized
+
+        Nested submodule *checkout* dirt is ambient on shared monorepos and
+        must not fail post-merge acceptance. Only gitlink pointer changes or
+        ordinary file dirt remain blocking (``--ignore-submodules=dirty``).
         """
         validation: dict[str, Any] = {"valid": True, "path": submodule_path, "checks": {}}
 
@@ -38217,16 +38243,38 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if not branch:
             validation["valid"] = False
 
-        # Check 2: Working tree is clean
+        # Check 2: Working tree is clean of non-ambient dirt
         status = subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain",
+                "--ignore-submodules=dirty",
+            ],
+            cwd=source,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        raw_status = subprocess.run(
             ["git", "status", "--porcelain"],
             cwd=source,
             text=True,
             capture_output=True,
             check=False,
         )
+        ambient_dirty = []
+        if raw_status.returncode == 0 and raw_status.stdout.strip():
+            ambient_dirty = [
+                line
+                for line in raw_status.stdout.strip().splitlines()
+                if line
+                and line not in set(status.stdout.splitlines())
+            ]
         is_clean = status.returncode == 0 and not status.stdout.strip()
         validation["checks"]["clean"] = is_clean
+        if ambient_dirty:
+            validation["checks"]["ambient_nested_submodule_dirt"] = ambient_dirty[:10]
         if not is_clean:
             validation["valid"] = False
             validation["dirty_paths"] = status.stdout.strip().splitlines()[:10]
@@ -44792,6 +44840,154 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 quarantined.add(task_id)
         return quarantined
 
+
+    def _retry_merged_pending_acceptance_completions(
+        self,
+        tasks: Sequence[PortalTask],
+    ) -> dict[str, Any]:
+        """Retry board completion for tips already integrated on the target.
+
+        After merge-queue integration, tasks can sit in
+        ``implementation_merged_pending_acceptance`` forever when post-merge
+        evidence was blocked by ambient nested dirt or a transient board lock.
+        Re-run authoritative completion from durable merge tips so dependents
+        unlock without operator intervention.
+        """
+
+        completed_task_ids: list[str] = []
+        failures: list[dict[str, Any]] = []
+        attempts: list[dict[str, Any]] = []
+        target_branch = self._main_branch_name()
+        # Latest pending-acceptance or resolved merge tip per task.
+        tip_by_task: dict[str, dict[str, str]] = {}
+        for event in self._iter_events():
+            task_id = str(event.get("task_id") or "")
+            if not task_id:
+                continue
+            event_type = str(event.get("type") or "")
+            implementation_commit = str(event.get("implementation_commit") or "").strip()
+            merge_commit = str(event.get("merge_commit") or "").strip()
+            if event_type == "implementation_merged_pending_acceptance":
+                if implementation_commit and merge_commit:
+                    tip_by_task[task_id] = {
+                        "implementation_commit": implementation_commit,
+                        "merge_commit": merge_commit,
+                    }
+            elif event_type == "merge_reconciled" and event.get("resolved") is True:
+                landed = str(event.get("landed_commit") or implementation_commit).strip()
+                merge = str(event.get("merge_commit") or "").strip()
+                if landed and merge:
+                    tip_by_task[task_id] = {
+                        "implementation_commit": landed,
+                        "merge_commit": merge,
+                    }
+            elif event_type == "implementation_finished":
+                merge_result = event.get("merge_result")
+                if (
+                    isinstance(merge_result, Mapping)
+                    and merge_result.get("merged")
+                    and implementation_commit
+                ):
+                    merge = str(merge_result.get("merge_commit") or "").strip()
+                    if merge:
+                        tip_by_task[task_id] = {
+                            "implementation_commit": implementation_commit,
+                            "merge_commit": merge,
+                        }
+
+        for task in tasks:
+            tips = tip_by_task.get(task.task_id)
+            if not tips:
+                # Fall back to ancestry of any known implementation commit on
+                # the target tip when event history lacks an explicit merge.
+                failures.append(
+                    {
+                        "task_id": task.task_id,
+                        "reason": "merged_tip_unavailable",
+                    }
+                )
+                continue
+            implementation_commit = tips["implementation_commit"]
+            merge_commit = tips["merge_commit"]
+            if not self._git_ref_is_ancestor(implementation_commit, target_branch):
+                failures.append(
+                    {
+                        "task_id": task.task_id,
+                        "reason": "implementation_commit_not_on_target",
+                        "implementation_commit": implementation_commit,
+                    }
+                )
+                continue
+            try:
+                result = self._mark_reconciled_completion_in_todo(
+                    task,
+                    [task],
+                    {task.task_id: self._canonical_ref(task)},
+                    implementation_commit=implementation_commit,
+                    merge_commit=merge_commit,
+                )
+            except Exception as exc:
+                failures.append(
+                    {
+                        "task_id": task.task_id,
+                        "reason": "completion_retry_exception",
+                        "error": f"{type(exc).__name__}: {exc}"[-1000:],
+                    }
+                )
+                continue
+            attempts.append(
+                {
+                    "task_id": task.task_id,
+                    "implementation_commit": implementation_commit,
+                    "merge_commit": merge_commit,
+                    "todo_update_result": {
+                        "updated": bool(result.get("updated")),
+                        "reason": str(result.get("reason") or ""),
+                    },
+                }
+            )
+            persistence = self._reconciled_completion_persisted(
+                result,
+                {task.task_id: self._canonical_ref(task)},
+            )
+            if persistence.get("passed") is True or bool(
+                result.get("already_completed_task_ids")
+            ):
+                completed_task_ids.append(task.task_id)
+                self._record_event(
+                    "merged_pending_acceptance_auto_completed",
+                    {
+                        "task_id": task.task_id,
+                        "implementation_commit": implementation_commit,
+                        "merge_commit": merge_commit,
+                        "persistence": persistence,
+                    },
+                )
+            else:
+                failures.append(
+                    {
+                        "task_id": task.task_id,
+                        "reason": "completion_retry_unproven",
+                        "persistence": persistence,
+                        "todo_reason": str(result.get("reason") or ""),
+                    }
+                )
+
+        payload = {
+            "updated": bool(completed_task_ids),
+            "reason": (
+                "merged_pending_acceptance_auto_completed"
+                if completed_task_ids
+                else "authoritative_completion_evidence_required"
+            ),
+            "completed_task_ids": completed_task_ids,
+            "attempts": attempts,
+            "failures": failures,
+        }
+        if completed_task_ids or failures:
+            self._record_event("merged_pending_acceptance_retry", payload)
+        return payload
+
     def _successfully_merged_task_ids(self) -> set[str]:
         task_ids: set[str] = set()
         target_branch = self._main_branch_name()
@@ -44876,6 +45072,27 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     event.get("landed_commit")
                     or implementation_commit
                 )
+            elif event_type == "implementation_merged_pending_acceptance":
+                # Merge queue already integrated the tip but board completion
+                # is still pending post-merge evidence. Treat as successfully
+                # merged so daemon pass can retry authoritative completion.
+                if not implementation_commit:
+                    continue
+                merge_commit = str(event.get("merge_commit") or "").strip()
+                if merge_commit:
+                    # Stash for integration proof construction below.
+                    event = {
+                        **event,
+                        "merge_result": {
+                            **(
+                                event.get("merge_result")
+                                if isinstance(event.get("merge_result"), Mapping)
+                                else {}
+                            ),
+                            "merged": True,
+                            "merge_commit": merge_commit,
+                        },
+                    }
             else:
                 continue
             if implementation_commit and not self._git_ref_is_ancestor(implementation_commit, target_branch):
