@@ -14586,20 +14586,29 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         # only retained as advisory context in the receipt seed.
         worktree_root = self.worktree_root or (self.state_path.parent / "worktrees")
         worktree_root.mkdir(parents=True, exist_ok=True)
+        safe_task = re.sub(r"[^a-z0-9._-]+", "-", task.task_id.lower()).strip("-")
         workspace = worktree_root / (
-            f"post-merge-validation-{re.sub(r'[^a-z0-9._-]+', '-', task.task_id.lower())}-"
-            f"{merge_commit[:12]}"
+            f"post-merge-validation-{safe_task}-"
+            f"{merge_commit[:12]}-{secrets.token_hex(3)}"
         )
         try:
+            # Drop any leftover registration for this path before recreating.
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", str(workspace)],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
             if workspace.exists():
                 shutil.rmtree(workspace, ignore_errors=True)
-                subprocess.run(
-                    ["git", "worktree", "prune"],
-                    cwd=self.repo_root,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
+            subprocess.run(
+                ["git", "worktree", "prune"],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
             add = subprocess.run(
                 [
                     "git",
@@ -14615,7 +14624,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 capture_output=True,
                 check=False,
             )
-            if add.returncode != 0:
+            if add.returncode != 0 or not workspace.is_dir():
                 return {
                     "schema": POST_MERGE_VALIDATION_EVIDENCE_SCHEMA,
                     "task_id": task.task_id,
@@ -14624,12 +14633,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "validation_scope": "post_merge",
                     "passed": False,
                     "reason": "post_merge_validation_worktree_unavailable",
-                    "stderr": (add.stderr or "")[-1000:],
+                    "stderr": (add.stderr or add.stdout or "")[-1000:],
+                    "returncode": int(add.returncode),
                 }
 
+            # Ephemeral worktrees only materialize gitlinks as empty dirs.
+            # Bind configured root submodules from the host monorepo so declared
+            # audits that inspect package sources can pass.
+            submodule_bindings = self._bind_validation_worktree_submodules(
+                workspace,
+                merge_commit=merge_commit,
+            )
+
             log_path = self.state_path.parent / "implementation_logs" / (
-                f"{re.sub(r'[^a-z0-9._-]+', '-', task.task_id.lower())}"
-                f"-post-merge-validation.log"
+                f"{safe_task}-post-merge-validation.log"
             )
             log_path.parent.mkdir(parents=True, exist_ok=True)
             validation = self._run_validation_commands(
@@ -14653,6 +14670,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     isinstance(pre_merge_validation, Mapping)
                     and pre_merge_validation.get("passed") is True
                 ),
+                "submodule_bindings": submodule_bindings[:16],
             }
             receipt_id = hashlib.sha256(
                 json.dumps(receipt_seed, sort_keys=True, default=str).encode(
@@ -14672,6 +14690,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "validation_receipt_id": receipt_id,
                 "returncode": receipt_seed["returncode"],
                 "results": receipt_seed["results"],
+                "submodule_bindings": submodule_bindings[:16],
                 "attempted": True,
             }
         except Exception as exc:  # noqa: BLE001 - fail closed into receipt
@@ -14703,6 +14722,138 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         capture_output=True,
                         check=False,
                     )
+
+    def _bind_validation_worktree_submodules(
+        self,
+        workspace: Path,
+        *,
+        merge_commit: str,
+    ) -> list[dict[str, Any]]:
+        """Materialize configured root submodules inside a validation worktree.
+
+        ``git worktree add`` leaves gitlinks as empty directories. Declared
+        validation that reads package sources needs the exact recorded commits.
+        Prefer a shared clone from the live monorepo checkout when its object
+        database already contains the gitlink revision.
+        """
+
+        bindings: list[dict[str, Any]] = []
+        for raw_relative in self.worktree_submodule_paths:
+            relative = str(raw_relative or "").strip().strip("/")
+            if not relative:
+                continue
+            entry: dict[str, Any] = {"path": relative, "bound": False}
+            ls = subprocess.run(
+                ["git", "ls-tree", merge_commit, "--", relative],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if ls.returncode != 0 or not ls.stdout.strip():
+                entry["reason"] = "gitlink_missing_on_merge_commit"
+                bindings.append(entry)
+                continue
+            gitlink = ""
+            for line in ls.stdout.splitlines():
+                # mode type sha\tpath
+                meta, _, path = line.partition("\t")
+                if path != relative:
+                    continue
+                parts = meta.split()
+                if len(parts) >= 3 and parts[0] == "160000":
+                    gitlink = parts[2]
+                    break
+            if not gitlink:
+                entry["reason"] = "path_not_gitlink_on_merge_commit"
+                bindings.append(entry)
+                continue
+            entry["gitlink"] = gitlink
+            target = workspace / relative
+            host = self.repo_root / relative
+            try:
+                if target.exists():
+                    # Empty gitlink placeholder or stale content.
+                    if target.is_symlink() or target.is_file():
+                        target.unlink(missing_ok=True)
+                    elif target.is_dir():
+                        # Only remove if it looks like an empty placeholder.
+                        remaining = list(target.iterdir())
+                        if not remaining or all(
+                            item.name in {".git"} for item in remaining
+                        ):
+                            shutil.rmtree(target, ignore_errors=True)
+                        else:
+                            # Already populated; verify HEAD when possible.
+                            head = subprocess.run(
+                                ["git", "rev-parse", "HEAD"],
+                                cwd=target,
+                                text=True,
+                                capture_output=True,
+                                check=False,
+                            )
+                            if (
+                                head.returncode == 0
+                                and head.stdout.strip() == gitlink
+                            ):
+                                entry["bound"] = True
+                                entry["reason"] = "already_at_gitlink"
+                                bindings.append(entry)
+                                continue
+                            shutil.rmtree(target, ignore_errors=True)
+                if not host.is_dir():
+                    entry["reason"] = "host_submodule_checkout_missing"
+                    bindings.append(entry)
+                    continue
+                has_obj = subprocess.run(
+                    ["git", "cat-file", "-e", f"{gitlink}^{{commit}}"],
+                    cwd=host,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if has_obj.returncode != 0:
+                    entry["reason"] = "host_missing_gitlink_object"
+                    bindings.append(entry)
+                    continue
+                clone = subprocess.run(
+                    [
+                        "git",
+                        "clone",
+                        "--shared",
+                        "--no-checkout",
+                        str(host.resolve()),
+                        str(target),
+                    ],
+                    cwd=self.repo_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if clone.returncode != 0:
+                    entry["reason"] = "shared_clone_failed"
+                    entry["stderr"] = (clone.stderr or "")[-500:]
+                    bindings.append(entry)
+                    continue
+                checkout = subprocess.run(
+                    ["git", "checkout", "--force", gitlink],
+                    cwd=target,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if checkout.returncode != 0:
+                    entry["reason"] = "gitlink_checkout_failed"
+                    entry["stderr"] = (checkout.stderr or "")[-500:]
+                    bindings.append(entry)
+                    continue
+                entry["bound"] = True
+                entry["reason"] = "shared_clone_at_gitlink"
+            except OSError as exc:
+                entry["reason"] = "bind_os_error"
+                entry["error"] = str(exc)[-300:]
+            bindings.append(entry)
+        return bindings
 
     def _fsynced_runtime_taskboard_completion_snapshot(
         self,
