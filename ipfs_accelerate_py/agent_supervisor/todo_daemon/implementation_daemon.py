@@ -214,6 +214,7 @@ from .production_provider_cli import (
 )
 from .production_context_slice import (
     DEFAULT_RESERVED_PROMPT_TOKENS,
+    MAX_PROVIDER_PROMPT_TOKENS as PRODUCTION_CONTEXT_MAX_PROVIDER_PROMPT_TOKENS,
     ProductionContextSliceError,
     assert_proposal_covered_by_context,
     build_production_context_slice,
@@ -35069,7 +35070,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             write_paths=write_paths,
         )
         configured_prompt_tokens = min(
-            4096,
+            PRODUCTION_CONTEXT_MAX_PROVIDER_PROMPT_TOKENS,
             int(
                 max_provider_prompt_tokens
                 or getattr(
@@ -35077,7 +35078,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "production_provider_context_budget_tokens",
                     0,
                 )
-                or 4096
+                or PRODUCTION_CONTEXT_MAX_PROVIDER_PROMPT_TOKENS
             ),
         )
         reserved_prompt_tokens = DEFAULT_RESERVED_PROMPT_TOKENS

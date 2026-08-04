@@ -39,7 +39,12 @@ PRODUCTION_CONTEXT_SLICE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/production-context-slice@1"
 )
 PRODUCTION_CONTEXT_SLICE_INTERFACE: Final = "ProductionContextSlice@1"
-MAX_PROVIDER_PROMPT_TOKENS: Final = 4_096
+# Protocol ceiling for the outer provider prompt (context slice + reserved
+# envelope).  4096 was too small for multi-file schema corrections: a single
+# large Python symbol (_validate_cross_references) alone exceeds that bound
+# under the deterministic utf8-bytes/4 estimator.  65536 still fails closed
+# and leaves headroom for correction feedback and three-file UIR-010 scopes.
+MAX_PROVIDER_PROMPT_TOKENS: Final = 65_536
 DEFAULT_RESERVED_PROMPT_TOKENS: Final = 1_536
 DEFAULT_MAX_SCOPE_PATHS: Final = 8
 DEFAULT_MAX_SOURCE_BYTES: Final = 1_048_576
@@ -1135,7 +1140,10 @@ def build_production_context_slice(
         if isinstance(value, bool) or not isinstance(value, int) or value < 1:
             _fail("budget_invalid", f"{name} must be a positive integer")
     if max_provider_prompt_tokens > MAX_PROVIDER_PROMPT_TOKENS:
-        _fail("budget_invalid", "provider prompt budget may not exceed 4096")
+        _fail(
+            "budget_invalid",
+            f"provider prompt budget may not exceed {MAX_PROVIDER_PROMPT_TOKENS}",
+        )
     if reserved_prompt_tokens < DEFAULT_RESERVED_PROMPT_TOKENS:
         _fail(
             "budget_invalid",

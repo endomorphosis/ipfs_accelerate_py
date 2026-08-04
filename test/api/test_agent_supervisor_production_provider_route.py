@@ -30,6 +30,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router import (
     MAX_PROVIDER_JSON_DEPTH,
     MAX_PROVIDER_JSON_ITEMS,
+    MAX_PROVIDER_PROMPT_TOKENS,
     PRODUCTION_PROVIDER_ROUTE_EVALUATION_SCHEMA,
     PRODUCTION_PROVIDER_ROUTE_INTERFACE,
     PRODUCTION_REVIEW_CHAIN_BINDING_SCHEMA,
@@ -160,7 +161,7 @@ def _task(**overrides: Any) -> PortalTask:
         ),
         "metadata": {
             "Provider role": "grok-implement, codex-review",
-            "Context budget tokens": "4096",
+            "Context budget tokens": str(MAX_PROVIDER_PROMPT_TOKENS),
         },
     }
     payload.update(overrides)
@@ -1216,7 +1217,7 @@ def test_codex_receives_only_bounded_proposal_evidence_slice(
         assert "goal_ids" in slice_
         assert "context_slice" in slice_
         assert slice_["context_slice"]["manifest_cid"].startswith("b")
-        assert request.prompt_tokens <= 4096
+        assert request.prompt_tokens <= MAX_PROVIDER_PROMPT_TOKENS
         # Full goal corpus / counterexample bodies must not appear.
         encoded = json.dumps(request["provider_input"], sort_keys=True)
         assert "counterexample" not in encoded
@@ -1235,7 +1236,10 @@ def test_codex_receives_only_bounded_proposal_evidence_slice(
     )
     assert result["route_result"].status is RouteStatus.SUCCEEDED
     assert "admitted_implementation_proposal" in seen["input"]
-    assert all(attempt.prompt_tokens <= 4096 for attempt in result["route_result"].attempts)
+    assert all(
+        attempt.prompt_tokens <= MAX_PROVIDER_PROMPT_TOKENS
+        for attempt in result["route_result"].attempts
+    )
 
 
 def test_caller_packet_without_context_fails_before_any_provider(

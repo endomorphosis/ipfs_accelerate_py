@@ -16,6 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_ro
     RouteStatus,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.production_context_slice import (
+    MAX_PROVIDER_PROMPT_TOKENS,
     ProductionContextSliceError,
     assert_proposal_covered_by_context,
     build_production_context_slice,
@@ -339,9 +340,12 @@ def test_recomputed_root_cannot_widen_corpus_budget_or_authority(tmp_path) -> No
     )
 
     unbounded = manifest.to_dict()
-    unbounded["budget"]["max_provider_prompt_tokens"] = 8192
+    # Exceed the protocol ceiling (not merely the default) so verification
+    # rejects the declaration as budget_invalid.
+    oversized = int(MAX_PROVIDER_PROMPT_TOKENS) + 1
+    unbounded["budget"]["max_provider_prompt_tokens"] = oversized
     unbounded["budget"]["context_token_limit"] = (
-        8192 - unbounded["budget"]["reserved_prompt_tokens"]
+        oversized - unbounded["budget"]["reserved_prompt_tokens"]
     )
     _recompute_root(unbounded)
     _assert_reason(
