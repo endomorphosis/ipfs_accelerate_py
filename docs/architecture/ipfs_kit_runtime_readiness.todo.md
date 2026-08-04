@@ -1483,7 +1483,7 @@ or write authority.
 
 ## KITA-047 Emit the independent current-tree runtime-readiness release receipt
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: true
