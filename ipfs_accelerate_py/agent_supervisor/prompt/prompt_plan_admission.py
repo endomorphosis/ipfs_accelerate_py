@@ -2003,12 +2003,22 @@ def admit_prompt_plan(
     ir_receipt: PlanAdmissionReceipt | None = None
     if formal.status is CompilationStatus.COMPILED:
         if selected_ir is None:
+            # Factory absence (or any missing independent request) is an
+            # unknown mandatory IR state, not a binding mismatch.  Binding
+            # mismatch is reserved for a present request that disagrees with
+            # the formal projection.  PlanAdmissionService constructs its own
+            # exact PlanAdmissionRequest when domain materials are supplied
+            # through the independent admission path.
             findings.append(
                 _finding(
-                    PromptPlanAdmissionCode.IR_BINDING_MISMATCH,
+                    PromptPlanAdmissionCode.UNKNOWN_MANDATORY_STATE,
                     "ir_binding",
                     "$.ir_request",
-                    "an independently compiled PlanAdmissionRequest is required",
+                    (
+                        "independent PlanAdmissionRequest materials are required "
+                        "for hard-domain admission; absence of an "
+                        "admission_request_factory is not an IR binding mismatch"
+                    ),
                 )
             )
         else:

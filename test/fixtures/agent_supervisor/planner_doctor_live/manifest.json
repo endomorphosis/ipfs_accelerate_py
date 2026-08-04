@@ -1,0 +1,235 @@
+{
+  "automatic_promotion_enabled": false,
+  "benchmark_policy_cid": "baguqeerawp37ni46umcuqcx6lmcdpb62nsrflcbkryy4kjtvrcdiiwvmffjq",
+  "cache_strata": [
+    "cold",
+    "exact-warm",
+    "delta",
+    "restart"
+  ],
+  "cases": [
+    {
+      "case_cid": "baguqeerawljkemnbntkeke4yb5nigluwn2og6ijdptjvdzf6zf5m6ewnpn4q",
+      "case_id": "live-hermetic-plan-create",
+      "deterministic_seed": 7001,
+      "execution_kind": "planner-create",
+      "files": [
+        {
+          "content": "\"\"\"Hermetic plan-create package.\"\"\"\n\n__all__ = [\"add\"]\n",
+          "path": "pkg/__init__.py"
+        },
+        {
+          "content": "def add(left: int, right: int) -> int:\n    \"\"\"Return the sum of two integers.\"\"\"\n    return left + right\n\ndef multiply(left: int, right: int) -> int:\n    return left * right\n",
+          "path": "pkg/math_ops.py"
+        },
+        {
+          "content": "# Tasks\n\n## PDR-LIVE-001 Implement add export\n\n- Status: pending\n- Outputs: pkg/__init__.py\n",
+          "path": "docs/TASKS.md"
+        }
+      ],
+      "holdout_case_id": "pdr-dev-plan-create-control-plane",
+      "mutation_recipe_id": "none",
+      "oracle_slot_id": "oracle:pdr-dev-plan-create-control-plane@1",
+      "pair_family": "plan-create",
+      "partition": "hermetic-live",
+      "promotion_eligible": false,
+      "prompt_template_id": "planner-create-control-plane@1",
+      "required_capabilities": [
+        "planner-create",
+        "repository-scan",
+        "formal-plan-admission"
+      ],
+      "schema": "ipfs_accelerate_py/agent-supervisor/planner-doctor-live-benchmark-case@1",
+      "security_markers": [],
+      "seed_defect_markers": [],
+      "task_source_seed_id": "markdown-empty-revision@1"
+    },
+    {
+      "case_cid": "baguqeeraamfshv6hcnqbi3uoz35k6hqpvlpugulth4ky5wl3sikxvotn4pua",
+      "case_id": "live-hermetic-plan-steer",
+      "deterministic_seed": 7002,
+      "execution_kind": "planner-steer",
+      "files": [
+        {
+          "content": "class Greeter:\n    def greet(self, name: str) -> str:\n        return f'hello {name}'\n",
+          "path": "pkg/service.py"
+        },
+        {
+          "content": "## PDR-LIVE-002 Preserve claimed history\n\n- Status: in_progress\n- Claimed revision: rev:claimed:1\n",
+          "path": "docs/TASKS.md"
+        }
+      ],
+      "holdout_case_id": "pdr-dev-plan-steer-dependency",
+      "mutation_recipe_id": "append-only-steer-delta@1",
+      "oracle_slot_id": "oracle:pdr-dev-plan-steer-dependency@1",
+      "pair_family": "plan-steer",
+      "partition": "hermetic-live",
+      "promotion_eligible": false,
+      "prompt_template_id": "planner-steer-preserve-claimed-history@1",
+      "required_capabilities": [
+        "planner-steer",
+        "plan-revision-cas",
+        "dependency-validation"
+      ],
+      "schema": "ipfs_accelerate_py/agent-supervisor/planner-doctor-live-benchmark-case@1",
+      "security_markers": [],
+      "seed_defect_markers": [],
+      "task_source_seed_id": "markdown-claimed-task@1"
+    },
+    {
+      "case_cid": "baguqeerax5khxtcd55ozty3gxaki3jhhij4yr4rggydd2utpi6ldqp3caoqa",
+      "case_id": "live-hermetic-doctor-contract",
+      "deterministic_seed": 7003,
+      "execution_kind": "doctor-diagnose-repair",
+      "files": [
+        {
+          "content": "# seed_defect:renamed_symbol\ndef process(data, flags=None):\n    return data\n\ndef caller():\n    return process('x')  # missing flags after signature delta\n",
+          "path": "pkg/api.py"
+        },
+        {
+          "content": "# contract delta target\ndef process(data, flags, mode='strict'):\n    return (data, flags, mode)\n",
+          "path": "pkg/api_v2.py"
+        }
+      ],
+      "holdout_case_id": "pdr-dev-doctor-contract-delta",
+      "mutation_recipe_id": "rename-and-signature-delta@1",
+      "oracle_slot_id": "oracle:pdr-dev-doctor-contract-delta@1",
+      "pair_family": "doctor-diagnosis",
+      "partition": "hermetic-live",
+      "promotion_eligible": false,
+      "prompt_template_id": "doctor-diagnose-contract-delta@1",
+      "required_capabilities": [
+        "doctor-live-snapshot",
+        "ast-impact",
+        "contract-diff"
+      ],
+      "schema": "ipfs_accelerate_py/agent-supervisor/planner-doctor-live-benchmark-case@1",
+      "security_markers": [],
+      "seed_defect_markers": [
+        "renamed_symbol",
+        "signature_delta"
+      ],
+      "task_source_seed_id": "doctor-report-only@1"
+    },
+    {
+      "case_cid": "baguqeera2dmj3r3yotwzzubcooodkjoqozhj4azulllobrktzap6fd2hlxta",
+      "case_id": "live-hermetic-security-ir",
+      "deterministic_seed": 7004,
+      "execution_kind": "planner-doctor-security-gate",
+      "files": [
+        {
+          "content": "# security_marker:authorization_bypass\ndef check_access(user, resource):\n    # intentionally weak gate for seeded security case\n    return True\n\ndef read_secret(user):\n    if check_access(user, 'secret'):\n        return 'not-a-real-secret'\n    return None\n",
+          "path": "pkg/auth.py"
+        }
+      ],
+      "holdout_case_id": "pdr-dev-security-ir-forbidden-intent",
+      "mutation_recipe_id": "authorization-bypass@1",
+      "oracle_slot_id": "oracle:pdr-dev-security-ir-forbidden-intent@1",
+      "pair_family": "security-ir",
+      "partition": "hermetic-live",
+      "promotion_eligible": false,
+      "prompt_template_id": "forbidden-security-intent@1",
+      "required_capabilities": [
+        "intent-ir",
+        "security-ir",
+        "security-contract-analysis"
+      ],
+      "schema": "ipfs_accelerate_py/agent-supervisor/planner-doctor-live-benchmark-case@1",
+      "security_markers": [
+        "authorization_bypass"
+      ],
+      "seed_defect_markers": [],
+      "task_source_seed_id": "security-review@1"
+    },
+    {
+      "case_cid": "baguqeerab3k7dg2kqv6qv457qpaho7tmi65bmdbmyq3anrvvxofbzqnlsexq",
+      "case_id": "live-hermetic-transaction-rollback",
+      "deterministic_seed": 7005,
+      "execution_kind": "doctor-transaction",
+      "files": [
+        {
+          "content": "VALUE = 1\n\ndef bump():\n    global VALUE\n    VALUE += 1\n    return VALUE\n",
+          "path": "pkg/mutable.py"
+        }
+      ],
+      "holdout_case_id": "pdr-dev-transaction-rollback",
+      "mutation_recipe_id": "validation-failure-after-write@1",
+      "oracle_slot_id": "oracle:pdr-dev-transaction-rollback@1",
+      "pair_family": "transaction-rollback",
+      "partition": "hermetic-live",
+      "promotion_eligible": false,
+      "prompt_template_id": "doctor-repair-with-rollback@1",
+      "required_capabilities": [
+        "isolated-worktree",
+        "mutation-permit",
+        "transaction",
+        "exact-rollback"
+      ],
+      "schema": "ipfs_accelerate_py/agent-supervisor/planner-doctor-live-benchmark-case@1",
+      "security_markers": [],
+      "seed_defect_markers": [
+        "validation_failure_after_write"
+      ],
+      "task_source_seed_id": "doctor-mutation-preview@1"
+    },
+    {
+      "case_cid": "baguqeerar4wpjrns3a6uknintesiyrftrhjbcs73wjyv6e676plwstmuk2jq",
+      "case_id": "live-hermetic-capability-degradation",
+      "deterministic_seed": 7006,
+      "execution_kind": "planner-doctor-degradation",
+      "files": [
+        {
+          "content": "def call_provider(payload: dict) -> dict:\n    raise RuntimeError('provider_unavailable')\n",
+          "path": "pkg/provider_client.py"
+        }
+      ],
+      "holdout_case_id": "pdr-dev-provider-degradation",
+      "mutation_recipe_id": "provider-loss@1",
+      "oracle_slot_id": "oracle:pdr-dev-provider-degradation@1",
+      "pair_family": "capability-degradation",
+      "partition": "hermetic-live",
+      "promotion_eligible": false,
+      "prompt_template_id": "required-provider-unavailable@1",
+      "required_capabilities": [
+        "capability-negotiation",
+        "typed-abstention",
+        "telemetry-unavailable",
+        "model-free-fallback"
+      ],
+      "schema": "ipfs_accelerate_py/agent-supervisor/planner-doctor-live-benchmark-case@1",
+      "security_markers": [],
+      "seed_defect_markers": [],
+      "task_source_seed_id": "report-only-degradation@1"
+    }
+  ],
+  "configured_maximum_workers": 6,
+  "conformance_only_sources": [
+    "deterministic-doctor-fixture-benchmark",
+    "supervisor-v2-synthetic-benchmark",
+    "symbolic-efficiency-fixture-observation",
+    "fixture-dual-run-identity"
+  ],
+  "contract_version": 1,
+  "fixture_expected_fields_are_not_execution_authority": true,
+  "goal_id": "PDR-G080",
+  "holdout_manifest_cid": "baguqeeratdt3yv2jwcorvsuaae5zh2vypsrwiry7luohli3gb6ecjkghm2na",
+  "interface": "PlannerDoctorLiveBenchmark@1",
+  "manifest_cid": "baguqeera7jr54czfvnxfga2tuppzt5lz5bfammczw6zwkwf3wsvwehrlbyra",
+  "policy_id": "planner-doctor-live-paired-benchmark-v1",
+  "primary_arm_ids": [
+    "current-mainline-baseline",
+    "deterministic-symbolic",
+    "hybrid-residual-only"
+  ],
+  "requested_concurrency": [
+    1,
+    2,
+    4,
+    6
+  ],
+  "schema": "ipfs_accelerate_py/agent-supervisor/planner-doctor-live-benchmark-manifest@1",
+  "scored_repetitions": 3,
+  "skips_cannot_qualify_promotion": true,
+  "synthetic_results_are_execution_authority": false,
+  "task_id": "PDR-070"
+}

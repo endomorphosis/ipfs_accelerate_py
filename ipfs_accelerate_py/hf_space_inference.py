@@ -26,14 +26,27 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping, Sequence, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Mapping, Sequence, TypeVar
 from urllib import parse as urllib_parse
 
-import requests
+if TYPE_CHECKING:
+    from requests import Response as _RequestsResponse
+    from requests import Session as _RequestsSession
+else:
+    _RequestsResponse = Any
+    _RequestsSession = Any
 
 
 HeadersFactory = Callable[[], Mapping[str, str]]
 ResultT = TypeVar("ResultT")
+
+
+def _load_requests() -> Any:
+    """Load the HTTP client only when a transport operation needs it."""
+
+    import requests
+
+    return requests
 
 
 def _utc_now() -> str:
@@ -139,6 +152,7 @@ def is_stale_gradio_file_error(value: object) -> bool:
 def is_hf_space_transport_error(value: object) -> bool:
     """Return whether a failed Space call can be retried as transport I/O."""
 
+    requests = _load_requests()
     transient_request_errors = (
         requests.exceptions.Timeout,
         requests.exceptions.ConnectionError,
@@ -616,7 +630,7 @@ class HFSpaceClient:
         timeout_seconds: float = 120.0,
         headers_factory: HeadersFactory | None = None,
         *,
-        session: requests.Session | None = None,
+        session: _RequestsSession | None = None,
     ):
         resolved_url = str(space_url or "").strip().rstrip("/")
         if not resolved_url:
@@ -625,7 +639,7 @@ class HFSpaceClient:
         self.timeout_seconds = max(1.0, float(timeout_seconds))
         self.headers_factory = headers_factory
         self._config_cache: dict[str, Any] | None = None
-        self._session = session or requests.Session()
+        self._session = session or _load_requests().Session()
 
     def close(self) -> None:
         """Release pooled HTTP connections."""
@@ -871,7 +885,7 @@ class HFSpaceClient:
 
     @staticmethod
     def _iter_sse_events(
-        response: requests.Response,
+        response: _RequestsResponse,
     ) -> Iterator[Mapping[str, Any]]:
         for raw_line in response.iter_lines(decode_unicode=True):
             if isinstance(raw_line, bytes):
@@ -923,7 +937,7 @@ class HFSpaceClient:
         last_transport_error: BaseException | None = None
         while time.monotonic() < deadline:
             remaining = max(1.0, deadline - time.monotonic())
-            response: requests.Response | None = None
+            response: _RequestsResponse | None = None
             try:
                 response = self._session.get(
                     stream_url,

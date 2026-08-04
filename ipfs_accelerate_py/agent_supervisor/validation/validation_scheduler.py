@@ -5423,6 +5423,11 @@ class ValidationScheduler:
         result.setdefault("started_at", utc_now())
         result.setdefault("finished_at", utc_now())
         result["returncode"] = int(result.get("returncode", 1))
+        # Emit an explicit boolean in every freshly executed command receipt.
+        # Security-sensitive consumers must be able to distinguish a proven
+        # non-timeout from a legacy/partial record that simply omitted the
+        # field.
+        result["timed_out"] = bool(result.get("timed_out", False))
         result["cache_hit"] = False
         result["cache_key"] = cache_key.digest
         result["stage"] = spec.stage.label

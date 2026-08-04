@@ -1,0 +1,203 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.control-plane-planner-doctor-v2.scheduler_config@1",
+  "audited_baseline_commit": "66c6fb4d46d9472e2f5bba9a4cb3e6f78d858aa5",
+  "taskboard_path": "docs/architecture/agent_supervisor_control_plane_planner_doctor_v2.todo.md",
+  "objectives_path": "docs/architecture/agent_supervisor_control_plane_planner_doctor_v2.objectives.md",
+  "plan_path": "docs/architecture/AGENT_SUPERVISOR_CONTROL_PLANE_PLANNER_DOCTOR_V2_PLAN.md",
+  "task_prefix": "## CPD-",
+  "goal_prefix": "CPD-G",
+  "board_namespace": "agent-supervisor-control-plane-planner-doctor-v2",
+  "merge_target_branch": "main",
+  "max_lanes": 6,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 60,
+  "check_interval_seconds": 30,
+  "stale_seconds": 1800,
+  "max_restarts": 3,
+  "max_task_attempts": 4,
+  "implementation_timeout_seconds": 10800,
+  "validation_max_workers": 4,
+  "worktree_submodule_paths": [
+    "ipfs_datasets_py"
+  ],
+  "protected_paths": [
+    "docs/architecture/AGENT_SUPERVISOR_CONTROL_PLANE_PLANNER_DOCTOR_V2_PLAN.md",
+    "docs/architecture/agent_supervisor_control_plane_planner_doctor_v2.objectives.md",
+    "docs/architecture/agent_supervisor_control_plane_planner_doctor_v2.todo.md",
+    "config/agent_supervisor_control_plane_planner_doctor_v2_scheduler.json"
+  ],
+  "protected_after_manual_completion": {
+    "CPD-051": [
+      "docs/architecture/agent_supervisor_control_plane_zkp_threat_model.md",
+      "test/api/test_agent_supervisor_control_plane_zkp.py"
+    ],
+    "CPD-062": [
+      "ipfs_accelerate_py/agent_supervisor/validation/control_plane_quality_oracle.py",
+      "test/api/test_agent_supervisor_control_plane_quality_oracle.py"
+    ],
+    "CPD-072": [
+      "ipfs_accelerate_py/agent_supervisor/self_improvement/control_plane_rollout.py",
+      "test/api/test_agent_supervisor_control_plane_rollout.py"
+    ],
+    "CPD-081": [
+      "scripts/ops/agent_supervisor/control_plane_planner_doctor.py",
+      "docs/guides/CONTROL_PLANE_PLANNER_DOCTOR_GUIDE.md",
+      "test/api/test_agent_supervisor_control_plane_operations.py"
+    ],
+    "CPD-082": [
+      "ipfs_accelerate_py/agent_supervisor/validation/control_plane_planner_doctor_release.py",
+      "docs/architecture/CONTROL_PLANE_PLANNER_DOCTOR_V2_RELEASE.md",
+      "test/api/test_agent_supervisor_control_plane_planner_doctor_release.py"
+    ]
+  },
+  "manual_completion_seals": {},
+  "imported_programs": {
+    "proof_directed_planner_doctor": {
+      "taskboard_path": "docs/architecture/agent_supervisor_proof_directed_planner_doctor.todo.md",
+      "task_prefix": "## PDR-",
+      "scheduler_path": "config/agent_supervisor_proof_directed_planner_doctor_scheduler.json",
+      "reuse_requires_current_tree_revalidation": true
+    },
+    "prompt_bootstrap_and_rescue": {
+      "taskboard_path": "docs/architecture/agent_supervisor_self_improvement.todo.md",
+      "task_prefix": "## ASI-",
+      "plan_path": "docs/architecture/AGENT_SUPERVISOR_PROMPT_BOOTSTRAP_AND_RESCUE_PLAN.md",
+      "reuse_requires_current_tree_revalidation": true
+    }
+  },
+  "derived_refill": {
+    "enabled_at_bootstrap": false,
+    "enabled_after_task": "CPD-071",
+    "task_source_kind": "duckdb",
+    "task_source_path": "data/agent_supervisor/control_plane_planner_doctor_v2/live/refill.duckdb",
+    "artifact_root": "data/agent_supervisor/control_plane_planner_doctor_v2/live/artifacts",
+    "max_goals_per_epoch": 8,
+    "max_tasks_per_epoch": 24,
+    "max_open_tasks": 48,
+    "max_depth": 3,
+    "max_retries": 2,
+    "unchanged_failure_cooldown_seconds": 3600,
+    "mutate_seed_board": false
+  },
+  "doctor": {
+    "default_mode": "report_only",
+    "enabled_at_bootstrap": false,
+    "mutation_authorized": false,
+    "narrow_autonomous_mutation_enabled": false,
+    "allow_llm": false,
+    "allow_remote_model_provider": false,
+    "allow_remote_embeddings": false,
+    "allow_network": false,
+    "require_real_byte_change_for_commit": true,
+    "require_live_fixed_point": true,
+    "require_complete_impact_closure": true,
+    "require_intent_ir": true,
+    "require_security_ir": true,
+    "require_kernel_reconstruction_for_authoritative_proof": true
+  },
+  "planner": {
+    "default_mode": "shadow",
+    "max_candidates": 4,
+    "max_query_rounds": 3,
+    "max_model_calls": 2,
+    "max_repair_rounds": 2,
+    "max_context_tokens": 12000,
+    "max_goals": 64,
+    "max_tasks": 256,
+    "max_graph_depth": 12,
+    "minimum_requested_ready_width": 2,
+    "deterministic_first": true,
+    "retrieval_is_nomination_only": true
+  },
+  "provider_policy": {
+    "implementation_provider": "grok",
+    "primary": {
+      "provider": "grok",
+      "model": "grok-4.5"
+    },
+    "fallback": {
+      "provider": "codex",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
+      "eligible_only_after": "verified_grok_hard_quota_exhaustion_receipt"
+    },
+    "transient_error_authorizes_fallback": false,
+    "rate_limit_authorizes_fallback": false,
+    "malformed_response_authorizes_fallback": false,
+    "preference_authorizes_fallback": false,
+    "secret_values_in_launch_spec": false
+  },
+  "launch": {
+    "compile_shell_strings": false,
+    "require_argv_array": true,
+    "require_parser_round_trip": true,
+    "require_separate_start_permit": true,
+    "require_expected_effects": true,
+    "require_process_birth_identity": true,
+    "require_health_readiness": true,
+    "require_kill_switch": true,
+    "cuda_visible_devices": "0",
+    "environment_mode": "allowlist_with_opaque_secret_handles"
+  },
+  "benchmark": {
+    "corpus": "this_repository_and_configured_recursive_submodules",
+    "partition": "sealed_provenance_family",
+    "live_evidence_required": true,
+    "synthetic_evidence_may_promote": false,
+    "skipped_checks_may_promote": false,
+    "concurrency_sweep": [
+      1,
+      2,
+      4,
+      6
+    ],
+    "cache_strata": [
+      "cold",
+      "exact",
+      "delta",
+      "restart"
+    ],
+    "max_epochs": 8,
+    "quality_non_compensable": true,
+    "safety_floor_maximum": 0,
+    "missing_telemetry": "unavailable"
+  },
+  "rollout": {
+    "initial_mode": "shadow",
+    "automatic_enabled": false,
+    "stages": [
+      "off",
+      "observe",
+      "shadow",
+      "assist",
+      "canary",
+      "automatic"
+    ],
+    "require_fresh_current_tree_evaluation": true,
+    "require_independent_holdout": true,
+    "require_quality_non_inferiority": true,
+    "require_zero_safety_violations": true,
+    "require_exact_rollback": true
+  },
+  "proof_cache": {
+    "enabled": true,
+    "module": "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache",
+    "prefer_cache_before_provider": true,
+    "single_flight": true,
+    "rederive_assurance_on_hit": true,
+    "allow_simulated_zk_attested": false
+  },
+  "resource_hints": {
+    "cpd-foundation": "cpu-small",
+    "cpd-contracts": "cpu-medium",
+    "cpd-planner": "cpu-medium",
+    "cpd-control": "cpu-medium",
+    "cpd-doctor": "cpu-large",
+    "cpd-repair": "cpu-large",
+    "cpd-proof": "cpu-proof-solver",
+    "cpd-benchmark": "cpu-large",
+    "cpd-telemetry": "cpu-medium",
+    "cpd-self-improvement": "cpu-large",
+    "cpd-release": "cpu-large"
+  }
+}

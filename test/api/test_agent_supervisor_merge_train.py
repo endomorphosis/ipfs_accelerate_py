@@ -435,7 +435,7 @@ def test_isolated_daemon_lanes_share_only_one_target_scoped_train(
     assert benchmark_lane.merge_queue.pending_count() == 1
 
 
-def test_cross_lane_completion_reuses_the_bound_non_main_target(
+def test_cross_lane_completion_without_authority_policy_fails_closed(
     tmp_path: Path,
 ) -> None:
     repo = _repo(tmp_path)
@@ -489,8 +489,13 @@ def test_cross_lane_completion_reuses_the_bound_non_main_target(
 
     result = consumer._merge_train_callback(request)
 
-    assert result["merged"] is True
-    assert result["target_branch"] == "benchmark/semantic-roundtrip"
+    assert result["merged"] is False
+    assert result["reason"] == (
+        "cross_board_manual_completion_authority_metadata_invalid"
+    )
+    assert result["request_todo_path"] == str(producer_todo)
+    assert result["consumer_todo_path"] == str(consumer_todo)
+    assert "- Status: todo" in producer_todo.read_text(encoding="utf-8")
     assert consumer.merge_queue.target_branch == "benchmark/semantic-roundtrip"
 
 

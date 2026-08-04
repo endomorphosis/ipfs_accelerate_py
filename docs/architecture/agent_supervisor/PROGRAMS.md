@@ -10,6 +10,7 @@ when operating a board or citing evidence.
 | `ASREF-` | **Domain layout** | Reorganize `agent_supervisor` into domain packages with an acyclic DAG and package READMEs | `agent_supervisor_module_refactor.*`, `AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md` |
 | `ASI-` | **Self-improvement** | Bounded epoch self-improvement, refill, and v2 efficiency surfaces | `agent_supervisor_self_improvement.*`, `AGENT_SUPERVISOR_SELF_IMPROVEMENT_*.md` |
 | `CBP-` | **Codebase proof** | Proof-carrying control for code change: catalog → claims → obligations → cache → context → edits → re-proof | `agent_supervisor_codebase_proof.*`, `AGENT_SUPERVISOR_CODEBASE_PROOF_CONTEXT_PLAN.md` |
+| `PDR-` | **Proof-directed Planner and Doctor** | Compose prompt/create/steer planning, deterministic diagnosis, proof-gated repair, live benchmarking, and bounded derived self-refill | `agent_supervisor_proof_directed_planner_doctor.*`, `AGENT_SUPERVISOR_PROOF_DIRECTED_PLANNER_DOCTOR_PLAN.md` |
 | `AICAT-` | **AI service catalog** | Catalog discovery, routers, and service surfaces | `ai_service_catalog.*` |
 | `PLAT-` / `PLAT2-` | **SRT plateau holdout** | Semantic-roundtrip plateau break / blind holdout promotion | SRT taskboards under datasets/benchmark worktrees |
 | `GOOSE-` | **Goose CLI integration** | Goose / Meta Spark CLI integration | `goose_cli_integration.*` |

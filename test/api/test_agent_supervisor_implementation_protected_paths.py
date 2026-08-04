@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-import shlex
 import subprocess
 import sys
 import threading
@@ -52,6 +51,10 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import pid_alive
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     run_process_group_stream,
+)
+from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+    ProcessBirthIdentity,
+    WorkspaceLifecycleState,
 )
 
 
@@ -166,29 +169,6 @@ def _task(
     )
 
 
-def _task_claim_owner_command_line(
-    daemon: PortalImplementationDaemon,
-) -> str:
-    state_suffix = "_task_state.json"
-    assert daemon.state_path.name.endswith(state_suffix)
-    state_prefix = daemon.state_path.name[: -len(state_suffix)]
-    return shlex.join(
-        [
-            "python",
-            "-m",
-            "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
-            "--state-dir",
-            str(daemon.state_path.parent.resolve()),
-            "--state-prefix",
-            state_prefix,
-            "--task-shard-count",
-            str(daemon.task_shard_count),
-            "--task-shard-index",
-            str(daemon.task_shard_index),
-        ]
-    )
-
-
 def _git(repo: Path, *args: str) -> str:
     completed = subprocess.run(
         ["git", *args],
@@ -202,8 +182,6 @@ def _git(repo: Path, *args: str) -> str:
 
 def _protected_git_worktree_daemon(
     tmp_path: Path,
-    *,
-    worktree_submodule_paths: tuple[str, ...] = (),
 ) -> tuple[PortalImplementationDaemon, Path, Path, Path]:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -238,7 +216,6 @@ def _protected_git_worktree_daemon(
         implementation_protected_paths=(POLICY_PATH,),
         use_ephemeral_worktree=True,
         worktree_root=worktree_root,
-        worktree_submodule_paths=worktree_submodule_paths,
     )
     return daemon, repo, workspace, protected
 
@@ -311,107 +288,6 @@ def _persist_active_attempt_state(
     state.last_implementation_task_cid = identity.canonical_task_cid
     state.save(daemon.state_path)
     return state
-
-
-def _persist_shutdown_coordination_artifacts(
-    daemon: PortalImplementationDaemon,
-    *,
-    task: PortalTask,
-    workspace: Path,
-    implementation_owner_pid: int,
-    claim_owner_pid: int,
-    pool_owner_pid: int,
-    claim_state_dir: Path | None = None,
-) -> dict[str, Path]:
-    started_at = "2026-07-30T21:03:00+00:00"
-    implementation_lock = daemon._build_implementation_lock_metadata(
-        task,
-        1,
-        started_at,
-    )
-    implementation_lock["pid"] = implementation_owner_pid
-    implementation_lock_path = daemon._implementation_lock_path()
-    implementation_lock_path.parent.mkdir(parents=True, exist_ok=True)
-    implementation_lock_path.write_text(
-        json.dumps(implementation_lock, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-
-    task_claim = daemon._build_implementation_task_claim_metadata(
-        task,
-        1,
-        started_at,
-    )
-    task_claim["pid"] = claim_owner_pid
-    if claim_state_dir is not None:
-        task_claim["state_dir"] = str(claim_state_dir.resolve())
-    task_claim_path = daemon._implementation_task_claim_path(
-        task.task_id,
-        canonical_task_cid=daemon._canonical_ref(task),
-    )
-    task_claim_path.parent.mkdir(parents=True, exist_ok=True)
-    task_claim_path.write_text(
-        json.dumps(task_claim, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-
-    resource_path = "vendor/dependency"
-    resource_claim = daemon._build_implementation_resource_claim_metadata(
-        task,
-        1,
-        started_at,
-        resource_path,
-    )
-    resource_claim["pid"] = claim_owner_pid
-    if claim_state_dir is not None:
-        resource_claim["state_dir"] = str(claim_state_dir.resolve())
-    resource_claim_path = daemon._implementation_resource_claim_path(
-        resource_path
-    )
-    resource_claim_path.parent.mkdir(parents=True, exist_ok=True)
-    resource_claim_path.write_text(
-        json.dumps(resource_claim, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-
-    pool = daemon.worktree_pool
-    assert pool is not None
-    entry_id = "shutdown-fixture-lease"
-    pool_state = {
-        "schema": implementation_daemon_module.WORKTREE_POOL_SCHEMA,
-        "lease_token": entry_id,
-        "path": str(workspace.resolve()),
-        "repo_root": str(daemon.repo_root.resolve()),
-        "repo_common_dir": str(pool.repo_common_dir),
-        "cache_key": "shutdown-fixture",
-        "base_commit": _git(workspace, "rev-parse", "HEAD"),
-        "dependency_paths": [],
-        "dependency_heads": {},
-        "state": "leased",
-        "lease_pid": pool_owner_pid,
-        "branch": "lane",
-        "created_at_epoch": 1.0,
-        "last_used_at_epoch": 1.0,
-        "use_count": 1,
-    }
-    pool.state_root.mkdir(parents=True, exist_ok=True)
-    pool_state_path = pool._state_path(entry_id)
-    pool_state_path.write_text(
-        json.dumps(pool_state, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    pool_lock_path = pool._lock_path(pool_state)
-    pool_lock_path.write_text(
-        json.dumps({"pid": pool_owner_pid}, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    return {
-        "implementation_lock": implementation_lock_path,
-        "task_claim": task_claim_path,
-        "resource_claim": resource_claim_path,
-        "pool_state": pool_state_path,
-        "pool_lock": pool_lock_path,
-    }
 
 
 def test_normalize_implementation_protected_paths_is_exact_and_fail_closed(
@@ -1029,7 +905,6 @@ def test_validated_no_change_guard_rejects_disappeared_candidate() -> None:
                 ]
             }
         },
-        require_no_change_policy_gate=False,
     )
 
     assert guard["allowed"] is False
@@ -1047,7 +922,6 @@ def test_validated_no_change_guard_accepts_exact_unchanged_baseline() -> None:
         expected_branch="implementation/task-attempt-1",
         current_branch="implementation/task-attempt-1",
         validation_result={"selection": {"changed_files": []}},
-        require_no_change_policy_gate=False,
     )
 
     assert guard["allowed"] is True
@@ -1299,153 +1173,14 @@ def test_quiesced_shutdown_reconciles_fence_before_operator_board_revision(
     assert not daemon._implementation_protected_incident_path().exists()
 
 
-def test_quiesced_shutdown_clears_exact_dead_owner_coordination_artifacts(
-    tmp_path: Path,
-) -> None:
-    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
-        tmp_path,
-        worktree_submodule_paths=("vendor/dependency",),
-    )
-    task = _task(outputs=["vendor/dependency/src/example.py"])
-    daemon._require_implementation_protected_snapshot(
-        task=task,
-        attempt=1,
-        workspace_path=workspace,
-    )
-    _persist_active_attempt_state(
-        daemon,
-        task=task,
-        workspace=workspace,
-    )
-    dead_pid = 2_000_000_000
-    artifacts = _persist_shutdown_coordination_artifacts(
-        daemon,
-        task=task,
-        workspace=workspace,
-        implementation_owner_pid=dead_pid,
-        claim_owner_pid=dead_pid,
-        pool_owner_pid=dead_pid,
-    )
-    candidate = workspace / "src" / "candidate.py"
-    candidate.parent.mkdir(parents=True)
-    candidate.write_text("VALUE = 'preserve me'\n", encoding="utf-8")
-    head_before = _git(workspace, "rev-parse", "HEAD")
-    status_before = _git(
-        workspace,
-        "status",
-        "--porcelain",
-        "--untracked-files=all",
-    )
-
-    result = daemon.reconcile_quiesced_active_attempt(
-        expected_owner_pid=dead_pid,
-    )
-
-    assert result["reconciled"] is True
-    cleanup = result["coordination_cleanup"]
-    assert cleanup["attempted"] is True
-    assert cleanup["owner_pid"] == dead_pid
-    assert len(cleanup["task_claims"]["cleared"]) == 1
-    assert cleanup["task_claims"]["preserved"] == []
-    assert len(cleanup["resource_claims"]["cleared"]) == 1
-    assert cleanup["resource_claims"]["preserved"] == []
-    assert cleanup["worktree_pool"]["detached"] is True
-    assert cleanup["worktree_pool"]["workspace_preserved"] is True
-    assert all(not path.exists() for path in artifacts.values())
-    assert workspace.is_dir()
-    assert candidate.read_text(encoding="utf-8") == "VALUE = 'preserve me'\n"
-    assert _git(workspace, "rev-parse", "HEAD") == head_before
-    assert (
-        _git(
-            workspace,
-            "status",
-            "--porcelain",
-            "--untracked-files=all",
-        )
-        == status_before
-    )
-    assert str(workspace.resolve()) in {
-        str(Path(path).resolve())
-        for path in (
-            line.removeprefix("worktree ")
-            for line in _git(
-                repo,
-                "worktree",
-                "list",
-                "--porcelain",
-            ).splitlines()
-            if line.startswith("worktree ")
-        )
-    }
-
-
-def test_quiesced_shutdown_preserves_live_foreign_coordination_artifacts(
-    tmp_path: Path,
-) -> None:
-    daemon, _repo, workspace, _protected = _protected_git_worktree_daemon(
-        tmp_path,
-        worktree_submodule_paths=("vendor/dependency",),
-    )
-    task = _task(outputs=["vendor/dependency/src/example.py"])
-    daemon._require_implementation_protected_snapshot(
-        task=task,
-        attempt=1,
-        workspace_path=workspace,
-    )
-    _persist_active_attempt_state(
-        daemon,
-        task=task,
-        workspace=workspace,
-    )
-    dead_pid = 2_000_000_000
-    artifacts = _persist_shutdown_coordination_artifacts(
-        daemon,
-        task=task,
-        workspace=workspace,
-        implementation_owner_pid=dead_pid,
-        claim_owner_pid=os.getpid(),
-        pool_owner_pid=os.getpid(),
-        claim_state_dir=tmp_path / "foreign-state",
-    )
-    preserved = {
-        name: path.read_bytes()
-        for name, path in artifacts.items()
-        if name != "implementation_lock"
-    }
-
-    result = daemon.reconcile_quiesced_active_attempt(
-        expected_owner_pid=dead_pid,
-    )
-
-    assert result["reconciled"] is True
-    cleanup = result["coordination_cleanup"]
-    assert cleanup["attempted"] is True
-    assert cleanup["task_claims"]["cleared"] == []
-    assert cleanup["task_claims"]["preserved"][0]["reason"] == (
-        "owner_pid_mismatch"
-    )
-    assert cleanup["resource_claims"]["cleared"] == []
-    assert cleanup["resource_claims"]["preserved"][0]["reason"] == (
-        "owner_pid_mismatch"
-    )
-    assert cleanup["worktree_pool"]["detached"] is False
-    assert cleanup["worktree_pool"]["reason"] == "pool_state_preserved"
-    assert cleanup["worktree_pool"]["preserved"][0]["reason"] == (
-        "owner_pid_mismatch"
-    )
-    assert not artifacts["implementation_lock"].exists()
-    for name, content in preserved.items():
-        assert artifacts[name].read_bytes() == content
-    assert workspace.is_dir()
-
-
-def test_quiesced_shutdown_serializes_replacement_implementation_lease(
+def test_quiesced_shutdown_terminalizes_exact_dead_lifecycle_owner_and_unblocks_retry(
     tmp_path: Path,
 ) -> None:
     daemon, _repo, workspace, _protected = _protected_git_worktree_daemon(
         tmp_path
     )
     task = _task(outputs=["src/example.py"])
+    identity = daemon._identity_for_task(task)
     daemon._require_implementation_protected_snapshot(
         task=task,
         attempt=1,
@@ -1456,81 +1191,132 @@ def test_quiesced_shutdown_serializes_replacement_implementation_lease(
         task=task,
         workspace=workspace,
     )
-    dead_pid = 2_000_000_000
-    stale_lock = daemon._build_implementation_lock_metadata(
-        task,
-        1,
-        "2026-07-30T21:03:00+00:00",
+    lifecycle = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=identity.canonical_task_cid,
+        attempt=1,
+        lane_id="terminated-lane",
+        workspace_path=workspace,
+        branch="lane",
+        merge_target="main",
+        state_dir=str(daemon.state_path.parent.resolve()),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 19,
+            start_time_ticks=1,
+            boot_id="provably-dead-owner",
+        ),
     )
-    stale_lock["pid"] = dead_pid
-    lock_path = daemon._implementation_lock_path()
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path.write_text(
-        json.dumps(stale_lock, sort_keys=True) + "\n",
-        encoding="utf-8",
+    lifecycle = daemon.worktree_lifecycle.mark_active(
+        workspace,
+        lease_id=lifecycle.lease_id,
+        expected_fence=lifecycle.fence,
     )
-    replacement_daemon = PortalImplementationDaemon(
-        todo_path=daemon.todo_path,
-        state_path=daemon.state_path,
-        strategy_path=daemon.strategy_path,
-        events_path=daemon.events_path,
-        repo_root=daemon.repo_root,
-        implement=True,
-        implementation_command="fake-agent",
-        implementation_protected_paths=(POLICY_PATH,),
-        use_ephemeral_worktree=True,
-        worktree_root=daemon.worktree_root,
-        worktree_submodule_paths=(),
-    )
-    replacement = replacement_daemon._build_implementation_lock_metadata(
-        task,
-        2,
-        "2026-07-30T21:04:00+00:00",
-    )
-    reconciliation_entered = threading.Event()
-    contender_started = threading.Event()
-    contender_finished = threading.Event()
-    contender_result: list[tuple[bool, str]] = []
-    reconcile_fence = daemon._reconcile_implementation_protected_path_fence
+    assert lifecycle.expires_at > daemon.worktree_lifecycle.clock()
 
-    def fenced_reconciliation() -> dict[str, object]:
-        reconciliation_entered.set()
-        assert contender_started.wait(timeout=2)
-        time.sleep(0.05)
-        assert not contender_finished.is_set()
-        return reconcile_fence()
-
-    def acquire_replacement() -> None:
-        assert reconciliation_entered.wait(timeout=2)
-        contender_started.set()
-        acquired, reason, _existing = (
-            replacement_daemon._try_acquire_implementation_lock(
-                lock_path,
-                replacement,
-            )
-        )
-        contender_result.append((acquired, reason))
-        contender_finished.set()
-
-    daemon._reconcile_implementation_protected_path_fence = (
-        fenced_reconciliation
-    )
-    thread = threading.Thread(target=acquire_replacement, daemon=True)
-    thread.start()
-
-    result = daemon.reconcile_quiesced_active_attempt(
-        expected_owner_pid=dead_pid,
-    )
-    thread.join(timeout=2)
+    result = daemon.reconcile_quiesced_active_attempt()
 
     assert result["reconciled"] is True
-    assert contender_finished.is_set()
-    assert contender_result == [(True, "acquired")]
-    assert json.loads(lock_path.read_text(encoding="utf-8")) == replacement
-    assert replacement_daemon._release_implementation_lock(
-        lock_path,
-        replacement,
+    assert result["blocked"] is False
+    lifecycle_result = result["worktree_lifecycle_reconciliation"]
+    assert (
+        lifecycle_result["reason"]
+        == "worktree_lifecycle_dead_owner_terminalized"
     )
+    assert lifecycle_result["terminal_reason"] == (
+        "controlled_shutdown_quiesced_owner"
+    )
+    terminal = daemon.worktree_lifecycle.load_workspace(workspace)
+    assert terminal is not None
+    assert terminal.state is WorkspaceLifecycleState.TERMINAL
+    assert terminal.fence == lifecycle.fence + 1
+    assert PortalTaskState.load(daemon.state_path).implementation_in_progress is False
+
+    # The original six-hour lease remains unexpired, but the terminal task
+    # index must no longer reject the same retry attempt in a replacement
+    # workspace.
+    retry = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=identity.canonical_task_cid,
+        attempt=1,
+        lane_id="replacement-lane",
+        workspace_path=workspace.parent / "replacement",
+        branch="implementation/example-retry",
+        merge_target="main",
+        state_dir=str(tmp_path / "replacement-state"),
+    )
+    assert retry.state is WorkspaceLifecycleState.PREPARING
+
+
+@pytest.mark.parametrize(
+    ("ownership_case", "expected_reason"),
+    [
+        ("live", "worktree_lifecycle_owner_still_active"),
+        ("wrong_state", "worktree_lifecycle_state_dir_mismatch"),
+        ("unknown_liveness", "worktree_lifecycle_owner_liveness_unknown"),
+    ],
+)
+def test_quiesced_shutdown_keeps_unproven_lifecycle_ownership_blocked(
+    tmp_path: Path,
+    ownership_case: str,
+    expected_reason: str,
+) -> None:
+    daemon, _repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    identity = daemon._identity_for_task(task)
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+    dead_owner = ProcessBirthIdentity(
+        pid=2**30 - 23,
+        start_time_ticks=1,
+        boot_id="provably-dead-owner",
+    )
+    lifecycle = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=identity.canonical_task_cid,
+        attempt=1,
+        lane_id=f"{ownership_case}-lane",
+        workspace_path=workspace,
+        branch="lane",
+        merge_target="main",
+        state_dir=str(
+            tmp_path / "different-state"
+            if ownership_case == "wrong_state"
+            else daemon.state_path.parent.resolve()
+        ),
+        owner=None if ownership_case == "live" else dead_owner,
+    )
+    lifecycle = daemon.worktree_lifecycle.mark_active(
+        workspace,
+        lease_id=lifecycle.lease_id,
+        expected_fence=lifecycle.fence,
+    )
+    if ownership_case == "unknown_liveness":
+        daemon.worktree_lifecycle.proc_root = tmp_path / "missing-proc"
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == "worktree_lifecycle_reconciliation_blocked"
+    lifecycle_result = result["worktree_lifecycle_reconciliation"]
+    assert lifecycle_result["reason"] == expected_reason
+    unchanged = daemon.worktree_lifecycle.load_workspace(workspace)
+    assert unchanged is not None
+    assert unchanged.state is WorkspaceLifecycleState.ACTIVE
+    assert unchanged.fence == lifecycle.fence
+    assert PortalTaskState.load(daemon.state_path).implementation_in_progress is True
+    assert daemon._implementation_protected_active_snapshot_path().exists()
+    assert not daemon._implementation_protected_incident_path().exists()
 
 
 def test_quiesced_shutdown_preserves_real_protected_path_incident(
@@ -3267,809 +3053,6 @@ def test_auto_clears_content_preserving_identity_thrash(tmp_path: Path) -> None:
     assert not daemon._implementation_protected_incident_path().exists()
 
 
-def test_identity_thrash_auto_clear_reaps_stale_task_claim_for_next_selection(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A live lane PID must not preserve a claim for its finished attempt."""
-
-    protected = tmp_path / POLICY_PATH
-    protected.parent.mkdir(parents=True)
-    protected.write_text("authoritative\n", encoding="utf-8")
-    daemon = _daemon(
-        tmp_path,
-        state_path=tmp_path / "state" / "test_task_state.json",
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "process_command_line",
-        lambda _pid: _task_claim_owner_command_line(daemon),
-    )
-    task = _task(outputs=["src/example.py"])
-    identity = daemon._identity_for_task(task)
-    claim_path = daemon._implementation_task_claim_path(
-        task.task_id,
-        canonical_task_cid=identity.canonical_task_cid,
-    )
-    claim_metadata = daemon._build_implementation_task_claim_metadata(
-        task,
-        1,
-        "2026-08-03T00:00:00+00:00",
-    )
-    acquired, _reason, _existing = (
-        daemon._try_acquire_implementation_task_claim(
-            claim_path,
-            claim_metadata,
-        )
-    )
-    assert acquired is True
-    # The owner daemon is still alive, but its projection no longer names this
-    # task/CID/attempt after the protected-path interruption settled.
-    PortalTaskState().save(daemon.state_path)
-    daemon._latch_implementation_protected_incident(
-        {
-            "reason": "implementation_protected_path_mutated",
-            "task_id": task.task_id,
-            "attempt": 1,
-            "workspace_path": str(tmp_path),
-            "mutations": [
-                {
-                    "scope": "shared_checkout",
-                    "path": POLICY_PATH,
-                    "change": "identity_changed",
-                    "before": {
-                        "state": "present",
-                        "kind": "regular_file",
-                        "sha256": "same-digest",
-                        "links": 1,
-                    },
-                    "after": {
-                        "state": "present",
-                        "kind": "regular_file",
-                        "sha256": "same-digest",
-                        "links": 2,
-                    },
-                }
-            ],
-        }
-    )
-    assert daemon._release_implementation_task_claim(
-        claim_path,
-        claim_metadata,
-    )
-    assert claim_path.exists()
-
-    result = daemon._reconcile_implementation_protected_path_fence()
-
-    assert result["cleared"] is True
-    assert result["reason"] == "content_preserving_identity_thrash_accepted"
-    assert result["task_claim_reconciliation"]["reason"] == (
-        "stale_claim_reaped"
-    )
-    assert not claim_path.exists()
-    assert daemon._active_implementation_task_claims([task]) == {}
-    selected = daemon._select_next_task(
-        [task],
-        {task.task_id: "ready"},
-        {},
-        {},
-        {},
-    )
-    assert selected is task
-
-
-def test_active_claim_scan_reaps_preexisting_fenceless_stale_claim(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """An upgrade can recover a claim whose old fence is already absent."""
-
-    daemon = _daemon(
-        tmp_path,
-        state_path=tmp_path / "state" / "test_task_state.json",
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "process_command_line",
-        lambda _pid: _task_claim_owner_command_line(daemon),
-    )
-    task = _task(outputs=["src/example.py"])
-    PortalTaskState().save(daemon.state_path)
-    claim_path = daemon._implementation_task_claim_path(
-        task.task_id,
-        canonical_task_cid=daemon._canonical_ref(task),
-    )
-    claim_metadata = daemon._build_implementation_task_claim_metadata(
-        task,
-        1,
-        "2026-08-03T00:00:00+00:00",
-    )
-    acquired, _reason, _existing = (
-        daemon._try_acquire_implementation_task_claim(
-            claim_path,
-            claim_metadata,
-        )
-    )
-    assert acquired is True
-    assert claim_path.exists()
-
-    assert daemon._active_implementation_task_claims([task]) == {}
-    assert not claim_path.exists()
-    selected = daemon._select_next_task(
-        [task],
-        {task.task_id: "ready"},
-        {},
-        {},
-        {},
-    )
-    assert selected is task
-
-
-@pytest.mark.parametrize(
-    "binding_case",
-    (
-        "missing_state_dir",
-        "relative_paths",
-        "state_path_outside_state_dir",
-        "coherent_foreign_state_root",
-        "incomplete_shard_tuple",
-        "invalid_shard_range",
-        "missing_owner_lane_binding",
-        "invalid_owner_lane_binding_cid",
-    ),
-)
-def test_active_claim_scan_retains_malformed_owner_state_binding(
-    tmp_path: Path,
-    binding_case: str,
-) -> None:
-    """Malformed lane bindings cannot turn unrelated state into deletion proof."""
-
-    daemon = _daemon(
-        tmp_path,
-        state_path=tmp_path / "state" / "test_task_state.json",
-    )
-    PortalTaskState().save(daemon.state_path)
-    task = _task(outputs=["src/example.py"])
-    claim_path = daemon._implementation_task_claim_path(
-        task.task_id,
-        canonical_task_cid=daemon._canonical_ref(task),
-    )
-    claim_metadata = daemon._build_implementation_task_claim_metadata(
-        task,
-        1,
-        "2026-08-03T00:00:00+00:00",
-    )
-    if binding_case == "missing_state_dir":
-        claim_metadata.pop("state_dir")
-    elif binding_case == "relative_paths":
-        claim_metadata["state_dir"] = "relative-state"
-        claim_metadata["state_path"] = "relative-state/task-state.json"
-    elif binding_case == "state_path_outside_state_dir":
-        unrelated_state_path = tmp_path / "unrelated" / "task-state.json"
-        PortalTaskState().save(unrelated_state_path)
-        claim_metadata["state_path"] = str(unrelated_state_path.resolve())
-    elif binding_case == "coherent_foreign_state_root":
-        unrelated_state_dir = tmp_path / "untrusted-state" / "lane-0"
-        unrelated_state_path = unrelated_state_dir / "task-state.json"
-        PortalTaskState().save(unrelated_state_path)
-        claim_metadata["state_dir"] = str(unrelated_state_dir.resolve())
-        claim_metadata["state_path"] = str(unrelated_state_path.resolve())
-    elif binding_case == "incomplete_shard_tuple":
-        claim_metadata.pop("task_shard_index")
-    elif binding_case == "invalid_shard_range":
-        claim_metadata["task_shard_index"] = claim_metadata["task_shard_count"]
-    elif binding_case == "missing_owner_lane_binding":
-        claim_metadata.pop("owner_lane_binding")
-    elif binding_case == "invalid_owner_lane_binding_cid":
-        claim_metadata["owner_lane_binding_cid"] = "cid:corrupt"
-    else:  # pragma: no cover - the parameter list is exhaustive.
-        raise AssertionError(binding_case)
-    acquired, _reason, _existing = (
-        daemon._try_acquire_implementation_task_claim(
-            claim_path,
-            claim_metadata,
-        )
-    )
-    assert acquired is True
-
-    active = daemon._active_implementation_task_claims([task])
-
-    assert active[task.task_id]["lease_id"] == claim_metadata["lease_id"]
-    assert claim_path.exists()
-
-
-def test_active_claim_scan_reaps_valid_stale_claim_owned_by_peer_lane(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    """A coherent owner projection remains usable by a sibling lane."""
-
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "process_is_running",
-        lambda pid: pid == os.getpid(),
-    )
-    owner = _daemon(
-        tmp_path,
-        state_path=tmp_path / "state" / "owner" / "owner_task_state.json",
-    )
-    peer = _daemon(
-        tmp_path,
-        state_path=tmp_path / "state" / "peer" / "peer_task_state.json",
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "process_command_line",
-        lambda _pid: _task_claim_owner_command_line(owner),
-    )
-    task = _task(outputs=["src/example.py"])
-    PortalTaskState().save(owner.state_path)
-    claim_path = owner._implementation_task_claim_path(
-        task.task_id,
-        canonical_task_cid=owner._canonical_ref(task),
-    )
-    claim_metadata = owner._build_implementation_task_claim_metadata(
-        task,
-        1,
-        "2026-08-03T00:00:00+00:00",
-    )
-    acquired, _reason, _existing = owner._try_acquire_implementation_task_claim(
-        claim_path,
-        claim_metadata,
-    )
-    assert acquired is True
-
-    assert peer._active_implementation_task_claims([task]) == {}
-    assert not claim_path.exists()
-
-
-def test_active_claim_scan_retains_valid_live_claim_owned_by_peer_lane(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    """A peer must read the owner lane, not require its own state path."""
-
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "process_is_running",
-        lambda pid: pid == os.getpid(),
-    )
-    owner = _daemon(
-        tmp_path,
-        state_path=tmp_path / "state" / "owner" / "owner_task_state.json",
-    )
-    peer = _daemon(
-        tmp_path,
-        state_path=tmp_path / "state" / "peer" / "peer_task_state.json",
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "process_command_line",
-        lambda _pid: _task_claim_owner_command_line(owner),
-    )
-    task = _task(outputs=["src/example.py"])
-    task_cid = owner._canonical_ref(task)
-    PortalTaskState(
-        active_task_id=task.task_id,
-        active_task_cid=task_cid,
-        active_attempt=1,
-        implementation_in_progress=True,
-    ).save(owner.state_path)
-    claim_path = owner._implementation_task_claim_path(
-        task.task_id,
-        canonical_task_cid=task_cid,
-    )
-    claim_metadata = owner._build_implementation_task_claim_metadata(
-        task,
-        1,
-        "2026-08-03T00:00:00+00:00",
-    )
-    acquired, _reason, _existing = owner._try_acquire_implementation_task_claim(
-        claim_path,
-        claim_metadata,
-    )
-    assert acquired is True
-
-    active = peer._active_implementation_task_claims([task])
-
-    assert active[task.task_id]["lease_id"] == claim_metadata["lease_id"]
-    assert claim_path.exists()
-    assert owner._release_implementation_task_claim(claim_path, claim_metadata)
-
-
-def test_active_claim_scan_retains_live_claim_redirected_within_owner_lane(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A decoy state file in the right directory cannot stale a live claim."""
-
-    owner = _daemon(
-        tmp_path,
-        state_path=tmp_path / "state" / "owner" / "owner_task_state.json",
-    )
-    peer = _daemon(
-        tmp_path,
-        state_path=tmp_path / "state" / "peer" / "peer_task_state.json",
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "process_is_running",
-        lambda pid: pid == os.getpid(),
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "process_command_line",
-        lambda _pid: _task_claim_owner_command_line(owner),
-    )
-    task = _task(outputs=["src/example.py"])
-    task_cid = owner._canonical_ref(task)
-    PortalTaskState(
-        active_task_id=task.task_id,
-        active_task_cid=task_cid,
-        active_attempt=1,
-        implementation_in_progress=True,
-    ).save(owner.state_path)
-    decoy_path = owner.state_path.with_name("decoy_task_state.json")
-    PortalTaskState().save(decoy_path)
-    claim_path = owner._implementation_task_claim_path(
-        task.task_id,
-        canonical_task_cid=task_cid,
-    )
-    claim_metadata = owner._build_implementation_task_claim_metadata(
-        task,
-        1,
-        "2026-08-03T00:00:00+00:00",
-    )
-    acquired, _reason, _existing = owner._try_acquire_implementation_task_claim(
-        claim_path,
-        claim_metadata,
-    )
-    assert acquired is True
-
-    # Model a coherent metadata rewrite, not merely a forgotten duplicated
-    # field. The live process argv remains independent authority for "owner".
-    claim_metadata["state_path"] = str(decoy_path.resolve())
-    owner_binding = dict(claim_metadata["owner_lane_binding"])
-    owner_binding.update(
-        {
-            "state_path": str(decoy_path.resolve()),
-            "state_filename": decoy_path.name,
-            "state_prefix": "decoy",
-        }
-    )
-    claim_metadata["owner_lane_binding"] = owner_binding
-    claim_metadata["owner_lane_binding_cid"] = (
-        implementation_daemon_module.content_identity(owner_binding)
-    )
-    claim_path.write_text(
-        json.dumps(claim_metadata, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-
-    active = peer._active_implementation_task_claims([task])
-
-    assert active[task.task_id]["lease_id"] == claim_metadata["lease_id"]
-    assert claim_path.exists()
-    assert owner._release_implementation_task_claim(claim_path, claim_metadata)
-
-
-def test_active_claim_scan_retains_live_claim_redirected_to_sibling_lane(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A claimant PID cannot borrow a sibling lane's stale projection."""
-
-    owner = _daemon(
-        tmp_path,
-        state_path=tmp_path / "state" / "owner" / "owner_task_state.json",
-    )
-    peer = _daemon(
-        tmp_path,
-        state_path=tmp_path / "state" / "peer" / "peer_task_state.json",
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "process_is_running",
-        lambda pid: pid == os.getpid(),
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "process_command_line",
-        lambda _pid: _task_claim_owner_command_line(owner),
-    )
-    task = _task(outputs=["src/example.py"])
-    task_cid = owner._canonical_ref(task)
-    PortalTaskState(
-        active_task_id=task.task_id,
-        active_task_cid=task_cid,
-        active_attempt=1,
-        implementation_in_progress=True,
-    ).save(owner.state_path)
-    decoy_dir = tmp_path / "state" / "other"
-    decoy_path = decoy_dir / "other_task_state.json"
-    PortalTaskState().save(decoy_path)
-    claim_path = owner._implementation_task_claim_path(
-        task.task_id,
-        canonical_task_cid=task_cid,
-    )
-    claim_metadata = owner._build_implementation_task_claim_metadata(
-        task,
-        1,
-        "2026-08-03T00:00:00+00:00",
-    )
-    acquired, _reason, _existing = owner._try_acquire_implementation_task_claim(
-        claim_path,
-        claim_metadata,
-    )
-    assert acquired is True
-
-    claim_metadata["state_dir"] = str(decoy_dir.resolve())
-    claim_metadata["state_path"] = str(decoy_path.resolve())
-    owner_binding = dict(claim_metadata["owner_lane_binding"])
-    owner_binding.update(
-        {
-            "state_dir": str(decoy_dir.resolve()),
-            "state_path": str(decoy_path.resolve()),
-            "state_filename": decoy_path.name,
-            "state_prefix": "other",
-        }
-    )
-    claim_metadata["owner_lane_binding"] = owner_binding
-    claim_metadata["owner_lane_binding_cid"] = (
-        implementation_daemon_module.content_identity(owner_binding)
-    )
-    claim_path.write_text(
-        json.dumps(claim_metadata, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-
-    active = peer._active_implementation_task_claims([task])
-
-    assert active[task.task_id]["lease_id"] == claim_metadata["lease_id"]
-    assert claim_path.exists()
-    assert owner._release_implementation_task_claim(claim_path, claim_metadata)
-
-
-def test_active_claim_scan_retains_repository_unproven_owner_projection(
-    tmp_path: Path,
-) -> None:
-    """An unbound state projection cannot authorize shared-claim deletion."""
-
-    daemon = _daemon(tmp_path)
-    task = _task(outputs=["src/example.py"])
-    PortalTaskState().save(daemon.state_path)
-    claim_path = daemon._implementation_task_claim_path(
-        task.task_id,
-        canonical_task_cid=daemon._canonical_ref(task),
-    )
-    claim_metadata = daemon._build_implementation_task_claim_metadata(
-        task,
-        1,
-        "2026-08-03T00:00:00+00:00",
-    )
-    claim_metadata["repo_root"] = ""
-    claim_metadata["worktree_root"] = ""
-    claim_metadata["repository_id"] = ""
-    acquired, _reason, _existing = daemon._try_acquire_implementation_task_claim(
-        claim_path,
-        claim_metadata,
-    )
-    assert acquired is True
-
-    active = daemon._active_implementation_task_claims([task])
-
-    assert active[task.task_id]["lease_id"] == claim_metadata["lease_id"]
-    assert claim_path.exists()
-
-
-def test_task_claim_repository_drift_cannot_bypass_protected_fence(
-    tmp_path: Path,
-) -> None:
-    """A corrupt repository binding must not turn a live fence into stale proof."""
-
-    daemon = _daemon(tmp_path)
-    task = _task(outputs=["src/example.py"])
-    claim_metadata = daemon._build_implementation_task_claim_metadata(
-        task,
-        1,
-        "2026-08-03T00:00:00+00:00",
-    )
-    fence_path = (
-        daemon.state_path.parent
-        / implementation_daemon_module.IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME
-    )
-    fence_path.parent.mkdir(parents=True, exist_ok=True)
-    fence_path.write_text('{"schema":"test-fence"}\n', encoding="utf-8")
-    claim_metadata["repository_id"] = "repository:corrupt"
-
-    assert daemon._implementation_task_claim_owner_is_active(claim_metadata)
-    assert fence_path.exists()
-
-
-def test_live_task_claim_repository_drift_is_not_deletion_authority(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A corrupt repo field cannot stale a live, exactly bound lane claim."""
-
-    _git(tmp_path, "init")
-    daemon = _daemon(
-        tmp_path,
-        state_path=tmp_path / "state" / "owner_task_state.json",
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "process_is_running",
-        lambda pid: pid == os.getpid(),
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "process_command_line",
-        lambda _pid: _task_claim_owner_command_line(daemon),
-    )
-    task = _task(outputs=["src/example.py"])
-    task_cid = daemon._canonical_ref(task)
-    PortalTaskState(
-        active_task_id=task.task_id,
-        active_task_cid=task_cid,
-        active_attempt=1,
-        implementation_in_progress=True,
-    ).save(daemon.state_path)
-    claim_path = daemon._implementation_task_claim_path(
-        task.task_id,
-        canonical_task_cid=task_cid,
-    )
-    claim_metadata = daemon._build_implementation_task_claim_metadata(
-        task,
-        1,
-        "2026-08-03T00:00:00+00:00",
-    )
-    claim_metadata["repository_id"] = "repository:corrupt"
-    acquired, _reason, _existing = daemon._try_acquire_implementation_task_claim(
-        claim_path,
-        claim_metadata,
-    )
-    assert acquired is True
-
-    active = daemon._active_implementation_task_claims([task])
-
-    assert active[task.task_id]["lease_id"] == claim_metadata["lease_id"]
-    assert claim_path.exists()
-    assert daemon._release_implementation_task_claim(claim_path, claim_metadata)
-
-
-def test_fence_clear_reaper_retains_selected_predispatch_claim(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "process_command_line",
-        lambda _pid: f"implementation_daemon.py {Path(sys.argv[0]).name}",
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "process_is_running",
-        lambda pid: pid == os.getpid(),
-    )
-    daemon = _daemon(tmp_path)
-    task = _task(outputs=["src/example.py"])
-    task_cid = daemon._canonical_ref(task)
-    PortalTaskState(
-        active_task_id=task.task_id,
-        active_task_cid=task_cid,
-        active_attempt=0,
-        implementation_in_progress=False,
-    ).save(daemon.state_path)
-    claim_path = daemon._implementation_task_claim_path(
-        task.task_id,
-        canonical_task_cid=task_cid,
-    )
-    claim_metadata = daemon._build_implementation_task_claim_metadata(
-        task,
-        1,
-        "2026-08-03T00:00:00+00:00",
-    )
-    acquired, _reason, _existing = (
-        daemon._try_acquire_implementation_task_claim(
-            claim_path,
-            claim_metadata,
-        )
-    )
-    assert acquired is True
-
-    result = daemon._reap_retained_task_claim_after_protected_fence_clear(
-        task_id=task.task_id,
-        attempt=1,
-    )
-
-    assert result["reason"] == "claim_retained_fail_closed"
-    assert claim_path.exists()
-    PortalTaskState().save(daemon.state_path)
-    assert daemon._release_implementation_task_claim(
-        claim_path,
-        claim_metadata,
-    )
-
-
-def test_active_claim_scan_fails_closed_for_malformed_claim(
-    tmp_path: Path,
-) -> None:
-    daemon = _daemon(tmp_path)
-    task = _task(outputs=["src/example.py"])
-    claim_path = daemon._implementation_task_claim_path(
-        task.task_id,
-        canonical_task_cid=daemon._canonical_ref(task),
-    )
-    claim_path.parent.mkdir(parents=True, exist_ok=True)
-    claim_path.write_text("{not-json\n", encoding="utf-8")
-
-    active = daemon._active_implementation_task_claims([task])
-
-    assert active[task.task_id]["coordination_error"] == (
-        "malformed_task_claim"
-    )
-    assert claim_path.exists()
-
-
-def test_identity_thrash_auto_clear_retains_live_matching_task_claim(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    """Auto-clear cannot steal a claim from the exact running attempt."""
-
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "process_command_line",
-        lambda _pid: f"implementation_daemon.py {Path(sys.argv[0]).name}",
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "process_is_running",
-        lambda pid: pid == os.getpid(),
-    )
-
-    protected = tmp_path / POLICY_PATH
-    protected.parent.mkdir(parents=True)
-    protected.write_text("authoritative\n", encoding="utf-8")
-    daemon = _daemon(tmp_path)
-    task = _task(outputs=["src/example.py"])
-    _persist_active_attempt_state(
-        daemon,
-        task=task,
-        workspace=tmp_path,
-        attempt=1,
-    )
-    claim_path = daemon._implementation_task_claim_path(
-        task.task_id,
-        canonical_task_cid=daemon._canonical_ref(task),
-    )
-    claim_metadata = daemon._build_implementation_task_claim_metadata(
-        task,
-        1,
-        "2026-08-03T00:00:00+00:00",
-    )
-    acquired, _reason, _existing = (
-        daemon._try_acquire_implementation_task_claim(
-            claim_path,
-            claim_metadata,
-        )
-    )
-    assert acquired is True
-    daemon._latch_implementation_protected_incident(
-        {
-            "reason": "implementation_protected_path_mutated",
-            "task_id": task.task_id,
-            "attempt": 1,
-            "workspace_path": str(tmp_path),
-            "mutations": [
-                {
-                    "scope": "shared_checkout",
-                    "path": POLICY_PATH,
-                    "change": "identity_changed",
-                    "before": {
-                        "state": "present",
-                        "kind": "regular_file",
-                        "sha256": "same-digest",
-                    },
-                    "after": {
-                        "state": "present",
-                        "kind": "regular_file",
-                        "sha256": "same-digest",
-                    },
-                }
-            ],
-        }
-    )
-    assert daemon._release_implementation_task_claim(
-        claim_path,
-        claim_metadata,
-    )
-
-    result = daemon._reconcile_implementation_protected_path_fence()
-
-    assert result["cleared"] is True
-    assert result["task_claim_reconciliation"]["reason"] == (
-        "claim_retained_fail_closed"
-    )
-    assert claim_path.exists()
-    assert daemon._release_implementation_task_claim(
-        claim_path,
-        claim_metadata,
-    )
-
-
-def test_identity_thrash_auto_clear_retains_claim_for_unreadable_owner_state(
-    tmp_path: Path,
-) -> None:
-    """Malformed owner state cannot become deletion authority."""
-
-    protected = tmp_path / POLICY_PATH
-    protected.parent.mkdir(parents=True)
-    protected.write_text("authoritative\n", encoding="utf-8")
-    daemon = _daemon(tmp_path)
-    task = _task(outputs=["src/example.py"])
-    claim_path = daemon._implementation_task_claim_path(
-        task.task_id,
-        canonical_task_cid=daemon._canonical_ref(task),
-    )
-    claim_metadata = daemon._build_implementation_task_claim_metadata(
-        task,
-        1,
-        "2026-08-03T00:00:00+00:00",
-    )
-    acquired, _reason, _existing = (
-        daemon._try_acquire_implementation_task_claim(
-            claim_path,
-            claim_metadata,
-        )
-    )
-    assert acquired is True
-    daemon.state_path.parent.mkdir(parents=True, exist_ok=True)
-    daemon.state_path.write_text("{not-json\n", encoding="utf-8")
-    daemon._latch_implementation_protected_incident(
-        {
-            "reason": "implementation_protected_path_mutated",
-            "task_id": task.task_id,
-            "attempt": 1,
-            "workspace_path": str(tmp_path),
-            "mutations": [
-                {
-                    "scope": "shared_checkout",
-                    "path": POLICY_PATH,
-                    "change": "identity_changed",
-                    "before": {
-                        "state": "present",
-                        "kind": "regular_file",
-                        "sha256": "same-digest",
-                    },
-                    "after": {
-                        "state": "present",
-                        "kind": "regular_file",
-                        "sha256": "same-digest",
-                    },
-                }
-            ],
-        }
-    )
-    assert daemon._release_implementation_task_claim(
-        claim_path,
-        claim_metadata,
-    )
-
-    result = daemon._reconcile_implementation_protected_path_fence()
-
-    assert result["cleared"] is True
-    assert result["task_claim_reconciliation"]["reason"] == (
-        "claim_retained_fail_closed"
-    )
-    assert claim_path.exists()
-    assert daemon._release_implementation_task_claim(
-        claim_path,
-        claim_metadata,
-    )
-
-
 def test_auto_clears_mixed_identity_and_todo_board_thrash(tmp_path: Path) -> None:
     """Live multi-lane pattern: identity thrash on plan + board content rewrite."""
 
@@ -4214,124 +3197,6 @@ def test_latched_incident_checkpoint_acknowledges_wake_and_stops_replay(
         == "implementation_protected_path_incident_blocked"
         for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
     ) == 1
-
-
-def test_latched_incident_ignores_repeated_unrelated_wakes_without_writes(
-    tmp_path: Path,
-) -> None:
-    protected = tmp_path / POLICY_PATH
-    protected.parent.mkdir(parents=True)
-    protected.write_text("before\n", encoding="utf-8")
-    daemon = _daemon(tmp_path)
-    daemon._latch_implementation_protected_incident(
-        {
-            "reason": "implementation_protected_path_mutated",
-            "task_id": "EX-001",
-            "attempt": 1,
-            "workspace_path": str(tmp_path),
-            "mutations": [
-                {
-                    "scope": "shared_checkout",
-                    "path": POLICY_PATH,
-                    "change": "content_changed",
-                }
-            ],
-        }
-    )
-    acknowledged: list[object] = []
-    daemon._runtime_wake_coordinator = SimpleNamespace(
-        acknowledge=acknowledged.append,
-    )
-    initial_wake = {"kind": "policy", "revision": "incident-latched"}
-    daemon._pending_runtime_wake_events = [initial_wake]
-
-    first = daemon.run_once()
-    checkpoint_path = daemon.runtime_checkpoint_path
-    checkpoint_bytes = checkpoint_path.read_bytes()
-    checkpoint_mtime_ns = checkpoint_path.stat().st_mtime_ns
-    blocked_event_count = sum(
-        json.loads(line)["type"]
-        == "implementation_protected_path_incident_blocked"
-        for line in daemon.events_path.read_text(
-            encoding="utf-8"
-        ).splitlines()
-    )
-
-    unrelated_wakes = [
-        {"kind": "lease", "revision": f"lease-{index}"}
-        for index in range(3)
-    ] + [
-        {"kind": "validation", "revision": "validation-cache"},
-        {"kind": "provider_capacity", "revision": "provider"},
-        {"kind": "task_board", "revision": "unrelated-board"},
-    ]
-    results: list[dict[str, object]] = []
-    for wake in unrelated_wakes:
-        daemon._pending_runtime_wake_events = [wake]
-        results.append(daemon.run_once())
-
-    assert first["blocked"] is True
-    assert first["delta_checkpoint"]["changed"] is True
-    assert blocked_event_count == 1
-    assert all(result["blocked"] is True for result in results)
-    assert all(result["unchanged"] is True for result in results)
-    assert all(result["write_count"] == 0 for result in results)
-    assert all(
-        result["protected_path_reconciliation"][
-            "reconciliation_skipped"
-        ]
-        is True
-        for result in results
-    )
-    assert checkpoint_path.read_bytes() == checkpoint_bytes
-    assert checkpoint_path.stat().st_mtime_ns == checkpoint_mtime_ns
-    assert sum(
-        json.loads(line)["type"]
-        == "implementation_protected_path_incident_blocked"
-        for line in daemon.events_path.read_text(
-            encoding="utf-8"
-        ).splitlines()
-    ) == 1
-    assert acknowledged == [initial_wake, *unrelated_wakes]
-
-
-def test_latched_incident_generation_change_reenters_reconciliation(
-    tmp_path: Path,
-) -> None:
-    protected = tmp_path / POLICY_PATH
-    protected.parent.mkdir(parents=True)
-    protected.write_text("before\n", encoding="utf-8")
-    daemon = _daemon(tmp_path)
-    daemon.todo_path.write_text("# Tasks\n", encoding="utf-8")
-    daemon._latch_implementation_protected_incident(
-        {
-            "reason": "implementation_protected_path_mutated",
-            "task_id": "EX-001",
-            "attempt": 1,
-            "workspace_path": str(tmp_path),
-            "mutations": [
-                {
-                    "scope": "shared_checkout",
-                    "path": POLICY_PATH,
-                    "change": "content_changed",
-                }
-            ],
-        }
-    )
-    daemon._pending_runtime_wake_events = [{"kind": "policy"}]
-    first = daemon.run_once()
-    assert first["blocked"] is True
-
-    # Operator clearance removes the exact durable latch.  Even an otherwise
-    # unrelated wake must observe that generation change and resume the
-    # ordinary reconciliation/task-board path immediately.
-    daemon._implementation_protected_incident_path().unlink()
-    daemon._pending_runtime_wake_events = [{"kind": "lease"}]
-    after_clearance = daemon.run_once()
-
-    assert after_clearance.get("blocked") is not True
-    assert after_clearance["reason"] == "no_tasks_found"
-    assert after_clearance["wake_kinds"] == ["lease"]
 
 
 def test_supervisor_commits_generated_updates_to_protected_todo_board(
@@ -4515,78 +3380,6 @@ def test_generated_dirty_repair_recovers_retained_lease_when_disabled(
     assert result["committed_count"] == 1
     assert not checkout_mutation_lock_path(repo).exists()
     assert supervisor._current_supervisor_checkout_lease() is None
-
-
-def test_generated_board_auto_heals_preexisting_protected_dirt(
-    tmp_path: Path,
-) -> None:
-    """Pre-existing protected board dirt is force-committed, then the producer runs."""
-
-    supervisor, repo, todo_path = _generated_protected_supervisor(tmp_path)
-    todo_path.write_text(
-        "# Tasks\n\n## EX-002 Preexisting dirt\n",
-        encoding="utf-8",
-    )
-    assert supervisor.config.generated_dirty_repair_enabled is False
-    assert supervisor.config.supervisor_auto_heal_enabled is True
-
-    observed: list[str] = []
-
-    def clean_producer() -> list[str]:
-        observed.append("ran")
-        return ["healed"]
-
-    assert supervisor._run_generated_board_producer(
-        producer="auto-heal-test",
-        commit_outputs=True,
-        callback=clean_producer,
-    ) == ["healed"]
-    assert observed == ["ran"]
-    assert not checkout_mutation_lock_path(repo).exists()
-    status = _git(repo, "status", "--porcelain")
-    assert status.strip() == ""
-    events = [
-        json.loads(line)
-        for line in supervisor.config.events_path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
-    assert any(
-        event.get("type") == "generated_protected_dirty_auto_heal"
-        for event in events
-    )
-
-
-def test_healable_maintenance_step_soft_defers_after_failed_retry(
-    tmp_path: Path,
-) -> None:
-    """Generic auto-heal wraps maintenance steps for every board."""
-
-    supervisor, repo, todo_path = _generated_protected_supervisor(tmp_path)
-    todo_path.write_text("# Tasks\n\n## EX-002 Dirt\n", encoding="utf-8")
-    calls = {"n": 0}
-
-    def boom() -> list[str]:
-        calls["n"] += 1
-        raise RuntimeError("protected generated outputs are unsafe before mutation: protected_generated_outputs_dirty")
-
-    # First call auto-heals (commits dirt) then retries boom which still fails → default.
-    result = supervisor._run_healable_maintenance_step(
-        "unit_test_step",
-        boom,
-        default=["deferred"],
-    )
-    assert result == ["deferred"]
-    assert calls["n"] == 2
-    assert supervisor.config.supervisor_auto_heal_enabled is True
-
-    # Disabled auto-heal re-raises.
-    supervisor.config.supervisor_auto_heal_enabled = False
-    with pytest.raises(RuntimeError, match="protected_generated_outputs_dirty"):
-        supervisor._run_healable_maintenance_step(
-            "unit_test_step_disabled",
-            boom,
-            default=["nope"],
-        )
 
 
 def test_fresh_generated_dirty_repair_journals_before_callback_and_retains(

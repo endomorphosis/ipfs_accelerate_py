@@ -9,6 +9,13 @@ Prompt bodies are transient inputs.  A :class:`PromptSource` serializes only a
 CID, byte count, source kind, redacted metadata, and (where applicable) a
 bounded path or opaque artifact handle.  Consequently prompt text and secrets
 cannot accidentally become durable workflow receipts.
+
+PDR-032: ``workflow_preview`` / ``workflow_materialize`` remain first-class
+catalog operations (identity-preserving aliases).  They share the create-plan
+pipeline through :mod:`plan_supervisor_service` without redefining authority.
+Use :func:`get_plan_supervisor_service` for the shared facade; allowlists and
+mutation gates stay in the control plane and are never widened by prompt or
+repository text.
 """
 
 from __future__ import annotations
@@ -56,6 +63,14 @@ PROMPT_OUTPUT_RECORD_SCHEMA: Final[str] = (
 )
 PROMPT_GOAL_RECORD_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/prompt-goal-record@1"
 PROMPT_TASK_RECORD_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/prompt-task-record@1"
+PROMPT_GOAL_RECORD_V2_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/prompt-goal-record@2"
+PROMPT_TASK_RECORD_V2_SCHEMA: Final[str] = f"{SCHEMA_PREFIX}/prompt-task-record@2"
+PROMPT_VALIDATION_DAG_NODE_SCHEMA: Final[str] = (
+    f"{SCHEMA_PREFIX}/prompt-validation-dag-node@1"
+)
+PROMPT_PARALLEL_CONTRACT_SCHEMA: Final[str] = (
+    f"{SCHEMA_PREFIX}/prompt-parallel-contract@1"
+)
 DIRECTORY_SCAN_RECEIPT_SCHEMA: Final[str] = (
     f"{SCHEMA_PREFIX}/directory-scan-receipt@1"
 )
@@ -1747,6 +1762,814 @@ class PromptTaskRecord(_WorkflowContract):
     @property
     def task_cid(self) -> str:
         return self.content_id
+
+
+# ---------------------------------------------------------------------------
+# Prompt goal/task schema v2 (parallel-ready metadata + v1 adapter)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PromptValidationDagNode(_WorkflowContract):
+    """One node in a validation DAG bound into a v2 task record."""
+
+    SCHEMA: ClassVar[str] = PROMPT_VALIDATION_DAG_NODE_SCHEMA
+    FIELDS: ClassVar[tuple[str, ...]] = (
+        "validation_key",
+        "dependency_keys",
+        "argv",
+        "cwd",
+        "expected_exit_codes",
+        "policy_cid",
+    )
+
+    validation_key: str
+    dependency_keys: tuple[str, ...] = ()
+    argv: tuple[str, ...] = ()
+    cwd: str = "."
+    expected_exit_codes: tuple[int, ...] = (0,)
+    policy_cid: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "validation_key", _text(self.validation_key, "validation_key")
+        )
+        object.__setattr__(
+            self,
+            "dependency_keys",
+            _strings(self.dependency_keys, "dependency_keys", sort=False),
+        )
+        object.__setattr__(
+            self,
+            "argv",
+            _strings(self.argv, "argv", required=True, maximum=256, sort=False),
+        )
+        if any("\n" in item or "\r" in item or "\x00" in item for item in self.argv):
+            raise PromptWorkflowContractError(
+                "argv contains unsafe control characters"
+            )
+        if self.cwd == ".":
+            object.__setattr__(self, "cwd", ".")
+        else:
+            object.__setattr__(self, "cwd", _relative_path(self.cwd, "cwd"))
+        if isinstance(self.expected_exit_codes, (str, bytes)) or not isinstance(
+            self.expected_exit_codes, Sequence
+        ):
+            raise PromptWorkflowContractError(
+                "expected_exit_codes must be a sequence"
+            )
+        codes = tuple(
+            sorted(
+                {
+                    _integer(code, "expected_exit_codes", maximum=255)
+                    for code in self.expected_exit_codes
+                }
+            )
+        )
+        if not codes:
+            raise PromptWorkflowContractError(
+                "expected_exit_codes must not be empty"
+            )
+        object.__setattr__(self, "expected_exit_codes", codes)
+        object.__setattr__(
+            self,
+            "policy_cid",
+            _identity(self.policy_cid, "policy_cid", required=False),
+        )
+
+
+@dataclass(frozen=True)
+class PromptParallelContract(_WorkflowContract):
+    """Conservative parallel/scheduling metadata for v2 task records.
+
+    V1 upgrades set ``parallel_ready=False`` and ``max_ready_width=1`` so a
+    plan is never treated as parallel-ready without a compiled execution plan.
+    """
+
+    SCHEMA: ClassVar[str] = PROMPT_PARALLEL_CONTRACT_SCHEMA
+    FIELDS: ClassVar[tuple[str, ...]] = (
+        "parallel_ready",
+        "max_ready_width",
+        "merge_strategy",
+        "exclusive_group",
+        "shard_key",
+        "affinity_key",
+        "anti_affinity_key",
+        "allow_concurrent_with",
+        "worktree_policy",
+        "lease_scope",
+        "lease_duration_ms",
+        "fencing_epoch",
+        "max_retries",
+        "resource_class",
+        "resource_stage",
+        "cpu_slots",
+        "memory_bytes",
+        "wall_time_ms",
+        "provider_requirement",
+        "read_only_paths",
+        "protected_paths",
+        "exclusive_paths",
+    )
+
+    parallel_ready: bool = False
+    max_ready_width: int = 1
+    merge_strategy: str = "serial"
+    exclusive_group: str = ""
+    shard_key: str = ""
+    affinity_key: str = ""
+    anti_affinity_key: str = ""
+    allow_concurrent_with: tuple[str, ...] = ()
+    worktree_policy: str = "none"
+    lease_scope: str = "task"
+    lease_duration_ms: int = 0
+    fencing_epoch: int = 0
+    max_retries: int = 0
+    resource_class: str = "cpu-medium"
+    resource_stage: str = "implementation"
+    cpu_slots: int = 1
+    memory_bytes: int = 0
+    wall_time_ms: int = 0
+    provider_requirement: str = ""
+    read_only_paths: tuple[str, ...] = ()
+    protected_paths: tuple[str, ...] = ()
+    exclusive_paths: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "parallel_ready",
+            _boolean(self.parallel_ready, "parallel_ready"),
+        )
+        object.__setattr__(
+            self,
+            "max_ready_width",
+            _integer(self.max_ready_width, "max_ready_width", minimum=1),
+        )
+        if self.parallel_ready and self.max_ready_width < 2:
+            raise PromptWorkflowContractError(
+                "parallel_ready requires max_ready_width >= 2"
+            )
+        if not self.parallel_ready and self.max_ready_width != 1:
+            # Conservative default: non-parallel records force serial width.
+            object.__setattr__(self, "max_ready_width", 1)
+        for name in (
+            "merge_strategy",
+            "worktree_policy",
+            "lease_scope",
+            "resource_class",
+            "resource_stage",
+        ):
+            object.__setattr__(
+                self, name, _text(getattr(self, name), name)
+            )
+        for name in (
+            "exclusive_group",
+            "shard_key",
+            "affinity_key",
+            "anti_affinity_key",
+            "provider_requirement",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _text(getattr(self, name), name, required=False),
+            )
+        object.__setattr__(
+            self,
+            "allow_concurrent_with",
+            _strings(self.allow_concurrent_with, "allow_concurrent_with"),
+        )
+        for name in (
+            "lease_duration_ms",
+            "fencing_epoch",
+            "max_retries",
+            "memory_bytes",
+            "wall_time_ms",
+        ):
+            object.__setattr__(
+                self, name, _integer(getattr(self, name), name)
+            )
+        object.__setattr__(
+            self, "cpu_slots", _integer(self.cpu_slots, "cpu_slots", minimum=1)
+        )
+        for name in ("read_only_paths", "protected_paths", "exclusive_paths"):
+            object.__setattr__(
+                self, name, _strings(getattr(self, name), name, paths=True)
+            )
+
+
+def conservative_parallel_contract(
+    *,
+    resource_class: str = "cpu-medium",
+    predicted_files: Sequence[str] = (),
+) -> PromptParallelContract:
+    """Return the non-parallel defaults used when upgrading v1 task records."""
+
+    exclusive = tuple(sorted({_relative_path(path, "predicted_files") for path in predicted_files}))
+    return PromptParallelContract(
+        parallel_ready=False,
+        max_ready_width=1,
+        merge_strategy="serial",
+        worktree_policy="none",
+        lease_scope="task",
+        resource_class=resource_class or "cpu-medium",
+        resource_stage="implementation",
+        cpu_slots=1,
+        exclusive_paths=exclusive,
+    )
+
+
+@dataclass(frozen=True)
+class PromptGoalRecordV2(_WorkflowContract):
+    """Schema v2 goal record with producer population and completion rules."""
+
+    SCHEMA: ClassVar[str] = PROMPT_GOAL_RECORD_V2_SCHEMA
+    FIELDS: ClassVar[tuple[str, ...]] = (
+        "goal_key",
+        "parent_goal_cid",
+        "dependency_goal_cids",
+        "child_goal_cids",
+        "producing_task_cids",
+        "closed_producer_population",
+        "title",
+        "objective",
+        "rationale",
+        "scope_paths",
+        "acceptance",
+        "evidence_cids",
+        "required_evidence_kinds",
+        "risks",
+        "assumptions",
+        "uncertainty_debt",
+        "completion_authority",
+        "proof_obligation_cids",
+        "priority",
+        "track",
+        "bundle",
+        "plan_root_cid",
+        "plan_revision",
+        "lifecycle_revision",
+        "provenance",
+        "status",
+        "created_at_ms",
+        "updated_at_ms",
+    )
+    IDENTITY_EXCLUDED: ClassVar[frozenset[str]] = _VOLATILE_FIELDS
+    NESTED_SEQUENCES: ClassVar[Mapping[str, type[_WorkflowContract]]] = {
+        "acceptance": PromptAcceptanceRecord
+    }
+    ENUM_FIELDS: ClassVar[Mapping[str, type[Enum]]] = {"status": RecordStatus}
+
+    goal_key: str
+    parent_goal_cid: str
+    dependency_goal_cids: tuple[str, ...]
+    title: str
+    objective: str
+    rationale: str
+    scope_paths: tuple[str, ...]
+    acceptance: tuple[PromptAcceptanceRecord, ...]
+    child_goal_cids: tuple[str, ...] = ()
+    producing_task_cids: tuple[str, ...] = ()
+    closed_producer_population: str = ""
+    evidence_cids: tuple[str, ...] = ()
+    required_evidence_kinds: tuple[str, ...] = ()
+    risks: tuple[str, ...] = ()
+    assumptions: tuple[str, ...] = ()
+    uncertainty_debt: tuple[str, ...] = ()
+    completion_authority: str = "validation_gate"
+    proof_obligation_cids: tuple[str, ...] = ()
+    priority: str = "P1"
+    track: str = "prompt-workflow"
+    bundle: str = ""
+    plan_root_cid: str = ""
+    plan_revision: int = 0
+    lifecycle_revision: str = ""
+    provenance: Mapping[str, Any] = field(default_factory=dict)
+    status: RecordStatus = RecordStatus.PROPOSED
+    created_at_ms: int = 0
+    updated_at_ms: int = 0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "goal_key", _text(self.goal_key, "goal_key"))
+        object.__setattr__(
+            self,
+            "parent_goal_cid",
+            _validate_cid(self.parent_goal_cid, "parent_goal_cid", required=False),
+        )
+        for name in (
+            "dependency_goal_cids",
+            "child_goal_cids",
+            "producing_task_cids",
+            "evidence_cids",
+            "proof_obligation_cids",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                tuple(
+                    sorted(
+                        _validate_cid(item, name)
+                        for item in _strings(getattr(self, name), name)
+                    )
+                ),
+            )
+        for name in ("title", "objective", "rationale", "completion_authority"):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        object.__setattr__(
+            self, "scope_paths", _strings(self.scope_paths, "scope_paths", paths=True)
+        )
+        if not self.acceptance or not all(
+            isinstance(item, PromptAcceptanceRecord) for item in self.acceptance
+        ):
+            raise PromptGraphError("goal acceptance must not be empty")
+        acceptance = tuple(sorted(self.acceptance, key=lambda item: item.content_id))
+        if len({item.criterion_key for item in acceptance}) != len(acceptance):
+            raise PromptGraphError("goal acceptance keys must be unique")
+        object.__setattr__(self, "acceptance", acceptance)
+        for name in (
+            "required_evidence_kinds",
+            "risks",
+            "assumptions",
+            "uncertainty_debt",
+        ):
+            object.__setattr__(self, name, _strings(getattr(self, name), name))
+        for name in ("priority", "track"):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        object.__setattr__(
+            self, "bundle", _text(self.bundle, "bundle", required=False)
+        )
+        object.__setattr__(
+            self,
+            "closed_producer_population",
+            _identity(
+                self.closed_producer_population,
+                "closed_producer_population",
+                required=False,
+            ),
+        )
+        is_leaf = not self.child_goal_cids
+        if is_leaf and not self.producing_task_cids and not self.closed_producer_population:
+            raise PromptGraphError(
+                "leaf goals require producing_task_cids or closed_producer_population"
+            )
+        object.__setattr__(
+            self,
+            "plan_root_cid",
+            _identity(self.plan_root_cid, "plan_root_cid", required=False),
+        )
+        object.__setattr__(
+            self,
+            "plan_revision",
+            _integer(self.plan_revision, "plan_revision"),
+        )
+        object.__setattr__(
+            self,
+            "lifecycle_revision",
+            _identity(
+                self.lifecycle_revision, "lifecycle_revision", required=False
+            ),
+        )
+        object.__setattr__(
+            self, "provenance", _freeze_json(self.provenance, "provenance")
+        )
+        object.__setattr__(self, "status", _enum(self.status, RecordStatus, "status"))
+        for name in ("created_at_ms", "updated_at_ms"):
+            object.__setattr__(self, name, _integer(getattr(self, name), name))
+
+    @property
+    def goal_cid(self) -> str:
+        return self.content_id
+
+    @property
+    def record_schema_version(self) -> int:
+        return 2
+
+
+@dataclass(frozen=True)
+class PromptTaskRecordV2(_WorkflowContract):
+    """Schema v2 task record with conflict, resource, lease, and validation DAG."""
+
+    SCHEMA: ClassVar[str] = PROMPT_TASK_RECORD_V2_SCHEMA
+    FIELDS: ClassVar[tuple[str, ...]] = (
+        "task_key",
+        "goal_cid",
+        "dependency_task_cids",
+        "dependency_edge_kinds",
+        "objective",
+        "rationale",
+        "scope_paths",
+        "outputs",
+        "validations",
+        "validation_dag",
+        "acceptance",
+        "evidence_cids",
+        "policy_roots",
+        "priority",
+        "track",
+        "bundle",
+        "parallel_lane",
+        "parallel_contract",
+        "resource_class",
+        "predicted_files",
+        "risks",
+        "assumptions",
+        "fallback_behavior",
+        "completion_authority",
+        "is_schedulable",
+        "review_only",
+        "blocked_reason",
+        "plan_root_cid",
+        "plan_revision",
+        "parent_plan_root",
+        "lifecycle_revision",
+        "predecessor_task_cids",
+        "successor_task_cids",
+        "board_namespace",
+        "provenance",
+        "status",
+        "created_at_ms",
+        "updated_at_ms",
+    )
+    IDENTITY_EXCLUDED: ClassVar[frozenset[str]] = _VOLATILE_FIELDS
+    NESTED_FIELDS: ClassVar[Mapping[str, type[_WorkflowContract]]] = {
+        "parallel_contract": PromptParallelContract,
+    }
+    NESTED_SEQUENCES: ClassVar[Mapping[str, type[_WorkflowContract]]] = {
+        "outputs": PromptOutputRecord,
+        "validations": PromptValidationRecord,
+        "validation_dag": PromptValidationDagNode,
+        "acceptance": PromptAcceptanceRecord,
+    }
+    ENUM_FIELDS: ClassVar[Mapping[str, type[Enum]]] = {"status": RecordStatus}
+
+    task_key: str
+    goal_cid: str
+    dependency_task_cids: tuple[str, ...]
+    objective: str
+    rationale: str
+    scope_paths: tuple[str, ...]
+    outputs: tuple[PromptOutputRecord, ...]
+    validations: tuple[PromptValidationRecord, ...]
+    acceptance: tuple[PromptAcceptanceRecord, ...]
+    evidence_cids: tuple[str, ...]
+    policy_roots: tuple[str, ...]
+    parallel_contract: PromptParallelContract
+    validation_dag: tuple[PromptValidationDagNode, ...] = ()
+    dependency_edge_kinds: tuple[str, ...] = ()
+    priority: str = "P1"
+    track: str = "prompt-workflow"
+    bundle: str = ""
+    parallel_lane: str = ""
+    resource_class: str = "cpu-medium"
+    predicted_files: tuple[str, ...] = ()
+    risks: tuple[str, ...] = ()
+    assumptions: tuple[str, ...] = ()
+    fallback_behavior: str = "fail_closed"
+    completion_authority: str = "validation_gate"
+    is_schedulable: bool = True
+    review_only: bool = False
+    blocked_reason: str = ""
+    plan_root_cid: str = ""
+    plan_revision: int = 0
+    parent_plan_root: str = ""
+    lifecycle_revision: str = ""
+    predecessor_task_cids: tuple[str, ...] = ()
+    successor_task_cids: tuple[str, ...] = ()
+    board_namespace: str = ""
+    provenance: Mapping[str, Any] = field(default_factory=dict)
+    status: RecordStatus = RecordStatus.PROPOSED
+    created_at_ms: int = 0
+    updated_at_ms: int = 0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "task_key", _text(self.task_key, "task_key"))
+        object.__setattr__(self, "goal_cid", _validate_cid(self.goal_cid, "goal_cid"))
+        for name in (
+            "dependency_task_cids",
+            "evidence_cids",
+            "predecessor_task_cids",
+            "successor_task_cids",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                tuple(
+                    sorted(
+                        _validate_cid(item, name)
+                        for item in _strings(getattr(self, name), name)
+                    )
+                ),
+            )
+        object.__setattr__(self, "objective", _text(self.objective, "objective"))
+        object.__setattr__(self, "rationale", _text(self.rationale, "rationale"))
+        object.__setattr__(
+            self, "scope_paths", _strings(self.scope_paths, "scope_paths", paths=True)
+        )
+        for name, item_type in (
+            ("outputs", PromptOutputRecord),
+            ("validations", PromptValidationRecord),
+            ("acceptance", PromptAcceptanceRecord),
+        ):
+            values = getattr(self, name)
+            if not values or not all(isinstance(item, item_type) for item in values):
+                raise PromptGraphError(f"task {name} must not be empty")
+            canonical = tuple(sorted(values, key=lambda item: item.content_id))
+            object.__setattr__(self, name, canonical)
+        if len({item.path for item in self.outputs}) != len(self.outputs):
+            raise PromptGraphError("task output paths must be unique")
+        if len({item.validation_key for item in self.validations}) != len(
+            self.validations
+        ):
+            raise PromptGraphError("task validation keys must be unique")
+        if len({item.criterion_key for item in self.acceptance}) != len(
+            self.acceptance
+        ):
+            raise PromptGraphError("task acceptance keys must be unique")
+        validation_keys = {item.validation_key for item in self.validations}
+        for criterion in self.acceptance:
+            if not set(criterion.validation_keys).issubset(validation_keys):
+                raise PromptGraphError(
+                    "acceptance references an unknown validation key"
+                )
+        if self.validation_dag:
+            if not all(
+                isinstance(item, PromptValidationDagNode)
+                for item in self.validation_dag
+            ):
+                raise PromptGraphError("validation_dag entries must be nodes")
+            dag = tuple(
+                sorted(self.validation_dag, key=lambda item: item.content_id)
+            )
+            dag_keys = {item.validation_key for item in dag}
+            if len(dag_keys) != len(dag):
+                raise PromptGraphError("validation_dag keys must be unique")
+            if not dag_keys.issubset(validation_keys):
+                raise PromptGraphError(
+                    "validation_dag references unknown validation keys"
+                )
+            object.__setattr__(self, "validation_dag", dag)
+        else:
+            # Conservative default: sequential DAG from validation order.
+            sequential = tuple(
+                PromptValidationDagNode(
+                    validation_key=item.validation_key,
+                    dependency_keys=(
+                        (self.validations[index - 1].validation_key,)
+                        if index > 0
+                        else ()
+                    ),
+                    argv=item.argv,
+                    cwd=item.cwd,
+                    expected_exit_codes=item.expected_exit_codes,
+                    policy_cid=item.policy_cid,
+                )
+                for index, item in enumerate(self.validations)
+            )
+            object.__setattr__(self, "validation_dag", sequential)
+        if not isinstance(self.parallel_contract, PromptParallelContract):
+            if isinstance(self.parallel_contract, Mapping):
+                object.__setattr__(
+                    self,
+                    "parallel_contract",
+                    PromptParallelContract.from_dict(self.parallel_contract),
+                )
+            else:
+                raise PromptGraphError(
+                    "parallel_contract must be PromptParallelContract"
+                )
+        object.__setattr__(
+            self,
+            "policy_roots",
+            tuple(
+                sorted(
+                    _identity(item, "policy_roots")
+                    for item in _strings(
+                        self.policy_roots, "policy_roots", required=True
+                    )
+                )
+            ),
+        )
+        object.__setattr__(
+            self,
+            "dependency_edge_kinds",
+            _strings(self.dependency_edge_kinds, "dependency_edge_kinds", sort=False),
+        )
+        if self.dependency_edge_kinds and len(self.dependency_edge_kinds) != len(
+            self.dependency_task_cids
+        ):
+            raise PromptGraphError(
+                "dependency_edge_kinds length must match dependency_task_cids"
+            )
+        for name in (
+            "priority",
+            "track",
+            "resource_class",
+            "fallback_behavior",
+            "completion_authority",
+        ):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        for name in ("bundle", "parallel_lane", "blocked_reason", "board_namespace"):
+            object.__setattr__(
+                self, name, _text(getattr(self, name), name, required=False)
+            )
+        object.__setattr__(
+            self,
+            "predicted_files",
+            _strings(self.predicted_files, "predicted_files", paths=True),
+        )
+        for name in ("risks", "assumptions"):
+            object.__setattr__(self, name, _strings(getattr(self, name), name))
+        object.__setattr__(
+            self, "is_schedulable", _boolean(self.is_schedulable, "is_schedulable")
+        )
+        object.__setattr__(
+            self, "review_only", _boolean(self.review_only, "review_only")
+        )
+        # V1-compatible conservative rule: a parallel_lane string alone never
+        # implies parallel readiness.
+        if self.parallel_lane and self.parallel_contract.parallel_ready is False:
+            pass
+        object.__setattr__(
+            self,
+            "plan_root_cid",
+            _identity(self.plan_root_cid, "plan_root_cid", required=False),
+        )
+        object.__setattr__(
+            self, "plan_revision", _integer(self.plan_revision, "plan_revision")
+        )
+        object.__setattr__(
+            self,
+            "parent_plan_root",
+            _identity(self.parent_plan_root, "parent_plan_root", required=False),
+        )
+        object.__setattr__(
+            self,
+            "lifecycle_revision",
+            _identity(
+                self.lifecycle_revision, "lifecycle_revision", required=False
+            ),
+        )
+        object.__setattr__(
+            self, "provenance", _freeze_json(self.provenance, "provenance")
+        )
+        object.__setattr__(self, "status", _enum(self.status, RecordStatus, "status"))
+        for name in ("created_at_ms", "updated_at_ms"):
+            object.__setattr__(self, name, _integer(getattr(self, name), name))
+
+    @property
+    def task_cid(self) -> str:
+        return self.content_id
+
+    @property
+    def record_schema_version(self) -> int:
+        return 2
+
+
+def upgrade_goal_record_v1_to_v2(
+    goal: PromptGoalRecord,
+    *,
+    producing_task_cids: Sequence[str] = (),
+    child_goal_cids: Sequence[str] = (),
+    plan_root_cid: str = "",
+    plan_revision: int = 0,
+    closed_producer_population: str = "",
+) -> PromptGoalRecordV2:
+    """Upgrade a v1 goal with conservative non-parallel / producer defaults."""
+
+    producers = tuple(producing_task_cids)
+    children = tuple(child_goal_cids)
+    closed = closed_producer_population
+    if not children and not producers and not closed:
+        # Leaf with no producers yet: bind an explicit empty closed population
+        # digest so the v2 leaf invariant holds for incomplete upgrades.
+        closed = prompt_workflow_cid(
+            {
+                "kind": "closed_producer_population",
+                "goal_key": goal.goal_key,
+                "members": [],
+            }
+        )
+    return PromptGoalRecordV2(
+        goal_key=goal.goal_key,
+        parent_goal_cid=goal.parent_goal_cid,
+        dependency_goal_cids=goal.dependency_goal_cids,
+        child_goal_cids=children,
+        producing_task_cids=tuple(
+            sorted(_validate_cid(item, "producing_task_cids") for item in producers)
+        )
+        if producers
+        else (),
+        closed_producer_population=closed,
+        title=goal.title,
+        objective=goal.objective,
+        rationale=goal.rationale,
+        scope_paths=goal.scope_paths,
+        acceptance=goal.acceptance,
+        evidence_cids=goal.evidence_cids,
+        required_evidence_kinds=(),
+        risks=goal.risks,
+        assumptions=goal.assumptions,
+        uncertainty_debt=(),
+        completion_authority="validation_gate",
+        proof_obligation_cids=(),
+        priority="P1",
+        track="prompt-workflow",
+        bundle="",
+        plan_root_cid=plan_root_cid,
+        plan_revision=plan_revision,
+        lifecycle_revision="",
+        provenance=dict(goal.provenance),
+        status=goal.status,
+        created_at_ms=goal.created_at_ms,
+        updated_at_ms=goal.updated_at_ms,
+    )
+
+
+def upgrade_task_record_v1_to_v2(
+    task: PromptTaskRecord,
+    *,
+    plan_root_cid: str = "",
+    plan_revision: int = 0,
+    parent_plan_root: str = "",
+    board_namespace: str = "",
+) -> PromptTaskRecordV2:
+    """Upgrade a v1 task with conservative non-parallel defaults."""
+
+    parallel = conservative_parallel_contract(
+        resource_class=task.resource_class,
+        predicted_files=task.predicted_files,
+    )
+    return PromptTaskRecordV2(
+        task_key=task.task_key,
+        goal_cid=task.goal_cid,
+        dependency_task_cids=task.dependency_task_cids,
+        dependency_edge_kinds=tuple("data" for _ in task.dependency_task_cids),
+        objective=task.objective,
+        rationale=task.rationale,
+        scope_paths=task.scope_paths,
+        outputs=task.outputs,
+        validations=task.validations,
+        validation_dag=(),
+        acceptance=task.acceptance,
+        evidence_cids=task.evidence_cids,
+        policy_roots=task.policy_roots,
+        priority=task.priority,
+        track=task.track,
+        bundle=task.bundle,
+        parallel_lane=task.parallel_lane,
+        parallel_contract=parallel,
+        resource_class=task.resource_class,
+        predicted_files=task.predicted_files,
+        risks=task.risks,
+        assumptions=task.assumptions,
+        fallback_behavior=task.fallback_behavior,
+        completion_authority="validation_gate",
+        is_schedulable=True,
+        review_only=False,
+        blocked_reason="",
+        plan_root_cid=plan_root_cid,
+        plan_revision=plan_revision,
+        parent_plan_root=parent_plan_root,
+        lifecycle_revision="",
+        predecessor_task_cids=(),
+        successor_task_cids=(),
+        board_namespace=board_namespace,
+        provenance=dict(task.provenance),
+        status=task.status,
+        created_at_ms=task.created_at_ms,
+        updated_at_ms=task.updated_at_ms,
+    )
+
+
+def read_goal_record(payload: Mapping[str, Any]) -> PromptGoalRecord | PromptGoalRecordV2:
+    """Read a goal record; v1 payloads upgrade with conservative defaults."""
+
+    if not isinstance(payload, Mapping):
+        raise PromptWorkflowContractError("goal record must be an object")
+    schema = payload.get("schema")
+    if schema == PROMPT_GOAL_RECORD_V2_SCHEMA:
+        return PromptGoalRecordV2.from_dict(payload)
+    if schema == PROMPT_GOAL_RECORD_SCHEMA:
+        return upgrade_goal_record_v1_to_v2(PromptGoalRecord.from_dict(payload))
+    raise PromptWorkflowContractError(
+        f"unsupported goal record schema: {schema!r}"
+    )
+
+
+def read_task_record(payload: Mapping[str, Any]) -> PromptTaskRecord | PromptTaskRecordV2:
+    """Read a task record; v1 payloads upgrade with conservative non-parallel defaults."""
+
+    if not isinstance(payload, Mapping):
+        raise PromptWorkflowContractError("task record must be an object")
+    schema = payload.get("schema")
+    if schema == PROMPT_TASK_RECORD_V2_SCHEMA:
+        return PromptTaskRecordV2.from_dict(payload)
+    if schema == PROMPT_TASK_RECORD_SCHEMA:
+        return upgrade_task_record_v1_to_v2(PromptTaskRecord.from_dict(payload))
+    raise PromptWorkflowContractError(
+        f"unsupported task record schema: {schema!r}"
+    )
 
 
 @dataclass(frozen=True)
@@ -4858,6 +5681,8 @@ OutputPolicy = PromptOutputPolicy
 EvidenceRecord = PromptEvidenceRecord
 GoalRecord = PromptGoalRecord
 TaskRecord = PromptTaskRecord
+GoalRecordV2 = PromptGoalRecordV2
+TaskRecordV2 = PromptTaskRecordV2
 AcceptanceRecord = PromptAcceptanceRecord
 ValidationRecord = PromptValidationRecord
 TaskOutputRecord = PromptOutputRecord
@@ -5314,6 +6139,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     return run_prompt_workflow_cli(argv)
 
 
+def get_plan_supervisor_service() -> Any:
+    """Lazy accessor for the shared PlanSupervisorService@1 control facade.
+
+    Import is deferred so this contracts module remains provider-free at import
+    time.  Workflow alias identity is preserved by the control catalog; this
+    helper only returns the shared create/steer service used by Python/CLI/MCP.
+    """
+
+    from .plan_supervisor_service import (
+        get_plan_supervisor_service as _get,
+    )
+
+    return _get()
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
 
@@ -5334,6 +6174,7 @@ __all__ = [
     "EvidenceAuthority",
     "EvidenceRecord",
     "GoalRecord",
+    "GoalRecordV2",
     "IncidentKind",
     "LocalFallbackPolicy",
     "MaterializationRef",
@@ -5341,6 +6182,8 @@ __all__ = [
     "NonCanonicalPromptWorkflowError",
     "OutputMode",
     "OutputPolicy",
+    "PROMPT_GOAL_RECORD_V2_SCHEMA",
+    "PROMPT_TASK_RECORD_V2_SCHEMA",
     "PlanningPolicy",
     "ProgrammaticRecoveryExhaustionReceipt",
     "PROMPT_WORKFLOW_CONTRACT_VERSION",
@@ -5348,10 +6191,12 @@ __all__ = [
     "PromptEvidenceRecord",
     "PromptGoalGraph",
     "PromptGoalRecord",
+    "PromptGoalRecordV2",
     "PromptMaterializationRef",
     "PromptMaterializationReference",
     "PromptOutputPolicy",
     "PromptOutputRecord",
+    "PromptParallelContract",
     "PromptPlanningPolicy",
     "PromptRunReference",
     "PromptSupervisorService",
@@ -5360,7 +6205,14 @@ __all__ = [
     "PromptSourceError",
     "PromptSourceKind",
     "PromptTaskRecord",
+    "PromptTaskRecordV2",
+    "PromptValidationDagNode",
     "PromptValidationRecord",
+    "conservative_parallel_contract",
+    "read_goal_record",
+    "read_task_record",
+    "upgrade_goal_record_v1_to_v2",
+    "upgrade_task_record_v1_to_v2",
     "PromptWorkflowBoundsError",
     "PromptWorkflowBudget",
     "PromptWorkflowContractError",
@@ -5391,6 +6243,7 @@ __all__ = [
     "SupervisorRunReference",
     "TaskOutputRecord",
     "TaskRecord",
+    "TaskRecordV2",
     "ValidationRecord",
     "WorkflowBudget",
     "WorkflowOutcome",
@@ -5404,6 +6257,7 @@ __all__ = [
     "build_prompt_workflow_arg_parser",
     "canonical_prompt_workflow_bytes",
     "decode_prompt_workflow_request",
+    "get_plan_supervisor_service",
     "main",
     "prompt_workflow_cid",
     "run_prompt_workflow_cli",

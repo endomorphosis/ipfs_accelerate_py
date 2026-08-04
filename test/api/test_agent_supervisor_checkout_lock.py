@@ -418,6 +418,24 @@ def test_release_requires_acquired_inode_and_preserves_replacement(
     assert json.loads(lock_path.read_text(encoding="utf-8")) == metadata
 
 
+def test_release_is_idempotent_when_exact_lease_is_already_absent(
+    tmp_path: Path,
+) -> None:
+    lock_path = tmp_path / "implementation-main-merge.lock"
+    metadata = _metadata(tmp_path, operation="already-released-owner")
+    lease, _reason, _incumbent, _waited = acquire_checkout_mutation_lease(
+        lock_path,
+        metadata,
+        owner_active=lambda _owner: True,
+    )
+    assert lease is not None
+
+    lock_path.unlink()
+
+    assert release_checkout_mutation_lease(lease)
+    assert not lock_path.exists()
+
+
 def test_release_requires_acquired_lease_id_on_same_inode(
     tmp_path: Path,
 ) -> None:

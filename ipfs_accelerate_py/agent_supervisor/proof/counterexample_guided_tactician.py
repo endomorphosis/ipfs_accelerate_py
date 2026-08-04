@@ -16,6 +16,10 @@ never alone reduces the open-witness count — that authority stays with
 :func:`~ipfs_accelerate_py.agent_supervisor.planning.formal_replanner.evaluate_verifier_backed_closure`
 so formal-replanner retry / fencing semantics remain intact.
 
+PDR-051 program-repair synthesis consumes this loop for counterexample-guided
+operator search: independent candidate validation runs before the originating
+verifier, and fixed :class:`CegisBudget` bounds always terminate the loop.
+
 Canonical datasets validation and replay are reached only through injectable
 providers. This module never imports package-private datasets paths and never
 claims completion, admission, or kernel authority.

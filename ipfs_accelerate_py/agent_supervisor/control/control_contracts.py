@@ -422,6 +422,8 @@ class Operation(str, Enum):
 
     OBJECTIVE_PREVIEW = "objective_preview"
     PLAN = "plan"
+    PLAN_CREATE_PREVIEW = "plan_create_preview"
+    PLAN_STEER_PREVIEW = "plan_steer_preview"
     WORKFLOW_PREVIEW = "workflow_preview"
     RESCUE_PREVIEW = "rescue_preview"
 
@@ -429,6 +431,8 @@ class Operation(str, Enum):
     OBJECTIVE_RECONCILE = "objective_reconcile"
     BACKLOG_REFILL = "backlog_refill"
     REFILL = "backlog_refill"
+    PLAN_CREATE_APPLY = "plan_create_apply"
+    PLAN_STEER_APPLY = "plan_steer_apply"
     WORKFLOW_MATERIALIZE = "workflow_materialize"
     START = "start"
     PAUSE = "pause"
@@ -471,6 +475,8 @@ PROPOSAL_OPERATIONS: Final[frozenset[Operation]] = frozenset(
     {
         Operation.OBJECTIVE_PREVIEW,
         Operation.PLAN,
+        Operation.PLAN_CREATE_PREVIEW,
+        Operation.PLAN_STEER_PREVIEW,
         Operation.WORKFLOW_PREVIEW,
         Operation.RESCUE_PREVIEW,
     }
@@ -487,8 +493,29 @@ PROMPT_CONTROL_OPERATIONS: Final[frozenset[Operation]] = frozenset(
         Operation.RESCUE,
     }
 )
+PLAN_CONTROL_OPERATIONS: Final[frozenset[Operation]] = frozenset(
+    {
+        Operation.PLAN_CREATE_PREVIEW,
+        Operation.PLAN_CREATE_APPLY,
+        Operation.PLAN_STEER_PREVIEW,
+        Operation.PLAN_STEER_APPLY,
+    }
+)
+# Workflow aliases share the create/steer facade but keep their own catalog
+# identity for Python/CLI/MCP discovery and parity receipts.
+PLAN_WORKFLOW_ALIAS_OPERATIONS: Final[frozenset[Operation]] = frozenset(
+    {
+        Operation.WORKFLOW_PREVIEW,
+        Operation.WORKFLOW_MATERIALIZE,
+    }
+)
 DOWNSTREAM_EFFECT_PREVIEW_OPERATIONS: Final[frozenset[Operation]] = frozenset(
-    {Operation.WORKFLOW_PREVIEW, Operation.RESCUE_PREVIEW}
+    {
+        Operation.WORKFLOW_PREVIEW,
+        Operation.RESCUE_PREVIEW,
+        Operation.PLAN_CREATE_PREVIEW,
+        Operation.PLAN_STEER_PREVIEW,
+    }
 )
 OPERATION_AUTHORITIES: Final[Mapping[Operation, OperationAuthority]] = (
     MappingProxyType(
@@ -784,6 +811,7 @@ _PROMPT_CONTROL_PARAMETER_FIELDS: Final[
                 "markdown_path",
                 "duckdb_path",
                 "expected_revision",
+                "apply_request",
             }
         ),
         Operation.RESTART: frozenset(
@@ -843,9 +871,133 @@ _PROMPT_CONTROL_PARAMETER_FIELDS: Final[
     }
 )
 
+_PLAN_CONTROL_PARAMETER_FIELDS: Final[
+    Mapping[Operation, frozenset[str]]
+] = MappingProxyType(
+    {
+        Operation.PLAN_CREATE_PREVIEW: frozenset(
+            {
+                "target",
+                "repository_id",
+                "tree_id",
+                "mode",
+                "plan_request",
+                "materials",
+                "compatibility_alias",
+                "directory",
+                "prompt_source",
+                "output_mode",
+                "markdown_path",
+                "duckdb_path",
+                "request_root",
+                "scan_root",
+                "catalog_root",
+            }
+        ),
+        Operation.PLAN_CREATE_APPLY: frozenset(
+            {
+                "target",
+                "repository_id",
+                "tree_id",
+                "preview_ref",
+                "preview_root",
+                "preview_repository_id",
+                "preview_tree_id",
+                "preview_objective_id",
+                "preview_objective_revision",
+                "preview_policy_id",
+                "preview_policy_revision",
+                "apply_request",
+                "output_mode",
+                "markdown_path",
+                "duckdb_path",
+                "expected_revision",
+                "catalog_root",
+            }
+        ),
+        Operation.PLAN_STEER_PREVIEW: frozenset(
+            {
+                "target",
+                "repository_id",
+                "tree_id",
+                "plan_request",
+                "materials",
+                "live_state",
+                "directive_cid",
+                "base_admitted_plan_root",
+                "base_materialized_plan_root",
+            }
+        ),
+        Operation.PLAN_STEER_APPLY: frozenset(
+            {
+                "target",
+                "repository_id",
+                "tree_id",
+                "preview_ref",
+                "preview_root",
+                "apply_request",
+                "markdown_path",
+                "duckdb_path",
+                "expected_revision",
+                "output_mode",
+            }
+        ),
+    }
+)
+
 _PROMPT_SOURCE_FIELDS: Final[frozenset[str]] = frozenset(
     {"kind", "content_cid", "artifact_ref", "inline_text"}
 )
+
+
+def _validate_plan_control_parameters(
+    operation: Operation,
+    parameters: Mapping[str, Any],
+) -> None:
+    """Validate closed plan create/steer parameter shapes (PDR-032)."""
+
+    allowed = _PLAN_CONTROL_PARAMETER_FIELDS.get(operation)
+    if allowed is None:
+        return
+    unknown = set(parameters).difference(allowed)
+    if unknown:
+        raise ControlContractError(
+            f"{operation.value} parameters contain unsupported fields: "
+            + ", ".join(sorted(unknown))
+        )
+    target = parameters.get("target")
+    if target is not None and not isinstance(target, Mapping):
+        raise ControlContractError("target must be an object")
+    for name in ("plan_request", "materials", "live_state", "apply_request"):
+        value = parameters.get(name)
+        if value is not None and not isinstance(value, Mapping):
+            raise ControlContractError(f"{name} must be an object")
+    mode = parameters.get("mode")
+    if mode is not None and not isinstance(mode, str):
+        raise ControlContractError("mode must be a string")
+    output_mode = parameters.get("output_mode")
+    if output_mode not in (None, "markdown", "duckdb", "both"):
+        raise ControlContractError(
+            "output_mode must be markdown, duckdb, or both"
+        )
+    if operation in {
+        Operation.PLAN_CREATE_APPLY,
+        Operation.PLAN_STEER_APPLY,
+    }:
+        # Apply may carry a full apply_request and/or preview bindings.
+        # Real mutation admission still requires control-plane permit/lease/
+        # fence/idempotency/expected effects regardless of these fields.
+        if not any(
+            parameters.get(name)
+            for name in (
+                "apply_request",
+                "preview_ref",
+                "preview_root",
+            )
+        ):
+            raise ControlContractError(
+                f"{operation.value} requires apply_request or preview bindings"
+            )
 
 
 def _validate_prompt_control_parameters(
@@ -861,6 +1013,10 @@ def _validate_prompt_control_parameters(
     policy_revision: str,
 ) -> None:
     """Validate the closed, transport-neutral parameter shapes for ASI-150."""
+
+    if operation in _PLAN_CONTROL_PARAMETER_FIELDS:
+        _validate_plan_control_parameters(operation, parameters)
+        return
 
     allowed = _PROMPT_CONTROL_PARAMETER_FIELDS.get(operation)
     if allowed is None:
@@ -4141,6 +4297,22 @@ def _catalog_target(operation: Operation) -> ControlTargetDescriptor:
             ControlTargetKind.OBJECTIVE,
             ("repository_id", "objective_id"),
         ),
+        Operation.PLAN_CREATE_PREVIEW: (
+            ControlTargetKind.WORKFLOW,
+            ("repository_id", "tree_id"),
+        ),
+        Operation.PLAN_CREATE_APPLY: (
+            ControlTargetKind.WORKFLOW,
+            ("repository_id", "tree_id"),
+        ),
+        Operation.PLAN_STEER_PREVIEW: (
+            ControlTargetKind.WORKFLOW,
+            ("repository_id", "tree_id"),
+        ),
+        Operation.PLAN_STEER_APPLY: (
+            ControlTargetKind.WORKFLOW,
+            ("repository_id", "tree_id"),
+        ),
         Operation.WORKFLOW_PREVIEW: (
             ControlTargetKind.WORKFLOW,
             ("repository_id", "tree_id"),
@@ -4241,6 +4413,10 @@ def _catalog_family(operation: Operation) -> str:
         Operation.OBJECTIVE_RECONCILE: "objective",
         Operation.BACKLOG_REFILL: "refill",
         Operation.PLAN: "plan",
+        Operation.PLAN_CREATE_PREVIEW: "plan",
+        Operation.PLAN_CREATE_APPLY: "plan",
+        Operation.PLAN_STEER_PREVIEW: "plan",
+        Operation.PLAN_STEER_APPLY: "plan",
         Operation.WORKFLOW_PREVIEW: "plan",
         Operation.WORKFLOW_MATERIALIZE: "plan",
         Operation.RESCUE_PREVIEW: "retry",
@@ -4265,17 +4441,22 @@ def _catalog_family(operation: Operation) -> str:
 
 def _build_operation_catalog() -> OperationCatalog:
     query_bounds = ControlBounds()
+    plan_preview_bounds = ControlBounds(
+        max_items=512,
+        max_serialized_bytes=524_288,
+        max_depth=12,
+        max_text_bytes=65_536,
+        max_paths=256,
+        max_effects=64,
+        timeout_ms=120_000,
+    )
     operation_bounds: Mapping[Operation, ControlBounds] = MappingProxyType(
         {
-            Operation.WORKFLOW_PREVIEW: ControlBounds(
-                max_items=512,
-                max_serialized_bytes=524_288,
-                max_depth=12,
-                max_text_bytes=65_536,
-                max_paths=256,
-                max_effects=64,
-                timeout_ms=120_000,
-            ),
+            Operation.PLAN_CREATE_PREVIEW: plan_preview_bounds,
+            Operation.PLAN_STEER_PREVIEW: plan_preview_bounds,
+            Operation.PLAN_CREATE_APPLY: ControlBounds(timeout_ms=120_000),
+            Operation.PLAN_STEER_APPLY: ControlBounds(timeout_ms=120_000),
+            Operation.WORKFLOW_PREVIEW: plan_preview_bounds,
             Operation.WORKFLOW_MATERIALIZE: ControlBounds(
                 timeout_ms=120_000
             ),
@@ -7821,7 +8002,47 @@ def operation_request_json_schema(
         "pattern": "^/",
     }
     parameter_schema: dict[str, Any] = {"type": "object"}
-    if selected in PROMPT_CONTROL_OPERATIONS:
+    if selected in PLAN_CONTROL_OPERATIONS:
+        allowed_parameters = _PLAN_CONTROL_PARAMETER_FIELDS[selected]
+        object_fields = {
+            "plan_request",
+            "materials",
+            "live_state",
+            "apply_request",
+            "prompt_source",
+            "target",
+        }
+        path_fields = {"markdown_path", "duckdb_path"}
+        parameter_properties: dict[str, Any] = {}
+        for name in sorted(allowed_parameters):
+            if name in object_fields:
+                parameter_properties[name] = {
+                    "type": "object",
+                    "additionalProperties": True,
+                }
+            elif name in path_fields:
+                parameter_properties[name] = {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 65536,
+                    "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+",
+                }
+            elif name == "expected_revision":
+                parameter_properties[name] = {
+                    "type": "integer",
+                    "minimum": 0,
+                }
+            else:
+                parameter_properties[name] = {
+                    "type": "string",
+                    "minLength": 1,
+                }
+        parameter_schema = {
+            "type": "object",
+            "properties": parameter_properties,
+            "additionalProperties": False,
+        }
+    elif selected in PROMPT_CONTROL_OPERATIONS:
         allowed_parameters = _PROMPT_CONTROL_PARAMETER_FIELDS[selected]
         integer_fields = {
             "action_index",
@@ -7832,6 +8053,8 @@ def operation_request_json_schema(
         }
         boolean_fields = {"allow_llm_fallback"}
         path_fields = {"markdown_path", "duckdb_path"}
+        # Nested objects (apply_request) are open mappings validated by domain.
+        object_fields = {"apply_request", "target", "prompt_source"}
         parameter_properties: dict[str, Any] = {
             name: (
                 {"type": "integer", "minimum": 0}
@@ -7840,14 +8063,18 @@ def operation_request_json_schema(
                     {"type": "boolean"}
                     if name in boolean_fields
                     else (
-                        {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 65536,
-                            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+",
-                        }
-                        if name in path_fields
-                        else {"type": "string", "minLength": 1}
+                        {"type": "object", "additionalProperties": True}
+                        if name in object_fields
+                        else (
+                            {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 65536,
+                                "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+",
+                            }
+                            if name in path_fields
+                            else {"type": "string", "minLength": 1}
+                        )
                     )
                 )
             )
@@ -8614,6 +8841,8 @@ __all__ = [
     "SCHEMA_VERSION",
     "PROPOSAL_OPERATIONS",
     "PROMPT_CONTROL_OPERATIONS",
+    "PLAN_CONTROL_OPERATIONS",
+    "PLAN_WORKFLOW_ALIAS_OPERATIONS",
     "READ_OPERATIONS",
     "MUTATION_OPERATIONS",
     "DOWNSTREAM_EFFECT_PREVIEW_OPERATIONS",

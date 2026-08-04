@@ -3045,12 +3045,41 @@ class AdaptivePlanner:
             EvidenceAwarePlanCandidate | Mapping[str, Any],
         ] | None = None,
         hard_gate_evaluator: HardGateEvaluator = deterministic_hard_gate_receipts,
-    ) -> AdaptivePlanningRunReceipt:
-        """Generate, independently gate, evaluate, and select one bounded plan."""
+        obligation_graph: Any = None,
+        symbolic_bounds: Any = None,
+        failure_memory: Any = None,
+        failure_scope: Any = None,
+        model_provider: Callable[[Any], Any] | None = None,
+        model_provider_id: str = "model-proposal",
+        allow_model: bool = True,
+    ) -> Any:
+        """Generate, independently gate, evaluate, and select bounded plans.
+
+        Supplying an ``ObligationGraph@1`` activates the deterministic-first
+        symbolic portfolio.  Context-only callers retain the established
+        adaptive routing behavior.
+        """
 
         if not isinstance(frozen_goal, FrozenPlanningGoal):
             raise AdaptivePlannerValidationError(
                 "frozen_goal must be FrozenPlanningGoal"
+            )
+        if obligation_graph is not None:
+            if baseline_factory is not None:
+                raise AdaptivePlannerValidationError(
+                    "symbolic planning does not accept a generic baseline_factory"
+                )
+            return self.plan_symbolically(
+                frozen_goal,
+                obligation_graph,
+                context,
+                bounds=symbolic_bounds,
+                failure_memory=failure_memory,
+                failure_scope=failure_scope,
+                model_provider=model_provider,
+                provider_id=model_provider_id,
+                allow_model=allow_model,
+                hard_gate_evaluator=hard_gate_evaluator,
             )
         routing_kwargs: dict[str, Any] = {
             "providers": providers,
@@ -3086,6 +3115,60 @@ class AdaptivePlanner:
             )
         selection = self.select(frozen_goal, gated)
         return AdaptivePlanningRunReceipt(routing=routing, selection=selection)
+
+    def plan_symbolically(
+        self,
+        frozen_goal: FrozenPlanningGoal,
+        obligation_graph: Any,
+        context: Mapping[str, Any],
+        *,
+        bounds: Any = None,
+        failure_memory: Any = None,
+        failure_scope: Any = None,
+        model_provider: Callable[[Any], Any] | None = None,
+        provider_id: str = "model-proposal",
+        allow_model: bool = True,
+        hard_gate_evaluator: HardGateEvaluator = deterministic_hard_gate_receipts,
+    ) -> Any:
+        """Plan from a typed obligation graph before adaptive selection.
+
+        The import is intentionally local: ``symbolic_candidate_planner`` uses
+        this module's established candidate, receipt, and evaluator contracts,
+        while the legacy adaptive import surface remains acyclic and model
+        client free.
+        """
+
+        from .symbolic_candidate_planner import (
+            SymbolicCandidateBounds,
+            SymbolicCandidatePlanner,
+        )
+
+        resolved_bounds = (
+            bounds
+            if bounds is not None
+            else SymbolicCandidateBounds(candidate_count=self.max_candidates)
+        )
+        if not isinstance(resolved_bounds, SymbolicCandidateBounds):
+            if not isinstance(resolved_bounds, Mapping):
+                raise AdaptivePlannerValidationError(
+                    "symbolic bounds must be SymbolicCandidateBounds or a mapping"
+                )
+            resolved_bounds = SymbolicCandidateBounds(**dict(resolved_bounds))
+        if resolved_bounds.candidate_count > self.max_candidates:
+            raise AdaptivePlannerValidationError(
+                "symbolic candidate_count exceeds adaptive max_candidates"
+            )
+        return SymbolicCandidatePlanner(bounds=resolved_bounds).plan(
+            obligation_graph,
+            frozen_goal,
+            context,
+            failure_memory=failure_memory,
+            failure_scope=failure_scope,
+            model_provider=model_provider,
+            provider_id=provider_id,
+            allow_model=allow_model,
+            hard_gate_evaluator=hard_gate_evaluator,
+        )
 
 
 class AdaptivePlanReceiptStore:
@@ -4655,7 +4738,14 @@ def plan_adaptively(
     bounds: CandidateGenerationBounds | None = None,
     max_candidates: int = 32,
     hard_gate_evaluator: HardGateEvaluator = deterministic_hard_gate_receipts,
-) -> AdaptivePlanningRunReceipt:
+    obligation_graph: Any = None,
+    symbolic_bounds: Any = None,
+    failure_memory: Any = None,
+    failure_scope: Any = None,
+    model_provider: Callable[[Any], Any] | None = None,
+    model_provider_id: str = "model-proposal",
+    allow_model: bool = True,
+) -> Any:
     """Functional full-pipeline wrapper around :meth:`AdaptivePlanner.plan`."""
 
     return AdaptivePlanner(max_candidates=max_candidates).plan(
@@ -4663,6 +4753,43 @@ def plan_adaptively(
         context,
         providers=providers,
         bounds=bounds,
+        hard_gate_evaluator=hard_gate_evaluator,
+        obligation_graph=obligation_graph,
+        symbolic_bounds=symbolic_bounds,
+        failure_memory=failure_memory,
+        failure_scope=failure_scope,
+        model_provider=model_provider,
+        model_provider_id=model_provider_id,
+        allow_model=allow_model,
+    )
+
+
+def plan_symbolically(
+    frozen_goal: FrozenPlanningGoal,
+    obligation_graph: Any,
+    context: Mapping[str, Any],
+    *,
+    bounds: Any = None,
+    max_candidates: int = 32,
+    failure_memory: Any = None,
+    failure_scope: Any = None,
+    model_provider: Callable[[Any], Any] | None = None,
+    provider_id: str = "model-proposal",
+    allow_model: bool = True,
+    hard_gate_evaluator: HardGateEvaluator = deterministic_hard_gate_receipts,
+) -> Any:
+    """Functional bridge to the deterministic-first symbolic portfolio."""
+
+    return AdaptivePlanner(max_candidates=max_candidates).plan_symbolically(
+        frozen_goal,
+        obligation_graph,
+        context,
+        bounds=bounds,
+        failure_memory=failure_memory,
+        failure_scope=failure_scope,
+        model_provider=model_provider,
+        provider_id=provider_id,
+        allow_model=allow_model,
         hard_gate_evaluator=hard_gate_evaluator,
     )
 
@@ -4718,6 +4845,7 @@ __all__ = [
     "evaluate_and_or_plan_promotion",
     "evaluate_and_or_planner_promotion",
     "plan_adaptively",
+    "plan_symbolically",
     "plan_typed_goal",
     "search_and_or_plans",
     "search_typed_goal_plans",

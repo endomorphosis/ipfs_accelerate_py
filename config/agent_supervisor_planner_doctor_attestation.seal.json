@@ -1,0 +1,57 @@
+{
+  "artifacts": [
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/planner_doctor_attestation.py",
+      "role": "attestation_module",
+      "sha256": "sha256:9671d3e0eeac0f7992aeb11bca141c5c38309ca06aae0ce165176abf4a5a7311",
+      "size_bytes": 88096
+    },
+    {
+      "path": "docs/architecture/agent_supervisor_planner_doctor_zkp_threat_model.md",
+      "role": "zkp_threat_model",
+      "sha256": "sha256:3e53704f15bac22a92d24de69c9ec099f0b0eb4d096568d346bdade2d05c14c1",
+      "size_bytes": 10304
+    },
+    {
+      "path": "test/api/test_agent_supervisor_planner_doctor_attestation.py",
+      "role": "attestation_test",
+      "sha256": "sha256:819727e63a7805776ddbd2f2f6f434d1e602915f1e68042f04711211e07ae059",
+      "size_bytes": 30792
+    }
+  ],
+  "board_namespace": "agent-supervisor-proof-directed-planner-doctor-v1",
+  "decision": "sealed",
+  "grant": {
+    "allowed_actions": [
+      "activate_attestation_contract"
+    ],
+    "board_namespace": "agent-supervisor-proof-directed-planner-doctor-v1",
+    "completion_authority": false,
+    "delegable": false,
+    "mutation_authority": false,
+    "policy_revision": "1",
+    "promotion_authority": false,
+    "protected_anchor_write_authority": false,
+    "task_status_authority": false,
+    "type": "attestation_activation"
+  },
+  "interface": "PlannerDoctorAttestationSeal@1",
+  "operator": {
+    "authority_basis": "scheduler_delegated_operator_completion@1",
+    "automatic_controller": true,
+    "candidate": false,
+    "identity": "delegated_supervisor",
+    "model": false
+  },
+  "policy_revision": "1",
+  "receipt_id": "sha256:4cdce4121c0af3797226c125684d1d11e9c5df6a9b3c184d9bed31f8a5e80414",
+  "receipt_version": "1",
+  "reviewed_base": {
+    "commit": "75e9153c70a21597cf074ced38546c9f029deabe",
+    "git_object_format": "sha1",
+    "relation_to_activation_head": "equal_or_ancestor",
+    "tree": "81d66f0061443fb39c6524aa7c774592520fbedb"
+  },
+  "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.attestation_seal@1",
+  "task_id": "PDR-060"
+}
