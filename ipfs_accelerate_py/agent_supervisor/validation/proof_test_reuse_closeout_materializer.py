@@ -269,10 +269,12 @@ def materialize_task_evidence(
     merge_queue_records: Iterable[Any] = (),
     validation_receipts: Iterable[Any] = (),
     approval_records: Iterable[Any] = (),
+    retrospective_records: Iterable[Any] = (),
     recover_missing_merges_from_git: bool = False,
     repo_root: Path | str | None = None,
     freshness_seconds: float = 3_600.0,
     ancestry_verifier: Callable[[str, str], bool] | None = None,
+    approval_verifier: Callable[[Mapping[str, Any]], bool] | None = None,
     clock: Callable[[], float] | None = None,
 ) -> CloseoutMaterializationReport:
     """Run PTR-110 collection with projected merges and optional git recovery."""
@@ -352,6 +354,8 @@ def materialize_task_evidence(
         "freshness_seconds": freshness_seconds,
         "ancestry_verifier": ancestry_verifier or _default_ancestry,
     }
+    if approval_verifier is not None:
+        collector_kwargs["approval_verifier"] = approval_verifier
     if clock is not None:
         collector_kwargs["clock"] = clock
     collector = ProofTestReuseTaskEvidenceCollector(**collector_kwargs)
@@ -361,6 +365,7 @@ def materialize_task_evidence(
         merge_queue_records=projected_merges,
         validation_receipts=receipts,
         approval_records=approval_records,
+        retrospective_records=retrospective_records,
     )
 
     gap_kinds: dict[str, int] = {}
