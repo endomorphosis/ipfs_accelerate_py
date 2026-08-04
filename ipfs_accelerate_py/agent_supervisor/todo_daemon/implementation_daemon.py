@@ -22777,21 +22777,36 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         correction_landed_route_preflight.disposition
                         is _PostMergeCorrectionLandedRouteDisposition.REJECTED
                     ):
-                        # Rejected means the exact denied land is no longer an
-                        # applicable landed-route target (for example after a
-                        # completed schema repair rewrote the tip). That is not
-                        # a durable-authority integrity failure: fall through
-                        # to the ordinary sealed correction path instead of
-                        # burning the authorized attempt.
+                        self.task_queue.defer(
+                            self._canonical_ref(task),
+                            300,
+                            reason=(
+                                "post_merge_correction_landed_route_unverified"
+                            ),
+                        )
+                        self.task_queue.save()
+                        raise WorktreeLifecycleError(
+                            "post_merge_correction_landed_route_unverified:"
+                            + correction_landed_route_preflight.reason
+                        )
+                    correction_landed_route_candidate = dict(
+                        correction_landed_route_preflight.candidate
+                    )
+                    if (
+                        correction_landed_route_preflight.disposition
+                        is _PostMergeCorrectionLandedRouteDisposition.TASK_LEAF_DIVERGED
+                    ):
+                        # A true ``git diff --quiet`` return code of one means
+                        # another landed repair changed the task-owned leaf.
+                        # Preserve the guard until the strict start consumes
+                        # authority and the normal activation path seals one
+                        # exact correction capability.
                         self._record_event(
                             "post_merge_correction_landed_route_inapplicable",
                             {
                                 "task_id": task.task_id,
                                 "attempt": attempt,
-                                "reason": (
-                                    correction_landed_route_preflight.reason
-                                    or "landed_route_rejected"
-                                ),
+                                "reason": "task_leaf_diverged",
                                 "provider_call_allowed": True,
                                 "durable_denial_id": str(
                                     post_merge_correction_authority.get(
@@ -22800,58 +22815,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                     or ""
                                 ),
                                 "baseline_ref": str(baseline_ref or ""),
+                                "route_candidate_id": str(
+                                    correction_landed_route_candidate[
+                                        "route_candidate_id"
+                                    ]
+                                ),
                             },
                         )
                         production_landed_guard = {
                             **dict(production_landed_guard),
-                            "guarded": False,
-                            "reason": (
-                                correction_landed_route_preflight.reason
-                                or "landed_route_rejected"
-                            ),
+                            "reason": "task_leaf_diverged",
                             "landed_route_inapplicable": True,
                         }
-                        correction_landed_route_candidate = {}
-                    else:
-                        correction_landed_route_candidate = dict(
-                            correction_landed_route_preflight.candidate
-                        )
-                        if (
-                            correction_landed_route_preflight.disposition
-                            is _PostMergeCorrectionLandedRouteDisposition.TASK_LEAF_DIVERGED
-                        ):
-                            # A true ``git diff --quiet`` return code of one
-                            # means another landed repair changed the
-                            # task-owned leaf. Preserve the guard until the
-                            # strict start consumes authority and the normal
-                            # activation path seals one exact correction
-                            # capability.
-                            self._record_event(
-                                "post_merge_correction_landed_route_inapplicable",
-                                {
-                                    "task_id": task.task_id,
-                                    "attempt": attempt,
-                                    "reason": "task_leaf_diverged",
-                                    "provider_call_allowed": True,
-                                    "durable_denial_id": str(
-                                        post_merge_correction_authority.get(
-                                            "durable_denial_id"
-                                        )
-                                        or ""
-                                    ),
-                                    "baseline_ref": str(baseline_ref or ""),
-                                    "route_candidate_id": str(
-                                        correction_landed_route_candidate[
-                                            "route_candidate_id"
-                                        ]
-                                    ),
-                                },
-                            )
-                            production_landed_guard = {
-                                **dict(production_landed_guard),
-                                "reason": "task_leaf_diverged",
-                                "landed_route_inapplicable": True,
-                            }
             task_identity = self._identity_for_task(task)
             started_payload = {
                 "task_id": task.task_id,
@@ -34541,21 +34516,24 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         expected_workspace_head = str(
             authority_material.get("recovery_seed_ref") or baseline_ref
         )
+        landed_implementation_commit = str(
+            landed_guard.get("landed_implementation_commit") or ""
+        )
+        landed_merge_commit = str(
+            landed_guard.get("landed_merge_commit") or ""
+        )
+        landed_repository_tree_id = str(
+            landed_guard.get("landed_repository_tree_id") or ""
+        )
         if (
             landed_guard.get("workspace_clean") is not True
             or str(landed_guard.get("recovery_reason") or "")
             != "recovered_implementation_binding"
             or not str(landed_guard.get("recovery_source") or "")
-            or str(
-                landed_guard.get("landed_implementation_commit") or ""
-            )
+            or landed_implementation_commit
             != str(denial["implementation_commit"])
-            or str(landed_guard.get("landed_merge_commit") or "")
-            != str(denial["merge_commit"])
-            or str(
-                landed_guard.get("landed_repository_tree_id") or ""
-            )
-            != str(denial["repository_tree_id"])
+            or not landed_merge_commit
+            or not landed_repository_tree_id
             or not baseline_ref
             or baseline_tree_id
             != str(landed_guard.get("repository_tree_id") or "")
@@ -34564,8 +34542,26 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return rejected("landed_workspace_invalid")
 
         try:
+            # A recovered receipt can describe the original landed merge while
+            # the denial binds a later review-target merge.  Accept that
+            # history only when Git proves the complete, tree-bound chain.
+            landed_tree_id = (
+                "git-tree:"
+                + self._candidate_repository_tree(
+                    landed_merge_commit
+                )
+            )
             ancestry_valid = (
                 self._git_ref_is_ancestor(
+                    landed_implementation_commit,
+                    landed_merge_commit,
+                )
+                and self._git_ref_is_ancestor(
+                    landed_merge_commit,
+                    str(denial["merge_commit"]),
+                )
+                and landed_tree_id == landed_repository_tree_id
+                and self._git_ref_is_ancestor(
                     str(denial["implementation_commit"]),
                     str(denial["merge_commit"]),
                 )
@@ -34650,6 +34646,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "review_attempt": int(denial["review_attempt"]),
             "source_implementation_attempt": int(
                 denial["implementation_attempt"]
+            ),
+            "landed_binding_implementation_commit": (
+                landed_implementation_commit
+            ),
+            "landed_binding_merge_commit": landed_merge_commit,
+            "landed_binding_repository_tree_id": (
+                landed_repository_tree_id
             ),
             "baseline_ref": baseline_ref,
             "baseline_repository_tree_id": baseline_tree_id,

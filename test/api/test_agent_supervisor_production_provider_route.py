@@ -76,6 +76,15 @@ PATH = (
     "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/todo_daemon/"
     "implementation_daemon.py"
 )
+LANDED_ROUTE_REJECTION_CASES = (
+    ("authority", "authority_invalid"),
+    ("durable", "durable_authority_invalid"),
+    ("workspace", "landed_workspace_invalid"),
+    ("ancestry", "landed_ancestry_invalid"),
+    ("landed-newer-than-denial", "landed_ancestry_invalid"),
+    ("landed-tree", "landed_ancestry_invalid"),
+    ("git-comparison", "task_leaf_comparison_failed"),
+)
 
 
 def _git(repo: Path, *arguments: str) -> None:
@@ -184,6 +193,7 @@ def _install_landed_route_preflight_evidence(
     monkeypatch: pytest.MonkeyPatch,
     *,
     task_leaf_diverged: bool,
+    historical_landed_receipt: bool = False,
 ) -> tuple[
     dict[str, Any],
     dict[str, Any],
@@ -204,6 +214,21 @@ def _install_landed_route_preflight_evidence(
         "rev-parse",
         f"{merge_commit}^{{tree}}",
     )
+    landed_merge_commit = merge_commit
+    landed_merge_tree_id = merge_tree_id
+    if historical_landed_receipt:
+        (repo / "review-target.txt").write_text(
+            "review target advanced\n",
+            encoding="utf-8",
+        )
+        _git(repo, "add", "review-target.txt")
+        _git(repo, "commit", "-m", "advance review target")
+        merge_commit = _git_output(repo, "rev-parse", "HEAD^{commit}")
+        merge_tree_id = "git-tree:" + _git_output(
+            repo,
+            "rev-parse",
+            f"{merge_commit}^{{tree}}",
+        )
     if task_leaf_diverged:
         (repo / PATH).write_text("# later repair\n", encoding="utf-8")
         _git(repo, "add", PATH)
@@ -301,8 +326,8 @@ def _install_landed_route_preflight_evidence(
         "recovery_reason": "recovered_implementation_binding",
         "recovery_source": "strict-ledger",
         "landed_implementation_commit": implementation_commit,
-        "landed_merge_commit": merge_commit,
-        "landed_repository_tree_id": merge_tree_id,
+        "landed_merge_commit": landed_merge_commit,
+        "landed_repository_tree_id": landed_merge_tree_id,
         "baseline_ref": baseline_ref,
         "repository_tree_id": baseline_tree_id,
     }
@@ -324,15 +349,54 @@ def _install_landed_route_preflight_evidence(
     return authority, denial, feedback, durable_authority, landed_guard
 
 
+def _install_landed_route_rejection(
+    daemon: TodoImplementationDaemon,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    failure_class: str,
+    authority: dict[str, Any],
+    durable: dict[str, Any],
+    landed_guard: dict[str, Any],
+) -> None:
+    if failure_class == "authority":
+        authority["target_branch"] = "tampered"
+    elif failure_class == "durable":
+        durable["authority_available"] = False
+    elif failure_class == "workspace":
+        landed_guard["workspace_clean"] = False
+    elif failure_class == "ancestry":
+        monkeypatch.setattr(
+            daemon,
+            "_git_ref_is_ancestor",
+            lambda *_args, **_kwargs: False,
+        )
+    elif failure_class == "landed-newer-than-denial":
+        landed_guard["landed_merge_commit"] = landed_guard["baseline_ref"]
+        landed_guard["landed_repository_tree_id"] = landed_guard[
+            "repository_tree_id"
+        ]
+    elif failure_class == "landed-tree":
+        landed_guard["landed_repository_tree_id"] = (
+            "git-tree:" + "0" * 40
+        )
+    else:
+        real_run = subprocess.run
+
+        def fail_leaf_comparison(*args, **kwargs):
+            command = args[0]
+            if (
+                command[:2] == ["git", "--literal-pathspecs"]
+                and "diff" in command
+            ):
+                return subprocess.CompletedProcess(command, 128)
+            return real_run(*args, **kwargs)
+
+        monkeypatch.setattr(subprocess, "run", fail_leaf_comparison)
+
+
 @pytest.mark.parametrize(
     ("failure_class", "expected_reason"),
-    [
-        ("authority", "authority_invalid"),
-        ("durable", "durable_authority_invalid"),
-        ("workspace", "landed_workspace_invalid"),
-        ("ancestry", "landed_ancestry_invalid"),
-        ("git-comparison", "task_leaf_comparison_failed"),
-    ],
+    LANDED_ROUTE_REJECTION_CASES,
 )
 def test_landed_route_preflight_rejects_non_leaf_failures_without_spending_authority(
     tmp_path,
@@ -350,31 +414,14 @@ def test_landed_route_preflight_rejects_non_leaf_failures_without_spending_autho
             task_leaf_diverged=False,
         )
     )
-    if failure_class == "authority":
-        authority["target_branch"] = "tampered"
-    elif failure_class == "durable":
-        durable["authority_available"] = False
-    elif failure_class == "workspace":
-        landed_guard["workspace_clean"] = False
-    elif failure_class == "ancestry":
-        monkeypatch.setattr(
-            daemon,
-            "_git_ref_is_ancestor",
-            lambda *_args, **_kwargs: False,
-        )
-    else:
-        real_run = subprocess.run
-
-        def fail_leaf_comparison(*args, **kwargs):
-            command = args[0]
-            if (
-                command[:2] == ["git", "--literal-pathspecs"]
-                and "diff" in command
-            ):
-                return subprocess.CompletedProcess(command, 128)
-            return real_run(*args, **kwargs)
-
-        monkeypatch.setattr(subprocess, "run", fail_leaf_comparison)
+    _install_landed_route_rejection(
+        daemon,
+        monkeypatch,
+        failure_class=failure_class,
+        authority=authority,
+        durable=durable,
+        landed_guard=landed_guard,
+    )
 
     result = daemon._post_merge_correction_landed_route_candidate(
         task,
@@ -393,6 +440,82 @@ def test_landed_route_preflight_rejects_non_leaf_failures_without_spending_autho
     assert not _events(daemon)
     assert not daemon._sealed_post_merge_correction_routes
     assert not daemon._claimed_post_merge_correction_routes
+
+
+@pytest.mark.parametrize(
+    ("failure_class", "expected_reason"),
+    LANDED_ROUTE_REJECTION_CASES,
+)
+def test_rejected_landed_route_preflight_never_invokes_provider(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_class: str,
+    expected_reason: str,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    daemon._register_task_identities([task])
+    authority, _denial, _feedback, durable, landed_guard = (
+        _install_landed_route_preflight_evidence(
+            daemon,
+            task,
+            monkeypatch,
+            task_leaf_diverged=False,
+        )
+    )
+    _install_landed_route_rejection(
+        daemon,
+        monkeypatch,
+        failure_class=failure_class,
+        authority=authority,
+        durable=durable,
+        landed_guard=landed_guard,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_production_landed_task_guard_for_workspace",
+        lambda *_args, **_kwargs: landed_guard,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_revalidate_post_merge_correction_dispatch",
+        lambda *_args, **_kwargs: PortalTaskState(),
+    )
+    monkeypatch.setattr(daemon.task_queue, "defer", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(daemon.task_queue, "save", lambda: None)
+    provider_calls: list[str] = []
+
+    def forbidden_provider(*_args, **_kwargs):
+        provider_calls.append("called")
+        raise AssertionError("rejected landed-route evidence reached provider")
+
+    daemon._production_grok_provider = forbidden_provider
+    daemon._production_codex_provider = forbidden_provider
+    daemon._production_codex_implementation_fallback_provider = (
+        forbidden_provider
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=PortalTaskState(),
+        attempt=2,
+        started_at="2026-08-04T00:00:00+00:00",
+        log_path=daemon.implementation_log_dir / "rejected-landed-route.log",
+        prompt="provider must not receive rejected landed-route evidence",
+        post_merge_correction_authority=authority,
+    )
+
+    assert provider_calls == []
+    assert result["attempt_consumed"] is False
+    assert result["provider_call_allowed"] is False
+    assert result["lifecycle_race"] is True
+    assert result["exception_result"]["message"] == (
+        "post_merge_correction_landed_route_unverified:" + expected_reason
+    )
+    assert not any(
+        event.get("type") == MODEL_ASSISTED_PROVIDER_ROUTE_EVENT
+        for event in _events(daemon)
+    )
 
 
 def test_complete_feedback_authority_rejects_boolean_attempt_fail_closed(
@@ -436,16 +559,23 @@ def test_complete_feedback_authority_rejects_boolean_attempt_fail_closed(
 
 
 @pytest.mark.parametrize(
-    ("task_leaf_diverged", "expected_disposition"),
+    (
+        "task_leaf_diverged",
+        "historical_landed_receipt",
+        "expected_disposition",
+    ),
     [
-        (False, "verified"),
-        (True, "task_leaf_diverged"),
+        (False, False, "verified"),
+        (True, False, "task_leaf_diverged"),
+        (False, True, "verified"),
+        (True, True, "task_leaf_diverged"),
     ],
 )
 def test_landed_route_preflight_activates_one_sealed_capability(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
     task_leaf_diverged: bool,
+    historical_landed_receipt: bool,
     expected_disposition: str,
 ) -> None:
     daemon = _daemon(tmp_path, monkeypatch)
@@ -456,6 +586,7 @@ def test_landed_route_preflight_activates_one_sealed_capability(
             task,
             monkeypatch,
             task_leaf_diverged=task_leaf_diverged,
+            historical_landed_receipt=historical_landed_receipt,
         )
     )
     preflight = daemon._post_merge_correction_landed_route_candidate(
@@ -467,6 +598,12 @@ def test_landed_route_preflight_activates_one_sealed_capability(
     )
     assert preflight.disposition.value == expected_disposition
     candidate = dict(preflight.candidate)
+    assert candidate["landed_binding_merge_commit"] == landed_guard[
+        "landed_merge_commit"
+    ]
+    assert candidate["landed_binding_repository_tree_id"] == landed_guard[
+        "landed_repository_tree_id"
+    ]
     identity = daemon._identity_for_task(task)
     started_event = {
         "type": "implementation_started",
