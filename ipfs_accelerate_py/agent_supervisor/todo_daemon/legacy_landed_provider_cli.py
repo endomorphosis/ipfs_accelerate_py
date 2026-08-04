@@ -169,6 +169,20 @@ def _native_cli_failure(
             )
             if _CODEX_USAGE_LIMIT_PATTERN.search(diagnostic):
                 return LegacyProviderCapacitySignal()
+    # Surface a small allowlisted set of secret-free transport statuses so
+    # operator logs and capacity classifiers can distinguish max-turns cancels
+    # from generic provider failures without dumping model transcripts.
+    stderr_text = _bounded_failure_sample(stderr).decode("utf-8", errors="replace")
+    stdout_text = _bounded_failure_sample(stdout).decode("utf-8", errors="replace")
+    combined = f"{stderr_text}\n{stdout_text}".casefold()
+    if "max turns reached" in combined:
+        return RuntimeError("legacy native provider command failed: max turns reached")
+    if "structuredoutputerror" in combined or "did not produce structured output" in combined:
+        return RuntimeError(
+            "legacy native provider command failed: structured output missing"
+        )
+    if "timed out" in combined or "timeout" in combined:
+        return RuntimeError("legacy native provider command failed: timed out")
     return RuntimeError("legacy native provider command failed")
 
 
@@ -454,6 +468,11 @@ def _grok_native_structured_output(
         "utf-8", errors="strict"
     ):
         raise RuntimeError("legacy canonical request changed in prompt file")
+    # Production implement prompts carry a full typed packet.  A single turn is
+    # often cancelled before constrained structured output is finalized
+    # (``structuredOutputError: model did not produce structured output`` with
+    # ``Error: max turns reached``).  Allow a small fixed turn budget while
+    # still forbidding tools/subagents/web so the side-effect boundary holds.
     command = [
         binary,
         "--model",
@@ -466,7 +485,7 @@ def _grok_native_structured_output(
         "--no-memory",
         "--verbatim",
         "--max-turns",
-        "1",
+        "4",
         "--permission-mode",
         "dontAsk",
         "--tools",
@@ -482,18 +501,32 @@ def _grok_native_structured_output(
     payload = _last_json_object(stdout)
     if str(payload.get("type") or "").casefold() == "error":
         raise RuntimeError("legacy Grok CLI returned an error result")
-    if "text" in payload:
+    # Prefer the CLI's structuredOutput envelope when present: current Grok
+    # builds emit the constrained schema object there while also stuffing a
+    # human-readable JSON string under ``text``.
+    structured = payload.get("structuredOutput")
+    structured_error = str(payload.get("structuredOutputError") or "").strip()
+    if isinstance(structured, Mapping) and structured:
+        response_text = _canonical_json(structured)
+    elif "text" in payload:
         response_value = payload.get("text")
         if isinstance(response_value, Mapping):
             response_text = _canonical_json(response_value)
         elif isinstance(response_value, str) and response_value.strip():
             response_text = response_value.strip()
         else:
-            raise RuntimeError("legacy Grok CLI structured result is missing")
+            detail = structured_error or "structured result is missing"
+            raise RuntimeError(f"legacy Grok CLI structured result failed: {detail}")
     else:
         # Current Grok releases may emit the schema object directly, while
         # older releases wrap it in ``text``. The caller's strict validator
         # decides whether the direct object is the requested response shape.
+        if structured_error and not any(
+            key in payload for key in ("packet_id", "proposal", "decision")
+        ):
+            raise RuntimeError(
+                f"legacy Grok CLI structured result failed: {structured_error}"
+            )
         response_text = _canonical_json(payload)
     endpoint_value = payload.get("requestId")
     endpoint_receipt_id = ""

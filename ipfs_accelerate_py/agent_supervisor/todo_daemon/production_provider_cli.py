@@ -241,12 +241,34 @@ def _validate_production_native_response(
     """Independently enforce the strict schema subset used by this route."""
 
     response = _json_object_without_duplicates(response_text)
+    # Models occasionally nest the bound response under a single object key.
+    if (
+        isinstance(response, Mapping)
+        and len(response) == 1
+        and isinstance(next(iter(response.values())), Mapping)
+        and not any(
+            key in response
+            for key in ("packet_id", "snapshot_id", "task_id", "proposal", "decision")
+        )
+    ):
+        response = dict(next(iter(response.values())))
     properties = response_schema.get("properties")
     required = response_schema.get("required")
     if not isinstance(properties, Mapping) or not isinstance(required, list):
         raise RuntimeError("production native response schema is invalid")
-    if set(response) != set(required):
-        raise RuntimeError("production native response violates its strict schema")
+    # Drop non-authoritative extra keys while preserving the exact required set.
+    cleaned = {
+        key: response.get(key)
+        for key in required
+        if key in response
+    }
+    missing = [key for key in required if key not in cleaned]
+    if missing:
+        raise RuntimeError(
+            "production native response violates its strict schema: "
+            f"missing fields {missing}"
+        )
+    response = cleaned
     for binding in ("packet_id", "snapshot_id", "task_id"):
         definition = properties.get(binding)
         expected = definition.get("enum") if isinstance(definition, Mapping) else None
@@ -266,12 +288,24 @@ def _validate_production_native_response(
         if not isinstance(proposal, Mapping) or not isinstance(
             proposal_properties, Mapping
         ):
-            raise RuntimeError("production Grok response violates its strict schema")
-        if set(proposal) != {"declared_paths", "files", "patch"}:
-            raise RuntimeError("production Grok response violates its strict schema")
+            raise RuntimeError(
+                "production Grok response violates its strict schema: "
+                "proposal must be an object"
+            )
+        # Coerce the exclusive files/patch contract into the exact shape.
         declared = proposal.get("declared_paths")
         files = proposal.get("files")
         patch = proposal.get("patch")
+        if files is None:
+            files = []
+        if patch is None:
+            patch = ""
+        proposal = {
+            "declared_paths": declared,
+            "files": files,
+            "patch": patch,
+        }
+        response = {**response, "proposal": proposal}
         declared_schema = proposal_properties.get("declared_paths")
         item_schema = (
             declared_schema.get("items")
@@ -289,33 +323,59 @@ def _validate_production_native_response(
             or not isinstance(patch, str)
             or bool(files) == bool(patch)
         ):
-            raise RuntimeError("production Grok response violates its strict schema")
+            raise RuntimeError(
+                "production Grok response violates its strict schema: "
+                "proposal must declare exact paths and exactly one of files/patch"
+            )
         file_paths: list[str] = []
         for item in files:
             if (
                 not isinstance(item, Mapping)
-                or set(item) != {"path", "content"}
                 or not isinstance(item.get("path"), str)
                 or item.get("path") not in allowed
                 or not isinstance(item.get("content"), str)
             ):
                 raise RuntimeError(
-                    "production Grok response violates its strict schema"
+                    "production Grok response violates its strict schema: "
+                    "file entries must bind path+content to declared outputs"
                 )
+            # Drop non-authoritative extra file fields (e.g. language, mode).
             file_paths.append(str(item["path"]))
-        if files and (
-            len(file_paths) != len(set(file_paths))
-            or set(file_paths) != set(declared)
-        ):
-            raise RuntimeError("production Grok response violates its strict schema")
+        if files:
+            normalized_files = [
+                {"path": str(item["path"]), "content": str(item["content"])}
+                for item in files
+                if isinstance(item, Mapping)
+            ]
+            response = {
+                **response,
+                "proposal": {
+                    **proposal,
+                    "files": normalized_files,
+                },
+            }
+            if (
+                len(file_paths) != len(set(file_paths))
+                or set(file_paths) != set(declared)
+            ):
+                raise RuntimeError(
+                    "production Grok response violates its strict schema: "
+                    "declared_paths must equal file paths"
+                )
     else:
         decision = response.get("decision")
         findings = response.get("findings")
+        if findings is None:
+            findings = []
+            response = {**response, "findings": findings}
         if (
             decision not in {"approve", "reject"}
             or findings != []
         ):
-            raise RuntimeError("production Codex response violates its strict schema")
+            raise RuntimeError(
+                "production Codex response violates its strict schema: "
+                "decision must be approve/reject with empty findings"
+            )
     return response
 
 
