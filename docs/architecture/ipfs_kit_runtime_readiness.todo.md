@@ -1452,7 +1452,7 @@ or write authority.
 
 ## KITA-046 Validate compatibility migration, wheel matrix, rollout, and rollback
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
