@@ -168,6 +168,45 @@ AUTHORITATIVE_VENDOR_RELEASE_VALIDATION_COMMAND: Final = (
 AUTHORITATIVE_VENDOR_RELEASE_MAX_EVIDENCE_AGE_SECONDS: Final = 86_400
 AUTHORITATIVE_VENDOR_RELEASE_CLOCK_SKEW_SECONDS: Final = 300
 
+# Post-remediation re-audit (FVT-G233 / FVT-100).  The vendor-release builder
+# keeps ownership of the authoritative fan-in; the certifier owns the delta
+# body.  These constants keep the two surfaces aligned on evidence paths and
+# fail-closed deployment policy after remediations G225-G231.
+POST_REMEDIATION_INTERFACE: Final = (
+    "FormalVerificationPostRemediationAssurance@1"
+)
+POST_REMEDIATION_SCHEMA_VERSION: Final = (
+    "formal-verification-post-remediation-assurance/v1"
+)
+POST_REMEDIATION_GOAL_ID: Final = "FVT-G233"
+POST_REMEDIATION_TASK_ID: Final = "FVT-100"
+POST_REMEDIATION_PROGRAM: Final = (
+    "formal-verification-tactician/post-remediation-assurance"
+)
+DEFAULT_POST_REMEDIATION_DELTA_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_post_remediation_delta.json"
+)
+POST_REMEDIATION_TEST_RELATIVE: Final = Path(
+    "test/integration/toolchains/"
+    "test_formal_verification_post_remediation_assurance.py"
+)
+POST_REMEDIATION_BASELINE_READY_PROVIDER_IDS: Final[tuple[str, ...]] = (
+    "cvc5",
+    "java",
+    "lean",
+    "z3",
+    "zkp-circuit",
+)
+POST_REMEDIATION_BASELINE_READY_COUNT: Final = 5
+POST_REMEDIATION_BASELINE_TOTAL_COUNT: Final = 28
+PRODUCTION_AUTHORIZATION_REPLACEMENT_PROVIDER_ID: Final = (
+    "production-authorization-replacement"
+)
+POST_REMEDIATION_EXTERNAL_BLOCKERS: Final[tuple[str, ...]] = (
+    "FVT-G219",
+    "FVT-G232",
+)
+
 # The historical SecPAL research release was recovered through Microsoft's
 # archived GUID download surface.  Only metadata may enter the public receipt:
 # the EULA forbids redistribution of the installer and tells third parties to
@@ -2068,6 +2107,47 @@ def _load_certifier_module(repo_root: Path) -> Any:
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def build_post_remediation_assurance_delta(
+    *,
+    repo_root: Path,
+    matrix: Mapping[str, Any] | None = None,
+    certificate: Mapping[str, Any] | None = None,
+    observed_at: str | None = None,
+) -> dict[str, Any]:
+    """Delegate FVT-G233 delta construction to the certifier surface.
+
+    The receipt builder keeps the authoritative-vendor fan-in; the certifier
+    owns the post-remediation matrix/release delta so both tools stay aligned
+    without weakening G219 or synthesizing G232 approval.
+    """
+
+    certifier = _load_certifier_module(repo_root)
+    return certifier.build_post_remediation_assurance_delta(
+        repo_root=repo_root,
+        matrix=matrix,
+        certificate=certificate,
+        observed_at=observed_at,
+    )
+
+
+def validate_post_remediation_assurance_delta(
+    delta: Mapping[str, Any],
+    *,
+    repo_root: Path,
+    matrix: Mapping[str, Any] | None = None,
+    certificate: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Delegate FVT-G233 delta validation to the certifier surface."""
+
+    certifier = _load_certifier_module(repo_root)
+    return certifier.validate_post_remediation_assurance_delta(
+        delta,
+        repo_root=repo_root,
+        matrix=matrix,
+        certificate=certificate,
+    )
 
 
 def _identity_matches(
