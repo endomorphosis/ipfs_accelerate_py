@@ -416,8 +416,43 @@ def _managed_install_root(env: Mapping[str, str]) -> Path:
     return installer.expand_user_local_root()
 
 
+def _relocated_java_under_root(root: Path, raw_java: str) -> Path | None:
+    """Resolve a recorded Java path under *root*, including sealed relocations."""
+
+    text = str(raw_java or "").strip()
+    if not text:
+        return None
+    try:
+        resolved_root = root.resolve()
+    except OSError:
+        return None
+    recorded = Path(os.path.expanduser(text))
+    try:
+        direct = recorded.resolve()
+        direct.relative_to(resolved_root)
+        if direct.is_file() and os.access(direct, os.X_OK):
+            return direct
+    except (OSError, ValueError):
+        pass
+    parts = recorded.parts
+    start = 1 if recorded.is_absolute() else 0
+    for index in range(start, len(parts)):
+        candidate = resolved_root.joinpath(*parts[index:])
+        try:
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return candidate.resolve()
+        except OSError:
+            continue
+    return None
+
+
 def _bound_managed_java(root: Path) -> str | None:
-    """Return the JVM jointly bound by the exact TLC and Apalache manifests."""
+    """Return the JVM jointly bound by the exact TLC and Apalache manifests.
+
+    Manifests may still record pre-relocation absolute publication paths.
+    When the same relative suffix exists under the current managed root, use
+    that relocated executable so sealed Isabelle JDK trees remain usable.
+    """
 
     expected = {
         TOOL_ID_TLC: (LOCKED_TLC_VERSION, LOCKED_TLC_SHA256),
@@ -443,14 +478,8 @@ def _bound_managed_java(root: Path) -> str | None:
         ):
             return None
         raw_java = str(payload.get("java_executable") or "").strip()
-        if not raw_java:
-            return None
-        java = Path(os.path.expanduser(raw_java)).resolve()
-        try:
-            java.relative_to(root.resolve())
-        except ValueError:
-            return None
-        if not java.is_file() or not os.access(java, os.X_OK):
+        java = _relocated_java_under_root(root, raw_java)
+        if java is None:
             return None
         candidates.append(java)
     if len(candidates) != len(expected) or len(set(candidates)) != 1:
