@@ -134,7 +134,7 @@ def test_descriptor_rejects_locator_metadata() -> None:
     bad["metadata"] = {**dict(good["metadata"]), "executable": "/usr/bin/true"}
     with pytest.raises(ValueError, match="forbidden executable locator|not allowed"):
         assert_no_executable_locators(bad)
-    with pytest.raises(ValueError, match="not allowed"):
+    with pytest.raises(ValueError, match="forbidden executable locator|not allowed"):
         descriptor_from_public_dict(bad)
 
 
