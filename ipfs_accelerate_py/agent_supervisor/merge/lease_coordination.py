@@ -214,6 +214,33 @@ def profile_g_cid(value: Any) -> str:
     return "b" + base64.b32encode(raw).decode("ascii").rstrip("=").lower()
 
 
+def profile_g_task_attempt_limit(
+    max_attempts: Any,
+    *,
+    default: int = 3,
+) -> int:
+    """Normalize a Profile-G / worker attempt budget.
+
+    Profile-G v1 permits ``0`` as the unlimited sentinel.  Positive integers
+    are finite budgets.  Invalid or missing values fall back to ``default``
+    so queue adapters never silently coerce unlimited worker budgets into a
+    finite Profile-G default.
+    """
+
+    if isinstance(max_attempts, bool):
+        return int(default)
+    if isinstance(max_attempts, int) and max_attempts >= 0:
+        return int(max_attempts)
+    if isinstance(max_attempts, str) and max_attempts.strip():
+        try:
+            parsed = int(max_attempts.strip(), 10)
+        except ValueError:
+            return int(default)
+        if parsed >= 0:
+            return parsed
+    return int(default)
+
+
 def _is_profile_g_cid(value: Any) -> bool:
     """Return whether ``value`` is canonical Profile-G CIDv1 identity text."""
 
