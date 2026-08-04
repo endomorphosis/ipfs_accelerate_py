@@ -18,7 +18,6 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
 EXIT_USAGE = 2
@@ -71,7 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--checkout-root",
         default=None,
-        help="Repository checkout root (default: auto-detect; not used for mutation)",
+        help="Exact repository checkout root for runtime-backed operations",
     )
     parser.add_argument(
         "--policy-json",
@@ -212,6 +211,22 @@ def _bootstrap_service(policy_payload: Mapping[str, Any] | None):
     return DeterministicDoctorService(policy=policy_payload)
 
 
+def _bootstrap_runtime(
+    checkout_root: str,
+    policy_payload: Mapping[str, Any] | None,
+):
+    """Lazy-import the production runtime after parsing and discovery gates."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.deterministic_doctor_runtime import (  # noqa: WPS433
+        create_deterministic_doctor_runtime,
+    )
+
+    return create_deterministic_doctor_runtime(
+        checkout_root,
+        policy=policy_payload,
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     raw_argv = list(argv) if argv is not None else sys.argv[1:]
     try:
@@ -237,9 +252,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         policy_payload = _load_json_object(args.policy_json, "policy")
-        service = _bootstrap_service(policy_payload)
-
         if args.command == "discovery":
+            service = _bootstrap_service(policy_payload)
             payload = service.discovery(policy=policy_payload)
             sys.stdout.write(
                 json.dumps(payload, sort_keys=True, indent=2, ensure_ascii=False)
@@ -276,10 +290,41 @@ def main(argv: Sequence[str] | None = None) -> int:
         if roots is not None:
             request["roots"] = dict(roots)
 
+        # A checkout-backed operation uses the lazy production composition.
+        # Caller-supplied snapshots retain the provider-free control-only path.
+        use_runtime = bool(args.checkout_root) and snapshot is None and args.command in {
+            "inspect",
+            "explain",
+            "plan",
+            "repair",
+        }
+        if use_runtime:
+            runtime = _bootstrap_runtime(args.checkout_root, policy_payload)
+            report = runtime.execute(request)
+            result = report.result
+            payload = {
+                **result.to_dict(),
+                "runtime": {
+                    "interface": runtime.INTERFACE,
+                    "evidence": (
+                        report.evidence.to_dict()
+                        if report.evidence is not None
+                        else None
+                    ),
+                    "stage_receipts": {
+                        key: dict(value)
+                        for key, value in report.stage_receipts.items()
+                    },
+                    "capability_graph": runtime.capability_graph(),
+                },
+            }
+        else:
+            service = _bootstrap_service(policy_payload)
+            result = service.execute(request)
+            payload = result.to_dict()
         # Never log or print request bodies beyond the machine-readable result.
-        result = service.execute(request)
         sys.stdout.write(
-            json.dumps(result.to_dict(), sort_keys=True, indent=2, ensure_ascii=False)
+            json.dumps(payload, sort_keys=True, indent=2, ensure_ascii=False)
             + "\n"
         )
         return int(result.exit_code)

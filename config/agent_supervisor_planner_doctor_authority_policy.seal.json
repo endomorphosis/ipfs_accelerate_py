@@ -1,0 +1,57 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.authority_policy_seal@1",
+  "interface": "PlannerDoctorAuthorityPolicySeal@1",
+  "receipt_version": "1",
+  "task_id": "PDR-002",
+  "board_namespace": "agent-supervisor-proof-directed-planner-doctor-v1",
+  "policy_revision": "1",
+  "reviewed_base": {
+    "commit": "ed7aaeb34846b25bce71f9e183131e3b44526e7a",
+    "tree": "341854a1e8a8359c8d594fd45e75ca29e0f7edef",
+    "git_object_format": "sha1",
+    "relation_to_activation_head": "equal_or_ancestor"
+  },
+  "artifacts": [
+    {
+      "role": "authority_policy",
+      "path": "config/agent_supervisor_planner_doctor_authority_policy.json",
+      "sha256": "sha256:635ae5e3befd767f5c5cee0b6c8d54b3286d103306764d2b667318e5285cf519",
+      "size_bytes": 24576
+    },
+    {
+      "role": "authority_test",
+      "path": "test/api/test_agent_supervisor_planner_doctor_authority_policy.py",
+      "sha256": "sha256:b09feb88532c8660b0df3881f3227f43f90bac740e2d83825bf4150c9e68b51d",
+      "size_bytes": 41164
+    },
+    {
+      "role": "threat_model",
+      "path": "docs/architecture/agent_supervisor_planner_doctor_threat_model.md",
+      "sha256": "sha256:e0d1e7f5736915253c009ec07e14be6ac6c74eea6762a33b06a3f11c8b4da751",
+      "size_bytes": 30694
+    }
+  ],
+  "operator": {
+    "identity": "interactive_user",
+    "authority_basis": "interactive_user_delegation",
+    "candidate": false,
+    "model": false,
+    "automatic_controller": false
+  },
+  "grant": {
+    "type": "policy_activation",
+    "allowed_actions": [
+      "activate_policy_revision"
+    ],
+    "board_namespace": "agent-supervisor-proof-directed-planner-doctor-v1",
+    "policy_revision": "1",
+    "delegable": false,
+    "mutation_authority": false,
+    "completion_authority": false,
+    "promotion_authority": false,
+    "task_status_authority": false,
+    "protected_anchor_write_authority": false
+  },
+  "decision": "sealed",
+  "receipt_id": "sha256:c05dedf05f9724c95d7d74a1e247e83a1be95e309b62e68a8282ae8d02f4a067"
+}

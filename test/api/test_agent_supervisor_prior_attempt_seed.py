@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as implementation_daemon_module,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,
@@ -1504,12 +1508,75 @@ def test_record_prior_attempt_seed_failure_writes_guidance(
     key = daemon._canonical_ref(task)
     assert key in daemon._implementation_seed_failure_guidance
     assert "abc123" in daemon._implementation_seed_failure_guidance[key]
+    assert (
+        "recover preserved work"
+        in daemon._implementation_seed_failure_guidance[key]
+    )
     guide = (
-        worktree
-        / "docs"
-        / "agent-supervisor"
-        / "rescue"
+        daemon.implementation_log_dir
+        / "seed_recovery"
         / "lig-016-attempt-2-seed-recovery.md"
     )
     assert guide.is_file()
     assert "compactly" in guide.read_text(encoding="utf-8")
+    assert not (worktree / "docs" / "agent-supervisor" / "rescue").exists()
+    event = json.loads(
+        daemon.events_path.read_text(encoding="utf-8").splitlines()[-1]
+    )
+    assert event["type"] == "implementation_prior_attempt_seed_failed"
+    assert event["guidance_path"] == str(guide)
+
+
+def test_rejected_prior_seed_guidance_forbids_replay_and_reaches_retry_prompt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path)
+    worktree = tmp_path / "wt"
+    worktree.mkdir()
+    task = _task("src/repair.py")
+    prior_commit = "a" * 40
+
+    daemon._record_prior_attempt_seed_failure(
+        task=task,
+        attempt=2,
+        seed_plan={
+            "reuse_prior_attempt": True,
+            "prior_commit": prior_commit,
+            "prior_branch": "implementation/seed-001-attempt-1",
+            "seed_ref": prior_commit,
+        },
+        seed_apply={
+            "applied": False,
+            "reason": "prior_seed_accepted_proposal_missing",
+        },
+        worktree_path=worktree,
+        branch_name="implementation/seed-001-attempt-2",
+    )
+
+    key = daemon._canonical_ref(task)
+    guidance = daemon._implementation_seed_failure_guidance[key]
+    assert "read-only diagnostic evidence only" in guidance
+    assert "MUST NOT cherry-pick, merge, apply, or replay it" in guidance
+    assert (
+        "remove every reported proposal, security, and validation finding"
+        in guidance
+    )
+    assert "recover preserved work" not in guidance
+
+    monkeypatch.setattr(
+        daemon,
+        "_compile_implementation_context",
+        lambda _task, _attempt: SimpleNamespace(capsule=object()),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "render_context_capsule",
+        lambda _capsule: "base implementation prompt",
+    )
+
+    prompt = daemon._build_implementation_prompt(task, attempt=2)
+
+    assert "## Prior attempt seed recovery" in prompt
+    assert guidance in prompt
+    assert key not in daemon._implementation_seed_failure_guidance

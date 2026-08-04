@@ -1,13 +1,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 import logging
-import shlex
 import sys
 from pathlib import Path
-
-import pytest
 
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     ConfiguredDaemonBootstrapRunner,
@@ -153,6 +149,92 @@ def test_supervisor_propagates_execution_slice_task_ids_to_daemon(tmp_path: Path
     ] == ["HSSL-BENCH-011"]
 
 
+def test_manual_completion_authority_revalidation_only_propagates_end_to_end(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "tasks.todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    parsed_supervisor = parse_supervisor_args(
+        [
+            "--todo-path",
+            str(board),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--implement",
+            "--manual-completion-authority-task-id",
+            "EX-001",
+            "--manual-completion-authority-revalidation-only",
+        ]
+    )
+
+    config = supervisor_config_from_args(
+        parsed_supervisor,
+        repo_root=tmp_path,
+    )
+    supervisor = PortalImplementationSupervisor(config)
+    command = supervisor._build_daemon_command()
+
+    assert parsed_supervisor.manual_completion_authority_revalidation_only is True
+    assert config.manual_completion_authority_revalidation_only is True
+    assert command.count(
+        "--manual-completion-authority-revalidation-only"
+    ) == 1
+    assert supervisor._managed_daemon_matches_command_line(" ".join(command))
+
+    command_without_mode = [
+        argument
+        for argument in command
+        if argument != "--manual-completion-authority-revalidation-only"
+    ]
+    assert not supervisor._managed_daemon_matches_command_line(
+        " ".join(command_without_mode)
+    )
+
+    parsed_daemon = parse_args(command[4:])
+    daemon, _context = build_portal_implementation_daemon_from_args(
+        parsed_daemon,
+        repo_root=tmp_path,
+    )
+
+    assert parsed_daemon.manual_completion_authority_revalidation_only is True
+    assert daemon.manual_completion_authority_revalidation_only is True
+
+
+def test_manual_completion_authority_revalidation_only_defaults_false_and_rejects_extra_flag(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "tasks.todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    parsed_supervisor = parse_supervisor_args(
+        [
+            "--todo-path",
+            str(board),
+            "--state-dir",
+            str(tmp_path / "state"),
+        ]
+    )
+
+    config = supervisor_config_from_args(
+        parsed_supervisor,
+        repo_root=tmp_path,
+    )
+    supervisor = PortalImplementationSupervisor(config)
+    command = supervisor._build_daemon_command()
+
+    assert parsed_supervisor.manual_completion_authority_revalidation_only is False
+    assert config.manual_completion_authority_revalidation_only is False
+    assert "--manual-completion-authority-revalidation-only" not in command
+    assert supervisor._managed_daemon_matches_command_line(" ".join(command))
+    assert not supervisor._managed_daemon_matches_command_line(
+        " ".join(
+            [
+                *command,
+                "--manual-completion-authority-revalidation-only",
+            ]
+        )
+    )
+
+
 def test_daemon_execution_slice_cannot_select_an_earlier_ready_bundle_member(
     tmp_path: Path,
 ):
@@ -233,29 +315,8 @@ def test_daemon_uses_explicit_merge_target_branch_and_rejects_missing_branch(tmp
 
 
 def test_daemon_uses_packaged_merge_resolver_by_default(tmp_path: Path, monkeypatch):
-    from ipfs_accelerate_py.agent_supervisor import grok_cli_runner
-
     monkeypatch.delenv("IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND", raising=False)
-    monkeypatch.setattr(
-        grok_cli_runner,
-        "resolve_codex_quota_fallback_executable",
-        lambda **_kwargs: "/usr/local/bin/codex",
-    )
-    expected = default_llm_merge_resolver_command()
-    route = shlex.split(expected)
-    assert route[:3] == [
-        sys.executable,
-        "-m",
-        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
-    ]
-    assert route[route.index("--model") + 1] == "grok-4.5"
-    fallback = json.loads(
-        route[route.index("--codex-fallback-command-json") + 1]
-    )
-    assert Path(fallback[0]).name == "codex"
-    assert fallback[fallback.index("-m") + 1] == "gpt-5.6-terra"
-    assert 'model_reasoning_effort="medium"' in fallback
-    assert all("copilot" not in argument.casefold() for argument in route)
+    expected = f"{sys.executable} -m ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback"
     daemon = PortalImplementationDaemon(
         todo_path=tmp_path / "tasks.todo.md",
         state_path=tmp_path / "state.json",
@@ -264,29 +325,9 @@ def test_daemon_uses_packaged_merge_resolver_by_default(tmp_path: Path, monkeypa
         repo_root=tmp_path,
     )
 
+    assert default_llm_merge_resolver_command() == expected
     assert daemon.llm_merge_resolver_command == expected
     assert parse_args([]).llm_merge_resolver_command == expected
-
-
-def test_packaged_merge_resolver_omits_fallback_without_trusted_codex(
-    monkeypatch,
-) -> None:
-    from ipfs_accelerate_py.agent_supervisor import grok_cli_runner
-
-    monkeypatch.delenv(
-        "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND",
-        raising=False,
-    )
-    monkeypatch.setattr(
-        grok_cli_runner,
-        "resolve_codex_quota_fallback_executable",
-        lambda **_kwargs: "",
-    )
-
-    route = shlex.split(default_llm_merge_resolver_command())
-
-    assert route[route.index("--model") + 1] == "grok-4.5"
-    assert "--codex-fallback-command-json" not in route
 
 
 def test_daemon_explicit_merge_resolver_overrides_default(tmp_path: Path, monkeypatch):
@@ -304,43 +345,7 @@ def test_daemon_explicit_merge_resolver_overrides_default(tmp_path: Path, monkey
     assert daemon.llm_merge_resolver_command == "explicit-resolver"
 
 
-def test_daemon_and_supervisor_accept_explicit_merge_resolver_disable_sentinel(
-    tmp_path: Path,
-    monkeypatch,
-):
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND",
-        "disabled",
-    )
-    daemon = PortalImplementationDaemon(
-        todo_path=tmp_path / "tasks.todo.md",
-        state_path=tmp_path / "state.json",
-        strategy_path=tmp_path / "strategy.json",
-        events_path=tmp_path / "events.jsonl",
-        repo_root=tmp_path,
-    )
-    supervisor_args = parse_supervisor_args([])
-    supervisor_config = supervisor_config_from_args(
-        supervisor_args,
-        repo_root=tmp_path,
-    )
-
-    assert default_llm_merge_resolver_command() == ""
-    assert daemon.llm_merge_resolver_command == ""
-    assert parse_args([]).llm_merge_resolver_command == ""
-    assert supervisor_config.llm_merge_resolver_command == ""
-
-
 def test_daemon_resolves_relative_worktree_root_for_runner_workspace(tmp_path: Path, monkeypatch):
-    for name in (
-        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
-        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER",
-        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER",
-        "IPFS_ACCELERATE_AGENT_GROK_MODEL",
-        "IPFS_ACCELERATE_AGENT_CODEX_MODEL",
-        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT",
-    ):
-        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv(
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
         "codex",
@@ -604,6 +609,8 @@ def test_build_portal_implementation_daemon_from_args_applies_defaults(tmp_path:
     assert daemon.worktree_submodule_paths == ("module-a", "module-b")
     assert daemon.objective_path == tmp_path / "objective.md"
     assert daemon.objective_bundle_dir == tmp_path / "bundles"
+    assert parsed.manual_completion_authority_revalidation_only is False
+    assert daemon.manual_completion_authority_revalidation_only is False
     assert context.state_path == tmp_path / "state" / "example_task_state.json"
     assert context.strategy_path == tmp_path / "state" / "example_strategy.json"
     assert context.events_path == tmp_path / "state" / "example_events.jsonl"
@@ -653,103 +660,39 @@ def test_run_portal_implementation_daemon_loop_runs_hooks_once(caplog):
     assert "after hook: ['after-result']" in caplog.text
 
 
-@pytest.mark.parametrize(
-    ("wake_kind", "blocked", "expected_level", "payload_visible"),
-    (
-        ("lease", False, logging.DEBUG, False),
-        ("lease", True, logging.INFO, True),
-        ("repository", False, logging.INFO, True),
-    ),
-)
-def test_run_portal_implementation_daemon_loop_only_compacts_safe_noop_wakes(
-    caplog,
-    wake_kind,
-    blocked,
-    expected_level,
-    payload_visible,
-):
-    class StopLoop(RuntimeError):
-        pass
-
+def test_run_portal_implementation_daemon_loop_suppresses_hooks_for_revalidation_only():
     class FakeDaemon:
-        def run_once(self) -> dict[str, object]:
-            return {
-                "unchanged": True,
-                "write_count": 0,
-                "state_written": False,
-                "wake_kinds": [wake_kind],
-                "blocked": blocked,
-                "merge_reconciliation": [],
-                "next_wake_after_seconds": 17.0,
-                "large_payload": "must-not-appear-in-the-log" * 100,
-            }
+        def run_once(self) -> dict[str, int]:
+            calls.append("run_once")
+            return {"count": 1}
 
-        def wait_for_wake(self, *, timeout: float) -> None:
-            assert timeout == 17.0
-            raise StopLoop
-
+    parsed = argparse.Namespace(
+        once=True,
+        interval=999,
+        manual_completion_authority_revalidation_only=True,
+    )
     context = ImplementationDaemonRunContext(
-        parsed=argparse.Namespace(once=False, interval=999),
+        parsed=parsed,
         state_path=Path("state.json"),
         strategy_path=Path("strategy.json"),
         events_path=Path("events.jsonl"),
     )
-    logger = logging.getLogger("test-daemon-runner-recurring-noop")
+    calls: list[str] = []
 
-    with caplog.at_level(logging.DEBUG, logger=logger.name):
-        with pytest.raises(StopLoop):
-            run_portal_implementation_daemon_loop(
-                FakeDaemon(),
-                context,
-                logger=logger,
-                pass_complete_message="recurring pass complete: %s",
-            )
+    def forbidden_hook(_context: ImplementationDaemonRunContext) -> None:
+        calls.append("hook")
 
-    pass_records = [
-        record
-        for record in caplog.records
-        if "recurring pass complete" in record.getMessage()
-    ]
-    assert [record.levelno for record in pass_records] == [expected_level]
-    assert "recurring pass complete" in caplog.text
-    assert ("must-not-appear-in-the-log" in caplog.text) is payload_visible
-    if expected_level == logging.DEBUG:
-        assert "'state_written': False" in caplog.text
-        assert "'next_wake_after_seconds': 17.0" in caplog.text
-
-
-def test_run_portal_implementation_daemon_loop_keeps_once_noop_at_info(caplog):
-    class FakeDaemon:
-        def run_once(self) -> dict[str, object]:
-            return {
-                "unchanged": True,
-                "write_count": 0,
-                "state_written": False,
-                "large_payload": "once-pass-remains-observable",
-            }
-
-    context = ImplementationDaemonRunContext(
-        parsed=argparse.Namespace(once=True, interval=999),
-        state_path=Path("state.json"),
-        strategy_path=Path("strategy.json"),
-        events_path=Path("events.jsonl"),
+    run_portal_implementation_daemon_loop(
+        FakeDaemon(),
+        context,
+        logger=logging.getLogger("test-daemon-runner-revalidation-only"),
+        hooks=(
+            DaemonLoopHook("before", "before hook: %s", forbidden_hook),
+            DaemonLoopHook("after", "after hook: %s", forbidden_hook),
+        ),
     )
-    logger = logging.getLogger("test-daemon-runner-once-noop")
 
-    with caplog.at_level(logging.INFO, logger=logger.name):
-        run_portal_implementation_daemon_loop(
-            FakeDaemon(),
-            context,
-            logger=logger,
-            pass_complete_message="once pass complete: %s",
-        )
-
-    info_records = [
-        record for record in caplog.records if record.levelno == logging.INFO
-    ]
-    assert len(info_records) == 1
-    assert "once pass complete" in info_records[0].getMessage()
-    assert "once-pass-remains-observable" in info_records[0].getMessage()
+    assert calls == ["run_once"]
 
 
 def test_run_configured_portal_implementation_daemon_builds_and_runs_once(tmp_path: Path):

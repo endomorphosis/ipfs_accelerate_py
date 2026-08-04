@@ -14,11 +14,15 @@ import sys
 import time
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from hashlib import sha1
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from ..control.manual_completion_seal import (
+    ManualCompletionSealError,
+    verify_manual_completion_seal,
+)
 from ..merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     CheckoutMutationLease,
@@ -28,7 +32,6 @@ from ..merge.checkout_lock import (
     acquire_checkout_mutation_lease as acquire_atomic_checkout_mutation_lease,
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
-    checkout_lock_repository_matches,
     checkout_mutation_lock_path,
     generated_protected_board_commit_subject,
     read_checkout_mutation_lease,
@@ -41,17 +44,6 @@ from ..runtime.event_log import append_jsonl_event, repair_jsonl_event_log, uniq
 from .implementation_supervisor_runner import (
     persist_goal_completion_projection,
     persist_supervisor_scan_receipt,
-)
-from .legacy_landed_attestation import LegacyLandedReviewAuthority
-from .legacy_landed_review import load_legacy_landed_review_policy
-from .production_provider_attestation import (
-    DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME,
-)
-from .production_provider_cli import (
-    DEFAULT_CONTEXT_BUDGET_TOKENS as DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS,
-    DEFAULT_PROVIDER_TIMEOUT_SECONDS as DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS,
-    PRODUCTION_CLI_POLICY_NAME,
-    ProductionCLIProviderPolicy,
 )
 from ..merge.merge_conflict_repair import resolve_append_only_markdown_conflicts
 from ..objectives.scan_receipts import (
@@ -103,8 +95,20 @@ from .supervisor import (
     worktree_phase_worker_status,
 )
 from .supervisor_loop import SupervisorLoop, SupervisorLoopConfig, SupervisorLoopDecision
-from .supervisor_runtime import RestartPolicy
-from .worktrees import WORKTREE_POOL_SCHEMA, WorktreePool, pid_is_alive
+from .supervisor_runtime import (
+    SUPERVISED_CHILD_IDENTITY_PATH_ENV,
+    SUPERVISED_CHILD_OWNER_SCOPE_ENV,
+    OwnerLiveness,
+    RestartPolicy,
+    load_supervised_child_identity,
+    read_process_birth,
+    read_process_command_argv,
+    supervised_child_identity_liveness,
+    supervised_child_identity_path,
+    terminate_direct_child_process,
+    write_supervised_child_identity,
+)
+from .worktrees import WORKTREE_POOL_SCHEMA, pid_is_alive
 
 REPO_ROOT = Path.cwd()
 
@@ -122,6 +126,10 @@ DEFAULT_WORKTREE_SCAN_CACHE_TTL_SECONDS = float(
 )
 MAX_MANAGED_SUBMODULE_WORKTREE_PRUNES_PER_PASS = 32
 MANAGED_SUBMODULE_WORKTREE_PRUNE_TIMEOUT_SECONDS = 30.0
+SCHEDULER_CONFIG_SCHEMA_PATTERN = re.compile(
+    r"^ipfs_accelerate_py\.agent_supervisor\."
+    r"[a-z0-9_.-]+\.scheduler_config@1$"
+)
 
 # Atomic checkout leases describe complete, bounded mutation transactions
 # rather than projected task ownership.  A live owner of one of these
@@ -140,6 +148,710 @@ ATOMIC_CHECKOUT_MUTATION_LEASE_OPERATIONS = frozenset(
         "repair_main_checkout_merge_state",
     }
 )
+
+
+class SupervisorSchedulerConfigError(ValueError):
+    """Raised when a scheduler profile cannot safely configure the supervisor."""
+
+
+def _scheduler_config_sequence(
+    value: Any,
+    *,
+    field_name: str,
+) -> tuple[str, ...]:
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        raise SupervisorSchedulerConfigError(
+            f"{field_name} must be a sequence of strings"
+        )
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise SupervisorSchedulerConfigError(
+                f"{field_name} must contain non-empty strings"
+            )
+        normalized = item.strip()
+        if normalized not in result:
+            result.append(normalized)
+    return tuple(result)
+
+
+def _scheduler_config_mapping(
+    value: Any,
+    *,
+    field_name: str,
+) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise SupervisorSchedulerConfigError(f"{field_name} must be an object")
+    return value
+
+
+def _scheduler_config_relative_path(
+    value: Any,
+    *,
+    field_name: str,
+    repo_root: Path,
+    must_exist: bool,
+) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise SupervisorSchedulerConfigError(
+            f"{field_name} must be a non-empty repo-relative path"
+        )
+    raw = value.strip()
+    candidate = Path(raw)
+    if (
+        raw in {".", ".."}
+        or raw.startswith(("/", "\\"))
+        or raw.endswith(("/", "\\"))
+        or "\\" in raw
+        or "\0" in raw
+        or "://" in raw
+        or re.match(r"^[A-Za-z]:", raw)
+        or candidate.is_absolute()
+        or ".." in candidate.parts
+    ):
+        raise SupervisorSchedulerConfigError(
+            f"{field_name} must be a safe repo-relative path: {raw!r}"
+        )
+    normalized = candidate.as_posix()
+    try:
+        resolved = (repo_root / normalized).resolve(strict=False)
+        resolved.relative_to(repo_root)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise SupervisorSchedulerConfigError(
+            f"{field_name} escapes the repository: {raw!r}"
+        ) from exc
+    if must_exist and not resolved.exists():
+        raise SupervisorSchedulerConfigError(
+            f"{field_name} does not exist: {raw!r}"
+        )
+    return normalized
+
+
+def authority_epoch_seal_projection(
+    manual_seals: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Project seal configs into the authority-epoch preimage.
+
+    ``expected_receipt_id`` is a mechanical pin rewrite after delegated
+    completion verifies a seal.  Including it in the epoch preimage reopens
+    the entire revalidation closure whenever a pin is updated even when the
+    durable seal shape and verified receipt set are unchanged.
+    """
+
+    projected: dict[str, dict[str, Any]] = {}
+    for task_id, seal_body in sorted(manual_seals.items()):
+        if not isinstance(seal_body, Mapping):
+            continue
+        projected[str(task_id)] = {
+            key: value
+            for key, value in dict(seal_body).items()
+            if key != "expected_receipt_id"
+        }
+    return projected
+
+
+def load_supervisor_scheduler_config(
+    path: Path | str,
+    *,
+    repo_root: Path | None = None,
+) -> dict[str, Any]:
+    """Load and validate a sealed scheduler profile without enabling effects.
+
+    The profile is configuration input only.  It cannot turn on implementation,
+    refill, Doctor mutation, or rollout; those remain explicit runtime actions.
+    """
+
+    root = (repo_root or REPO_ROOT).resolve()
+    raw_path = Path(path)
+    config_path = raw_path if raw_path.is_absolute() else root / raw_path
+    if config_path.is_symlink():
+        raise SupervisorSchedulerConfigError(
+            "scheduler config must be a regular non-symlink file"
+        )
+    try:
+        resolved_config_path = config_path.resolve(strict=True)
+        resolved_config_path.relative_to(root)
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise SupervisorSchedulerConfigError(
+            "scheduler config must be an existing file inside the repository"
+        ) from exc
+    if not resolved_config_path.is_file():
+        raise SupervisorSchedulerConfigError(
+            "scheduler config must be a regular non-symlink file"
+        )
+    try:
+        payload = json.loads(resolved_config_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise SupervisorSchedulerConfigError(
+            f"scheduler config is not valid JSON: {resolved_config_path}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise SupervisorSchedulerConfigError(
+            "scheduler config root must be an object"
+        )
+    schema = payload.get("schema")
+    if not isinstance(schema, str) or not SCHEDULER_CONFIG_SCHEMA_PATTERN.fullmatch(
+        schema
+    ):
+        raise SupervisorSchedulerConfigError(
+            "scheduler config schema must be a supported scheduler_config@1"
+        )
+
+    normalized = dict(payload)
+    normalized["taskboard_path"] = _scheduler_config_relative_path(
+        payload.get("taskboard_path"),
+        field_name="taskboard_path",
+        repo_root=root,
+        must_exist=True,
+    )
+    normalized["objectives_path"] = _scheduler_config_relative_path(
+        payload.get("objectives_path"),
+        field_name="objectives_path",
+        repo_root=root,
+        must_exist=True,
+    )
+    task_prefix = payload.get("task_prefix")
+    if (
+        not isinstance(task_prefix, str)
+        or not re.fullmatch(r"## [A-Z][A-Z0-9]*-", task_prefix.strip())
+    ):
+        raise SupervisorSchedulerConfigError(
+            "task_prefix must be a canonical heading prefix such as '## PDR-'"
+        )
+    normalized["task_prefix"] = task_prefix.strip()
+    namespace = payload.get("board_namespace")
+    if (
+        not isinstance(namespace, str)
+        or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{2,127}", namespace.strip())
+    ):
+        raise SupervisorSchedulerConfigError(
+            "board_namespace must be a canonical lowercase identifier"
+        )
+    normalized["board_namespace"] = namespace.strip()
+
+    integer_fields = {
+        "max_lanes": (1, 64),
+        "max_restarts": (0, 10_000),
+        "max_task_attempts": (0, 10_000),
+        "implementation_timeout_seconds": (1, 7 * 24 * 60 * 60),
+        "validation_max_workers": (1, 256),
+    }
+    for field_name, (minimum, maximum) in integer_fields.items():
+        value = payload.get(field_name)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < minimum
+            or value > maximum
+        ):
+            raise SupervisorSchedulerConfigError(
+                f"{field_name} must be an integer in [{minimum}, {maximum}]"
+            )
+        normalized[field_name] = value
+    number_fields = {
+        "poll_interval_seconds": (0.05, 86_400.0),
+        "daemon_interval_seconds": (0.05, 86_400.0),
+        "check_interval_seconds": (0.05, 86_400.0),
+        "stale_seconds": (1.0, 30 * 24 * 60 * 60.0),
+    }
+    for field_name, (minimum, maximum) in number_fields.items():
+        value = payload.get(field_name)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or float(value) < minimum
+            or float(value) > maximum
+        ):
+            raise SupervisorSchedulerConfigError(
+                f"{field_name} must be a finite number in [{minimum}, {maximum}]"
+            )
+        normalized[field_name] = float(value)
+
+    merge_target = payload.get("merge_target_branch")
+    if (
+        not isinstance(merge_target, str)
+        or not merge_target.strip()
+        or merge_target.startswith(("/", "-"))
+        or merge_target.endswith("/")
+        or ".." in merge_target
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", merge_target)
+    ):
+        raise SupervisorSchedulerConfigError(
+            "merge_target_branch is not a safe branch name"
+        )
+    normalized["merge_target_branch"] = merge_target
+
+    authority_switches = (
+        ("derived_refill", "enabled_at_bootstrap"),
+        ("doctor", "enabled_at_bootstrap"),
+        ("doctor", "mutation_authorized"),
+        ("doctor", "narrow_autonomous_mutation_enabled"),
+        ("rollout", "automatic_enabled"),
+    )
+    for section_name, switch_name in authority_switches:
+        section = _scheduler_config_mapping(
+            payload.get(section_name, {}),
+            field_name=section_name,
+        )
+        switch = section.get(switch_name, False)
+        if not isinstance(switch, bool):
+            raise SupervisorSchedulerConfigError(
+                f"{section_name}.{switch_name} must be a boolean"
+            )
+        if switch:
+            raise SupervisorSchedulerConfigError(
+                f"{section_name}.{switch_name} cannot be enabled by a "
+                "scheduler bootstrap profile"
+            )
+
+    submodules = _scheduler_config_sequence(
+        payload.get("worktree_submodule_paths", ()),
+        field_name="worktree_submodule_paths",
+    )
+    normalized["worktree_submodule_paths"] = tuple(
+        _scheduler_config_relative_path(
+            item,
+            field_name="worktree_submodule_paths",
+            repo_root=root,
+            must_exist=True,
+        )
+        for item in submodules
+    )
+    protected_paths = _scheduler_config_sequence(
+        payload.get("protected_paths", ()),
+        field_name="protected_paths",
+    )
+    try:
+        normalized_protected_paths = normalize_implementation_protected_paths(
+            protected_paths,
+            repo_root=root,
+        )
+    except ValueError as exc:
+        raise SupervisorSchedulerConfigError(str(exc)) from exc
+
+    staged_raw = _scheduler_config_mapping(
+        payload.get("protected_after_manual_completion", {}),
+        field_name="protected_after_manual_completion",
+    )
+    tasks = parse_task_file(
+        root / normalized["taskboard_path"],
+        normalized["task_prefix"],
+    )
+    task_ids = [task.task_id for task in tasks]
+    if len(task_ids) != len(set(task_ids)):
+        raise SupervisorSchedulerConfigError(
+            "taskboard contains duplicate task IDs"
+        )
+    task_by_id = {task.task_id: task for task in tasks}
+    seal_config_fields = {
+        "artifact_paths",
+        "grant_action",
+        "grant_claims",
+        "grant_type",
+        "interface",
+        "policy_revision",
+        "expected_receipt_id",
+        "receipt_path",
+        "reviewed_base_claims",
+        "schema",
+    }
+    manual_seal_raw = _scheduler_config_mapping(
+        payload.get("manual_completion_seals", {}),
+        field_name="manual_completion_seals",
+    )
+    manual_seals: dict[str, dict[str, Any]] = {}
+    for task_id, raw_seal in manual_seal_raw.items():
+        if not isinstance(task_id, str) or task_id not in task_by_id:
+            raise SupervisorSchedulerConfigError(
+                "manual_completion_seals keys must name declared tasks"
+            )
+        if task_by_id[task_id].completion != "manual":
+            raise SupervisorSchedulerConfigError(
+                "manual_completion_seals tasks must use manual completion"
+            )
+        seal = _scheduler_config_mapping(
+            raw_seal,
+            field_name=f"manual_completion_seals.{task_id}",
+        )
+        if set(seal) != seal_config_fields:
+            raise SupervisorSchedulerConfigError(
+                f"manual_completion_seals.{task_id} fields do not match "
+                "the closed schema"
+            )
+        strings: dict[str, str] = {}
+        for field_name in (
+            "grant_action",
+            "grant_type",
+            "interface",
+            "policy_revision",
+            "schema",
+        ):
+            value = seal.get(field_name)
+            if not isinstance(value, str) or not value.strip():
+                raise SupervisorSchedulerConfigError(
+                    f"manual_completion_seals.{task_id}.{field_name} "
+                    "must be a non-empty string"
+                )
+            strings[field_name] = value.strip()
+        expected_receipt_id = seal.get("expected_receipt_id")
+        if (
+            not isinstance(expected_receipt_id, str)
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", expected_receipt_id)
+        ):
+            raise SupervisorSchedulerConfigError(
+                f"manual_completion_seals.{task_id}.expected_receipt_id "
+                "must be a canonical SHA-256 identity"
+            )
+        receipt_path = _scheduler_config_relative_path(
+            seal.get("receipt_path"),
+            field_name=f"manual_completion_seals.{task_id}.receipt_path",
+            repo_root=root,
+            must_exist=False,
+        )
+        raw_artifacts = _scheduler_config_mapping(
+            seal.get("artifact_paths"),
+            field_name=f"manual_completion_seals.{task_id}.artifact_paths",
+        )
+        artifact_paths: dict[str, str] = {}
+        for role, raw_artifact_path in raw_artifacts.items():
+            if (
+                not isinstance(role, str)
+                or not re.fullmatch(r"[a-z][a-z0-9_]{1,63}", role)
+            ):
+                raise SupervisorSchedulerConfigError(
+                    f"manual_completion_seals.{task_id} artifact roles "
+                    "must be canonical identifiers"
+                )
+            artifact_paths[role] = _scheduler_config_relative_path(
+                raw_artifact_path,
+                field_name=(
+                    f"manual_completion_seals.{task_id}.artifact_paths.{role}"
+                ),
+                repo_root=root,
+                must_exist=False,
+            )
+        if not artifact_paths or len(set(artifact_paths.values())) != len(
+            artifact_paths
+        ):
+            raise SupervisorSchedulerConfigError(
+                f"manual_completion_seals.{task_id} artifact paths must "
+                "be non-empty and unique"
+            )
+        normalized_claims: dict[str, dict[str, Any]] = {}
+        for field_name in ("grant_claims", "reviewed_base_claims"):
+            raw_claims = _scheduler_config_mapping(
+                seal.get(field_name),
+                field_name=f"manual_completion_seals.{task_id}.{field_name}",
+            )
+            claims: dict[str, Any] = {}
+            for claim_name, claim_value in raw_claims.items():
+                if (
+                    not isinstance(claim_name, str)
+                    or not re.fullmatch(r"[a-z][a-z0-9_]{1,63}", claim_name)
+                    or isinstance(claim_value, float)
+                    or not isinstance(claim_value, (str, int, bool))
+                ):
+                    raise SupervisorSchedulerConfigError(
+                        f"manual_completion_seals.{task_id}.{field_name} "
+                        "must contain canonical scalar claims"
+                    )
+                claims[claim_name] = claim_value
+            normalized_claims[field_name] = claims
+        manual_seals[task_id] = {
+            **strings,
+            **normalized_claims,
+            "expected_receipt_id": expected_receipt_id,
+            "receipt_path": receipt_path,
+            "artifact_paths": artifact_paths,
+        }
+
+    staged_protected_paths: dict[str, tuple[str, ...]] = {}
+    activated_task_ids: list[str] = []
+    verified_manual_seals: dict[str, str] = {}
+    active_paths = list(normalized_protected_paths)
+    for task_id, raw_paths in staged_raw.items():
+        if not isinstance(task_id, str) or task_id not in task_by_id:
+            raise SupervisorSchedulerConfigError(
+                "protected_after_manual_completion keys must name declared tasks"
+            )
+        task = task_by_id[task_id]
+        if task.completion != "manual":
+            raise SupervisorSchedulerConfigError(
+                "protected_after_manual_completion tasks must use manual completion"
+            )
+        staged_values = _scheduler_config_sequence(
+            raw_paths,
+            field_name=f"protected_after_manual_completion.{task_id}",
+        )
+        try:
+            staged_paths = normalize_implementation_protected_paths(
+                staged_values,
+                repo_root=root,
+            )
+        except ValueError as exc:
+            raise SupervisorSchedulerConfigError(str(exc)) from exc
+        if not staged_paths:
+            raise SupervisorSchedulerConfigError(
+                f"protected_after_manual_completion.{task_id} cannot be empty"
+            )
+        try:
+            declared_outputs = set(
+                normalize_implementation_protected_paths(
+                    task.outputs,
+                    repo_root=root,
+                )
+            )
+        except ValueError as exc:
+            raise SupervisorSchedulerConfigError(
+                f"{task_id} has an unsafe declared output: {exc}"
+            ) from exc
+        undeclared_paths = set(staged_paths) - declared_outputs
+        if undeclared_paths:
+            raise SupervisorSchedulerConfigError(
+                "protected_after_manual_completion paths must be declared "
+                f"task outputs: {sorted(undeclared_paths)!r}"
+            )
+        omitted_paths = declared_outputs - set(staged_paths)
+        if omitted_paths:
+            raise SupervisorSchedulerConfigError(
+                "protected_after_manual_completion must protect every "
+                f"declared task output: {sorted(omitted_paths)!r}"
+            )
+        seal = manual_seals.get(task_id)
+        if seal is not None:
+            receipt_path = str(seal["receipt_path"])
+            artifact_path_set = set(seal["artifact_paths"].values())
+            if receipt_path not in staged_paths:
+                raise SupervisorSchedulerConfigError(
+                    f"{task_id} manual seal receipt must become protected"
+                )
+            if artifact_path_set != declared_outputs - {receipt_path}:
+                raise SupervisorSchedulerConfigError(
+                    f"{task_id} manual seal must bind every non-receipt output"
+                )
+        staged_protected_paths[task_id] = staged_paths
+        if task.status != "completed":
+            continue
+        if seal is None:
+            raise SupervisorSchedulerConfigError(
+                f"completed manual protection task {task_id} has no "
+                "operator seal configuration"
+            )
+        try:
+            from ..control.delegated_operator_completion import (
+                DelegatedOperatorCompletionPolicy,
+            )
+
+            delegated_policy = DelegatedOperatorCompletionPolicy.from_mapping(
+                payload.get("delegated_operator_completion")
+                if isinstance(payload, Mapping)
+                else None
+            )
+        except Exception:
+            delegated_policy = None
+        allow_delegated = bool(
+            delegated_policy is not None and delegated_policy.allows(task_id)
+        )
+        try:
+            verified = verify_manual_completion_seal(
+                str(seal["receipt_path"]),
+                repo_root=root,
+                task_id=task_id,
+                board_namespace=normalized["board_namespace"],
+                schema=str(seal["schema"]),
+                interface=str(seal["interface"]),
+                policy_revision=str(seal["policy_revision"]),
+                expected_receipt_id=str(seal["expected_receipt_id"]),
+                artifact_paths=seal["artifact_paths"],
+                grant_type=str(seal["grant_type"]),
+                grant_action=str(seal["grant_action"]),
+                reviewed_base_claims=seal["reviewed_base_claims"],
+                grant_claims=seal["grant_claims"],
+                allow_delegated_operator=allow_delegated,
+            )
+        except ManualCompletionSealError as exc:
+            raise SupervisorSchedulerConfigError(
+                f"manual completion seal verification failed for {task_id}: {exc}"
+            ) from exc
+        verified_manual_seals[task_id] = str(verified["receipt_id"])
+        for relative in staged_paths:
+            candidate = root / relative
+            if not candidate.is_file():
+                raise SupervisorSchedulerConfigError(
+                    "completed manual protection task references a missing "
+                    f"or non-file artifact: {relative!r}"
+                )
+            if relative not in active_paths:
+                active_paths.append(relative)
+        activated_task_ids.append(task_id)
+
+    orphaned_seal_configs = set(manual_seals) - set(staged_protected_paths)
+    if orphaned_seal_configs:
+        raise SupervisorSchedulerConfigError(
+            "manual_completion_seals tasks must also declare staged protection: "
+            f"{sorted(orphaned_seal_configs)!r}"
+        )
+
+    try:
+        from ..control.delegated_operator_completion import (
+            DelegatedOperatorCompletionPolicy,
+        )
+
+        delegated_policy = DelegatedOperatorCompletionPolicy.from_mapping(
+            payload.get("delegated_operator_completion")
+            if isinstance(payload, Mapping)
+            else None
+        )
+    except Exception as exc:
+        raise SupervisorSchedulerConfigError(
+            f"delegated_operator_completion is invalid: {exc}"
+        ) from exc
+    normalized["delegated_operator_completion"] = {
+        "enabled": delegated_policy.enabled,
+        "allowed_task_ids": sorted(delegated_policy.allowed_task_ids),
+        "require_validation": delegated_policy.require_validation,
+        "validation_timeout_seconds": (
+            delegated_policy.validation_timeout_seconds
+        ),
+    }
+
+    normalized["protected_after_manual_completion"] = staged_protected_paths
+    normalized["manual_completion_seals"] = manual_seals
+    normalized["verified_manual_completion_seals"] = verified_manual_seals
+    normalized["activated_protected_task_ids"] = tuple(activated_task_ids)
+    normalized["manual_completion_authority_task_ids"] = tuple(
+        sorted(staged_protected_paths)
+    )
+    normalized["manual_completion_authority_required_task_ids"] = tuple(
+        sorted(set(staged_protected_paths) - set(activated_task_ids))
+    )
+    authority_epoch = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "manual-completion-authority-epoch@1"
+        ),
+        "board_namespace": str(normalized["board_namespace"]),
+        "taskboard_path": str(normalized["taskboard_path"]),
+        "protected_after_manual_completion": staged_protected_paths,
+        "manual_completion_seals": authority_epoch_seal_projection(
+            manual_seals
+        ),
+        "verified_manual_completion_seals": verified_manual_seals,
+        "task_ids": list(normalized["manual_completion_authority_task_ids"]),
+        "required_task_ids": list(
+            normalized["manual_completion_authority_required_task_ids"]
+        ),
+    }
+    normalized["manual_completion_authority_epoch_id"] = (
+        content_identity(authority_epoch) if staged_protected_paths else ""
+    )
+    normalized["protected_paths"] = tuple(active_paths)
+    normalized["_config_path"] = str(resolved_config_path)
+    return normalized
+
+
+def supervisor_scheduler_config_cli_defaults(
+    profile: Mapping[str, Any],
+    *,
+    repo_root: Path | None = None,
+) -> list[str]:
+    """Translate a validated profile into conservative existing CLI options."""
+
+    root = (repo_root or REPO_ROOT).resolve()
+    state_prefix = re.sub(
+        r"[^a-z0-9]+",
+        "_",
+        str(profile["board_namespace"]).lower(),
+    ).strip("_")[:80]
+    options = [
+        "--todo-path",
+        str(root / str(profile["taskboard_path"])),
+        "--task-prefix",
+        str(profile["task_prefix"]),
+        "--state-prefix",
+        state_prefix,
+        "--stale-seconds",
+        str(profile["stale_seconds"]),
+        "--check-interval",
+        str(profile["check_interval_seconds"]),
+        "--max-restarts",
+        str(profile["max_restarts"]),
+        "--max-task-attempts",
+        str(profile["max_task_attempts"]),
+        "--daemon-interval",
+        str(profile["daemon_interval_seconds"]),
+        "--implementation-timeout",
+        str(profile["implementation_timeout_seconds"]),
+        "--validation-max-workers",
+        str(profile["validation_max_workers"]),
+        "--merge-target-branch",
+        str(profile["merge_target_branch"]),
+        "--objective-path",
+        str(root / str(profile["objectives_path"])),
+        "--no-objective-task-janitor",
+        "--no-objective-goal-completion-reconcile",
+        "--no-objective-goal-migration",
+    ]
+    for path in profile["worktree_submodule_paths"]:
+        options.extend(("--worktree-submodule-path", str(path)))
+    for path in profile["protected_paths"]:
+        options.extend(("--implementation-protected-path", str(path)))
+    for task_id in profile["manual_completion_authority_task_ids"]:
+        options.extend(("--manual-completion-authority-task-id", str(task_id)))
+    for task_id in profile["manual_completion_authority_required_task_ids"]:
+        options.extend(
+            ("--manual-completion-authority-required-task-id", str(task_id))
+        )
+    authority_epoch_id = str(
+        profile.get("manual_completion_authority_epoch_id") or ""
+    ).strip()
+    if authority_epoch_id:
+        options.extend(
+            ("--manual-completion-authority-epoch-id", authority_epoch_id)
+        )
+    return options
+
+
+def expand_supervisor_scheduler_config_args(
+    argv: Sequence[str],
+    *,
+    repo_root: Path | None = None,
+) -> tuple[list[str], Path | None]:
+    """Prepend scheduler defaults while preserving later explicit overrides."""
+
+    raw = [str(item) for item in argv]
+    if "-h" in raw or "--help" in raw:
+        return raw, None
+    config_values: list[str] = []
+    remaining: list[str] = []
+    index = 0
+    while index < len(raw):
+        token = raw[index]
+        if token == "--scheduler-config":
+            if index + 1 >= len(raw):
+                raise SupervisorSchedulerConfigError(
+                    "--scheduler-config requires a path"
+                )
+            config_values.append(raw[index + 1])
+            index += 2
+            continue
+        if token.startswith("--scheduler-config="):
+            config_values.append(token.split("=", 1)[1])
+            index += 1
+            continue
+        remaining.append(token)
+        index += 1
+    if not config_values:
+        return remaining, None
+    if len(config_values) != 1 or not config_values[0].strip():
+        raise SupervisorSchedulerConfigError(
+            "--scheduler-config may be supplied exactly once"
+        )
+    root = (repo_root or REPO_ROOT).resolve()
+    profile = load_supervisor_scheduler_config(config_values[0], repo_root=root)
+    defaults = supervisor_scheduler_config_cli_defaults(profile, repo_root=root)
+    return [*defaults, *remaining], Path(str(profile["_config_path"]))
 
 
 def _managed_daemon_child_environment() -> dict[str, str]:
@@ -188,73 +900,26 @@ def _projection_is_quiescent_for_heartbeat_fallback(
         return False
     if status["implementation_in_progress"] is not False:
         return False
-    idle_reason = status["selection_idle_reason"]
-    if not isinstance(idle_reason, str):
-        return False
-    exact_idle_reasons = {
-        "no_shard_selectable_ready_tasks",
-        "all_selectable_ready_tasks_deferred_by_resource_claim",
-        "all_selectable_ready_tasks_deprioritized_as_off_mission",
-        "no_eligible_ready_tasks_after_selection_filters",
-        "all_selectable_ready_tasks_reached_max_task_attempts",
-        "provider_capacity_backoff",
-        "no_tasks_found",
-    }
-    resource_claim_prefix = "resource_claim_deferred:"
-    resource_claim_race = idle_reason.startswith(resource_claim_prefix) and bool(
-        idle_reason[len(resource_claim_prefix) :].strip()
-    )
-    implementation_retry_prefix = "implementation_retry_deferred:"
-    implementation_retry_deferred = idle_reason.startswith(
-        implementation_retry_prefix
-    ) and bool(idle_reason[len(implementation_retry_prefix) :].strip())
-    if (
-        idle_reason not in exact_idle_reasons
-        and not resource_claim_race
-        and not implementation_retry_deferred
+    if status["selection_idle_reason"] != (
+        "no_shard_selectable_ready_tasks"
     ):
         return False
-    counts: dict[str, int] = {}
-    for field_name in required_fields.difference(
-        {"active_task_id", "implementation_in_progress", "selection_idle_reason"}
+    for field_name in (
+        "ready_count",
+        "selectable_ready_count",
+        "eligible_ready_count",
     ):
         value = status[field_name]
-        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        if isinstance(value, bool) or not isinstance(value, int) or value != 0:
             return False
-        counts[field_name] = value
-    if idle_reason == "no_tasks_found":
-        return all(value == 0 for value in counts.values())
-    if idle_reason == "no_shard_selectable_ready_tasks":
-        # Strict sharding can leave this lane with no selectable work even
-        # though the board-wide projection still reports ready or blocked
-        # tasks owned by other lanes.
-        return (
-            counts["selectable_ready_count"] == 0
-            and counts["eligible_ready_count"] == 0
-        )
-    if idle_reason in {
-        "all_selectable_ready_tasks_deferred_by_resource_claim",
-        "all_selectable_ready_tasks_reached_max_task_attempts",
-    } or implementation_retry_deferred:
-        return (
-            counts["ready_count"] > 0
-            and counts["selectable_ready_count"] == 0
-            and counts["eligible_ready_count"] == 0
-        )
-    if idle_reason in {
-        "all_selectable_ready_tasks_deprioritized_as_off_mission",
-        "no_eligible_ready_tasks_after_selection_filters",
-    }:
-        return (
-            counts["ready_count"] > 0
-            and counts["selectable_ready_count"] > 0
-            and counts["eligible_ready_count"] == 0
-        )
-    # A provider-capacity deferral or a resource-claim race happens after a
-    # task was selected, so the prior projection may legitimately retain
-    # selectable and eligible work.  The explicit idle reason and the active
-    # implementation fences above are authoritative in those two states.
-    return counts["ready_count"] > 0
+    blocked_count = status["blocked_count"]
+    if (
+        isinstance(blocked_count, bool)
+        or not isinstance(blocked_count, int)
+        or blocked_count < 0
+    ):
+        return False
+    return True
 
 
 class ObjectiveRefillTimeoutError(TimeoutError):
@@ -271,7 +936,6 @@ class ObjectiveCompletionArtifactRefreshError(RuntimeError):
 
 OBJECTIVE_REFILL_ANALYZER_VERSION = "objective-daemon-v1"
 CODEBASE_REFILL_ANALYZER_VERSION = "codebase-scan-v1"
-POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION = "post-completion-ops-refill/v1"
 
 # Fields derived exclusively from a validated ``ProofRolloutStatus``.  Keeping
 # the set explicit lets a long-running supervisor replace the whole projection
@@ -407,23 +1071,29 @@ class PortalSupervisorConfig:
     reconciliation_only: bool = False
     implement: bool = False
     implementation_command: str = ""
-    production_provider_policy: str = ""
-    production_provider_context_budget_tokens: int = 0
-    production_provider_timeout_seconds: float = 0.0
-    production_provider_review_authority_key_path: Path | None = None
-    legacy_landed_review_policy_path: Path | None = None
-    legacy_landed_review_key_path: Path | None = None
     llm_merge_resolver_command: str = ""
     llm_merge_resolver_timeout_seconds: float | None = None
     implementation_timeout: float = 1800.0
     implementation_max_timeout: float | None = None
     implementation_log_stall_seconds: float = 300.0
+    validation_max_workers: int | None = None
     use_ephemeral_worktree: bool = True
     worktree_root: Path | None = None
     merge_target_branch: str = ""
     merge_queue_dir: Path | None = None
     worktree_submodule_paths: tuple[str, ...] = field(default_factory=tuple)
     implementation_protected_paths: tuple[str, ...] = field(default_factory=tuple)
+    manual_completion_authority_task_ids: tuple[str, ...] = field(
+        default_factory=tuple
+    )
+    manual_completion_authority_required_task_ids: tuple[str, ...] = field(
+        default_factory=tuple
+    )
+    manual_completion_authority_epoch_id: str = ""
+    manual_completion_authority_revalidation_only: bool = False
+    # Optional sealed scheduler profile path.  When set, each supervisor
+    # pass may run delegated operator completion for seal-gated manuals.
+    scheduler_config_path: Path | None = None
     worktree_reconciliation_enabled: bool = True
     worktree_reconciliation_max_merges: int = 1
     worktree_reconciliation_dry_run: bool = False
@@ -462,10 +1132,6 @@ class PortalSupervisorConfig:
     generated_dirty_repair_max_paths: int = 200
     generated_dirty_repair_stale_lock_seconds: float = 300.0
     generated_dirty_repair_paths: tuple[Path, ...] = field(default_factory=tuple)
-    # Generic crash-avoidance heal for every board: auto-commit trusted
-    # protected/generated dirt and soft-defer healable maintenance failures
-    # instead of killing the supervisor loop.
-    supervisor_auto_heal_enabled: bool = True
     external_reservation_manifest_paths: tuple[Path, ...] = field(default_factory=tuple)
     assumed_completed_task_ids: tuple[str, ...] = field(default_factory=tuple)
     execution_slice_task_ids: tuple[str, ...] = field(default_factory=tuple)
@@ -484,11 +1150,6 @@ class PortalSupervisorConfig:
     codebase_scan_commit_outputs: bool = False
     codebase_scan_commit_subject: str = "Agent: record supervisor codebase scan findings"
     objective_refill_enabled: bool = False
-    post_completion_ops_refill_enabled: bool = False
-    post_completion_ops_catalog_path: Path | None = None
-    post_completion_ops_config_path: Path | None = None
-    post_completion_ops_board_namespace: str = ""
-    post_completion_ops_require_drained: bool = True
     objective_task_janitor_enabled: bool = True
     objective_task_janitor_max_blocked_tasks: int = 50
     objective_task_janitor_max_deprioritized_tasks: int = 50
@@ -540,6 +1201,24 @@ class PortalSupervisorConfig:
     daemon_script_path: Path | None = None
     supervisor_script_path: Path | None = None
 
+    def __post_init__(self) -> None:
+        if (
+            self.manual_completion_authority_revalidation_only
+            and not self.manual_completion_authority_task_ids
+        ):
+            raise ValueError(
+                "manual completion authority revalidation-only mode requires "
+                "at least one authority task ID"
+            )
+        if (
+            self.manual_completion_authority_revalidation_only
+            and not self.implement
+        ):
+            raise ValueError(
+                "manual completion authority revalidation-only mode requires "
+                "implementation execution to be enabled"
+            )
+
 
 class AdoptedManagedDaemonProcess:
     def __init__(self, pid: int) -> None:
@@ -554,22 +1233,16 @@ class AdoptedManagedDaemonProcess:
         return self.returncode
 
     def terminate(self) -> None:
-        if self.poll() is not None:
-            return
-        try:
-            os.kill(self.pid, signal.SIGTERM)
-            self.returncode = -signal.SIGTERM
-        except ProcessLookupError:
-            self.returncode = 0
+        raise RuntimeError(
+            "adopted managed daemons must be terminated through the "
+            "supervisor ownership fence"
+        )
 
     def kill(self) -> None:
-        if self.poll() is not None:
-            return
-        try:
-            os.kill(self.pid, signal.SIGKILL)
-            self.returncode = -signal.SIGKILL
-        except ProcessLookupError:
-            self.returncode = 0
+        raise RuntimeError(
+            "adopted managed daemons must be killed through the "
+            "supervisor ownership fence"
+        )
 
     def wait(self, timeout: float | None = None) -> int:
         deadline = None if timeout is None else time.time() + timeout
@@ -971,6 +1644,213 @@ class PortalImplementationSupervisor:
         finally:
             if not failed:
                 finish_maintenance("completed")
+
+    def _maybe_reload_scheduler_authority_profile(self) -> dict[str, Any]:
+        """Hot-reload seal/epoch authority fields from the scheduler profile.
+
+        The managed daemon is started with a frozen ``--manual-completion-
+        authority-epoch-id``.  When delegated completion verifies new seals or
+        the profile's protected package changes, the live epoch diverges from
+        the child command line and durable receipts stop matching.  Reloading
+        the profile and recycling the child keeps autonomous drains unblocked.
+        """
+
+        scheduler_path = self.config.scheduler_config_path
+        if scheduler_path is None:
+            return {"reloaded": False, "reason": "scheduler_config_path_unset"}
+        try:
+            profile = load_supervisor_scheduler_config(
+                scheduler_path,
+                repo_root=REPO_ROOT,
+            )
+        except Exception as exc:  # noqa: BLE001 - fail closed without recycle
+            return {
+                "reloaded": False,
+                "reason": "scheduler_profile_load_failed",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+        new_epoch = str(profile.get("manual_completion_authority_epoch_id") or "")
+        new_task_ids = tuple(
+            str(item)
+            for item in (profile.get("manual_completion_authority_task_ids") or ())
+        )
+        new_required = tuple(
+            str(item)
+            for item in (
+                profile.get("manual_completion_authority_required_task_ids") or ()
+            )
+        )
+        new_protected = tuple(
+            str(item) for item in (profile.get("protected_paths") or ())
+        )
+
+        before = {
+            "epoch_id": self.config.manual_completion_authority_epoch_id,
+            "task_ids": self.config.manual_completion_authority_task_ids,
+            "required_task_ids": (
+                self.config.manual_completion_authority_required_task_ids
+            ),
+            "protected_paths": self.config.implementation_protected_paths,
+        }
+        after = {
+            "epoch_id": new_epoch,
+            "task_ids": new_task_ids,
+            "required_task_ids": new_required,
+            "protected_paths": new_protected,
+        }
+        if before == after:
+            return {"reloaded": False, "reason": "authority_profile_unchanged"}
+
+        self.config.manual_completion_authority_epoch_id = new_epoch
+        self.config.manual_completion_authority_task_ids = new_task_ids
+        self.config.manual_completion_authority_required_task_ids = new_required
+        self.config.implementation_protected_paths = new_protected
+        payload = {
+            "reloaded": True,
+            "reason": "authority_profile_changed",
+            "before": before,
+            "after": after,
+            "recycle_required": True,
+        }
+        self._record_event("scheduler_authority_profile_reloaded", payload)
+        return payload
+
+    def _maybe_run_delegated_operator_completion(self) -> dict[str, Any]:
+        """Complete seal-gated manuals when the scheduler policy allows it.
+
+        Fail-closed and no-op when the scheduler profile is absent, the policy
+        is disabled, or no seal-configured pending tasks are eligible.
+
+        Also no-ops while an implementation protected-path fence is active or
+        latched: delegated completion mutates the scheduler pin and taskboard,
+        which are themselves protected paths.  Running under an active fence
+        latches a false-positive incident and freezes the lane.
+        """
+
+        scheduler_path = self.config.scheduler_config_path
+        if scheduler_path is None:
+            return {"attempted": False, "reason": "scheduler_config_path_unset"}
+        try:
+            from ..control.delegated_operator_completion import (
+                DelegatedOperatorCompletionPolicy,
+                complete_ready_sealed_manual_tasks,
+            )
+
+            # Quiet fence probe: do not emit maintenance-blocked events for a
+            # deferred delegated-completion attempt.
+            implementation_state_dir = self.config.state_path.parent
+            fence_active = (
+                implementation_state_dir
+                / IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME
+            ).exists()
+            fence_incident = (
+                implementation_state_dir / IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME
+            ).exists()
+            if fence_active or fence_incident:
+                return {
+                    "attempted": False,
+                    "reason": "implementation_protected_path_fence_active",
+                    "active_snapshot_exists": fence_active,
+                    "incident_exists": fence_incident,
+                }
+
+            profile = load_supervisor_scheduler_config(
+                scheduler_path,
+                repo_root=REPO_ROOT,
+            )
+            policy = DelegatedOperatorCompletionPolicy.from_mapping(
+                profile.get("delegated_operator_completion")
+            )
+            if not policy.enabled:
+                return {"attempted": False, "reason": "policy_disabled"}
+
+            todo_path = self.config.todo_path
+            text = todo_path.read_text(encoding="utf-8")
+            import re as _re
+
+            seal_configs = profile.get("manual_completion_seals") or {}
+            seal_task_ids = set(seal_configs)
+            board_tasks: list[dict[str, Any]] = []
+            for block in _re.split(r"(?=^## )", text, flags=_re.M):
+                header = _re.match(r"^## (\S+)", block)
+                if header is None:
+                    continue
+                task_id = header.group(1)
+                # Track seal-gated manuals plus their dependency status.
+                status_m = _re.search(r"(?m)^- Status:\s*(\S+)", block)
+                depends_m = _re.search(r"(?m)^- Depends on:\s*(.+)$", block)
+                validation_m = _re.search(r"(?m)^- Validation:\s*(.+)$", block)
+                depends = []
+                if depends_m is not None:
+                    depends = [
+                        part.strip()
+                        for part in depends_m.group(1).split(",")
+                        if part.strip()
+                    ]
+                board_tasks.append(
+                    {
+                        "task_id": task_id,
+                        "status": (
+                            status_m.group(1) if status_m is not None else "pending"
+                        ),
+                        "depends_on": depends,
+                        "validation": (
+                            validation_m.group(1).strip()
+                            if validation_m is not None
+                            else ""
+                        ),
+                    }
+                )
+
+            completed = [
+                task["task_id"]
+                for task in board_tasks
+                if task["status"] == "completed"
+            ]
+            pending = [
+                task["task_id"]
+                for task in board_tasks
+                if task["status"] != "completed" and task["task_id"] in seal_task_ids
+            ]
+            if not pending:
+                return {
+                    "attempted": False,
+                    "reason": "no_pending_sealed_manual_tasks",
+                    "completed_task_ids": completed,
+                }
+            result = complete_ready_sealed_manual_tasks(
+                repo_root=REPO_ROOT,
+                todo_path=todo_path,
+                scheduler_path=Path(scheduler_path),
+                board_namespace=str(profile.get("board_namespace") or ""),
+                seal_configs=seal_configs,
+                validation_commands={
+                    task["task_id"]: task["validation"] for task in board_tasks
+                },
+                completed_task_ids=completed,
+                pending_task_ids=pending,
+                depends_on={
+                    task["task_id"]: task["depends_on"] for task in board_tasks
+                },
+                policy=policy,
+            )
+            self._record_event(
+                "delegated_operator_completion_pass",
+                {
+                    "completed_count": len(result.get("completed") or []),
+                    "attempted": list(result.get("attempted") or []),
+                    "error_count": len(result.get("errors") or []),
+                },
+            )
+            return result
+        except Exception as exc:
+            payload = {
+                "attempted": True,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+            self._record_event("delegated_operator_completion_failed", payload)
+            return payload
 
     def _implementation_protected_maintenance_guard(self) -> dict[str, Any]:
         """Block supervisor mutations while an agent fence is active/latched."""
@@ -1407,17 +2287,10 @@ class PortalImplementationSupervisor:
         )
 
     def _protected_path_maintenance_lease_metadata(self) -> dict[str, Any]:
-        local_metadata = self._implementation_maintenance_lease_metadata()
-        owner_script = str(local_metadata.pop("owner_script") or "")
-        for field_name in ("kind", "pid", "repo_root"):
-            local_metadata.pop(field_name, None)
-        local_metadata["lease_role"] = "shared_protected_path_maintenance"
-        return checkout_lock_metadata(
-            kind="implementation-protected-maintenance",
-            repo_root=self.config.repo_root,
-            owner_script=owner_script,
-            extra=local_metadata,
-        )
+        metadata = self._implementation_maintenance_lease_metadata()
+        metadata["kind"] = "implementation-protected-maintenance"
+        metadata["lease_role"] = "shared_protected_path_maintenance"
+        return metadata
 
     def _protected_path_maintenance_owner_is_active(
         self,
@@ -1456,14 +2329,16 @@ class PortalImplementationSupervisor:
                 )
                 continue
             kind = str(metadata.get("kind") or "")
+            repo_root = str(metadata.get("repo_root") or "")
             try:
-                repository_match = checkout_lock_repository_matches(
-                    metadata,
-                    self.config.repo_root,
+                same_repository = (
+                    not repo_root
+                    or Path(repo_root).resolve()
+                    == self.config.repo_root.resolve()
                 )
                 pid = int(metadata.get("pid") or 0)
-            except (OSError, RuntimeError, TypeError, ValueError):
-                repository_match = None
+            except (OSError, TypeError, ValueError):
+                same_repository = False
                 pid = 0
             protected_fence_paths = (
                 implementation_task_claim_protected_fence_paths(metadata)
@@ -1476,12 +2351,8 @@ class PortalImplementationSupervisor:
             # after its process exits.
             if (
                 (not kind or kind == IMPLEMENTATION_TASK_CLAIM_LOCK_KIND)
-                and repository_match is not False
-                and (
-                    repository_match is None
-                    or owner_live
-                    or protected_fence_paths
-                )
+                and same_repository
+                and (owner_live or protected_fence_paths)
             ):
                 active.append(
                     {
@@ -1489,9 +2360,6 @@ class PortalImplementationSupervisor:
                         "task_id": str(metadata.get("task_id") or ""),
                         "pid": pid,
                         "owner_live": owner_live,
-                        "repository_identity_uncertain": (
-                            repository_match is None
-                        ),
                         "state_dir": str(metadata.get("state_dir") or ""),
                         "protected_fence_paths": list(
                             protected_fence_paths
@@ -1814,6 +2682,17 @@ class PortalImplementationSupervisor:
         *,
         include_refill: bool = True,
     ) -> dict[str, Any]:
+        if self.config.manual_completion_authority_revalidation_only:
+            update_maintenance_phase(
+                "manual_completion_authority_revalidation_only"
+            )
+            return {
+                "stuck": False,
+                "maintenance_blocked": False,
+                "reason": "manual_completion_authority_revalidation_only",
+                "manual_completion_authority_revalidation_only": True,
+                "ordinary_provider_dispatch_allowed": False,
+            }
         if not self.config.implementation_protected_paths:
             return self._run_once_with_maintenance_under_lease(
                 update_maintenance_phase,
@@ -1897,93 +2776,45 @@ class PortalImplementationSupervisor:
             }
         update_maintenance_phase("stale_worktree_detection")
         stale_worktree_detection = self.detect_stale_worktrees()
-        update_maintenance_phase("worktree_pool_orphan_reconciliation")
-        worktree_pool_orphan_reconciliation = (
-            self.reconcile_orphaned_worktree_pool_metadata()
-        )
         update_maintenance_phase("stale_active_state_repair")
         stale_active_state_repair = self.repair_stale_active_execution_state()
         update_maintenance_phase("main_checkout_repair")
         main_checkout_repair = self.repair_main_checkout_merge_state()
         update_maintenance_phase("generated_dirty_repair")
-        generated_dirty_repair = self._run_healable_maintenance_step(
-            "generated_dirty_repair",
-            lambda: self.repair_generated_dirty_checkouts(),
-            default={"attempted": False, "reason": "auto_heal_deferred"},
-        )
+        generated_dirty_repair = self.repair_generated_dirty_checkouts()
         update_maintenance_phase("worktree_reconciliation")
-        worktree_reconciliation = self._run_healable_maintenance_step(
-            "worktree_reconciliation",
-            lambda: self.reconcile_backlogged_worktrees(
-                preacquired_implementation_lock=(
-                    implementation_maintenance_lease
-                ),
+        worktree_reconciliation = self.reconcile_backlogged_worktrees(
+            preacquired_implementation_lock=(
+                implementation_maintenance_lease
             ),
-            default={},
         )
         update_maintenance_phase("worktree_reconciliation_replay")
-        worktree_reconciliation_replay = self._run_healable_maintenance_step(
-            "worktree_reconciliation_replay",
-            lambda: self.recover_already_merged_reconciliation_candidates(
+        worktree_reconciliation_replay = (
+            self.recover_already_merged_reconciliation_candidates(
                 preacquired_implementation_lock=(
                     implementation_maintenance_lease
                 ),
-            ),
-            default={},
+            )
         )
         update_maintenance_phase("worktree_cleanup")
-        worktree_cleanup = self._run_healable_maintenance_step(
-            "worktree_cleanup",
-            lambda: self.cleanup_backlogged_worktrees(),
-            default={},
-        )
-        # Proactively heal protected generated dirt so later board producers
-        # (guardrail release, refill, janitor) do not hard-crash the loop.
-        update_maintenance_phase("protected_dirty_auto_heal")
-        protected_dirty_auto_heal = self._auto_heal_protected_generated_dirt(
-            reason="pre_board_mutation_maintenance",
-        )
+        worktree_cleanup = self.cleanup_backlogged_worktrees()
         update_maintenance_phase("strategy_state_repair")
-        strategy_file_repair = self._run_healable_maintenance_step(
-            "strategy_state_repair",
-            self.ensure_strategy_file,
-            default={"repaired": False, "reason": "auto_heal_deferred"},
-        )
-        todo_board_repair = self._run_healable_maintenance_step(
-            "todo_board_repair",
-            self.ensure_todo_board_for_refill,
-            default={"repaired": False, "reason": "auto_heal_deferred"},
-        )
+        strategy_file_repair = self.ensure_strategy_file()
+        todo_board_repair = self.ensure_todo_board_for_refill()
         update_maintenance_phase("objective_goal_migration")
-        objective_goal_migration = self._run_healable_maintenance_step(
-            "objective_goal_migration",
-            self.migrate_legacy_objective_goal_completion,
-            default={"changed": False, "reason": "auto_heal_deferred"},
-        )
+        objective_goal_migration = self.migrate_legacy_objective_goal_completion()
         update_maintenance_phase("objective_task_janitor")
-        objective_task_janitor = self._run_healable_maintenance_step(
-            "objective_task_janitor",
-            self.reconcile_objective_task_janitor,
-            default={"changed": False, "reason": "auto_heal_deferred"},
-        )
+        objective_task_janitor = self.reconcile_objective_task_janitor()
         update_maintenance_phase("reconciliation_guardrails")
-        reconciliation_findings = self._run_healable_maintenance_step(
-            "reconciliation_guardrails",
-            lambda: self.record_reconciliation_guardrails(
-                worktree_reconciliation,
-                worktree_cleanup,
-            ),
-            default=[],
+        reconciliation_findings = self.record_reconciliation_guardrails(
+            worktree_reconciliation,
+            worktree_cleanup,
         )
         update_maintenance_phase("guardrail_releases")
-        guardrail_releases = self._run_healable_maintenance_step(
-            "guardrail_releases",
-            lambda: self.release_completed_guardrail_blocks(
-                reconciliation_result=worktree_reconciliation,
-                cleanup_result=worktree_cleanup,
-                replay_result=worktree_reconciliation_replay,
-            ),
-            default=[],
+        guardrail_releases = self.release_completed_guardrail_blocks(
+            reconciliation_result=worktree_reconciliation,
+            cleanup_result=worktree_cleanup,
+            replay_result=worktree_reconciliation_replay,
         )
         state = PortalTaskState.load(self.config.state_path)
         now_ts = time.time()
@@ -2078,9 +2909,6 @@ class PortalImplementationSupervisor:
                 "state_file_repair": state_file_repair,
                 "stale_active_state_repair": stale_active_state_repair,
                 "stale_worktree_detection": stale_worktree_detection,
-                "worktree_pool_orphan_reconciliation": (
-                    worktree_pool_orphan_reconciliation
-                ),
                 "todo_board_repair": todo_board_repair,
                 "objective_task_janitor": objective_task_janitor,
                 "objective_goal_migration": objective_goal_migration,
@@ -2206,45 +3034,6 @@ class PortalImplementationSupervisor:
                     "changed": False,
                     "reason": "no_mapped_contradictions",
                 }
-            update_maintenance_phase("post_completion_ops_refill")
-            post_completion_started_at = datetime.now(timezone.utc)
-            try:
-                post_completion_result = self._adapt_legacy_objective_result(
-                    self._run_protected_refill_mutation(
-                        scan_kind="post_completion_ops",
-                        scan_mode="supervisor_callback",
-                        analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
-                        started_at=post_completion_started_at,
-                        output_paths=self._post_completion_ops_refill_output_paths(),
-                        callback=self.refill_post_completion_ops_backlog,
-                    )
-                    if self.config.post_completion_ops_refill_enabled
-                    else self.refill_post_completion_ops_backlog(),
-                    scan_mode="supervisor_callback",
-                    started_at=post_completion_started_at,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Post-completion ops refill failed; leaving supervisor alive",
-                    exc_info=True,
-                )
-                post_completion_result = self._terminal_refill_result(
-                    ScanTerminalReason.FAILED,
-                    scan_mode="supervisor_callback",
-                    analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
-                    started_at=post_completion_started_at,
-                    error=f"{type(exc).__name__}: {exc}",
-                    metadata={"error_type": type(exc).__name__},
-                )
-            post_completion_scan = self._persist_refill_result(
-                "post_completion_ops", post_completion_result
-            )
-            post_completion_payload = dict(post_completion_result.metadata)
-            post_completion_generated_count = int(
-                post_completion_payload.get("generated_count")
-                or len(post_completion_payload.get("task_ids") or [])
-                or post_completion_result.generated_count
-            )
         else:
             update_maintenance_phase("preflight_refill_deferred")
             objective_payload = {}
@@ -2268,16 +3057,6 @@ class PortalImplementationSupervisor:
                 "changed": False,
                 "reason": "refill_deferred",
             }
-            post_completion_result = self._terminal_refill_result(
-                ScanTerminalReason.DISABLED,
-                scan_mode="preflight_deferred",
-                analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
-                started_at=datetime.now(timezone.utc),
-                metadata={"deferred_reason": "preflight_refill_deferred_until_daemon_loop"},
-            )
-            post_completion_scan = {}
-            post_completion_payload = {}
-            post_completion_generated_count = 0
         update_maintenance_phase("post_refill_generated_dirty_repair")
         post_refill_generated_dirty_repair = self.repair_generated_dirty_checkouts()
         update_maintenance_phase("supervisor_check_event")
@@ -2355,12 +3134,8 @@ class PortalImplementationSupervisor:
                 ),
                 "codebase_refill_count": codebase_result.generated_count,
                 "codebase_deferred_reason": codebase_deferred_reason,
-                "post_completion_ops_refill_count": post_completion_generated_count,
-                "post_completion_ops_reason": post_completion_payload.get("reason")
-                or getattr(post_completion_result, "terminal_reason", ""),
                 "objective_scan": objective_scan,
                 "codebase_scan": codebase_scan,
-                "post_completion_ops_scan": post_completion_scan,
                 "generated_dirty_repair_committed_count": int(
                     generated_dirty_repair.get("committed_count") or 0
                 ),
@@ -2368,6 +3143,14 @@ class PortalImplementationSupervisor:
                     post_refill_generated_dirty_repair.get("committed_count") or 0
                 ),
             },
+        )
+        update_maintenance_phase("scheduler_authority_profile_reload")
+        scheduler_authority_profile_reload = (
+            self._maybe_reload_scheduler_authority_profile()
+        )
+        update_maintenance_phase("delegated_operator_completion")
+        delegated_operator_completion = (
+            self._maybe_run_delegated_operator_completion()
         )
         return {
             "stuck": False,
@@ -2387,18 +3170,17 @@ class PortalImplementationSupervisor:
             "objective_contradiction_reconciliation": objective_contradiction_reconciliation,
             "codebase_refill_count": codebase_result.generated_count,
             "codebase_deferred_reason": codebase_deferred_reason,
-            "post_completion_ops_refill_count": post_completion_generated_count,
-            "post_completion_ops_scan": post_completion_scan,
             "objective_scan": objective_scan,
             "codebase_scan": codebase_scan,
+            "scheduler_authority_profile_reload": (
+                scheduler_authority_profile_reload
+            ),
+            "delegated_operator_completion": delegated_operator_completion,
             "event_log_repair": event_log_repair,
             "strategy_file_repair": strategy_file_repair,
             "state_file_repair": state_file_repair,
             "stale_active_state_repair": stale_active_state_repair,
             "stale_worktree_detection": stale_worktree_detection,
-            "worktree_pool_orphan_reconciliation": (
-                worktree_pool_orphan_reconciliation
-            ),
             "todo_board_repair": todo_board_repair,
             "main_checkout_repair": main_checkout_repair,
             "generated_dirty_repair": generated_dirty_repair,
@@ -2435,9 +3217,7 @@ class PortalImplementationSupervisor:
             if stop_signal is not None:
                 cleanup = self._terminate_managed_daemon_tree()
                 interrupted_reconciliation = (
-                    self._reconcile_interrupted_implementation_after_shutdown(
-                        expected_owner_pid=int(cleanup.get("pid") or 0),
-                    )
+                    self._reconcile_interrupted_implementation_after_shutdown()
                 )
                 try:
                     self._record_event(
@@ -2468,7 +3248,18 @@ class PortalImplementationSupervisor:
 
     def _run_forever_loop(self) -> None:
         self.ensure_event_log_file()
-        self.ensure_managed_daemon_pid_file()
+        managed_daemon_guard = self.ensure_managed_daemon_pid_file()
+        if managed_daemon_guard.get("blocked", False):
+            self._record_event(
+                "managed_daemon_start_blocked",
+                managed_daemon_guard,
+            )
+            raise RuntimeError(
+                str(
+                    managed_daemon_guard.get("reason")
+                    or "managed_daemon_ownership_unproven"
+                )
+            )
         try:
             preflight = self.run_once(include_refill=False)
         except Exception as exc:
@@ -2482,24 +3273,10 @@ class PortalImplementationSupervisor:
             raise
         self._record_event("supervisor_preflight_maintenance_pass", preflight)
         self._last_supervisor_maintenance_at = time.monotonic()
-        durable_progress_signature = (
-            self._supervisor_durable_progress_signature()
-        )
-        no_progress_recovery_count = 0
-        # Preserve one recovery opportunity even for configurations that allow
-        # only one inner restart.  After that, the configured restart ceiling
-        # also bounds consecutive outer loop reconstruction.
-        no_progress_recovery_limit = max(
-            2,
-            int(self.config.max_restarts),
-        )
         while True:
             loop = self.shared_supervisor_loop_class(
                 self.build_supervisor_loop_config(),
                 watchdog_hook=self._supervisor_loop_watchdog_decision,
-                stale_heartbeat_hook=(
-                    self._provider_backoff_stale_heartbeat_decision
-                ),
             )
             result = loop.run()
             self.restart_count = result.restart_count
@@ -2541,32 +3318,6 @@ class PortalImplementationSupervisor:
                     },
                 )
 
-            current_progress_signature = (
-                self._supervisor_durable_progress_signature()
-            )
-            if current_progress_signature != durable_progress_signature:
-                durable_progress_signature = current_progress_signature
-                no_progress_recovery_count = 0
-            else:
-                no_progress_recovery_count += 1
-            if no_progress_recovery_count >= no_progress_recovery_limit:
-                self._record_event(
-                    "supervisor_loop_recovery_exhausted",
-                    {
-                        "loop_result": result_payload,
-                        "no_progress_recovery_count": (
-                            no_progress_recovery_count
-                        ),
-                        "no_progress_recovery_limit": (
-                            no_progress_recovery_limit
-                        ),
-                        "durable_progress_signature": (
-                            durable_progress_signature
-                        ),
-                    },
-                )
-                return
-
             delay_seconds = self._supervisor_loop_recovery_delay_seconds()
             self._record_event(
                 "supervisor_loop_restarting_after_recovery",
@@ -2582,51 +3333,22 @@ class PortalImplementationSupervisor:
 
         return max(5.0, min(float(self.config.check_interval), 60.0))
 
-    def _supervisor_durable_progress_signature(self) -> str:
-        """Bind task progress while excluding liveness-only timestamps.
-
-        The inner supervisor loop owns heartbeat and log timestamps, so those
-        fields cannot prove that reconstructing the loop is useful.  Attempt,
-        task, completion, implementation, and merge transitions can.  A stable
-        signature across repeated recoverable child-loop exits therefore
-        provides a deterministic lease-release boundary.
-        """
-
-        state = PortalTaskState.load(self.config.state_path)
-        return content_identity(
-            {
-                "active": {
-                    "task_id": state.active_task_id,
-                    "task_cid": state.active_task_cid,
-                    "attempt": state.active_attempt,
-                    "phase": state.active_phase,
-                    "implementation_in_progress": (
-                        state.implementation_in_progress
-                    ),
-                },
-                "attempts_by_cid": dict(
-                    sorted(state.implementation_attempts_by_cid.items())
-                ),
-                "completed_task_ids": sorted(state.completed_task_ids),
-                "task_statuses": dict(sorted(state.task_statuses.items())),
-                "last_implementation": {
-                    "task_cid": state.last_implementation_task_cid,
-                    "finished_at": state.last_implementation_finished_at,
-                    "returncode": state.last_implementation_returncode,
-                    "commit": state.last_implementation_commit,
-                },
-                "last_merge": {
-                    "finished_at": state.last_merge_finished_at,
-                    "returncode": state.last_merge_returncode,
-                    "commit": state.last_merge_commit,
-                },
-                "selection_idle_reason": state.selection_idle_reason,
-            }
-        )
-
     def build_supervisor_loop_config(self) -> SupervisorLoopConfig:
         command = tuple(self._build_daemon_command())
         prefix = self.config.state_prefix
+        child_env = _managed_daemon_child_environment()
+        child_env.update(
+            {
+                SUPERVISED_CHILD_IDENTITY_PATH_ENV: str(
+                    self._managed_daemon_identity_path()
+                ),
+                SUPERVISED_CHILD_OWNER_SCOPE_ENV: json.dumps(
+                    self._managed_daemon_owner_scope(),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            }
+        )
         proof_rollout_status_fields = self._proof_rollout_status_fields()
         autonomous_unstall_status = self._autonomous_unstall_status()
         if autonomous_unstall_status:
@@ -2667,7 +3389,7 @@ class PortalImplementationSupervisor:
         return SupervisorLoopConfig(
             spec=spec,
             command=command,
-            child_env=_managed_daemon_child_environment(),
+            child_env=child_env,
             log_prefix=f"{prefix}_implementation_daemon",
             restart_policy=RestartPolicy(
                 restart_backoff_seconds=max(0.0, float(self.config.check_interval)),
@@ -2693,25 +3415,6 @@ class PortalImplementationSupervisor:
                 "task_prefix": self.config.task_prefix,
                 "state_prefix": self.config.state_prefix,
                 "max_task_attempts": max(0, int(self.config.max_task_attempts)),
-                "production_provider_policy": (
-                    self.config.production_provider_policy
-                ),
-                "production_provider_context_budget_tokens": int(
-                    self.config.production_provider_context_budget_tokens
-                ),
-                "production_provider_timeout_seconds": float(
-                    self.config.production_provider_timeout_seconds
-                ),
-                "production_provider_review_authority_key_path": str(
-                    self.config.production_provider_review_authority_key_path
-                    or ""
-                ),
-                "legacy_landed_review_policy_path": str(
-                    self.config.legacy_landed_review_policy_path or ""
-                ),
-                "legacy_landed_review_key_path": str(
-                    self.config.legacy_landed_review_key_path or ""
-                ),
                 "worktree_no_child_stall_seconds": max(
                     0.0,
                     float(self.config.implementation_log_stall_seconds),
@@ -2793,138 +3496,15 @@ class PortalImplementationSupervisor:
                 str(result.get("reason") or "stuck_progress"),
                 detail={"active_task_id": result.get("active_task_id") or ""},
             )
-        return SupervisorLoopDecision.keep_running()
-
-    def _provider_backoff_watchdog_pause(
-        self,
-        current_status: Mapping[str, Any],
-        *,
-        now: datetime | None = None,
-    ) -> dict[str, Any]:
-        """Return a bounded stale-heartbeat exception for a durable retry latch.
-
-        Provider-capacity deferrals deliberately leave task state, queues, and
-        events unchanged while the daemon sleeps until ``retry_at``.  That is
-        healthy idle time, not a stalled child.  Admit the exception only from
-        the latest exact, non-consuming provider-exhaustion event and only for
-        the task that the current lane still exposes as ready.
-        """
-
-        if (
-            current_status.get("selection_idle_reason")
-            != "provider_capacity_backoff"
-            or bool(current_status.get("active_task_id"))
-            or current_status.get("implementation_in_progress") is True
-        ):
-            return {}
-
-        heartbeat_at = parse_timestamp(
-            str(current_status.get("heartbeat_at") or "")
+        authority_reload = dict(
+            result.get("scheduler_authority_profile_reload") or {}
         )
-        if heartbeat_at is None:
-            return {}
-
-        ready_task_ids: set[str] = set()
-        for field_name in (
-            "eligible_ready_task_ids",
-            "selectable_ready_task_ids",
-            "ready_task_ids",
-        ):
-            value = current_status.get(field_name)
-            if not isinstance(value, (list, tuple, set, frozenset)):
-                continue
-            ready_task_ids.update(
-                str(item).strip() for item in value if str(item).strip()
+        if authority_reload.get("recycle_required"):
+            return SupervisorLoopDecision.recycle(
+                "scheduler_authority_profile_changed",
+                detail=authority_reload,
             )
-        if not ready_task_ids:
-            return {}
-
-        latest_boundary: dict[str, Any] | None = None
-        events_path = self._managed_daemon_events_path()
-        try:
-            with events_path.open("r", encoding="utf-8") as handle:
-                for raw_line in handle:
-                    if not raw_line.strip():
-                        continue
-                    event = json.loads(raw_line)
-                    if not isinstance(event, dict):
-                        return {}
-                    if str(event.get("type") or "") in {
-                        "implementation_provider_exhausted",
-                        "implementation_started",
-                        "implementation_finished",
-                    }:
-                        latest_boundary = event
-        except (OSError, json.JSONDecodeError):
-            return {}
-
-        if (
-            latest_boundary is None
-            or latest_boundary.get("type")
-            != "implementation_provider_exhausted"
-            or latest_boundary.get("reason") != "provider_capacity_exhausted"
-            or latest_boundary.get("deferred") is not True
-            or latest_boundary.get("attempt_consumed") is not False
-        ):
-            return {}
-
-        task_id = str(latest_boundary.get("task_id") or "").strip()
-        if not task_id or task_id not in ready_task_ids:
-            return {}
-        raw_providers = latest_boundary.get("providers")
-        if not isinstance(raw_providers, (list, tuple, set, frozenset)):
-            return {}
-        providers = [
-            str(item).strip()
-            for item in raw_providers
-            if str(item).strip()
-        ]
-        if not providers:
-            return {}
-
-        retry_at = parse_timestamp(str(latest_boundary.get("retry_at") or ""))
-        if retry_at is None or retry_at <= heartbeat_at:
-            return {}
-        now_at = now or datetime.now(timezone.utc)
-        if now_at.tzinfo is None:
-            now_at = now_at.replace(tzinfo=timezone.utc)
-        grace_seconds = max(30.0, float(self.config.check_interval) * 2.0)
-        watchdog_until = retry_at + timedelta(seconds=grace_seconds)
-        if watchdog_until <= now_at:
-            return {}
-
-        return {
-            "schema": (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "provider-backoff-watchdog-pause@1"
-            ),
-            "reason": "provider_capacity_backoff",
-            "task_id": task_id,
-            "providers": providers,
-            "retry_at": retry_at.isoformat(),
-            "watchdog_until": watchdog_until.isoformat(),
-            "remaining_seconds": max(
-                0.0,
-                (watchdog_until - now_at).total_seconds(),
-            ),
-            "attempt_consumed": False,
-            "events_path": str(events_path),
-        }
-
-    def _provider_backoff_stale_heartbeat_decision(
-        self,
-        _loop: SupervisorLoop,
-        _child: Any,
-        current_status: Mapping[str, Any],
-    ) -> SupervisorLoopDecision | None:
-        pause = self._provider_backoff_watchdog_pause(current_status)
-        if not pause:
-            return None
-        return SupervisorLoopDecision(
-            action="continue",
-            reason="provider_capacity_backoff",
-            detail=pause,
-        )
+        return SupervisorLoopDecision.keep_running()
 
     def repair_main_checkout_merge_state(self) -> dict[str, Any]:
         """Resolve or abort an interrupted merge in the shared repository checkout."""
@@ -3157,9 +3737,9 @@ class PortalImplementationSupervisor:
         process_lines = self._list_process_commands()
         active_worktree = state.active_worktree_path.strip()
         # Validation can leave an MCP compatibility adapter in a task worktree
-        # after the implementation runner exits.  Only a recognized
-        # implementation-provider runner proves that an attempt is still live;
-        # a local service must not prevent stale-state recovery indefinitely.
+        # after the implementation runner exits.  Only Codex/Copilot proves
+        # that an implementation attempt is still live; a local service must
+        # not prevent stale-state recovery indefinitely.
         if active_worktree and any(
             active_worktree in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
             for line in process_lines
@@ -3262,7 +3842,6 @@ class PortalImplementationSupervisor:
         operation: str = "generated_board_update",
         callback,
         deferred_result=None,
-        _auto_heal_attempted: bool = False,
     ):
         """Serialize a committed generated-board update with checkout mutations."""
 
@@ -3362,56 +3941,6 @@ class PortalImplementationSupervisor:
                         initial_verdict
                     )
                 )
-                # When the only fault is pre-existing protected generated dirt,
-                # auto-heal once (force commit of trusted supervisor outputs)
-                # instead of crashing the entire maintenance loop. Applies to
-                # every board when supervisor_auto_heal_enabled is true.
-                if (
-                    not initial_verdict.get("release_allowed")
-                    and not dirty_repair_preflight
-                    and not _auto_heal_attempted
-                    and operation != "generated_dirty_repair"
-                    and getattr(self.config, "supervisor_auto_heal_enabled", True)
-                    and self._generated_dirty_repair_preflight_allowed(
-                        initial_verdict
-                    )
-                ):
-                    release_error = (
-                        self._clear_and_release_supervisor_checkout_lease(
-                            lease,
-                            operation=operation,
-                        )
-                    )
-                    self._checkout_mutation_context.lease = None
-                    self._checkout_mutation_context.transaction_depth = 0
-                    heal = self.repair_generated_dirty_checkouts(force=True)
-                    try:
-                        self._record_event(
-                            "generated_protected_dirty_auto_heal",
-                            {
-                                "producer": producer,
-                                "operation": operation,
-                                "release_verdict": dict(initial_verdict),
-                                "heal": dict(heal) if isinstance(heal, Mapping) else {
-                                    "result": str(heal)
-                                },
-                                "lease_release_error": release_error or "",
-                            },
-                        )
-                    except Exception:
-                        logger.warning(
-                            "Failed to record protected dirty auto-heal for %s",
-                            producer,
-                            exc_info=True,
-                        )
-                    return self._run_generated_board_producer(
-                        producer=producer,
-                        commit_outputs=commit_outputs,
-                        operation=operation,
-                        callback=callback,
-                        deferred_result=deferred_result,
-                        _auto_heal_attempted=True,
-                    )
                 if (
                     not initial_verdict.get("release_allowed")
                     and not dirty_repair_preflight
@@ -3577,135 +4106,6 @@ class PortalImplementationSupervisor:
             item.get("reason") == "protected_generated_outputs_dirty"
             for item in failed_scopes
         )
-
-    @staticmethod
-    def _is_healable_supervisor_error(exc: BaseException) -> bool:
-        """Return True for errors the generic auto-heal path can recover from."""
-
-        if not isinstance(exc, RuntimeError):
-            return False
-        message = str(exc).lower()
-        healable_markers = (
-            "protected generated outputs are unsafe",
-            "protected_generated_outputs_dirty",
-            "checkout_mutation_protected_recovery_required",
-            "checkout_mutation_lock",
-            "protected_generated_history",
-            "protected_outputs",
-        )
-        return any(marker in message for marker in healable_markers)
-
-    def _run_healable_maintenance_step(
-        self,
-        step_name: str,
-        callback,
-        *,
-        default: Any,
-    ) -> Any:
-        """Run a maintenance step; auto-heal and soft-defer on healable crashes.
-
-        Applies to every board when ``supervisor_auto_heal_enabled`` is true
-        (the default). Non-healable exceptions still propagate.
-        """
-
-        try:
-            return callback()
-        except Exception as exc:
-            if not getattr(self.config, "supervisor_auto_heal_enabled", True):
-                raise
-            if not self._is_healable_supervisor_error(exc):
-                raise
-            logger.warning(
-                "Maintenance step %s hit healable error; auto-healing: %s",
-                step_name,
-                exc,
-            )
-            heal = self._auto_heal_protected_generated_dirt(
-                reason=f"maintenance_step:{step_name}",
-            )
-            try:
-                return callback()
-            except Exception as retry_exc:
-                if not self._is_healable_supervisor_error(retry_exc):
-                    raise
-                logger.warning(
-                    "Maintenance step %s deferred after auto-heal retry failed: %s",
-                    step_name,
-                    retry_exc,
-                )
-                try:
-                    self._record_event(
-                        "supervisor_maintenance_step_deferred",
-                        {
-                            "step": step_name,
-                            "error": f"{type(retry_exc).__name__}: {retry_exc}",
-                            "heal": heal,
-                        },
-                    )
-                except Exception:
-                    logger.warning(
-                        "Failed to record deferred maintenance step %s",
-                        step_name,
-                        exc_info=True,
-                    )
-                return default
-
-    def _auto_heal_protected_generated_dirt(
-        self,
-        *,
-        reason: str,
-    ) -> dict[str, Any]:
-        """Commit trusted protected generated dirt so maintenance can proceed.
-
-        Generic for every supervised board: todo/strategy/protected paths often
-        receive supervisor-authored writes (refill, guardrail, janitor). Leaving
-        those dirty crashes later maintenance producers; auto-committing the
-        already-authorized generated outputs keeps the supervisor alive.
-        """
-
-        if not getattr(self.config, "supervisor_auto_heal_enabled", True):
-            return {
-                "attempted": False,
-                "reason": "supervisor_auto_heal_disabled",
-                "trigger": reason,
-            }
-
-        protected_candidates = [
-            self.config.todo_path,
-            self.config.strategy_path,
-            *tuple(self.config.generated_dirty_repair_paths or ()),
-        ]
-        for relative in self.config.implementation_protected_paths:
-            text = str(relative).strip()
-            if text:
-                protected_candidates.append(Path(text))
-        dirty_paths = self._dirty_implementation_protected_paths(protected_candidates)
-        if not dirty_paths:
-            return {
-                "attempted": False,
-                "reason": "protected_outputs_clean",
-                "trigger": reason,
-            }
-        heal = self.repair_generated_dirty_checkouts(
-            force=True,
-            additional_paths=tuple(
-                self.config.repo_root / path for path in dirty_paths
-            ),
-        )
-        payload = {
-            "attempted": True,
-            "trigger": reason,
-            "dirty_paths": [str(path) for path in dirty_paths],
-            "heal": dict(heal) if isinstance(heal, Mapping) else {"result": str(heal)},
-        }
-        try:
-            self._record_event("protected_generated_dirty_auto_heal", payload)
-        except Exception:
-            logger.warning(
-                "Failed to record protected generated dirty auto-heal",
-                exc_info=True,
-            )
-        return payload
 
     def _record_generated_checkout_retention(
         self,
@@ -4584,95 +4984,6 @@ class PortalImplementationSupervisor:
             deferred_result=deferred,
         )
 
-    def _post_completion_ops_refill_output_paths(self) -> tuple[Path, ...]:
-        paths: list[Path] = [self.config.todo_path, self.config.strategy_path]
-        if self.config.post_completion_ops_config_path is not None:
-            paths.append(self.config.post_completion_ops_config_path)
-        return tuple(paths)
-
-    def refill_post_completion_ops_backlog(self) -> RefillScanResult:
-        """Seed reviewed post-completion ops tasks when the board is drained."""
-
-        started_at = datetime.now(timezone.utc)
-        if not self.config.post_completion_ops_refill_enabled:
-            return self._terminal_refill_result(
-                ScanTerminalReason.DISABLED,
-                scan_mode="disabled",
-                analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
-                started_at=started_at,
-            )
-        catalog_path = self.config.post_completion_ops_catalog_path
-        if catalog_path is None:
-            return self._terminal_refill_result(
-                ScanTerminalReason.FAILED,
-                scan_mode="prerequisite_check",
-                analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
-                started_at=started_at,
-                error="post_completion_ops_catalog_path is not configured",
-            )
-        try:
-            from ipfs_accelerate_py.agent_supervisor.objectives.post_completion_ops_refill import (
-                load_post_completion_ops_catalog,
-                seed_post_completion_ops,
-            )
-
-            catalog = load_post_completion_ops_catalog(Path(catalog_path))
-            seed_result = seed_post_completion_ops(
-                todo_path=self.config.todo_path,
-                strategy_path=self.config.strategy_path,
-                catalog=catalog,
-                state_path=self.config.state_path,
-                config_path=self.config.post_completion_ops_config_path,
-                board_namespace=self.config.post_completion_ops_board_namespace
-                or catalog.program,
-                shard_count=max(1, int(self.config.task_shard_count)),
-                shard_index=int(self.config.task_shard_index),
-                require_drained=bool(self.config.post_completion_ops_require_drained),
-            )
-        except Exception as exc:
-            return self._terminal_refill_result(
-                ScanTerminalReason.FAILED,
-                scan_mode="seed",
-                analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
-                started_at=started_at,
-                error=f"{type(exc).__name__}: {exc}",
-                metadata={"error_type": type(exc).__name__},
-            )
-
-        # Expand the in-process execution slice so managed daemons restarted
-        # after this pass can select newly seeded post-completion tasks.
-        expanded = tuple(
-            str(task_id).strip()
-            for task_id in seed_result.expanded_execution_slice_task_ids
-            if str(task_id).strip()
-        )
-        if expanded:
-            merged = list(self.config.execution_slice_task_ids)
-            for task_id in expanded:
-                if task_id not in merged:
-                    merged.append(task_id)
-            self.config.execution_slice_task_ids = tuple(merged)
-
-        metadata = seed_result.to_metadata()
-        if seed_result.error:
-            terminal = ScanTerminalReason.FAILED
-        elif seed_result.seeded_task_ids or seed_result.config_updated:
-            terminal = ScanTerminalReason.GENERATED
-        elif seed_result.reason in {"already_seeded", "already_present"}:
-            terminal = ScanTerminalReason.DUPLICATE_ONLY
-        elif seed_result.reason == "board_not_drained":
-            terminal = ScanTerminalReason.THRESHOLD_SATISFIED
-        else:
-            terminal = ScanTerminalReason.PARTIAL
-        return self._terminal_refill_result(
-            terminal,
-            scan_mode=seed_result.reason or "seed",
-            analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
-            started_at=started_at,
-            metadata=metadata,
-            error=seed_result.error or None,
-        )
-
     def _objective_refill_output_paths(self) -> tuple[Path, ...]:
         from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
             default_objective_path,
@@ -4894,54 +5205,6 @@ class PortalImplementationSupervisor:
         unmerged_paths: list[str],
     ) -> dict[str, Any]:
         from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import build_merge_prompt, invoke_llm_resolver
-        from ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback import (
-            llm_merge_resolver_fallback_command,
-        )
-
-        ordered_values = {
-            "primary": os.environ.get(
-                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER", ""
-            ).strip(),
-            "fallback": os.environ.get(
-                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER", ""
-            ).strip(),
-            "trigger": os.environ.get(
-                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER", ""
-            ).strip(),
-            "grok_model": os.environ.get(
-                "IPFS_ACCELERATE_AGENT_GROK_MODEL", ""
-            ).strip(),
-            "codex_model": os.environ.get(
-                "IPFS_ACCELERATE_AGENT_CODEX_MODEL", ""
-            ).strip(),
-            "codex_effort": os.environ.get(
-                "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT", ""
-            ).strip(),
-        }
-        ordered_route_requested = bool(
-            ordered_values["fallback"] or ordered_values["trigger"]
-        )
-        sealed_ordered_route = ordered_values == {
-            "primary": "grok_cli",
-            "fallback": "codex",
-            "trigger": "primary_quota_exhausted",
-            "grok_model": "grok-4.5",
-            "codex_model": "gpt-5.6-terra",
-            "codex_effort": "medium",
-        }
-        if ordered_route_requested and not sealed_ordered_route:
-            return {
-                "attempted": False,
-                "deferred": True,
-                "reason": "ordered_merge_resolver_policy_invalid",
-            }
-        command_template = (
-            llm_merge_resolver_fallback_command(
-                python_executable=sys.executable,
-            )
-            if sealed_ordered_route
-            else self.config.llm_merge_resolver_command
-        )
 
         target_branch = self._git_current_branch(repo_root) or "HEAD"
         active_task_id = ""
@@ -4984,7 +5247,7 @@ class PortalImplementationSupervisor:
         }
         return invoke_llm_resolver(
             payload,
-            command_template=command_template,
+            command_template=self.config.llm_merge_resolver_command,
             timeout_seconds=self.config.llm_merge_resolver_timeout_seconds,
         )
 
@@ -6360,40 +6623,6 @@ class PortalImplementationSupervisor:
             self._record_event("worktree_reconciliation", result)
         return result
 
-    def reconcile_orphaned_worktree_pool_metadata(
-        self,
-        *,
-        max_entries: int = 100,
-    ) -> dict[str, Any]:
-        """Reconcile dead pool sidecars that no Git worktree scan can see."""
-
-        worktree_root = self.config.worktree_root
-        if worktree_root is None:
-            return {
-                "attempted": False,
-                "reason": "worktree_root_not_configured",
-            }
-        state_root = worktree_root / ".pool-state"
-        if not state_root.is_dir():
-            return {
-                "attempted": False,
-                "reason": "worktree_pool_state_not_found",
-                "worktree_root": str(worktree_root),
-            }
-        pool = WorktreePool(
-            repo_root=self.config.repo_root,
-            worktree_root=worktree_root,
-        )
-        result = pool.reconcile_orphaned_metadata(
-            max_entries=max_entries,
-        )
-        if result.get("removed_count"):
-            self._record_event(
-                "worktree_pool_orphan_metadata_reconciled",
-                result,
-            )
-        return result
-
     def recover_already_merged_reconciliation_candidates(
         self,
         *,
@@ -7337,7 +7566,12 @@ class PortalImplementationSupervisor:
             ),
             repo_root=self.config.repo_root,
             task_header_prefix=self.config.task_prefix,
-            implement=False,
+            # Revalidation-only construction requires implement=True, while
+            # its daemon policy still forbids every model/provider seam. An
+            # ordinary reconciliation helper remains non-implementing.
+            implement=bool(
+                self.config.manual_completion_authority_revalidation_only
+            ),
             implementation_command=self.config.implementation_command,
             implementation_timeout=self.config.implementation_timeout,
             max_task_attempts=self.config.max_task_attempts,
@@ -7348,6 +7582,18 @@ class PortalImplementationSupervisor:
             worktree_submodule_paths=self.config.worktree_submodule_paths,
             implementation_protected_paths=(
                 self.config.implementation_protected_paths
+            ),
+            manual_completion_authority_task_ids=(
+                self.config.manual_completion_authority_task_ids
+            ),
+            manual_completion_authority_required_task_ids=(
+                self.config.manual_completion_authority_required_task_ids
+            ),
+            manual_completion_authority_epoch_id=(
+                self.config.manual_completion_authority_epoch_id
+            ),
+            manual_completion_authority_revalidation_only=(
+                self.config.manual_completion_authority_revalidation_only
             ),
             objective_path=self.config.objective_path,
             objective_bundle_dir=self.config.objective_bundle_dir,
@@ -7761,16 +8007,12 @@ class PortalImplementationSupervisor:
 
     def _reconcile_interrupted_implementation_after_shutdown(
         self,
-        *,
-        expected_owner_pid: int = 0,
     ) -> dict[str, Any]:
         """Close an interrupted attempt only after proving it is quiescent."""
 
         try:
             daemon = self._build_worktree_reconciliation_daemon()
-            return daemon.reconcile_quiesced_active_attempt(
-                expected_owner_pid=expected_owner_pid,
-            )
+            return daemon.reconcile_quiesced_active_attempt()
         except Exception as exc:
             logger.exception(
                 "Could not reconcile interrupted implementation during "
@@ -11562,16 +11804,9 @@ class PortalImplementationSupervisor:
     ) -> str:
         if str(metadata.get("kind") or "") != "merge":
             return "kind_mismatch"
-        worktree_root = str(
-            metadata.get("worktree_root")
-            or metadata.get("repo_root")
-            or ""
-        )
         try:
-            if (
-                not worktree_root
-                or Path(worktree_root).resolve()
-                != self.config.repo_root.resolve()
+            if Path(str(metadata.get("repo_root") or "")).resolve() != (
+                self.config.repo_root.resolve()
             ):
                 return "repository_mismatch"
         except (OSError, RuntimeError, ValueError):
@@ -12255,7 +12490,14 @@ class PortalImplementationSupervisor:
         return merged
 
     def _start_daemon(self) -> subprocess.Popen[str]:
-        self.ensure_managed_daemon_pid_file()
+        managed_daemon_guard = self.ensure_managed_daemon_pid_file()
+        if managed_daemon_guard.get("blocked", False):
+            raise RuntimeError(
+                str(
+                    managed_daemon_guard.get("reason")
+                    or "managed_daemon_ownership_unproven"
+                )
+            )
         command = self._build_daemon_command()
         child_env = dict(os.environ)
         child_env.update(_managed_daemon_child_environment())
@@ -12264,26 +12506,67 @@ class PortalImplementationSupervisor:
             cwd=self.config.repo_root,
             env=child_env,
             text=True,
+            start_new_session=True,
         )
+        try:
+            self._write_managed_daemon_identity(
+                pid=int(process.pid),
+                command=command,
+            )
+        except Exception:
+            direct_child_stopped = terminate_direct_child_process(
+                process,
+                grace_seconds=1.0,
+            )
+            launched_birth = None
+            if not direct_child_stopped:
+                try:
+                    launched_birth = read_process_birth(int(process.pid))
+                except OSError:
+                    launched_birth = None
+            if (
+                not direct_child_stopped
+                and launched_birth is not None
+                and launched_birth.parent_pid == os.getpid()
+            ):
+                terminate_pid_tree(
+                    int(process.pid),
+                    grace_seconds=1.0,
+                    freeze_first=True,
+                    require_gone=True,
+                    owned_process_group_id=int(process.pid),
+                    expected_root_start_time_ticks=(
+                        launched_birth.start_time_ticks
+                    ),
+                )
+            raise
         write_text_atomic(self._managed_daemon_pid_path(), f"{process.pid}\n")
         return process
 
     def _terminate(self, process: subprocess.Popen[str] | AdoptedManagedDaemonProcess) -> None:
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=15)
-        pid_path = self._managed_daemon_pid_path()
-        if pid_path.exists():
-            if pid_path.is_dir():
-                backup_path = unique_backup_path(pid_path, "directory-backup")
-                pid_path.rename(backup_path)
-            else:
-                pid_path.unlink()
-        self._record_event("daemon_stop", {"returncode": process.returncode})
+        cleanup = self._terminate_managed_daemon_tree(grace_seconds=15.0)
+        if not cleanup.get("quiesced", False):
+            self._record_event("daemon_stop_blocked", cleanup)
+            raise RuntimeError(
+                str(
+                    cleanup.get("fence", {}).get("reason")
+                    or "managed_daemon_termination_unproven"
+                )
+            )
+        returncode = process.poll()
+        if isinstance(process, AdoptedManagedDaemonProcess):
+            process.returncode = 0 if returncode is None else returncode
+        self._record_event(
+            "daemon_stop",
+            {
+                "returncode": (
+                    process.returncode
+                    if process.returncode is not None
+                    else 0
+                ),
+                "managed_daemon_cleanup": cleanup,
+            },
+        )
 
     def _build_daemon_command(self) -> list[str]:
         daemon_script_path = self.config.daemon_script_path
@@ -12314,6 +12597,13 @@ class PortalImplementationSupervisor:
                 str(max(0, int(self.config.max_task_attempts))),
             ]
         )
+        if self.config.validation_max_workers is not None:
+            command.extend(
+                [
+                    "--validation-max-workers",
+                    str(max(1, int(self.config.validation_max_workers))),
+                ]
+            )
         for path in self.config.generated_dirty_repair_paths:
             command.extend(["--generated-status-path", str(path)])
         for relative in self.config.implementation_protected_paths:
@@ -12329,46 +12619,6 @@ class PortalImplementationSupervisor:
         if self.config.implement:
             command.append("--implement")
             command.extend(["--implementation-timeout", str(self.config.implementation_timeout)])
-            if self.config.production_provider_policy:
-                review_authority_key_path = (
-                    self.config.production_provider_review_authority_key_path
-                    or self.config.state_dir
-                    / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
-                )
-                command.extend(
-                    [
-                        "--production-provider-policy",
-                        self.config.production_provider_policy,
-                        "--production-provider-context-budget-tokens",
-                        str(
-                            int(
-                                self.config.production_provider_context_budget_tokens
-                            )
-                        ),
-                        "--production-provider-timeout-seconds",
-                        str(float(self.config.production_provider_timeout_seconds)),
-                        "--production-provider-review-authority-key-path",
-                        str(review_authority_key_path),
-                    ]
-                )
-            if (self.config.legacy_landed_review_policy_path is None) != (
-                self.config.legacy_landed_review_key_path is None
-            ):
-                raise ValueError(
-                    "legacy landed review requires both explicit policy and key paths"
-                )
-            if (
-                self.config.legacy_landed_review_policy_path is not None
-                and self.config.legacy_landed_review_key_path is not None
-            ):
-                command.extend(
-                    [
-                        "--legacy-landed-review-policy-path",
-                        str(self.config.legacy_landed_review_policy_path),
-                        "--legacy-landed-review-key-path",
-                        str(self.config.legacy_landed_review_key_path),
-                    ]
-                )
             if self.config.implementation_command:
                 command.extend(["--implementation-command", self.config.implementation_command])
             if self.config.llm_merge_resolver_command:
@@ -12444,6 +12694,25 @@ class PortalImplementationSupervisor:
             command.extend(["--external-reservation-manifest-path", str(path)])
         for task_id in self.config.assumed_completed_task_ids:
             command.extend(["--assume-completed-task-id", str(task_id)])
+        for task_id in self.config.manual_completion_authority_task_ids:
+            command.extend(
+                ["--manual-completion-authority-task-id", str(task_id)]
+            )
+        for task_id in self.config.manual_completion_authority_required_task_ids:
+            command.extend(
+                ["--manual-completion-authority-required-task-id", str(task_id)]
+            )
+        if self.config.manual_completion_authority_epoch_id:
+            command.extend(
+                [
+                    "--manual-completion-authority-epoch-id",
+                    self.config.manual_completion_authority_epoch_id,
+                ]
+            )
+        if self.config.manual_completion_authority_revalidation_only:
+            command.append(
+                "--manual-completion-authority-revalidation-only"
+            )
         for task_id in self.config.execution_slice_task_ids:
             command.extend(["--execution-slice-task-id", str(task_id)])
         for task_cid in self.config.execution_slice_task_cids:
@@ -12453,42 +12722,263 @@ class PortalImplementationSupervisor:
     def _managed_daemon_pid_path(self) -> Path:
         return self.config.state_dir / f"{self.config.state_prefix}_managed_daemon.pid"
 
-    def _managed_daemon_events_path(self) -> Path:
-        return self.config.state_dir / f"{self.config.state_prefix}_events.jsonl"
+    def _managed_daemon_identity_path(self) -> Path:
+        return supervised_child_identity_path(
+            self._managed_daemon_pid_path()
+        )
+
+    def _managed_daemon_owner_scope(self) -> dict[str, str]:
+        daemon_script_path = self.config.daemon_script_path
+        daemon_entrypoint = (
+            str(Path(daemon_script_path).resolve(strict=False))
+            if daemon_script_path is not None
+            else (
+                "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                "implementation_daemon"
+            )
+        )
+        return {
+            "repo_root": str(self.config.repo_root.resolve(strict=False)),
+            "state_dir": str(self.config.state_dir.resolve(strict=False)),
+            "state_prefix": str(self.config.state_prefix),
+            "todo_path": str(self.config.todo_path.resolve(strict=False)),
+            "daemon_entrypoint": daemon_entrypoint,
+        }
+
+    def _managed_daemon_command_belongs_to_scope(
+        self,
+        command: Sequence[str],
+    ) -> bool:
+        tokens = tuple(str(part) for part in command)
+        daemon_script_path = self.config.daemon_script_path
+        daemon_token = (
+            str(daemon_script_path)
+            if daemon_script_path is not None
+            else (
+                "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                "implementation_daemon"
+            )
+        )
+        if daemon_token not in tokens:
+            return False
+
+        def exact_option(option: str, expected: str) -> bool:
+            values = [
+                tokens[index + 1]
+                for index, token in enumerate(tokens[:-1])
+                if token == option
+            ]
+            return values == [expected]
+
+        return (
+            exact_option("--state-dir", str(self.config.state_dir))
+            and exact_option("--state-prefix", self.config.state_prefix)
+            and exact_option("--todo-path", str(self.config.todo_path))
+        )
+
+    def _remove_managed_daemon_identity_markers(
+        self,
+        *,
+        expected_pid: int | None = None,
+    ) -> bool:
+        pid_path = self._managed_daemon_pid_path()
+        identity_path = self._managed_daemon_identity_path()
+        if expected_pid is not None:
+            try:
+                recorded_pid = int(
+                    pid_path.read_text(encoding="utf-8").strip()
+                )
+            except (OSError, ValueError):
+                return False
+            if recorded_pid != int(expected_pid):
+                return False
+        for path in (pid_path, identity_path):
+            try:
+                if path.is_file() or path.is_symlink():
+                    path.unlink()
+            except OSError:
+                return False
+        return True
+
+    def _quarantine_managed_daemon_identity_markers(
+        self,
+        *,
+        reason: str,
+    ) -> dict[str, str]:
+        quarantined: dict[str, str] = {}
+        for label, path in (
+            ("pid", self._managed_daemon_pid_path()),
+            ("identity", self._managed_daemon_identity_path()),
+        ):
+            if not path.exists() and not path.is_symlink():
+                continue
+            try:
+                backup = unique_backup_path(path, reason)
+                path.rename(backup)
+            except OSError:
+                continue
+            quarantined[label] = str(backup)
+        return quarantined
+    def _write_managed_daemon_identity(
+        self,
+        *,
+        pid: int,
+        command: Sequence[str],
+        require_direct_child: bool = True,
+    ) -> None:
+        write_supervised_child_identity(
+            self._managed_daemon_identity_path(),
+            pid=int(pid),
+            command=command,
+            owner_scope=self._managed_daemon_owner_scope(),
+            require_direct_child=require_direct_child,
+        )
+
+    def _fence_recorded_managed_daemon(
+        self,
+        *,
+        pid: int,
+        grace_seconds: float = 1.0,
+    ) -> dict[str, Any]:
+        identity_path = self._managed_daemon_identity_path()
+        identity = load_supervised_child_identity(identity_path)
+        if identity is None:
+            return {
+                "fenced": False,
+                "reason": "managed_daemon_ownership_unproven",
+            }
+        if (
+            identity.process_birth.pid != int(pid)
+            or dict(identity.owner_scope)
+            != self._managed_daemon_owner_scope()
+            or not self._managed_daemon_command_belongs_to_scope(
+                identity.command
+            )
+        ):
+            return {
+                "fenced": False,
+                "reason": "managed_daemon_ownership_scope_mismatch",
+            }
+        liveness = supervised_child_identity_liveness(identity)
+        if liveness is OwnerLiveness.DEAD:
+            return {
+                "fenced": False,
+                "pid_reused": bool(process_is_running(pid)),
+                "reason": "managed_daemon_recorded_process_dead",
+            }
+        if liveness is not OwnerLiveness.ALIVE:
+            return {
+                "fenced": False,
+                "reason": "managed_daemon_ownership_liveness_unknown",
+            }
+        observed_argv = read_process_command_argv(pid)
+        if observed_argv is None or observed_argv != identity.command:
+            return {
+                "fenced": False,
+                "reason": "managed_daemon_command_identity_mismatch",
+            }
+        # Re-read birth identity immediately before entering the existing
+        # freeze/rescan/kill fence. A reused numeric PID is never signalled.
+        if supervised_child_identity_liveness(identity) is not OwnerLiveness.ALIVE:
+            return {
+                "fenced": False,
+                "reason": "managed_daemon_process_birth_changed",
+            }
+        fenced = terminate_pid_tree(
+            int(pid),
+            grace_seconds=max(0.0, float(grace_seconds)),
+            freeze_first=True,
+            require_gone=True,
+            owned_process_group_id=int(pid),
+            expected_root_start_time_ticks=(
+                identity.process_birth.start_time_ticks
+            ),
+        )
+        gone = (
+            supervised_child_identity_liveness(identity)
+            is OwnerLiveness.DEAD
+        )
+        return {
+            "fenced": bool(fenced and gone),
+            "reason": (
+                "managed_daemon_owned_process_fenced"
+                if fenced and gone
+                else "managed_daemon_owned_process_fence_failed"
+            ),
+        }
 
     def _terminate_managed_daemon_tree(self, *, grace_seconds: float = 1.0) -> dict[str, Any]:
         """Stop the daemon this supervisor owns, including late-spawned workers."""
 
         pid_path = self._managed_daemon_pid_path()
+        repair = self.ensure_managed_daemon_pid_file()
+        if repair.get("blocked", False):
+            return {
+                "pid": self._read_managed_daemon_pid(),
+                "terminated": False,
+                "quiesced": False,
+                "remaining_pid": self._find_matching_managed_daemon_pid(),
+                "pid_path": str(pid_path),
+                "identity_path": str(
+                    self._managed_daemon_identity_path()
+                ),
+                "fence": {
+                    "fenced": False,
+                    "reason": str(
+                        repair.get("reason")
+                        or "managed_daemon_ownership_unproven"
+                    ),
+                },
+                "repair": repair,
+            }
         pid = self._read_managed_daemon_pid()
-        if pid is not None:
-            command_line = process_command_line(pid) if process_is_running(pid) else ""
-            if not self._managed_daemon_matches_command_line(command_line):
-                pid = None
         if pid is None:
-            pid = self._find_matching_managed_daemon_pid()
+            remaining_pid = self._find_matching_managed_daemon_pid()
+            return {
+                "pid": None,
+                "terminated": False,
+                "quiesced": remaining_pid is None,
+                "remaining_pid": remaining_pid,
+                "pid_path": str(pid_path),
+                "identity_path": str(
+                    self._managed_daemon_identity_path()
+                ),
+                "fence": {
+                    "fenced": False,
+                    "reason": (
+                        "managed_daemon_not_found"
+                        if remaining_pid is None
+                        else "managed_daemon_ownership_unproven"
+                    ),
+                },
+                "repair": repair,
+            }
 
-        terminated = bool(
-            pid is not None
-            and terminate_pid_tree(
-                pid,
-                grace_seconds=max(0.0, float(grace_seconds)),
-                freeze_first=True,
-                require_gone=True,
+        fence = (
+            self._fence_recorded_managed_daemon(
+                pid=pid,
+                grace_seconds=grace_seconds,
             )
+            if pid is not None
+            else {
+                "fenced": False,
+                "reason": "managed_daemon_not_found",
+            }
         )
+        terminated = bool(fence.get("fenced", False))
         remaining_pid = self._find_matching_managed_daemon_pid()
-        try:
-            if pid_path.is_file():
-                pid_path.unlink()
-        except OSError:
-            pass
+        if terminated:
+            self._remove_managed_daemon_identity_markers(
+                expected_pid=pid,
+            )
         return {
             "pid": pid,
             "terminated": terminated,
-            "quiesced": remaining_pid is None,
+            "quiesced": (pid is None or terminated) and remaining_pid is None,
             "remaining_pid": remaining_pid,
             "pid_path": str(pid_path),
+            "identity_path": str(self._managed_daemon_identity_path()),
+            "fence": fence,
         }
 
     def _read_managed_daemon_pid(self) -> int | None:
@@ -12514,7 +13004,103 @@ class PortalImplementationSupervisor:
         """Remove stale or malformed managed-daemon PID state before adoption."""
 
         pid_path = self._managed_daemon_pid_path()
+        identity_path = self._managed_daemon_identity_path()
         if not pid_path.exists():
+            identity_exists = identity_path.exists() or identity_path.is_symlink()
+            if identity_exists:
+                identity = load_supervised_child_identity(identity_path)
+                if identity is None:
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "orphaned_managed_daemon_identity_invalid",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                    }
+                if (
+                    dict(identity.owner_scope)
+                    != self._managed_daemon_owner_scope()
+                    or not self._managed_daemon_command_belongs_to_scope(
+                        identity.command
+                    )
+                ):
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "orphaned_managed_daemon_identity_scope_mismatch",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": identity.process_birth.pid,
+                    }
+                identity_liveness = supervised_child_identity_liveness(
+                    identity
+                )
+                if identity_liveness is OwnerLiveness.UNKNOWN:
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "orphaned_managed_daemon_identity_liveness_unknown",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": identity.process_birth.pid,
+                    }
+                if identity_liveness is OwnerLiveness.DEAD:
+                    matching_pid = self._find_matching_managed_daemon_pid()
+                    if matching_pid is not None:
+                        return {
+                            "repaired": False,
+                            "blocked": True,
+                            "reason": "matching_managed_daemon_ownership_unproven",
+                            "path": str(pid_path),
+                            "identity_path": str(identity_path),
+                            "pid": int(matching_pid),
+                        }
+                    quarantined = (
+                        self._quarantine_managed_daemon_identity_markers(
+                            reason="stale-orphaned-managed-daemon"
+                        )
+                    )
+                    result = {
+                        "repaired": True,
+                        "reason": "stale_orphaned_managed_daemon_identity",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": identity.process_birth.pid,
+                        "quarantined": quarantined,
+                    }
+                    self._record_event(
+                        "managed_daemon_pid_file_repaired",
+                        result,
+                    )
+                    return result
+                observed_argv = read_process_command_argv(
+                    identity.process_birth.pid
+                )
+                if observed_argv != identity.command:
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "orphaned_managed_daemon_command_identity_mismatch",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": identity.process_birth.pid,
+                    }
+                write_text_atomic(
+                    pid_path,
+                    f"{identity.process_birth.pid}\n",
+                )
+                recovery = self.ensure_managed_daemon_pid_file()
+                recovery["repaired"] = True
+                recovery["orphaned_identity_recovered"] = True
+                if recovery.get("reason") == "active":
+                    recovery["reason"] = (
+                        "orphaned_live_managed_daemon_pid_reconstructed"
+                    )
+                self._record_event(
+                    "managed_daemon_pid_file_repaired",
+                    recovery,
+                )
+                return recovery
             return {"repaired": False, "reason": "missing", "path": str(pid_path)}
         if pid_path.is_dir():
             backup_path = unique_backup_path(pid_path, "directory-backup")
@@ -12572,77 +13158,268 @@ class PortalImplementationSupervisor:
             if result.get("repaired"):
                 self._record_event("managed_daemon_pid_file_repaired", result)
             return result
-        if not process_is_running(pid):
-            replacement_pid = self._find_matching_managed_daemon_pid(exclude_pids={pid})
-            if replacement_pid:
-                write_text_atomic(pid_path, f"{replacement_pid}\n")
-                result = {
-                    "repaired": True,
-                    "reason": "stale_managed_pid_replaced_with_matching_daemon",
-                    "path": str(pid_path),
-                    "stale_pid": pid,
-                    "replacement_pid": replacement_pid,
-                }
-                self._record_event("managed_daemon_pid_file_repaired", result)
-                return result
-            try:
-                pid_path.unlink()
-                result = {
-                    "repaired": True,
-                    "reason": "stale_managed_pid",
-                    "path": str(pid_path),
-                    "pid": pid,
-                }
-            except OSError as exc:
-                result = {
+        identity_exists = identity_path.exists() or identity_path.is_symlink()
+        identity = load_supervised_child_identity(identity_path)
+        recorded_pid_running = process_is_running(pid)
+        if identity_exists:
+            if identity is None:
+                return {
                     "repaired": False,
-                    "reason": "stale_managed_pid_unrepairable",
+                    "blocked": True,
+                    "reason": "managed_daemon_ownership_unproven",
                     "path": str(pid_path),
+                    "identity_path": str(identity_path),
                     "pid": pid,
-                    "error": str(exc),
                 }
-            if result.get("repaired"):
-                self._record_event("managed_daemon_pid_file_repaired", result)
+            identity_liveness = supervised_child_identity_liveness(identity)
+            if identity_liveness is OwnerLiveness.UNKNOWN:
+                return {
+                    "repaired": False,
+                    "blocked": True,
+                    "reason": "managed_daemon_ownership_liveness_unknown",
+                    "path": str(pid_path),
+                    "identity_path": str(identity_path),
+                    "pid": pid,
+                }
+            if identity_liveness is OwnerLiveness.ALIVE:
+                observed_identity_argv = read_process_command_argv(
+                    identity.process_birth.pid
+                )
+                if (
+                    dict(identity.owner_scope)
+                    != self._managed_daemon_owner_scope()
+                    or not self._managed_daemon_command_belongs_to_scope(
+                        identity.command
+                    )
+                    or observed_identity_argv != identity.command
+                ):
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "managed_daemon_ownership_scope_mismatch",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": pid,
+                        "identity_pid": identity.process_birth.pid,
+                    }
+                if identity.process_birth.pid != pid:
+                    write_text_atomic(
+                        pid_path,
+                        f"{identity.process_birth.pid}\n",
+                    )
+                    recovery = self.ensure_managed_daemon_pid_file()
+                    recovery["repaired"] = True
+                    recovery["recorded_pid_reconciled"] = pid
+                    if recovery.get("reason") == "active":
+                        recovery["reason"] = (
+                            "managed_daemon_pid_reconciled_from_live_identity"
+                        )
+                    self._record_event(
+                        "managed_daemon_pid_file_repaired",
+                        recovery,
+                    )
+                    return recovery
+                if not recorded_pid_running:
+                    return {
+                        "repaired": False,
+                        "blocked": True,
+                        "reason": "managed_daemon_process_liveness_inconsistent",
+                        "path": str(pid_path),
+                        "identity_path": str(identity_path),
+                        "pid": pid,
+                    }
+        if not recorded_pid_running:
+            matching_pid = self._find_matching_managed_daemon_pid()
+            if matching_pid is not None:
+                return {
+                    "repaired": False,
+                    "blocked": True,
+                    "reason": "matching_managed_daemon_ownership_unproven",
+                    "path": str(pid_path),
+                    "identity_path": str(identity_path),
+                    "pid": int(matching_pid),
+                }
+            quarantined = self._quarantine_managed_daemon_identity_markers(
+                reason="stale-managed-daemon"
+            )
+            result = {
+                "repaired": True,
+                "reason": "stale_managed_pid",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+                "quarantined": quarantined,
+            }
+            self._record_event("managed_daemon_pid_file_repaired", result)
             return result
+
         command_line = process_command_line(pid)
-        if not self._managed_daemon_matches_command_line(command_line):
-            replacement_pid = self._find_matching_managed_daemon_pid(exclude_pids={pid})
-            if replacement_pid:
-                write_text_atomic(pid_path, f"{replacement_pid}\n")
-                result = {
-                    "repaired": True,
-                    "reason": "managed_pid_command_mismatch_replaced_with_matching_daemon",
-                    "path": str(pid_path),
-                    "pid": pid,
-                    "replacement_pid": replacement_pid,
-                }
-                self._record_event("managed_daemon_pid_file_repaired", result)
-                return result
-            try:
-                pid_path.unlink()
-                result = {
-                    "repaired": True,
-                    "reason": "managed_pid_command_mismatch",
-                    "path": str(pid_path),
-                    "pid": pid,
-                }
-            except OSError as exc:
-                result = {
+        desired_command = tuple(self._build_daemon_command())
+        desired_command_matches = self._managed_daemon_matches_command_line(
+            command_line
+        )
+        if not identity_exists and desired_command_matches:
+            # One-time migration for a live legacy daemon is safe only while
+            # it already has the exact desired supervisor configuration.
+            observed_argv = read_process_command_argv(pid)
+            if observed_argv != desired_command:
+                return {
                     "repaired": False,
-                    "reason": "managed_pid_command_mismatch_unrepairable",
+                    "blocked": True,
+                    "reason": "managed_daemon_ownership_unproven",
                     "path": str(pid_path),
+                    "identity_path": str(identity_path),
+                    "pid": pid,
+                }
+            try:
+                self._write_managed_daemon_identity(
+                    pid=pid,
+                    command=desired_command,
+                    require_direct_child=False,
+                )
+            except Exception as exc:
+                return {
+                    "repaired": False,
+                    "blocked": True,
+                    "reason": "managed_daemon_identity_migration_failed",
+                    "path": str(pid_path),
+                    "identity_path": str(identity_path),
                     "pid": pid,
                     "error": str(exc),
                 }
-            if result.get("repaired"):
-                self._record_event("managed_daemon_pid_file_repaired", result)
+            result = {
+                "repaired": True,
+                "reason": "active_legacy_managed_daemon_identity_migrated",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+            }
+            self._record_event("managed_daemon_pid_file_repaired", result)
             return result
-        return {"repaired": False, "reason": "active", "path": str(pid_path), "pid": pid}
+
+        if identity is None:
+            return {
+                "repaired": False,
+                "blocked": True,
+                "reason": "managed_daemon_ownership_unproven",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+            }
+
+        identity_liveness = supervised_child_identity_liveness(identity)
+        if identity.process_birth.pid != pid or identity_liveness is OwnerLiveness.DEAD:
+            # The numeric PID now belongs to another process. Never signal it;
+            # If any process already has the desired daemon command, its
+            # ownership is not proved by this stale identity.  Fail closed so
+            # startup cannot launch a duplicate matching daemon.
+            matching_pid = self._find_matching_managed_daemon_pid()
+            if matching_pid is not None:
+                return {
+                    "repaired": False,
+                    "blocked": True,
+                    "reason": "matching_managed_daemon_ownership_unproven",
+                    "path": str(pid_path),
+                    "identity_path": str(identity_path),
+                    "pid": int(matching_pid),
+                }
+            quarantined = self._quarantine_managed_daemon_identity_markers(
+                reason="pid-reuse"
+            )
+            result = {
+                "repaired": True,
+                "reason": "managed_daemon_pid_reused",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+                "quarantined": quarantined,
+            }
+            self._record_event("managed_daemon_pid_file_repaired", result)
+            return result
+        if identity_liveness is not OwnerLiveness.ALIVE:
+            return {
+                "repaired": False,
+                "blocked": True,
+                "reason": "managed_daemon_ownership_liveness_unknown",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+            }
+        observed_argv = read_process_command_argv(pid)
+        if (
+            dict(identity.owner_scope) != self._managed_daemon_owner_scope()
+            or not self._managed_daemon_command_belongs_to_scope(
+                identity.command
+            )
+            or observed_argv != identity.command
+        ):
+            return {
+                "repaired": False,
+                "blocked": True,
+                "reason": "managed_daemon_ownership_scope_mismatch",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+            }
+
+        if identity.command == desired_command:
+            return {
+                "repaired": False,
+                "reason": "active",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+            }
+
+        fence = self._fence_recorded_managed_daemon(pid=pid)
+        if not fence.get("fenced", False):
+            return {
+                "repaired": False,
+                "blocked": True,
+                "reason": "managed_daemon_obsolete_fence_failed",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+                "fence": fence,
+            }
+        if not self._remove_managed_daemon_identity_markers(
+            expected_pid=pid
+        ):
+            return {
+                "repaired": False,
+                "blocked": True,
+                "reason": "managed_daemon_obsolete_marker_cleanup_failed",
+                "path": str(pid_path),
+                "identity_path": str(identity_path),
+                "pid": pid,
+                "fence": fence,
+            }
+        result = {
+            "repaired": True,
+            "reason": "obsolete_owned_managed_daemon_fenced",
+            "path": str(pid_path),
+            "identity_path": str(identity_path),
+            "pid": pid,
+            "fence": fence,
+        }
+        self._record_event("managed_daemon_pid_file_repaired", result)
+        return result
 
     def _adopt_existing_daemon(self) -> AdoptedManagedDaemonProcess | None:
         pid_path = self._managed_daemon_pid_path()
         repair = self.ensure_managed_daemon_pid_file()
-        if repair.get("repaired") or not pid_path.exists() or pid_path.is_dir():
+        if repair.get("blocked", False):
+            raise RuntimeError(
+                str(
+                    repair.get("reason")
+                    or "managed_daemon_ownership_unproven"
+                )
+            )
+        if (
+            repair.get("repaired")
+            and repair.get("reason")
+            != "active_legacy_managed_daemon_identity_migrated"
+        ) or not pid_path.exists() or pid_path.is_dir():
             return None
         try:
             pid = int(pid_path.read_text(encoding="utf-8").strip())
@@ -12660,11 +13437,18 @@ class PortalImplementationSupervisor:
             return None
         command_line = process_command_line(pid)
         if not self._managed_daemon_matches_command_line(command_line):
-            try:
-                pid_path.unlink()
-            except OSError:
-                pass
-            return None
+            raise RuntimeError("managed_daemon_command_identity_mismatch")
+        identity = load_supervised_child_identity(
+            self._managed_daemon_identity_path()
+        )
+        if (
+            identity is None
+            or identity.process_birth.pid != pid
+            or identity.command != tuple(self._build_daemon_command())
+            or supervised_child_identity_liveness(identity)
+            is not OwnerLiveness.ALIVE
+        ):
+            raise RuntimeError("managed_daemon_ownership_identity_mismatch")
         return AdoptedManagedDaemonProcess(pid)
 
     def _managed_daemon_matches_command_line(self, command_line: str) -> bool:
@@ -12685,10 +13469,10 @@ class PortalImplementationSupervisor:
         ]
         if not all(fragment in command_line for fragment in required_fragments):
             return False
-        has_implement_flag = "--implement" in command_line
+        tokens = command_line.split()
+        has_implement_flag = "--implement" in tokens
         if self.config.implement != has_implement_flag:
             return False
-        tokens = command_line.split()
         has_strict_task_sharding_flag = "--strict-task-sharding" in tokens
         if (
             bool(self.config.strict_task_sharding)
@@ -12715,72 +13499,31 @@ class PortalImplementationSupervisor:
             self.config.execution_slice_task_ids
         ):
             return False
+        if option_values("--manual-completion-authority-task-id") != set(
+            self.config.manual_completion_authority_task_ids
+        ):
+            return False
+        if option_values(
+            "--manual-completion-authority-required-task-id"
+        ) != set(self.config.manual_completion_authority_required_task_ids):
+            return False
+        expected_authority_epoch_ids = (
+            {self.config.manual_completion_authority_epoch_id}
+            if self.config.manual_completion_authority_epoch_id
+            else set()
+        )
+        if option_values(
+            "--manual-completion-authority-epoch-id"
+        ) != expected_authority_epoch_ids:
+            return False
+        if (
+            "--manual-completion-authority-revalidation-only" in tokens
+        ) != bool(
+            self.config.manual_completion_authority_revalidation_only
+        ):
+            return False
         if option_values("--execution-slice-task-cid") != set(
             self.config.execution_slice_task_cids
-        ):
-            return False
-        expected_provider_policies = (
-            {self.config.production_provider_policy}
-            if self.config.implement and self.config.production_provider_policy
-            else set()
-        )
-        if option_values("--production-provider-policy") != expected_provider_policies:
-            return False
-        expected_provider_budgets = (
-            {str(int(self.config.production_provider_context_budget_tokens))}
-            if expected_provider_policies
-            else set()
-        )
-        if (
-            option_values("--production-provider-context-budget-tokens")
-            != expected_provider_budgets
-        ):
-            return False
-        expected_provider_timeouts = (
-            {str(float(self.config.production_provider_timeout_seconds))}
-            if expected_provider_policies
-            else set()
-        )
-        if (
-            option_values("--production-provider-timeout-seconds")
-            != expected_provider_timeouts
-        ):
-            return False
-        expected_review_authority_key_paths = (
-            {
-                str(
-                    self.config.production_provider_review_authority_key_path
-                    or self.config.state_dir
-                    / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
-                )
-            }
-            if expected_provider_policies
-            else set()
-        )
-        if (
-            option_values(
-                "--production-provider-review-authority-key-path"
-            )
-            != expected_review_authority_key_paths
-        ):
-            return False
-        expected_legacy_policy_paths = (
-            {str(self.config.legacy_landed_review_policy_path)}
-            if self.config.implement
-            and self.config.legacy_landed_review_policy_path is not None
-            and self.config.legacy_landed_review_key_path is not None
-            else set()
-        )
-        expected_legacy_key_paths = (
-            {str(self.config.legacy_landed_review_key_path)}
-            if expected_legacy_policy_paths
-            else set()
-        )
-        if (
-            option_values("--legacy-landed-review-policy-path")
-            != expected_legacy_policy_paths
-            or option_values("--legacy-landed-review-key-path")
-            != expected_legacy_key_paths
         ):
             return False
         expected_merge_targets = (
@@ -12816,7 +13559,23 @@ class PortalImplementationSupervisor:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    expanded_argv, scheduler_config_path = (
+        expand_supervisor_scheduler_config_args(
+            sys.argv[1:] if argv is None else argv,
+            repo_root=REPO_ROOT,
+        )
+    )
     parser = argparse.ArgumentParser(description="Supervise the portal implementation backlog daemon")
+    parser.add_argument(
+        "--scheduler-config",
+        type=Path,
+        default=scheduler_config_path,
+        help=(
+            "Sealed scheduler_config@1 JSON profile. Safe profile values become "
+            "defaults; explicit scalar CLI options take precedence. The profile "
+            "never enables implementation, refill, Doctor mutation, or rollout."
+        ),
+    )
     parser.add_argument("--once", action="store_true", help="Run one supervisor check and exit")
     parser.add_argument(
         "--todo-path",
@@ -12880,68 +13639,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--implementation-command",
         default="",
         help=(
-            "Command used by the daemon for implementation. The default route "
-            "requires an authenticated Grok CLI (grok-4.5 by default). Only a "
-            "verified native Grok quota-exhaustion event may invoke the pinned "
-            "gpt-5.6-terra medium fallback; other failures and predispatch "
-            "unavailability fail closed. Explicit Grok selection has no "
-            "fallback."
-        ),
-    )
-    parser.add_argument(
-        "--production-provider-policy",
-        default="",
-        choices=("", PRODUCTION_CLI_POLICY_NAME),
-        help=(
-            "Opt in to the typed production packet route using Grok for "
-            "implementation and a distinct Codex CLI invocation for review. "
-            "This is an operator policy overlay and does not rewrite task metadata."
-        ),
-    )
-    parser.add_argument(
-        "--production-provider-context-budget-tokens",
-        type=int,
-        default=0,
-        help=(
-            "Positive bounded context budget for --production-provider-policy. "
-            f"Zero selects the policy default ({DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS})."
-        ),
-    )
-    parser.add_argument(
-        "--production-provider-timeout-seconds",
-        type=float,
-        default=0.0,
-        help=(
-            "Positive bounded per-provider timeout for the production route. "
-            f"Zero selects the policy default ({DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS:g}s)."
-        ),
-    )
-    parser.add_argument(
-        "--production-provider-review-authority-key-path",
-        type=Path,
-        default=None,
-        help=(
-            "Operator-controlled Ed25519 private-key file forwarded unchanged "
-            "to the managed daemon. Bundle supervisors use one shared path "
-            "for every lane."
-        ),
-    )
-    parser.add_argument(
-        "--legacy-landed-review-policy-path",
-        type=Path,
-        default=None,
-        help=(
-            "Explicit operator-owned LegacyLandedReviewPolicy@2 JSON forwarded "
-            "unchanged; omitted by default and never inferred from task metadata."
-        ),
-    )
-    parser.add_argument(
-        "--legacy-landed-review-key-path",
-        type=Path,
-        default=None,
-        help=(
-            "Explicit mode-0600 Ed25519 key bound by the legacy policy. Both "
-            "legacy paths are required together."
+            "Command used by the daemon for implementation. By default, "
+            "automatic routing selects authenticated Grok 4.5. Only a "
+            "typed durable Grok hard-quota latch authorizes a later "
+            "gpt-5.6-terra Codex attempt with medium reasoning; other "
+            "Grok failures remain fail closed."
         ),
     )
     parser.add_argument(
@@ -12951,6 +13653,43 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Exact repo-relative file that managed implementation agents must treat as "
             "read-only. May be repeated or comma-separated."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-task-id",
+        action="append",
+        default=[],
+        help=(
+            "Repeatable staged task ID governed by operator-sealed manual "
+            "completion. Pending descendants must be freshly revalidated "
+            "after its seal becomes active."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-required-task-id",
+        action="append",
+        default=[],
+        help=(
+            "Repeatable staged task ID whose status cannot be selected or "
+            "accepted as complete until a fresh scheduler load verifies its "
+            "operator seal."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-epoch-id",
+        default="",
+        help=(
+            "Content-addressed identity of the verified manual-completion "
+            "seal and policy set used for descendant revalidation."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-revalidation-only",
+        action="store_true",
+        help=(
+            "Supervise only zero-provider manual-completion authority "
+            "revalidation and suppress ordinary supervisor maintenance, "
+            "refill, merge repair, and implementation dispatch."
         ),
     )
     parser.add_argument(
@@ -12995,6 +13734,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=float,
         default=300.0,
         help="Recycle an active implementation attempt after this many seconds without log output; <=0 disables.",
+    )
+    parser.add_argument(
+        "--validation-max-workers",
+        type=int,
+        default=None,
+        help=(
+            "Maximum validation subprocesses used by the managed daemon. "
+            "Defaults to the daemon policy when omitted."
+        ),
     )
     parser.add_argument(
         "--no-ephemeral-worktree",
@@ -13247,17 +13995,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.set_defaults(generated_dirty_repair_enabled=False)
     parser.add_argument(
-        "--no-supervisor-auto-heal",
-        dest="supervisor_auto_heal_enabled",
-        action="store_false",
-        help=(
-            "Disable generic supervisor auto-heal. By default the supervisor heals "
-            "protected generated dirt and soft-defers healable maintenance crashes "
-            "for every board instead of killing the loop."
-        ),
-    )
-    parser.set_defaults(supervisor_auto_heal_enabled=True)
-    parser.add_argument(
         "--generated-dirty-commit-subject",
         default="Agent: commit generated supervisor outputs",
     )
@@ -13365,41 +14102,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Refine the objective heap and append objective-gap todos when the supervised backlog is low or drained.",
     )
-    parser.add_argument(
-        "--post-completion-ops-refill",
-        action="store_true",
-        help=(
-            "When the todo board is fully drained, seed reviewed post-completion "
-            "ops tasks from --post-completion-ops-catalog and expand execution slices."
-        ),
-    )
-    parser.add_argument(
-        "--post-completion-ops-catalog",
-        type=Path,
-        default=None,
-        help="JSON catalog of post-completion ops tasks to seed after board drain.",
-    )
-    parser.add_argument(
-        "--post-completion-ops-config",
-        type=Path,
-        default=None,
-        help=(
-            "Optional supervisor config JSON whose lane_slices should be expanded "
-            "when post-completion ops tasks are seeded."
-        ),
-    )
-    parser.add_argument(
-        "--post-completion-ops-board-namespace",
-        default="",
-        help="Board namespace stamped onto seeded post-completion task cards.",
-    )
-    parser.add_argument(
-        "--post-completion-ops-allow-before-drain",
-        dest="post_completion_ops_require_drained",
-        action="store_false",
-        help="Allow catalog seeding even when open tasks remain (idempotent).",
-    )
-    parser.set_defaults(post_completion_ops_require_drained=True)
     parser.add_argument(
         "--no-objective-task-janitor",
         dest="objective_task_janitor_enabled",
@@ -13612,7 +14314,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging verbosity",
     )
-    return parser.parse_args(argv)
+    parsed = parser.parse_args(expanded_argv)
+    parsed.scheduler_config = scheduler_config_path
+    return parsed
 
 
 def supervisor_config_from_args(
@@ -13645,76 +14349,6 @@ def supervisor_config_from_args(
     )
     if reconciliation_only and not args.allow_reconciliation_only_llm_resolver:
         llm_merge_resolver_command = ""
-    production_provider_policy = str(
-        getattr(args, "production_provider_policy", "") or ""
-    ).strip()
-    raw_production_budget = int(
-        getattr(args, "production_provider_context_budget_tokens", 0) or 0
-    )
-    raw_production_timeout = float(
-        getattr(args, "production_provider_timeout_seconds", 0.0) or 0.0
-    )
-    raw_review_authority_key_path = getattr(
-        args, "production_provider_review_authority_key_path", None
-    )
-    if (
-        raw_production_budget
-        or raw_production_timeout
-        or raw_review_authority_key_path is not None
-    ) and not production_provider_policy:
-        raise ValueError(
-            "production provider bounds/review authority require a production "
-            "provider policy"
-        )
-    production_provider_context_budget_tokens = 0
-    production_provider_timeout_seconds = 0.0
-    production_provider_review_authority_key_path = None
-    if production_provider_policy:
-        production_policy = ProductionCLIProviderPolicy(
-            name=production_provider_policy,
-            context_budget_tokens=(
-                raw_production_budget
-                or DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS
-            ),
-            provider_timeout_seconds=(
-                raw_production_timeout
-                or DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS
-            ),
-        )
-        production_provider_context_budget_tokens = (
-            production_policy.context_budget_tokens
-        )
-        production_provider_timeout_seconds = float(
-            production_policy.provider_timeout_seconds
-        )
-        production_provider_review_authority_key_path = Path(
-            raw_review_authority_key_path
-            or args.state_dir / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
-        )
-    legacy_landed_review_policy_path = getattr(
-        args, "legacy_landed_review_policy_path", None
-    )
-    legacy_landed_review_key_path = getattr(
-        args, "legacy_landed_review_key_path", None
-    )
-    if (legacy_landed_review_policy_path is None) != (
-        legacy_landed_review_key_path is None
-    ):
-        raise ValueError(
-            "legacy landed review requires both explicit policy and key paths"
-        )
-    if (
-        legacy_landed_review_policy_path is not None
-        and legacy_landed_review_key_path is not None
-    ):
-        legacy_policy = load_legacy_landed_review_policy(
-            legacy_landed_review_policy_path
-        )
-        legacy_authority = LegacyLandedReviewAuthority.from_private_key_path(
-            legacy_landed_review_key_path
-        )
-        if legacy_policy.issuer_key_id != legacy_authority.issuer_key_id:
-            raise ValueError("legacy landed review policy/key binding is invalid")
     return PortalSupervisorConfig(
         todo_path=args.todo_path,
         state_path=state_path or args.state_dir / f"{args.state_prefix}_task_state.json",
@@ -13732,21 +14366,12 @@ def supervisor_config_from_args(
         reconciliation_only=reconciliation_only,
         implement=implement,
         implementation_command=args.implementation_command,
-        production_provider_policy=production_provider_policy,
-        production_provider_context_budget_tokens=(
-            production_provider_context_budget_tokens
-        ),
-        production_provider_timeout_seconds=production_provider_timeout_seconds,
-        production_provider_review_authority_key_path=(
-            production_provider_review_authority_key_path
-        ),
-        legacy_landed_review_policy_path=legacy_landed_review_policy_path,
-        legacy_landed_review_key_path=legacy_landed_review_key_path,
         llm_merge_resolver_command=llm_merge_resolver_command,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
         implementation_timeout=args.implementation_timeout,
         implementation_max_timeout=args.implementation_max_timeout,
         implementation_log_stall_seconds=args.implementation_log_stall_seconds,
+        validation_max_workers=args.validation_max_workers,
         use_ephemeral_worktree=implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,
         merge_target_branch=args.merge_target_branch,
@@ -13755,6 +14380,39 @@ def supervisor_config_from_args(
         implementation_protected_paths=normalize_implementation_protected_paths(
             resolved_implementation_protected_paths,
             repo_root=effective_repo_root,
+        ),
+        manual_completion_authority_task_ids=tuple(
+            dict.fromkeys(
+                str(task_id).strip()
+                for task_id in (
+                    args.manual_completion_authority_task_id or ()
+                )
+                if str(task_id).strip()
+            )
+        ),
+        manual_completion_authority_required_task_ids=tuple(
+            dict.fromkeys(
+                str(task_id).strip()
+                for task_id in (
+                    args.manual_completion_authority_required_task_id or ()
+                )
+                if str(task_id).strip()
+            )
+        ),
+        manual_completion_authority_epoch_id=str(
+            getattr(args, "manual_completion_authority_epoch_id", "") or ""
+        ).strip(),
+        manual_completion_authority_revalidation_only=bool(
+            getattr(
+                args,
+                "manual_completion_authority_revalidation_only",
+                False,
+            )
+        ),
+        scheduler_config_path=(
+            Path(args.scheduler_config).resolve()
+            if getattr(args, "scheduler_config", None)
+            else None
         ),
         worktree_reconciliation_enabled=args.worktree_reconciliation_enabled,
         worktree_reconciliation_max_merges=args.worktree_reconciliation_max_merges,
@@ -13804,9 +14462,6 @@ def supervisor_config_from_args(
         generated_dirty_repair_max_paths=args.generated_dirty_max_paths,
         generated_dirty_repair_stale_lock_seconds=args.generated_dirty_stale_lock_seconds,
         generated_dirty_repair_paths=tuple(args.generated_dirty_repair_paths),
-        supervisor_auto_heal_enabled=bool(
-            getattr(args, "supervisor_auto_heal_enabled", True)
-        ),
         codebase_refill_enabled=args.codebase_refill_scan and not reconciliation_only,
         codebase_scan_discovery_dir=args.codebase_scan_discovery_dir,
         codebase_scan_discovery_output_path=args.codebase_scan_discovery_output_path,
@@ -13821,19 +14476,6 @@ def supervisor_config_from_args(
         codebase_scan_commit_outputs=args.codebase_scan_commit_outputs,
         codebase_scan_commit_subject=args.codebase_scan_commit_subject,
         objective_refill_enabled=args.objective_refill_scan and not reconciliation_only,
-        post_completion_ops_refill_enabled=(
-            bool(args.post_completion_ops_refill)
-            and args.post_completion_ops_catalog is not None
-            and not reconciliation_only
-        ),
-        post_completion_ops_catalog_path=args.post_completion_ops_catalog,
-        post_completion_ops_config_path=args.post_completion_ops_config,
-        post_completion_ops_board_namespace=str(
-            args.post_completion_ops_board_namespace or ""
-        ),
-        post_completion_ops_require_drained=bool(
-            args.post_completion_ops_require_drained
-        ),
         objective_task_janitor_enabled=args.objective_task_janitor_enabled and not reconciliation_only,
         objective_task_janitor_max_blocked_tasks=args.objective_task_janitor_max_blocked_tasks,
         objective_task_janitor_max_deprioritized_tasks=args.objective_task_janitor_max_deprioritized_tasks,

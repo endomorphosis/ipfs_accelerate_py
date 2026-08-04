@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import ast
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
@@ -102,12 +103,15 @@ SUPPORTED_ADAPTER_LANGUAGES: Final[frozenset[str]] = frozenset(
 # Analyses that remain open frontiers for this deterministic doctor stage.
 DEFAULT_OPEN_FRONTIERS: Final[tuple[str, ...]] = (
     "frontier:cfg_control_flow",
+    "frontier:dynamic_dispatch",
     "frontier:reflection",
+    "frontier:generated_code",
     "frontier:exception_propagation",
     "frontier:native_ffi",
     "frontier:concurrency",
     "frontier:interprocedural_dataflow",
     "frontier:python_only_full_type_inference",
+    "frontier:type_analysis",
 )
 
 _EXPORT_KINDS: Final[frozenset[str]] = frozenset(
@@ -218,6 +222,7 @@ class ExpectationSourceKind(str, Enum):
     REVIEWED_SCHEMA = "reviewed_schema"
     REVIEWED_IDL = "reviewed_idl"
     REVIEWED_SPECIFICATION = "reviewed_specification"
+    DECLARED_INTERFACE = "declared_interface"
     STRUCTURED_VALIDATION = "structured_validation"
     BROKEN_TRACE = "broken_trace"
     NONE = "none"
@@ -1273,6 +1278,31 @@ class DoctorEvidenceSnapshot:
                 return item
         return None
 
+    def localize(
+        self,
+        finding: DoctorDiagnosticFinding | None = None,
+        *,
+        evidence: Sequence[Any] = (),
+        impact_closure: Any = None,
+        required_frontiers: Sequence[str] = (),
+    ) -> Any:
+        """Run PDR-042 causal localization over this immutable snapshot."""
+
+        from .doctor_causal_localization import (
+            DoctorCausalLocalizationRequest,
+            localize_doctor_cause,
+        )
+
+        return localize_doctor_cause(
+            DoctorCausalLocalizationRequest(
+                snapshot=self,
+                finding=finding,
+                evidence=tuple(evidence),
+                impact_closure=impact_closure,
+                required_frontiers=tuple(required_frontiers),
+            )
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return {
             **self._identity_payload(),
@@ -1525,6 +1555,148 @@ def _syntax_findings(
     return findings
 
 
+def _python_signature_arity(
+    signature: str,
+) -> tuple[
+    int,
+    int | None,
+    tuple[str, ...],
+    tuple[str, ...],
+    tuple[str, ...],
+    frozenset[str],
+    bool,
+] | None:
+    """Return exact positional/keyword arity facts for an inert signature."""
+
+    try:
+        parsed = ast.parse(f"{signature}:\n    pass\n")
+    except (SyntaxError, ValueError, TypeError):
+        return None
+    if not parsed.body or not isinstance(parsed.body[0], (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return None
+    args = parsed.body[0].args
+    positional_nodes = (*args.posonlyargs, *args.args)
+    positional_names = tuple(item.arg for item in positional_nodes)
+    required_count = len(positional_nodes) - len(args.defaults)
+    required_names = positional_names[:required_count]
+    required_kwonly = tuple(
+        item.arg
+        for item, default in zip(args.kwonlyargs, args.kw_defaults)
+        if default is None
+    )
+    positional_only = {item.arg for item in args.posonlyargs}
+    accepted_keywords = frozenset(
+        {item.arg for item in (*args.args, *args.kwonlyargs)} - positional_only
+    )
+    maximum = None if args.vararg is not None else len(positional_nodes)
+    return (
+        required_count,
+        maximum,
+        positional_names,
+        required_names,
+        required_kwonly,
+        accepted_keywords,
+        args.kwarg is not None,
+    )
+
+
+def _derived_call_contract_findings(
+    query_index: Mapping[str, tuple[DoctorQueryHit, ...]],
+) -> list[DoctorDiagnosticFinding]:
+    """Derive exact local call/signature mismatches from current checkout facts.
+
+    This pass never consumes an expected answer.  The declaration and call
+    facts are independently parsed from the same admitted checkout and joined
+    through an exact import candidate.  Ambiguous/dynamic targets remain in
+    the frontier rather than being guessed.
+    """
+
+    exports = query_index.get(QuerySurface.EXPORTS.value, ())
+    calls = query_index.get(QuerySurface.CALL_SITES.value, ())
+    definitions: dict[str, list[DoctorQueryHit]] = {}
+    for hit in exports:
+        module = hit.path
+        for suffix in (".py", ".pyi", ".js", ".ts", ".tsx", ".jsx"):
+            if module.endswith(suffix):
+                module = module[: -len(suffix)]
+                break
+        qualified = f"{module.replace('/', '.')}.{hit.name}"
+        definitions.setdefault(qualified, []).append(hit)
+
+    findings: list[DoctorDiagnosticFinding] = []
+    for call in calls:
+        candidate = str(call.details.get("import_candidate") or "")
+        if not candidate:
+            continue
+        matches = definitions.get(candidate, ())
+        if len(matches) != 1:
+            continue
+        definition = matches[0]
+        signature = str(definition.details.get("signature") or definition.target or "")
+        arity = _python_signature_arity(signature)
+        observed = call.details.get("argument_count")
+        if arity is None or isinstance(observed, bool) or not isinstance(observed, int):
+            continue
+        (
+            minimum,
+            maximum,
+            positional_names,
+            required_names,
+            required_kwonly,
+            accepted_keywords,
+            has_var_keyword,
+        ) = arity
+        keywords = frozenset(
+            str(item) for item in (call.details.get("keyword_names") or ())
+        )
+        positionally_filled = frozenset(positional_names[:observed])
+        missing_required = (
+            (set(required_names) - positionally_filled - keywords)
+            | (set(required_kwonly) - keywords)
+        )
+        unexpected_keywords = (
+            set() if has_var_keyword else set(keywords) - set(accepted_keywords)
+        )
+        duplicate_arguments = set(keywords) & set(positionally_filled)
+        positional_overflow = maximum is not None and observed > maximum
+        if not (
+            missing_required
+            or unexpected_keywords
+            or duplicate_arguments
+            or positional_overflow
+        ):
+            continue
+        expected_text = str(minimum) if maximum == minimum else f"{minimum}..{maximum or '*'}"
+        findings.append(
+            DoctorDiagnosticFinding(
+                kind=FindingKind.CALL_ARITY,
+                disposition=FindingDisposition.SUPPORTED,
+                path=call.path,
+                symbol=call.owner or call.name,
+                message=(
+                    f"call supplies {observed} positional arguments; "
+                    f"declared interface requires {expected_text}"
+                ),
+                observation_refs=(call.fact_id, definition.fact_id),
+                expectation_source=ExpectationSourceKind.DECLARED_INTERFACE,
+                expectation_ref=definition.fact_id,
+                expectation_precedence=50,
+                evidence_refs=(call.fact_id, definition.fact_id),
+                details={
+                    "call_fact_id": call.fact_id,
+                    "definition_fact_id": definition.fact_id,
+                    "declared_target": candidate,
+                    "expected_argument_count": expected_text,
+                    "observed_argument_count": observed,
+                    "missing_required_parameters": sorted(missing_required),
+                    "unexpected_keywords": sorted(unexpected_keywords),
+                    "duplicate_arguments": sorted(duplicate_arguments),
+                },
+            )
+        )
+    return findings
+
+
 def _join_trace(
     trace: BrokenContractTrace,
     *,
@@ -1673,6 +1845,10 @@ def _language_frontiers(
         frontiers.add("frontier:non_python_cfg")
     if any(item.language in {"c", "cpp", "rust", "go"} for item in results):
         frontiers.add("frontier:native_ffi")
+    if any(item.generated for item in results) or any(
+        fact.generated for item in results for fact in item.facts
+    ):
+        frontiers.add("frontier:generated_code")
     if any(
         fact.kind in {"monkey_patch", "dynamic_import"}
         for item in results
@@ -1681,6 +1857,12 @@ def _language_frontiers(
         frontiers.add("frontier:reflection")
     if any(fact.kind == "exception_handler" for item in results for fact in item.facts):
         frontiers.add("frontier:exception_propagation")
+    if any(
+        fact.kind in _CALL_KINDS and fact.ambiguous
+        for item in results
+        for fact in item.facts
+    ):
+        frontiers.add("frontier:dynamic_dispatch")
     return tuple(sorted(frontiers))
 
 
@@ -1742,6 +1924,13 @@ class DoctorEvidenceCompiler:
         self, diagnostic_input: DoctorDiagnosticInput | Mapping[str, Any]
     ) -> DoctorEvidenceSnapshot:
         return self.compile(diagnostic_input)
+
+    def localize(self, request: Any) -> Any:
+        """Localize one compiled finding without introducing an import cycle."""
+
+        from .doctor_causal_localization import localize_doctor_cause
+
+        return localize_doctor_cause(request)
 
 
 def compile_doctor_evidence_snapshot(
@@ -1872,6 +2061,7 @@ def compile_doctor_evidence_snapshot(
     findings: list[DoctorDiagnosticFinding] = []
     for result in adapter_results:
         findings.extend(_syntax_findings(result))
+    findings.extend(_derived_call_contract_findings(query_index))
 
     for raw_trace in diagnostic_input.broken_traces:
         trace = _coerce_trace(raw_trace)

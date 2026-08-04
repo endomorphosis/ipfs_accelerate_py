@@ -18,29 +18,89 @@ import threading
 from pathlib import Path
 from types import ModuleType
 
-from .hf_space_inference import (
-    BatchProcessor,
-    BatchState,
-    EndpointContract,
-    HFBucketBackend,
-    HFBucketBackendError,
-    HFSpaceClient,
-    LocalFileSystemBackend,
-    OutputBackend,
-    RefreshableGradioFile,
-    SpaceRuntimeInfo,
-    is_hf_space_transport_error,
-    is_retryable_hf_space_error,
-    is_stale_gradio_file_error,
-    normalize_api_name,
-)
-
 SKIP_CORE = os.environ.get("IPFS_ACCEL_SKIP_CORE", "0") == "1"
 
-# Import original components
-try:
-    from .container_backends import backends
-except Exception:
+# HF Space transport symbols historically imported requests at package root.
+# Keep them lazy so Planner/Doctor cold discovery never loads network clients.
+_HF_SPACE_EXPORT_NAMES = frozenset(
+    {
+        "BatchProcessor",
+        "BatchState",
+        "EndpointContract",
+        "HFBucketBackend",
+        "HFBucketBackendError",
+        "HFSpaceClient",
+        "LocalFileSystemBackend",
+        "OutputBackend",
+        "RefreshableGradioFile",
+        "SpaceRuntimeInfo",
+        "is_hf_space_transport_error",
+        "is_retryable_hf_space_error",
+        "is_stale_gradio_file_error",
+        "normalize_api_name",
+    }
+)
+_hf_space_exports = None
+_hf_space_lock = threading.Lock()
+
+
+def _load_hf_space_exports():
+    """Resolve HF Space symbols on first explicit access only."""
+
+    global _hf_space_exports
+    with _hf_space_lock:
+        if _hf_space_exports is not None:
+            return _hf_space_exports
+        from .hf_space_inference import (
+            BatchProcessor,
+            BatchState,
+            EndpointContract,
+            HFBucketBackend,
+            HFBucketBackendError,
+            HFSpaceClient,
+            LocalFileSystemBackend,
+            OutputBackend,
+            RefreshableGradioFile,
+            SpaceRuntimeInfo,
+            is_hf_space_transport_error,
+            is_retryable_hf_space_error,
+            is_stale_gradio_file_error,
+            normalize_api_name,
+        )
+
+        resolved = {
+            "BatchProcessor": BatchProcessor,
+            "BatchState": BatchState,
+            "EndpointContract": EndpointContract,
+            "HFBucketBackend": HFBucketBackend,
+            "HFBucketBackendError": HFBucketBackendError,
+            "HFSpaceClient": HFSpaceClient,
+            "LocalFileSystemBackend": LocalFileSystemBackend,
+            "OutputBackend": OutputBackend,
+            "RefreshableGradioFile": RefreshableGradioFile,
+            "SpaceRuntimeInfo": SpaceRuntimeInfo,
+            "is_hf_space_transport_error": is_hf_space_transport_error,
+            "is_retryable_hf_space_error": is_retryable_hf_space_error,
+            "is_stale_gradio_file_error": is_stale_gradio_file_error,
+            "normalize_api_name": normalize_api_name,
+        }
+        for name, value in resolved.items():
+            globals()[name] = value
+        existing_export = globals().get("export")
+        if isinstance(existing_export, dict):
+            for name, value in resolved.items():
+                dict.__setitem__(existing_export, name, value)
+        _hf_space_exports = resolved
+        return resolved
+
+
+# Import original components (skip heavy backends under cold/skip-core profiles).
+if not SKIP_CORE:
+    try:
+        from .container_backends import backends
+    except Exception:
+        backends = None
+else:
     backends = None
 
 if not SKIP_CORE:
@@ -277,12 +337,18 @@ def _load_legacy_worker():
 
 
 class _LazyRootExport(dict):
-    """Dictionary-compatible exports with one optional lazy legacy value.
+    """Dictionary-compatible exports with optional lazy legacy values.
 
-    Virtual mapping access resolves ``worker``. Raw base-dict inspection keeps
-    a module-like lazy snapshot so provider-free discovery remains possible
-    without exposing a misleading permanent ``None`` value.
+    Virtual mapping access resolves ``worker`` and HF Space transport symbols.
+    Raw base-dict inspection keeps a module-like lazy worker snapshot so
+    provider-free discovery remains possible without exposing a misleading
+    permanent ``None`` value, and without loading network clients.
     """
+
+    def __contains__(self, key):
+        if key in _HF_SPACE_EXPORT_NAMES:
+            return True
+        return dict.__contains__(self, key)
 
     def __getitem__(self, key):
         if key == "worker":
@@ -293,6 +359,10 @@ class _LazyRootExport(dict):
                 if stored is not _worker_snapshot:
                     return stored
             return _load_legacy_worker()
+        if key in _HF_SPACE_EXPORT_NAMES:
+            if dict.__contains__(self, key):
+                return dict.__getitem__(self, key)
+            return _load_hf_space_exports()[key]
         return super().__getitem__(key)
 
     def __setitem__(self, key, value):
@@ -323,6 +393,8 @@ class _LazyRootExport(dict):
 
     def get(self, key, default=None):
         if key == "worker" and key in self:
+            return self[key]
+        if key in _HF_SPACE_EXPORT_NAMES:
             return self[key]
         return super().get(key, default)
 
@@ -400,7 +472,8 @@ class _LazyRootExport(dict):
         return super().copy()
 
 
-# Export all components
+# Export all components. HF Space transport symbols resolve on first access so
+# cold Planner/Doctor imports never load requests/httpx through package root.
 export = _LazyRootExport({
     "backends": backends,
     "config": config,
@@ -417,20 +490,6 @@ export = _LazyRootExport({
     "ModelManager": ModelManager,
     "get_default_model_manager": get_default_model_manager,
     "model_manager_available": model_manager_available,
-    "EndpointContract": EndpointContract,
-    "SpaceRuntimeInfo": SpaceRuntimeInfo,
-    "OutputBackend": OutputBackend,
-    "LocalFileSystemBackend": LocalFileSystemBackend,
-    "HFBucketBackend": HFBucketBackend,
-    "HFBucketBackendError": HFBucketBackendError,
-    "HFSpaceClient": HFSpaceClient,
-    "RefreshableGradioFile": RefreshableGradioFile,
-    "BatchState": BatchState,
-    "BatchProcessor": BatchProcessor,
-    "is_hf_space_transport_error": is_hf_space_transport_error,
-    "is_retryable_hf_space_error": is_retryable_hf_space_error,
-    "is_stale_gradio_file_error": is_stale_gradio_file_error,
-    "normalize_api_name": normalize_api_name,
 })
 
 
@@ -439,6 +498,8 @@ def __getattr__(name):
 
     if name == "worker":
         return _load_legacy_worker()
+    if name in _HF_SPACE_EXPORT_NAMES:
+        return _load_hf_space_exports()[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 if not SKIP_CORE:

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import os
 import shlex
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,6 +16,9 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.engine import (
     command_runner_from_legacy_function,
     run_validation_commands,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as daemon_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
@@ -74,6 +79,350 @@ def _sealed_daemon_environment() -> dict[str, str]:
         build_validation_environment(),
         TodoImplementationDaemon._validation_command_runner,
     )
+
+
+def test_authority_validation_rejects_remote_docker_context_before_probes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DOCKER_CONTEXT", "remote-builder")
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    monkeypatch.setattr(
+        daemon_module.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail(
+            "remote Docker context must fail before runtime probes"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon_module.shutil,
+        "which",
+        lambda *_args, **_kwargs: pytest.fail(
+            "remote Docker context must fail before executable discovery"
+        ),
+    )
+
+    contract = (
+        TodoImplementationDaemon._authority_validation_isolation_contract()
+    )
+
+    assert contract["available"] is False
+    assert (
+        contract["reason"]
+        == "authority_validation_nonlocal_docker_forbidden"
+    )
+    assert contract["configured_docker_context"] == "remote-builder"
+    assert contract["configured_docker_host"] == ""
+    assert contract["docker_endpoint"] == "unix:///run/docker.sock"
+
+
+def test_authority_validation_ignores_path_and_rejects_unapproved_root_binary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_bin = tmp_path / "writable-bin"
+    fake_bin.mkdir()
+    fake_docker = fake_bin / "docker"
+    fake_docker.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    fake_docker.chmod(0o755)
+    monkeypatch.setenv("PATH", str(fake_bin))
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    monkeypatch.delenv("DOCKER_CONTEXT", raising=False)
+    monkeypatch.setattr(
+        daemon_module,
+        "AUTHORITY_VALIDATION_DOCKER_SHA256",
+        "0" * 64,
+    )
+    monkeypatch.setattr(
+        daemon_module.shutil,
+        "which",
+        lambda *_args, **_kwargs: pytest.fail(
+            "authority validation must not discover TCB binaries from PATH"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon_module.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail(
+            "an unapproved root binary must fail before runtime probes"
+        ),
+    )
+
+    contract = (
+        TodoImplementationDaemon._authority_validation_isolation_contract()
+    )
+
+    assert contract["available"] is False
+    assert contract["reason"] == "authority_validation_tcb_binary_unapproved"
+    assert contract["docker_path"] == "/usr/bin/docker"
+    assert contract["docker_path"] != str(fake_docker)
+    assert contract["docker_sha256"] != "0" * 64
+
+
+def test_authority_validation_does_not_dispatch_without_isolation_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    unavailable = {
+        "available": False,
+        "backend": "docker-local-cuda",
+        "docker_endpoint": "unix:///run/docker.sock",
+        "reason": "authority_validation_docker_contract_unavailable",
+        "contract_id": "unavailable-contract",
+    }
+    monkeypatch.setattr(
+        TodoImplementationDaemon,
+        "_authority_validation_isolation_contract",
+        staticmethod(lambda: unavailable),
+    )
+    monkeypatch.setattr(
+        daemon_module.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail(
+            "validation command dispatched without an isolation contract"
+        ),
+    )
+
+    result = TodoImplementationDaemon._authority_validation_command_runner(
+        spec=SimpleNamespace(command="true", raw_command="true"),
+        workspace_path=workspace,
+        timeout_seconds=10,
+        environment=_sealed_daemon_environment(),
+    )
+
+    assert result["returncode"] == 75
+    assert result["infrastructure_failure"] is True
+    assert result["error"] == "authority_validation_isolation_unavailable"
+    assert (
+        result["reason"]
+        == "authority_validation_docker_contract_unavailable"
+    )
+    assert result["authority_validation_isolation"] == unavailable
+    assert "authority_validation_isolation_receipt" not in result
+
+
+def test_authority_validation_docker_argv_enforces_local_bounded_read_only_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = (tmp_path / "workspace").resolve()
+    workspace.mkdir()
+    image_id = f"sha256:{'a' * 64}"
+    gpu_uuid = "GPU-11111111-2222-3333-4444-555555555555"
+    contract = {
+        "available": True,
+        "backend": "docker-local-cuda",
+        "docker_path": "/usr/bin/docker",
+        "docker_endpoint": "unix:///run/docker.sock",
+        "image_reference": "registry.invalid/unpinned:latest",
+        "image_id": image_id,
+        "gpu_uuid": gpu_uuid,
+        "contract_id": "pinned-local-cuda-contract",
+    }
+    monkeypatch.setattr(
+        TodoImplementationDaemon,
+        "_authority_validation_isolation_contract",
+        staticmethod(lambda: contract),
+    )
+    popen_calls: list[tuple[list[str], dict[str, object]]] = []
+    control_calls: list[tuple[list[str], dict[str, object]]] = []
+
+    class CompletedDockerProcess:
+        pid = 424242
+        returncode = 0
+
+        def __init__(self) -> None:
+            self.stdout = io.BytesIO(b"validated\n")
+
+        def poll(self) -> int:
+            return self.returncode
+
+    def fake_popen(
+        command: list[str],
+        **kwargs: object,
+    ) -> CompletedDockerProcess:
+        popen_calls.append((list(command), dict(kwargs)))
+        return CompletedDockerProcess()
+
+    def fake_run(
+        command: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        control_calls.append((list(command), dict(kwargs)))
+        return subprocess.CompletedProcess(command, 0, "")
+
+    monkeypatch.setattr(daemon_module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(daemon_module.subprocess, "run", fake_run)
+
+    result = TodoImplementationDaemon._authority_validation_command_runner(
+        spec=SimpleNamespace(command="true", raw_command="true"),
+        workspace_path=workspace,
+        timeout_seconds=10,
+        environment=_sealed_daemon_environment(),
+    )
+
+    assert result["returncode"] == 0
+    assert len(popen_calls) == 1
+    docker_argv, popen_kwargs = popen_calls[0]
+    assert docker_argv[:4] == [
+        "/usr/bin/docker",
+        "--host",
+        "unix:///run/docker.sock",
+        "run",
+    ]
+    assert image_id in docker_argv
+    assert contract["image_reference"] not in docker_argv
+    assert f"--gpus=device={gpu_uuid}" in docker_argv
+    assert "--rm" in docker_argv
+    assert "--pull=never" in docker_argv
+    assert "--init" in docker_argv
+    assert "--network=none" in docker_argv
+    assert "--read-only" in docker_argv
+    assert "--cap-drop=ALL" in docker_argv
+    assert "--security-opt=no-new-privileges:true" in docker_argv
+    assert "--log-driver=none" in docker_argv
+    assert "--pids-limit=256" in docker_argv
+    assert "--cpus=4" in docker_argv
+    assert "--memory=4294967296" in docker_argv
+    assert "--memory-swap=4294967296" in docker_argv
+    assert "--shm-size=1073741824" in docker_argv
+    assert (
+        "--tmpfs=/tmp:rw,nosuid,nodev,exec,size=1073741824,mode=1777"
+        in docker_argv
+    )
+    assert f"--workdir={workspace}" in docker_argv
+    mount_arguments = [
+        argument
+        for argument in docker_argv
+        if argument.startswith("--mount=")
+    ]
+    assert mount_arguments == [
+        f"--mount=type=bind,src={workspace},dst={workspace},readonly"
+    ]
+    assert "-v" not in docker_argv
+    assert "--volume" not in docker_argv
+    assert not any(
+        argument.startswith(("-v=", "--volume="))
+        for argument in docker_argv
+    )
+    assert not any(
+        f"src={broad_path}" in argument
+        for broad_path in ("/home", "/usr", "/etc", "/opt")
+        for argument in mount_arguments
+    )
+    assert popen_kwargs["cwd"] == workspace
+    assert popen_kwargs["start_new_session"] is (os.name == "posix")
+    docker_environment = popen_kwargs["env"]
+    assert isinstance(docker_environment, dict)
+    assert docker_environment["DOCKER_HOST"] == "unix:///run/docker.sock"
+    assert "DOCKER_CONTEXT" not in docker_environment
+    assert control_calls
+    assert all(
+        command[:3]
+        == ["/usr/bin/docker", "--host", "unix:///run/docker.sock"]
+        for command, _kwargs in control_calls
+    )
+    receipt = result["authority_validation_isolation_receipt"]
+    assert receipt["image_id"] == image_id
+    assert receipt["gpu_uuid"] == gpu_uuid
+    assert receipt["workspace_path"] == str(workspace)
+    assert receipt["workspace_read_only"] is True
+    assert receipt["container_root_read_only"] is True
+    assert receipt["network_mode"] == "none"
+    assert receipt["capabilities_dropped"] == "all"
+    assert receipt["cgroup_process_limit"] == 256
+    assert receipt["cpu_limit"] == 4
+    assert receipt["memory_limit_bytes"] == 4294967296
+    assert receipt["tmpfs_limit_bytes"] == 1073741824
+    assert receipt["output_limit_bytes"] == 16777216
+    assert receipt["output_bounded"] is True
+    assert receipt["container_log_driver"] == "none"
+    assert receipt["container_removed"] is True
+    assert receipt["process_tree_quiesced"] is True
+
+
+@pytest.mark.parametrize(
+    "start_new_session",
+    (False, True),
+    ids=("same-pgid", "setsid"),
+)
+def test_authority_validation_descendants_cannot_mutate_workspace_after_return(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    start_new_session: bool,
+) -> None:
+    monkeypatch.delenv("DOCKER_CONTEXT", raising=False)
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    contract = (
+        TodoImplementationDaemon._authority_validation_isolation_contract()
+    )
+    if contract.get("available") is not True:
+        pytest.skip(str(contract.get("reason") or "Docker CUDA unavailable"))
+    monkeypatch.setattr(
+        TodoImplementationDaemon,
+        "_authority_validation_isolation_contract",
+        staticmethod(lambda: contract),
+    )
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    delayed_mutation = workspace / "delayed-mutation.txt"
+    immediate_mutation = workspace / "immediate-mutation.txt"
+    child_source = (
+        "import pathlib, time; "
+        "time.sleep(0.75); "
+        f"pathlib.Path({str(delayed_mutation)!r}).write_text("
+        "'escaped', encoding='utf-8')"
+    )
+    (workspace / "spawn_descendant.py").write_text(
+        "\n".join(
+            (
+                "import pathlib",
+                "import subprocess",
+                "import sys",
+                f"immediate = pathlib.Path({str(immediate_mutation)!r})",
+                "try:",
+                "    immediate.write_text('unexpected', encoding='utf-8')",
+                "except OSError:",
+                "    print('workspace-read-only', flush=True)",
+                "else:",
+                "    raise SystemExit(91)",
+                f"child_source = {child_source!r}",
+                "child = subprocess.Popen(",
+                "    [sys.executable, '-c', child_source],",
+                "    stdin=subprocess.DEVNULL,",
+                "    stdout=subprocess.DEVNULL,",
+                "    stderr=subprocess.DEVNULL,",
+                f"    start_new_session={start_new_session!r},",
+                ")",
+                "print(f'child={child.pid}', flush=True)",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = TodoImplementationDaemon._authority_validation_command_runner(
+        spec=SimpleNamespace(
+            command="python spawn_descendant.py",
+            raw_command="python spawn_descendant.py",
+        ),
+        workspace_path=workspace,
+        timeout_seconds=30,
+        environment=_sealed_daemon_environment(),
+    )
+
+    assert result["returncode"] == 0, result["output"]
+    assert "workspace-read-only" in str(result["output"])
+    assert "child=" in str(result["output"])
+    receipt = result["authority_validation_isolation_receipt"]
+    assert receipt["workspace_read_only"] is True
+    assert receipt["private_pid_namespace"] is True
+    assert receipt["container_removed"] is True
+    assert receipt["process_tree_quiesced"] is True
+    time.sleep(1.0)
+    assert not immediate_mutation.exists()
+    assert not delayed_mutation.exists()
 
 
 def test_canonical_validation_environment_contract_ignores_provider_path() -> None:

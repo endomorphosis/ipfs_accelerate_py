@@ -160,7 +160,12 @@ class DoctorServiceCapabilityCode(str, Enum):
     POLICY_APPROVAL_REQUIRED = "policy_approval_required"
     VERIFY_FAILED = "verify_failed"
     LLM_INVOCATION_FORBIDDEN = "llm_invocation_forbidden"
+    NETWORK_ACCESS_FORBIDDEN = "network_access_forbidden"
     BODY_OR_SECRET_FORBIDDEN = "body_or_secret_forbidden"
+    CONTROL_DEPENDENCY_INVALID = "control_dependency_invalid"
+    CONTROL_PERMIT_REQUIRED = "control_permit_required"
+    CONTROL_PERMIT_REJECTED = "control_permit_rejected"
+    CONTROL_EFFECT_MISMATCH = "control_effect_mismatch"
 
 
 # ---------------------------------------------------------------------------
@@ -993,6 +998,97 @@ class DoctorStageBackend(Protocol):
     ) -> DoctorOperationResult | DeterministicDoctorRunReceipt | Mapping[str, Any]: ...
 
 
+@dataclass(frozen=True)
+class DoctorControlRequest:
+    """Provider-free exact permit/effect binding for a Doctor mutation.
+
+    The shared control catalog does not define a Doctor-specific operation.
+    A deployment therefore injects a narrow adapter that translates this
+    record to its canonical control operation.  The Doctor service never maps
+    repair onto an unrelated catalog operation and never treats dependency
+    presence as authority.
+    """
+
+    operation: str
+    request_id: str
+    incident_id: str
+    roots_id: str
+    tree_id: str
+    snapshot_id: str
+    plan_id: str
+    lease_id: str
+    checkpoint_ref: str
+    rollback_ref: str
+    write_paths: tuple[str, ...]
+    expected_effect_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if self.operation != DoctorOperation.REPAIR.value:
+            raise DoctorServiceError("Doctor control requests only authorize repair")
+        for name in (
+            "request_id",
+            "incident_id",
+            "roots_id",
+            "tree_id",
+            "snapshot_id",
+            "plan_id",
+            "lease_id",
+            "checkpoint_ref",
+            "rollback_ref",
+        ):
+            object.__setattr__(self, name, _identifier(getattr(self, name), name))
+        object.__setattr__(self, "write_paths", _paths(self.write_paths, "write_paths"))
+        object.__setattr__(
+            self,
+            "expected_effect_ids",
+            _ids(
+                self.expected_effect_ids,
+                "expected_effect_ids",
+                required=True,
+                limit=256,
+            ),
+        )
+
+    @property
+    def control_request_id(self) -> str:
+        return content_identity(self.to_dict())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "deterministic-doctor/control-request@1"
+            ),
+            "operation": self.operation,
+            "request_id": self.request_id,
+            "incident_id": self.incident_id,
+            "roots_id": self.roots_id,
+            "tree_id": self.tree_id,
+            "snapshot_id": self.snapshot_id,
+            "plan_id": self.plan_id,
+            "lease_id": self.lease_id,
+            "checkpoint_ref": self.checkpoint_ref,
+            "rollback_ref": self.rollback_ref,
+            "write_paths": list(self.write_paths),
+            "expected_effect_ids": list(self.expected_effect_ids),
+        }
+
+
+class DoctorControlDependency(Protocol):
+    """Narrow adapter for immediate permit consumption and effect auditing."""
+
+    def authorize_doctor_operation(self, request: DoctorControlRequest) -> Any: ...
+
+    def record_doctor_effects(
+        self,
+        request: DoctorControlRequest,
+        *,
+        permit: Any,
+        applied_effect_ids: Sequence[str],
+        changed: bool,
+    ) -> Any: ...
+
+
 @dataclass
 class DoctorStageBackends:
     """Optional injectables for diagnose / plan / synthesis / impact / txn / FP."""
@@ -1004,6 +1100,9 @@ class DoctorStageBackends:
     transaction: DoctorStageBackend | None = None
     fixed_point: DoctorStageBackend | None = None
     explain: DoctorStageBackend | None = None
+    retrieve: DoctorStageBackend | None = None
+    tactician: DoctorStageBackend | None = None
+    proof: DoctorStageBackend | None = None
 
     def available(self) -> tuple[str, ...]:
         names: list[str] = []
@@ -1015,6 +1114,9 @@ class DoctorStageBackends:
             "transaction",
             "fixed_point",
             "explain",
+            "retrieve",
+            "tactician",
+            "proof",
         ):
             if getattr(self, name) is not None:
                 names.append(name)
@@ -1300,6 +1402,10 @@ class DeterministicDoctorService:
             raise DoctorServiceSafetyError(
                 DoctorServiceCapabilityCode.LLM_INVOCATION_FORBIDDEN.value
             )
+        if request.network_access:
+            raise DoctorServiceSafetyError(
+                DoctorServiceCapabilityCode.NETWORK_ACCESS_FORBIDDEN.value
+            )
 
     # -- operation handlers ------------------------------------------------
 
@@ -1510,9 +1616,71 @@ class DeterministicDoctorService:
                 ),
             )
         if self._backends.transaction is not None:
+            control_request: DoctorControlRequest | None = None
+            control_permit: Any = None
+            if self._control_service is not None:
+                try:
+                    control_request = self._build_control_request(request)
+                    control_permit = self._authorize_control(control_request)
+                except DoctorServiceSafetyError:
+                    raise
+                except Exception as exc:  # noqa: BLE001 - actionable abstention
+                    reason = (
+                        DoctorServiceCapabilityCode.CONTROL_PERMIT_REJECTED.value
+                        if str(exc)
+                        == DoctorServiceCapabilityCode.CONTROL_PERMIT_REJECTED.value
+                        else DoctorServiceCapabilityCode.CONTROL_DEPENDENCY_INVALID.value
+                    )
+                    return self._terminal(
+                        request,
+                        decision,
+                        disposition=DoctorRepairDisposition.ABSTAIN,
+                        reason_codes=(
+                            reason,
+                            type(exc).__name__,
+                        ),
+                        explanation=(
+                            "repair abstained before transaction: the configured "
+                            f"control dependency rejected the exact permit ({exc})"
+                        ),
+                    )
             result = self._delegate(
                 self._backends.transaction, request, decision, read_only=False
             )
+            if control_request is not None:
+                try:
+                    result = self._record_control_effects(
+                        control_request,
+                        control_permit,
+                        result,
+                    )
+                except DoctorServiceSafetyError:
+                    raise
+                except Exception as exc:  # noqa: BLE001 - effect audit fail closed
+                    return DoctorOperationResult(
+                        request_id=request.request_id,
+                        operation=request.operation,
+                        mode=request.mode,
+                        disposition=DoctorRepairDisposition.QUARANTINED,
+                        incident_id=request.incident_cid(),
+                        read_only=False,
+                        policy_decision=decision,
+                        run_receipt=result.run_receipt,
+                        reason_codes=(
+                            DoctorServiceCapabilityCode.CONTROL_EFFECT_MISMATCH.value,
+                            type(exc).__name__,
+                        ),
+                        explanation=(
+                            "transaction effect audit failed closed; operator "
+                            f"reconciliation/rollback is required ({exc})"
+                        ),
+                        changed=result.changed,
+                        status={
+                            **dict(result.status),
+                            "control_effects_verified": False,
+                        },
+                        stage_refs=dict(result.stage_refs),
+                    )
             if self._backends.fixed_point is not None and result.succeeded:
                 # Optional post-commit fixed-point stage; failures abstain/rollback
                 # without silent model fallback.
@@ -1521,6 +1689,30 @@ class DeterministicDoctorService:
                         request, policy=self._policy, policy_decision=decision
                     )
                     if isinstance(fp, DoctorOperationResult):
+                        if control_request is not None:
+                            fp = DoctorOperationResult(
+                                request_id=fp.request_id,
+                                operation=fp.operation,
+                                mode=fp.mode,
+                                disposition=fp.disposition,
+                                incident_id=fp.incident_id,
+                                read_only=fp.read_only,
+                                policy_decision=fp.policy_decision,
+                                run_receipt=fp.run_receipt,
+                                reason_codes=tuple(result.reason_codes)
+                                + tuple(fp.reason_codes),
+                                explanation=fp.explanation,
+                                changed=fp.changed,
+                                replayed=fp.replayed,
+                                status={
+                                    **dict(result.status),
+                                    **dict(fp.status),
+                                },
+                                stage_refs={
+                                    **dict(result.stage_refs),
+                                    **dict(fp.stage_refs),
+                                },
+                            )
                         return fp
                 except DoctorServiceSafetyError:
                     raise
@@ -1825,6 +2017,205 @@ class DeterministicDoctorService:
 
     # -- helpers -----------------------------------------------------------
 
+    def _build_control_request(
+        self, request: DoctorOperationRequest
+    ) -> DoctorControlRequest:
+        roots = request.effective_roots()
+        plan = request.plan
+        if roots is None or plan is None:
+            raise DoctorServiceError(
+                DoctorServiceCapabilityCode.CONTROL_PERMIT_REQUIRED.value
+            )
+        write_paths = request.write_paths or plan.permitted_write_paths
+        if not write_paths:
+            raise DoctorServiceError("control permit requires exact write paths")
+        effects = tuple(
+            content_identity(
+                {
+                    "schema": "deterministic-doctor-write-effect@1",
+                    "operation": request.operation,
+                    "tree_id": roots.tree_id,
+                    "plan_id": plan.plan_id,
+                    "path": path,
+                }
+            )
+            for path in write_paths
+        )
+        return DoctorControlRequest(
+            operation=request.operation,
+            request_id=request.request_id,
+            incident_id=request.incident_cid(),
+            roots_id=roots.content_id,
+            tree_id=roots.tree_id,
+            snapshot_id=request.effective_snapshot_id(),
+            plan_id=plan.plan_id,
+            lease_id=request.effective_lease_id(),
+            checkpoint_ref=request.effective_checkpoint_ref(),
+            rollback_ref=request.effective_rollback_ref(),
+            write_paths=write_paths,
+            expected_effect_ids=effects,
+        )
+
+    @staticmethod
+    def _control_value(value: Any, *names: str, default: Any = None) -> Any:
+        if isinstance(value, Mapping):
+            for name in names:
+                if name in value:
+                    return value[name]
+            return default
+        for name in names:
+            if hasattr(value, name):
+                return getattr(value, name)
+        return default
+
+    @classmethod
+    def _control_effect_ids(cls, value: Any, *names: str) -> tuple[str, ...]:
+        raw = cls._control_value(value, *names, default=None)
+        if raw is None:
+            return ()
+        if isinstance(raw, str) or not isinstance(raw, Sequence):
+            raise DoctorServiceError("control effect IDs must be a sequence")
+        out: list[str] = []
+        for item in raw:
+            if isinstance(item, str):
+                effect_id = item
+            elif isinstance(item, Mapping):
+                effect_id = str(
+                    item.get("effect_id")
+                    or item.get("id")
+                    or item.get("content_id")
+                    or ""
+                )
+            else:
+                effect_id = str(
+                    getattr(item, "effect_id", "")
+                    or getattr(item, "id", "")
+                    or getattr(item, "content_id", "")
+                )
+            if effect_id:
+                out.append(_identifier(effect_id, "effect_id"))
+        return tuple(sorted(set(out)))
+
+    def _authorize_control(self, request: DoctorControlRequest) -> Any:
+        authorizer = getattr(
+            self._control_service, "authorize_doctor_operation", None
+        )
+        if not callable(authorizer):
+            raise DoctorServiceError(
+                "control dependency must implement authorize_doctor_operation"
+            )
+        permit = authorizer(request)
+        permitted = self._control_value(
+            permit, "permitted", "succeeded", "allowed", default=False
+        )
+        if permitted is not True:
+            raise DoctorServiceError(
+                DoctorServiceCapabilityCode.CONTROL_PERMIT_REJECTED.value
+            )
+        permit_id = self._control_value(
+            permit,
+            "permit_id",
+            "decision_id",
+            "authorization_id",
+            default="",
+        )
+        if not permit_id:
+            raise DoctorServiceError("control dependency returned no permit identity")
+        authorized = self._control_effect_ids(
+            permit,
+            "authorized_effect_ids",
+            "expected_effect_ids",
+            "effect_ids",
+            "effects",
+        )
+        if authorized != request.expected_effect_ids:
+            raise DoctorServiceError(
+                "control permit effects differ from the exact requested effects"
+            )
+        return permit
+
+    def _record_control_effects(
+        self,
+        request: DoctorControlRequest,
+        permit: Any,
+        result: DoctorOperationResult,
+    ) -> DoctorOperationResult:
+        recorder = getattr(self._control_service, "record_doctor_effects", None)
+        if not callable(recorder):
+            raise DoctorServiceError(
+                "control dependency must implement record_doctor_effects"
+            )
+        applied = request.expected_effect_ids if result.changed else ()
+        audit = recorder(
+            request,
+            permit=permit,
+            applied_effect_ids=applied,
+            changed=result.changed,
+        )
+        succeeded = self._control_value(
+            audit, "succeeded", "recorded", "verified", default=False
+        )
+        if succeeded is not True:
+            raise DoctorServiceError("control dependency rejected the effect audit")
+        observed = self._control_effect_ids(
+            audit,
+            "applied_effect_ids",
+            "effect_ids",
+            "effects",
+        )
+        if observed != applied:
+            raise DoctorServiceError(
+                "control audit effects differ from transaction effects"
+            )
+        audit_id = str(
+            self._control_value(
+                audit,
+                "audit_receipt_id",
+                "receipt_id",
+                "result_id",
+                default="",
+            )
+            or ""
+        )
+        if not audit_id:
+            raise DoctorServiceError("control effect audit returned no receipt identity")
+        permit_id = str(
+            self._control_value(
+                permit,
+                "permit_id",
+                "decision_id",
+                "authorization_id",
+                default="",
+            )
+        )
+        return DoctorOperationResult(
+            request_id=result.request_id,
+            operation=result.operation,
+            mode=result.mode,
+            disposition=result.disposition,
+            incident_id=result.incident_id,
+            read_only=result.read_only,
+            policy_decision=result.policy_decision,
+            run_receipt=result.run_receipt,
+            reason_codes=tuple(result.reason_codes) + ("control_effects_verified",),
+            explanation=result.explanation,
+            changed=result.changed,
+            replayed=result.replayed,
+            status={
+                **dict(result.status),
+                "control_effects_verified": True,
+                "control_request_id": request.control_request_id,
+                "control_permit_id": permit_id,
+                "control_audit_receipt_id": audit_id,
+                "control_applied_effect_ids": list(applied),
+            },
+            stage_refs={
+                **dict(result.stage_refs),
+                "control_permit_id": permit_id,
+                "control_audit_receipt_id": audit_id,
+            },
+        )
+
     def _has_exact_clean_target(self, request: DoctorOperationRequest) -> bool:
         if request.exact_clean_target:
             return True
@@ -2120,6 +2511,8 @@ __all__ = [
     "DoctorOperation",
     "DoctorOperationRequest",
     "DoctorOperationResult",
+    "DoctorControlDependency",
+    "DoctorControlRequest",
     "DoctorReceiptStore",
     "DoctorServiceCapabilityCode",
     "DoctorServiceError",

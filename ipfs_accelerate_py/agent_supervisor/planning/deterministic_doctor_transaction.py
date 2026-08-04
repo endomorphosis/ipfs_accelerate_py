@@ -29,7 +29,7 @@ SCC group outcomes, and rollback.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import PurePosixPath
 from typing import Any, Final
@@ -73,6 +73,9 @@ from ..proof.formal_verification_contracts import content_identity
 # ---------------------------------------------------------------------------
 
 DETERMINISTIC_DOCTOR_TRANSACTION_INTERFACE: Final[str] = (
+    "DeterministicDoctorTransaction@2"
+)
+LEGACY_DETERMINISTIC_DOCTOR_TRANSACTION_INTERFACE: Final[str] = (
     "DeterministicDoctorTransaction@1"
 )
 DOCTOR_SANDBOX_POLICY_SCHEMA: Final[str] = (
@@ -262,6 +265,10 @@ class DoctorTransactionReason(str, Enum):
     STATIC_REPLAY_ONLY = "static_replay_only"
     PRE_COMMIT_REVALIDATION_FAILED = "pre_commit_revalidation_failed"
     ALREADY_TERMINAL = "already_terminal"
+    NO_EXPECTED_CHANGE = "no_expected_change"
+    EFFECT_EVIDENCE_MISSING = "effect_evidence_missing"
+    DURABLE_INTENT_MISSING = "durable_intent_missing"
+    REF_CAS_NOT_APPLIED = "ref_cas_not_applied"
 
 
 class DoctorStepDisposition(str, Enum):
@@ -1181,6 +1188,11 @@ class DoctorStepReceipt:
     reason_codes: tuple[str, ...] = ()
     written_paths: tuple[str, ...] = ()
     observed_before_hashes: tuple[PathBeforeHash, ...] = ()
+    observed_after_hashes: tuple[PathBeforeHash, ...] = ()
+    changed_blob_cids: tuple[str, ...] = ()
+    observed_tree_cid: str = ""
+    observed_forest_cid: str = ""
+    durable_effect_ref: str = ""
     diagnostic_refs: tuple[str, ...] = ()
     static_replay: bool = False
 
@@ -1210,6 +1222,35 @@ class DoctorStepReceipt:
             "observed_before_hashes",
             tuple(sorted(self.observed_before_hashes, key=lambda item: item.path)),
         )
+        if not isinstance(self.observed_after_hashes, Sequence) or not all(
+            isinstance(item, PathBeforeHash) for item in self.observed_after_hashes
+        ):
+            raise DeterministicDoctorTransactionError(
+                "observed_after_hashes must be PathBeforeHash values"
+            )
+        object.__setattr__(
+            self,
+            "observed_after_hashes",
+            tuple(sorted(self.observed_after_hashes, key=lambda item: item.path)),
+        )
+        object.__setattr__(
+            self,
+            "changed_blob_cids",
+            _ids(
+                self.changed_blob_cids,
+                "changed_blob_cids",
+                maximum=MAX_PATHS,
+                preserve_order=True,
+            ),
+        )
+        for name in (
+            "observed_tree_cid",
+            "observed_forest_cid",
+            "durable_effect_ref",
+        ):
+            object.__setattr__(
+                self, name, _optional_identifier(getattr(self, name), name)
+            )
         object.__setattr__(
             self,
             "diagnostic_refs",
@@ -1235,6 +1276,13 @@ class DoctorStepReceipt:
             "observed_before_hashes": [
                 item.to_dict() for item in self.observed_before_hashes
             ],
+            "observed_after_hashes": [
+                item.to_dict() for item in self.observed_after_hashes
+            ],
+            "changed_blob_cids": list(self.changed_blob_cids),
+            "observed_tree_cid": self.observed_tree_cid,
+            "observed_forest_cid": self.observed_forest_cid,
+            "durable_effect_ref": self.durable_effect_ref,
             "diagnostic_refs": list(self.diagnostic_refs),
             "static_replay": self.static_replay,
         }
@@ -1348,6 +1396,10 @@ class DoctorCandidateTreeReceipt:
     model_invocation_count: int = 0
     provider_invocation_count: int = 0
     diagnostic_refs: tuple[str, ...] = ()
+    changed_blob_cids: tuple[str, ...] = ()
+    observed_tree_cid: str = ""
+    observed_forest_cid: str = ""
+    durable_effect_refs: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "roots", _roots(self.roots))
@@ -1412,6 +1464,52 @@ class DoctorCandidateTreeReceipt:
             "diagnostic_refs",
             _ids(self.diagnostic_refs, "diagnostic_refs", maximum=MAX_DIAGNOSTICS),
         )
+        object.__setattr__(
+            self,
+            "changed_blob_cids",
+            _ids(
+                self.changed_blob_cids,
+                "changed_blob_cids",
+                maximum=MAX_PATHS,
+                preserve_order=True,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "observed_tree_cid",
+            _optional_identifier(self.observed_tree_cid, "observed_tree_cid"),
+        )
+        object.__setattr__(
+            self,
+            "observed_forest_cid",
+            _optional_identifier(self.observed_forest_cid, "observed_forest_cid"),
+        )
+        object.__setattr__(
+            self,
+            "durable_effect_refs",
+            _ids(
+                self.durable_effect_refs,
+                "durable_effect_refs",
+                maximum=MAX_STEPS,
+                preserve_order=True,
+            ),
+        )
+        if not self.written_paths:
+            raise DeterministicDoctorTransactionError(
+                "candidate tree requires a nonempty observed change"
+            )
+        if not self.changed_blob_cids or not self.observed_tree_cid:
+            raise DeterministicDoctorTransactionError(
+                "candidate tree requires reread blob/tree CID evidence"
+            )
+        if self.observed_tree_cid == self.base_tree_cid:
+            raise DeterministicDoctorTransactionError(
+                "candidate tree cannot certify a no-op root"
+            )
+        if not self.durable_effect_refs:
+            raise DeterministicDoctorTransactionError(
+                "candidate tree requires fsynced durable effect evidence"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1436,6 +1534,10 @@ class DoctorCandidateTreeReceipt:
             "model_invocation_count": 0,
             "provider_invocation_count": 0,
             "diagnostic_refs": list(self.diagnostic_refs),
+            "changed_blob_cids": list(self.changed_blob_cids),
+            "observed_tree_cid": self.observed_tree_cid,
+            "observed_forest_cid": self.observed_forest_cid,
+            "durable_effect_refs": list(self.durable_effect_refs),
             "partial_merge_allowed": False,
             "claims_completion": False,
         }
@@ -1735,6 +1837,11 @@ class DoctorStepApplyResult:
     disposition: DoctorStepDisposition
     written_paths: tuple[str, ...] = ()
     observed_before_hashes: tuple[PathBeforeHash, ...] = ()
+    observed_after_hashes: tuple[PathBeforeHash, ...] = ()
+    changed_blob_cids: tuple[str, ...] = ()
+    observed_tree_cid: str = ""
+    observed_forest_cid: str = ""
+    durable_effect_ref: str = ""
     reason_codes: tuple[str, ...] = ()
     diagnostic_refs: tuple[str, ...] = ()
     static_replay: bool = False
@@ -1757,6 +1864,33 @@ class DoctorStepApplyResult:
         object.__setattr__(
             self, "observed_before_hashes", tuple(self.observed_before_hashes)
         )
+        if not isinstance(self.observed_after_hashes, Sequence) or not all(
+            isinstance(item, PathBeforeHash) for item in self.observed_after_hashes
+        ):
+            raise DeterministicDoctorTransactionError(
+                "observed_after_hashes must be PathBeforeHash values"
+            )
+        object.__setattr__(
+            self, "observed_after_hashes", tuple(self.observed_after_hashes)
+        )
+        object.__setattr__(
+            self,
+            "changed_blob_cids",
+            _ids(
+                self.changed_blob_cids,
+                "changed_blob_cids",
+                maximum=MAX_PATHS,
+                preserve_order=True,
+            ),
+        )
+        for name in (
+            "observed_tree_cid",
+            "observed_forest_cid",
+            "durable_effect_ref",
+        ):
+            object.__setattr__(
+                self, name, _optional_identifier(getattr(self, name), name)
+            )
         object.__setattr__(
             self,
             "reason_codes",
@@ -1777,27 +1911,27 @@ DoctorRestoreAdapter = Callable[[DoctorTransactionCheckpoint], bool]
 DoctorHashProbe = Callable[[str], str]
 DoctorLiveRefProbe = Callable[[str], str]  # ref_name -> current tip CID
 DoctorCacheBindingProbe = Callable[[Sequence[str]], tuple[str, ...]]  # stale refs
+DoctorRefCasAdapter = Callable[[DoctorMergeRefCas], bool]
+DoctorEffectVerifier = Callable[
+    [DoctorStepApplyRequest, DoctorStepApplyResult], bool
+]
 
 
 def _default_static_applicator(request: DoctorStepApplyRequest) -> DoctorStepApplyResult:
-    """Hermetic default: pure static apply with planned write paths."""
+    """Fail closed: a validator cannot manufacture mutation effects."""
 
     return DoctorStepApplyResult(
-        disposition=DoctorStepDisposition.PASSED,
-        written_paths=request.step.write_paths,
-        observed_before_hashes=tuple(
-            PathBeforeHash(
-                path=path,
-                before_hash=request.checkpoint.hash_map().get(path, f"sha256:{path}"),
-            )
-            for path in request.step.write_paths
-        ),
+        disposition=DoctorStepDisposition.FAILED,
+        reason_codes=(DoctorTransactionReason.EFFECT_EVIDENCE_MISSING.value,),
         static_replay=request.static_replay_only,
     )
 
 
 def _default_restore(checkpoint: DoctorTransactionCheckpoint) -> bool:
-    return True
+    """No filesystem context means restoration cannot be independently proved."""
+
+    del checkpoint
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -1902,6 +2036,9 @@ class DeterministicDoctorTransaction:
     hash_probe: DoctorHashProbe | None = None
     live_ref_probe: DoctorLiveRefProbe | None = None
     cache_binding_probe: DoctorCacheBindingProbe | None = None
+    ref_cas_adapter: DoctorRefCasAdapter | None = None
+    effect_verifier: DoctorEffectVerifier | None = None
+    allow_provisional_live_validation: bool = False
     now: Callable[[], int] = field(default=lambda: 0)
 
     def create_checkpoint(
@@ -2326,11 +2463,71 @@ class DeterministicDoctorTransaction:
                             reason_codes=codes,
                             written_paths=result.written_paths,
                             observed_before_hashes=result.observed_before_hashes,
+                            observed_after_hashes=result.observed_after_hashes,
+                            changed_blob_cids=result.changed_blob_cids,
+                            observed_tree_cid=result.observed_tree_cid,
+                            observed_forest_cid=result.observed_forest_cid,
+                            durable_effect_ref=result.durable_effect_ref,
                             diagnostic_refs=result.diagnostic_refs,
                             static_replay=result.static_replay,
                         )
                     )
                     group_reasons.extend(codes)
+                    break
+
+                if step.write_paths:
+                    try:
+                        independently_verified = (
+                            self.effect_verifier is not None
+                            and bool(self.effect_verifier(request, result))
+                        )
+                    except Exception:  # noqa: BLE001 - verifier trust boundary
+                        independently_verified = False
+                    if not independently_verified:
+                        step_receipts.append(
+                            DoctorStepReceipt(
+                                step_id=step_id,
+                                disposition=DoctorStepDisposition.FAILED,
+                                reason_codes=(
+                                    DoctorTransactionReason.EFFECT_EVIDENCE_MISSING.value,
+                                ),
+                                written_paths=result.written_paths,
+                                observed_before_hashes=result.observed_before_hashes,
+                                observed_after_hashes=result.observed_after_hashes,
+                                changed_blob_cids=result.changed_blob_cids,
+                                observed_tree_cid=result.observed_tree_cid,
+                                observed_forest_cid=result.observed_forest_cid,
+                                durable_effect_ref=result.durable_effect_ref,
+                            )
+                        )
+                        group_reasons.append(
+                            DoctorTransactionReason.EFFECT_EVIDENCE_MISSING.value
+                        )
+                        break
+
+                effect_reasons = self._verify_step_effects(
+                    step=step,
+                    result=result,
+                    checkpoint=checkpoint,
+                )
+                if effect_reasons:
+                    step_receipts.append(
+                        DoctorStepReceipt(
+                            step_id=step_id,
+                            disposition=DoctorStepDisposition.FAILED,
+                            reason_codes=effect_reasons,
+                            written_paths=result.written_paths,
+                            observed_before_hashes=result.observed_before_hashes,
+                            observed_after_hashes=result.observed_after_hashes,
+                            changed_blob_cids=result.changed_blob_cids,
+                            observed_tree_cid=result.observed_tree_cid,
+                            observed_forest_cid=result.observed_forest_cid,
+                            durable_effect_ref=result.durable_effect_ref,
+                            diagnostic_refs=result.diagnostic_refs,
+                            static_replay=result.static_replay,
+                        )
+                    )
+                    group_reasons.extend(effect_reasons)
                     break
 
                 step_receipts.append(
@@ -2339,6 +2536,11 @@ class DeterministicDoctorTransaction:
                         disposition=DoctorStepDisposition.PASSED,
                         written_paths=result.written_paths,
                         observed_before_hashes=result.observed_before_hashes,
+                        observed_after_hashes=result.observed_after_hashes,
+                        changed_blob_cids=result.changed_blob_cids,
+                        observed_tree_cid=result.observed_tree_cid,
+                        observed_forest_cid=result.observed_forest_cid,
+                        durable_effect_ref=result.durable_effect_ref,
                         diagnostic_refs=result.diagnostic_refs,
                         static_replay=result.static_replay or static_only,
                     )
@@ -2446,7 +2648,77 @@ class DeterministicDoctorTransaction:
                 for path in step.written_paths
             }
         )
+        changed_blob_cids = tuple(
+            dict.fromkeys(
+                cid
+                for group in group_receipts
+                for step in group.step_receipts
+                for cid in step.changed_blob_cids
+            )
+        )
+        observed_tree_cids = tuple(
+            step.observed_tree_cid
+            for group in group_receipts
+            for step in group.step_receipts
+            if step.observed_tree_cid
+        )
+        observed_forest_cids = tuple(
+            step.observed_forest_cid
+            for group in group_receipts
+            for step in group.step_receipts
+            if step.observed_forest_cid
+        )
+        durable_effect_refs = tuple(
+            dict.fromkeys(
+                step.durable_effect_ref
+                for group in group_receipts
+                for step in group.step_receipts
+                if step.durable_effect_ref
+            )
+        )
+        if (
+            not written_paths
+            or not changed_blob_cids
+            or not observed_tree_cids
+            or observed_tree_cids[-1] == base_tree_cid
+            or not durable_effect_refs
+        ):
+            return self._abort(
+                plan=plan,
+                transaction_id=txn_id,
+                checkpoint=checkpoint,
+                enforcement=enforcement,
+                checkout_lock=checkout_lock,
+                lease=lease,
+                group_receipts=tuple(group_receipts),
+                completed=tuple(completed),
+                reasons=(
+                    DoctorTransactionReason.NO_EXPECTED_CHANGE.value,
+                    DoctorTransactionReason.EFFECT_EVIDENCE_MISSING.value,
+                ),
+                failed_step_ids=(),
+                failed_group_id="",
+                merge_cas=merge_cas,
+            )
         tip_cid = committed_tree_cid or candidate_tree_cid
+        if observed_tree_cids[-1] != tip_cid:
+            return self._abort(
+                plan=plan,
+                transaction_id=txn_id,
+                checkpoint=checkpoint,
+                enforcement=enforcement,
+                checkout_lock=checkout_lock,
+                lease=lease,
+                group_receipts=tuple(group_receipts),
+                completed=tuple(completed),
+                reasons=(
+                    DoctorTransactionReason.DRIFT.value,
+                    DoctorTransactionReason.EFFECT_EVIDENCE_MISSING.value,
+                ),
+                failed_step_ids=(),
+                failed_group_id="",
+                merge_cas=merge_cas,
+            )
         candidate = DoctorCandidateTreeReceipt(
             roots=plan.roots,
             receipt_id=content_identity(
@@ -2471,6 +2743,12 @@ class DeterministicDoctorTransaction:
             group_receipts=tuple(group_receipts),
             static_replay_only=static_only,
             requires_target_execution=requires_target_execution,
+            changed_blob_cids=changed_blob_cids,
+            observed_tree_cid=observed_tree_cids[-1],
+            observed_forest_cid=(
+                observed_forest_cids[-1] if observed_forest_cids else ""
+            ),
+            durable_effect_refs=durable_effect_refs,
         )
 
         # Apply merge CAS when provided (entire SCC already complete).
@@ -2528,6 +2806,59 @@ class DeterministicDoctorTransaction:
                         failed_group_id="",
                         merge_cas=merge_cas,
                     )
+            if self.ref_cas_adapter is None:
+                return self._abort(
+                    plan=plan,
+                    transaction_id=txn_id,
+                    checkpoint=checkpoint,
+                    enforcement=enforcement,
+                    checkout_lock=checkout_lock,
+                    lease=lease,
+                    group_receipts=tuple(group_receipts),
+                    completed=tuple(completed),
+                    reasons=(DoctorTransactionReason.REF_CAS_NOT_APPLIED.value,),
+                    failed_step_ids=(),
+                    failed_group_id="",
+                    merge_cas=merge_cas,
+                )
+            try:
+                cas_applied = bool(self.ref_cas_adapter(merge_cas))
+            except Exception:  # noqa: BLE001 - fail-closed external CAS boundary
+                cas_applied = False
+            if not cas_applied:
+                return self._abort(
+                    plan=plan,
+                    transaction_id=txn_id,
+                    checkpoint=checkpoint,
+                    enforcement=enforcement,
+                    checkout_lock=checkout_lock,
+                    lease=lease,
+                    group_receipts=tuple(group_receipts),
+                    completed=tuple(completed),
+                    reasons=(
+                        DoctorTransactionReason.CAS_CONFLICT.value,
+                        DoctorTransactionReason.REF_CAS_NOT_APPLIED.value,
+                    ),
+                    failed_step_ids=(),
+                    failed_group_id="",
+                    merge_cas=merge_cas,
+                )
+
+        if merge_cas is None and not self.allow_provisional_live_validation:
+            return self._abort(
+                plan=plan,
+                transaction_id=txn_id,
+                checkpoint=checkpoint,
+                enforcement=enforcement,
+                checkout_lock=checkout_lock,
+                lease=lease,
+                group_receipts=tuple(group_receipts),
+                completed=tuple(completed),
+                reasons=(DoctorTransactionReason.REF_CAS_NOT_APPLIED.value,),
+                failed_step_ids=(),
+                failed_group_id="",
+                merge_cas=None,
+            )
 
         return DoctorTransactionReport(
             roots=plan.roots,
@@ -2546,6 +2877,325 @@ class DeterministicDoctorTransaction:
             committed=True,
             partial_merge_allowed=False,
         )
+
+    def execute_live(
+        self,
+        plan: DeterministicDoctorPlan,
+        *,
+        worktree_adapter: Any,
+        edits: Sequence[Any],
+        target_ref: str,
+        base_ref: str = "",
+        transaction_id: str = "",
+        requires_target_execution: bool = False,
+        cache_binding_refs: Sequence[str] = (),
+        commit_message: str = "deterministic doctor transaction",
+    ) -> DoctorTransactionReport:
+        """Own a real lease/checkpoint/SCC apply/ref-CAS/rollback lifecycle.
+
+        The runtime adapter is imported lazily so this planning contract keeps
+        its no-provider, no-target-import surface.  Exact edits are grouped by
+        the plan's impact/SCC grouping and are materialised before the pure
+        transaction validator is allowed to construct a provisional report.
+        The report is returned as COMMITTED only after the adapter's durable
+        Git ref CAS succeeds.
+        """
+
+        from ..runtime.doctor_worktree_adapter import (  # local trust boundary
+            DoctorExactEdit,
+            DoctorWorktreeAdapter,
+        )
+
+        if not isinstance(plan, DeterministicDoctorPlan):
+            raise DeterministicDoctorTransactionError(
+                "execute_live requires DeterministicDoctorPlan"
+            )
+        if not isinstance(worktree_adapter, DoctorWorktreeAdapter):
+            raise DeterministicDoctorTransactionError(
+                "execute_live requires DoctorWorktreeAdapter"
+            )
+        if isinstance(edits, (str, bytes, bytearray)) or not isinstance(
+            edits, Sequence
+        ):
+            raise DeterministicDoctorTransactionError(
+                "execute_live edits must be a sequence"
+            )
+        exact_edits = tuple(edits)
+        if not exact_edits or not all(
+            isinstance(item, DoctorExactEdit) for item in exact_edits
+        ):
+            raise DeterministicDoctorTransactionError(
+                "execute_live requires a nonempty exact edit set"
+            )
+        if len({item.path for item in exact_edits}) != len(exact_edits):
+            raise DeterministicDoctorTransactionError(
+                "execute_live requires one complete replacement per path"
+            )
+        expected_paths = set(plan.permitted_write_paths)
+        edit_paths = {item.path for item in exact_edits}
+        if not expected_paths or edit_paths != expected_paths:
+            raise DeterministicDoctorTransactionError(
+                "live edits must cover the complete permitted impact set exactly"
+            )
+        if edit_paths != set(worktree_adapter.permitted_paths):
+            raise DeterministicDoctorTransactionError(
+                "adapter allowlist must equal the plan write set"
+            )
+
+        steps_by_id = {step.step_id: step for step in plan.steps}
+        assigned: list[DoctorExactEdit] = []
+        for edit in exact_edits:
+            step_id = edit.step_id
+            if not step_id:
+                owners = [
+                    step.step_id
+                    for step in plan.steps
+                    if edit.path in set(step.write_paths)
+                ]
+                if len(owners) != 1:
+                    raise DeterministicDoctorTransactionError(
+                        f"edit {edit.path} does not have one exact plan-step owner"
+                    )
+                step_id = owners[0]
+                edit = replace(edit, step_id=step_id)
+            if step_id not in steps_by_id:
+                raise DeterministicDoctorTransactionError(
+                    f"edit references unknown step {step_id}"
+                )
+            if edit.path not in set(steps_by_id[step_id].write_paths):
+                raise DeterministicDoctorTransactionError(
+                    "edit path is not owned by its declared step"
+                )
+            assigned.append(edit)
+        by_step: dict[str, list[DoctorExactEdit]] = {
+            step_id: [] for step_id in steps_by_id
+        }
+        for edit in assigned:
+            by_step[edit.step_id].append(edit)
+        for step in plan.steps:
+            if {item.path for item in by_step[step.step_id]} != set(step.write_paths):
+                if step.write_paths:
+                    raise DeterministicDoctorTransactionError(
+                        f"step {step.step_id} is missing a complete exact edit set"
+                    )
+
+        txn_id = transaction_id or content_identity(
+            {
+                "schema": "doctor-live-transaction-id@1",
+                "plan_id": plan.plan_id,
+                "target_ref": target_ref,
+                "edit_paths": sorted(edit_paths),
+            }
+        )
+        session_token = "txn-" + content_identity(
+            {"transaction_id": txn_id}
+        ).split(":")[-1][:32]
+        session = worktree_adapter.prepare(
+            base_ref=base_ref or target_ref,
+            session_id=session_token,
+        )
+        try:
+            baseline = session.baseline
+            groups = _build_doctor_execution_groups(plan)
+            result_by_step: dict[str, DoctorStepApplyResult] = {}
+            for group_id, _scc_id, step_ids in groups:
+                group_edits = tuple(
+                    edit
+                    for step_id in step_ids
+                    for edit in by_step.get(step_id, ())
+                )
+                if not group_edits:
+                    for step_id in step_ids:
+                        result_by_step[step_id] = DoctorStepApplyResult(
+                            disposition=DoctorStepDisposition.PASSED,
+                        )
+                    continue
+                receipt = session.apply_group(group_edits, group_id=group_id)
+                effects_by_step: dict[str, list[Any]] = {
+                    step_id: [] for step_id in step_ids
+                }
+                for effect in receipt.effects:
+                    effects_by_step.setdefault(effect.step_id, []).append(effect)
+                for step_id in step_ids:
+                    effects = effects_by_step.get(step_id, [])
+                    if not effects and steps_by_id[step_id].write_paths:
+                        raise DeterministicDoctorTransactionError(
+                            f"atomic group omitted step effects for {step_id}"
+                        )
+                    result_by_step[step_id] = DoctorStepApplyResult(
+                        disposition=DoctorStepDisposition.PASSED,
+                        written_paths=tuple(item.path for item in effects),
+                        observed_before_hashes=tuple(
+                            PathBeforeHash(
+                                path=item.path,
+                                before_hash=item.before_hash,
+                            )
+                            for item in effects
+                        ),
+                        observed_after_hashes=tuple(
+                            PathBeforeHash(
+                                path=item.path,
+                                before_hash=item.after_hash,
+                            )
+                            for item in effects
+                        ),
+                        changed_blob_cids=tuple(
+                            item.after_blob_cid for item in effects
+                        ),
+                        observed_tree_cid=(
+                            receipt.after_tree_cid if effects else ""
+                        ),
+                        observed_forest_cid=(
+                            receipt.after_forest_cid if effects else ""
+                        ),
+                        durable_effect_ref=(
+                            receipt.durable_effect_ref if effects else ""
+                        ),
+                        static_replay=not requires_target_execution,
+                    )
+
+            final_snapshot = worktree_adapter.snapshot(session)
+            path_hashes = tuple(
+                PathBeforeHash(path=path, before_hash=digest)
+                for path, digest in baseline.path_hashes
+                if path in expected_paths
+            )
+            sandbox = DoctorSandboxPolicy(
+                sandbox_id=plan.roots.sandbox_id,
+                worktree_root_ref=str(session.worktree_root),
+                permitted_paths=tuple(sorted(expected_paths)),
+                enforcement_level=DoctorSandboxEnforcementLevel.ENFORCED,
+                secrets_inherited=False,
+                network_denied=True,
+                target_code_imported=False,
+            )
+            holder_id = f"holder:{session.session_id}"
+            lock = DoctorCheckoutLock(
+                lock_id=f"lock:{session.session_id}",
+                holder_id=holder_id,
+                worktree_root_ref=str(session.worktree_root),
+                base_tree_cid=baseline.tree_cid,
+                active=True,
+                fence_id=f"fence:{session.session_id}",
+            )
+            lease_id = plan.lease_id or plan.roots.lease_id
+            if not lease_id:
+                raise DeterministicDoctorTransactionError(
+                    "live transaction requires a plan-bound writer lease id"
+                )
+            lease = DoctorWriterLease(
+                lease_id=lease_id,
+                fence_id=f"fence:{session.session_id}",
+                holder_id=holder_id,
+                permitted_write_paths=tuple(sorted(expected_paths)),
+                permitted_read_paths=tuple(
+                    sorted(set(plan.permitted_read_paths) | expected_paths)
+                ),
+                active=True,
+            )
+            checkpoint = self.create_checkpoint(
+                plan,
+                path_before_hashes=path_hashes,
+                base_tree_cid=baseline.tree_cid,
+                candidate_tree_cid=final_snapshot.tree_cid,
+                worktree_root_ref=str(session.worktree_root),
+                strategy_ref=plan.checkpoint_ref,
+                cache_binding_refs=cache_binding_refs,
+                diagnostic_refs=(f"durable-intent:{session.session_id}",),
+            )
+
+            def live_result(request: DoctorStepApplyRequest) -> DoctorStepApplyResult:
+                return result_by_step.get(
+                    request.step.step_id,
+                    DoctorStepApplyResult(
+                        disposition=DoctorStepDisposition.FAILED,
+                        reason_codes=(
+                            DoctorTransactionReason.GROUP_INCOMPLETE.value,
+                        ),
+                    ),
+                )
+
+            validator = replace(
+                self,
+                step_applicator=live_result,
+                restore_adapter=session.default_restore,
+                hash_probe=None,
+                live_ref_probe=None,
+                ref_cas_adapter=None,
+                effect_verifier=lambda request, result: (
+                    result_by_step.get(request.step.step_id) == result
+                ),
+                allow_provisional_live_validation=True,
+            )
+            report = validator.execute(
+                plan,
+                sandbox_policy=sandbox,
+                checkout_lock=lock,
+                lease=lease,
+                path_before_hashes=path_hashes,
+                base_tree_cid=baseline.tree_cid,
+                candidate_tree_cid=final_snapshot.tree_cid,
+                checkpoint=checkpoint,
+                requires_target_execution=requires_target_execution,
+                cache_binding_refs=cache_binding_refs,
+                transaction_id=txn_id,
+                committed_tree_cid=final_snapshot.tree_cid,
+            )
+            if not report.committed:
+                session.close(remove_worktree=not (
+                    report.disposition is DoctorTransactionDisposition.QUARANTINED
+                ))
+                return report
+            try:
+                cas_receipt = session.commit_ref(
+                    target_ref=target_ref,
+                    expected_commit_oid=session.base_commit_oid,
+                    message=commit_message,
+                )
+            except BaseException:
+                abort_report = validator._abort(
+                    plan=plan,
+                    transaction_id=txn_id,
+                    checkpoint=checkpoint,
+                    enforcement=report.sandbox_enforcement,
+                    checkout_lock=lock,
+                    lease=lease,
+                    group_receipts=report.group_receipts,
+                    completed=tuple(step.step_id for step in plan.steps),
+                    reasons=(
+                        DoctorTransactionReason.CAS_CONFLICT.value,
+                        DoctorTransactionReason.REF_CAS_NOT_APPLIED.value,
+                    ),
+                    failed_step_ids=(),
+                    failed_group_id="",
+                    merge_cas=None,
+                )
+                session.close(remove_worktree=not (
+                    abort_report.disposition
+                    is DoctorTransactionDisposition.QUARANTINED
+                ))
+                return abort_report
+            merge_cas = DoctorMergeRefCas(
+                cas_id=f"cas:{session.session_id}",
+                ref_name=cas_receipt.ref_name,
+                expected_ref=cas_receipt.expected_commit_oid,
+                desired_ref=cas_receipt.desired_commit_oid,
+                holder_id=holder_id,
+                active=True,
+            )
+            committed = replace(report, merge_cas=merge_cas)
+            session.close()
+            return committed
+        except BaseException:
+            try:
+                session.restore(reason="execute_live_exception")
+            finally:
+                session.close(
+                    remove_worktree=(
+                        session.state.value != "quarantined"
+                    )
+                )
+            raise
 
     def require_committed(self, *args: Any, **kwargs: Any) -> DoctorTransactionReport:
         report = self.execute(*args, **kwargs)
@@ -2622,6 +3272,52 @@ class DeterministicDoctorTransaction:
                     written_paths=step.write_paths,
                 )
         return None
+
+    def _verify_step_effects(
+        self,
+        *,
+        step: DoctorPlanStep,
+        result: DoctorStepApplyResult,
+        checkpoint: DoctorTransactionCheckpoint,
+    ) -> tuple[str, ...]:
+        """Reject passing applicators that did not prove reread durable effects."""
+
+        reasons: list[str] = []
+        expected_paths = set(step.write_paths)
+        written_paths = set(result.written_paths)
+        if not expected_paths:
+            # Read-only validation/checkpoint steps may pass without an effect;
+            # the transaction as a whole still requires a nonempty mutation.
+            if written_paths:
+                reasons.append(DoctorTransactionReason.SCOPE_ESCAPE.value)
+            return tuple(sorted(set(reasons)))
+        if written_paths != expected_paths:
+            reasons.append(DoctorTransactionReason.GROUP_INCOMPLETE.value)
+        before = {
+            item.path: item.before_hash for item in result.observed_before_hashes
+        }
+        after = {
+            item.path: item.before_hash for item in result.observed_after_hashes
+        }
+        checkpoint_hashes = checkpoint.hash_map()
+        for path in expected_paths:
+            if path not in before or path not in after:
+                reasons.append(DoctorTransactionReason.EFFECT_EVIDENCE_MISSING.value)
+                continue
+            expected_before = checkpoint_hashes.get(path)
+            if expected_before and before[path] != expected_before:
+                reasons.append(DoctorTransactionReason.BEFORE_HASH_MISMATCH.value)
+            if before[path] == after[path]:
+                reasons.append(DoctorTransactionReason.NO_EXPECTED_CHANGE.value)
+        if len(result.changed_blob_cids) < len(expected_paths):
+            reasons.append(DoctorTransactionReason.EFFECT_EVIDENCE_MISSING.value)
+        if not result.observed_tree_cid or not result.observed_forest_cid:
+            reasons.append(DoctorTransactionReason.EFFECT_EVIDENCE_MISSING.value)
+        if result.observed_tree_cid == checkpoint.base_tree_cid:
+            reasons.append(DoctorTransactionReason.NO_EXPECTED_CHANGE.value)
+        if not result.durable_effect_ref:
+            reasons.append(DoctorTransactionReason.DURABLE_INTENT_MISSING.value)
+        return tuple(sorted(set(reasons)))
 
     def _pre_commit_revalidate(
         self,

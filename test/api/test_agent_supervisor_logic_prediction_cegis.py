@@ -6,6 +6,8 @@ import threading
 
 import pytest
 
+import ipfs_accelerate_py.agent_supervisor.proof.logic_prediction_cegis as cegis_module
+
 from ipfs_accelerate_py.agent_supervisor.analysis.program_logic_prediction_contracts import (
     CountermodelDisposition,
     CountermodelValidationReceipt,
@@ -700,6 +702,103 @@ def test_max_counterexamples_enforced(
     )
     with pytest.raises(LogicPredictionCegisBoundsError, match="max_counterexamples"):
         engine.apply_round(state, evidence)
+
+
+def test_refine_charges_only_rss_growth_after_campaign_baseline(
+    monkeypatch: pytest.MonkeyPatch,
+    roots: ProgramLogicAuthorityRoots,
+) -> None:
+    """Unrelated memory already owned by the daemon cannot disable proofs."""
+
+    engine = _engine()
+    initial = engine.initial_state(
+        roots=roots,
+        goals=[_goal(roots)],
+        hypotheses=[_hypothesis(roots)],
+        authorized_premise_ids=("premise:a",),
+        selected_premise_ids=("premise:a",),
+    )
+    countermodel = _validated_countermodel(roots)
+    evidence = [
+        RefinementEvidence(
+            countermodel_receipts=(countermodel,),
+            hypothesis_narrowings={
+                countermodel.receipt_id: {
+                    "reject_hypothesis_ids": ["hyp:one"],
+                },
+            },
+        )
+    ]
+
+    monkeypatch.setattr(cegis_module, "_rss_bytes", lambda: 64 * 1024 * 1024)
+    ordinary = engine.refine(initial, evidence)
+
+    # Deterministically represent a long-lived daemon that has already used
+    # more than the 512 MiB per-campaign budget before this proof starts.
+    preloaded_rss = engine.bounds.memory_bytes + 128 * 1024 * 1024
+    monkeypatch.setattr(cegis_module, "_rss_bytes", lambda: preloaded_rss)
+    preloaded = engine.refine(initial, evidence)
+
+    assert preloaded.disposition is ordinary.disposition
+    assert preloaded.stop_reason is ordinary.stop_reason
+    assert preloaded.final_state.state_id == ordinary.final_state.state_id
+    assert preloaded.reason_codes == ordinary.reason_codes
+    assert preloaded.peak_memory_bytes == ordinary.peak_memory_bytes == 0
+    assert preloaded.is_conclusive
+
+
+def test_refine_still_enforces_attributable_rss_growth(
+    monkeypatch: pytest.MonkeyPatch,
+    roots: ProgramLogicAuthorityRoots,
+) -> None:
+    engine = _engine()
+    initial = engine.initial_state(
+        roots=roots,
+        goals=[_goal(roots)],
+        hypotheses=[_hypothesis(roots)],
+        authorized_premise_ids=("premise:a",),
+        selected_premise_ids=("premise:a",),
+    )
+    preloaded_rss = engine.bounds.memory_bytes + 128 * 1024 * 1024
+    readings = iter(
+        (
+            preloaded_rss,
+            preloaded_rss + engine.bounds.memory_bytes + 1,
+        )
+    )
+    monkeypatch.setattr(cegis_module, "_rss_bytes", lambda: next(readings))
+
+    receipt = engine.refine(initial, ())
+
+    assert receipt.disposition is RefinementDisposition.BOUND_EXHAUSTED
+    assert receipt.stop_reason is RefinementStopReason.MEMORY_EXHAUSTED
+    assert receipt.reason_codes == ("memory_exhausted",)
+    assert receipt.peak_memory_bytes == engine.bounds.memory_bytes + 1
+
+
+def test_refine_fails_closed_when_rss_measurement_is_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+    roots: ProgramLogicAuthorityRoots,
+) -> None:
+    engine = _engine()
+    initial = engine.initial_state(
+        roots=roots,
+        goals=[_goal(roots)],
+        hypotheses=[_hypothesis(roots)],
+        authorized_premise_ids=("premise:a",),
+        selected_premise_ids=("premise:a",),
+    )
+
+    def unavailable_rss() -> int:
+        raise OSError("resource accounting unavailable")
+
+    monkeypatch.setattr(cegis_module, "_rss_bytes", unavailable_rss)
+    receipt = engine.refine(initial, ())
+
+    assert receipt.disposition is RefinementDisposition.BOUND_EXHAUSTED
+    assert receipt.stop_reason is RefinementStopReason.MEMORY_EXHAUSTED
+    assert receipt.reason_codes == ("memory_measurement_invalid",)
+    assert receipt.rounds == ()
 
 
 def test_cancellation_returns_cancelled_with_residual_gaps(

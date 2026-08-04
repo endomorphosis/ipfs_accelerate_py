@@ -1942,6 +1942,196 @@ def build_supervisor_refill_hooks(
     return tuple(hooks)
 
 
+def _planner_doctor_epoch_mode_enabled(value: object) -> bool:
+    """Return True only for an explicit non-off epoch mode string/enum."""
+
+    if value is None:
+        return False
+    text = str(getattr(value, "value", value) or "").strip().casefold()
+    return bool(text) and text not in {"off", "false", "0", "disabled", "none"}
+
+
+def build_supervisor_planner_doctor_epoch_callback(
+    *,
+    repo_root: Path,
+    policy: Mapping[str, Any] | object | None = None,
+    journal_path: Path | None = None,
+    work_root: Path | None = None,
+    repository_id: str = "repository:local",
+    tree_id: str = "tree:local",
+    objective_revision: str = "objective:unspecified",
+    board_revision: str = "board:unspecified",
+    capability_revision: str = "capability:unspecified",
+    operator_revision: str = "operator:planner-doctor-epoch@1",
+    evaluation_provider: Any | None = None,
+    usage_provider: Any | None = None,
+    require_explicit_enable: bool = True,
+) -> SupervisorRunHookCallback:
+    """Build a lifecycle hook that invokes :func:`run_planner_doctor_epoch`.
+
+    The hook is fail-closed: it does nothing unless an explicit non-off mode is
+    present on the policy (or on ``ctx.parsed.planner_doctor_epoch_mode``).
+    It never imports or calls the test-only ASI epoch helper; only
+    ``run_planner_doctor_epoch`` is used for daemon integration.
+    """
+
+    from ..self_improvement.planner_doctor_epoch import (
+        PlannerDoctorEpochMode,
+        PlannerDoctorEpochPolicy,
+        assert_not_self_improvement_epoch_masquerade,
+        build_planner_doctor_epoch_binding,
+        run_planner_doctor_epoch,
+    )
+
+    # Fail closed against accidental re-export of the test-only ASI epoch
+    # helper into this daemon integration module's namespace.
+    assert_not_self_improvement_epoch_masquerade(globals())
+
+    def hook(ctx: ImplementationSupervisorRunContext) -> Any:
+        parsed_mode = getattr(ctx.parsed, "planner_doctor_epoch_mode", None)
+        parsed_enabled = getattr(ctx.parsed, "planner_doctor_epoch_enabled", None)
+
+        resolved_policy: PlannerDoctorEpochPolicy
+        if isinstance(policy, PlannerDoctorEpochPolicy):
+            resolved_policy = policy
+        elif isinstance(policy, Mapping):
+            resolved_policy = PlannerDoctorEpochPolicy.from_dict(policy)
+        else:
+            mode_text = parsed_mode or "off"
+            resolved_policy = PlannerDoctorEpochPolicy(
+                mode=PlannerDoctorEpochMode(str(mode_text)),
+            )
+
+        if parsed_mode is not None and _planner_doctor_epoch_mode_enabled(parsed_mode):
+            resolved_policy = PlannerDoctorEpochPolicy.from_dict(
+                {
+                    **resolved_policy.to_dict(),
+                    "mode": str(getattr(parsed_mode, "value", parsed_mode)),
+                }
+            )
+
+        if require_explicit_enable:
+            enabled_flag = parsed_enabled
+            if enabled_flag is None:
+                # Policy mode alone may enable when it is explicitly non-off.
+                enabled_flag = resolved_policy.is_enabled
+            if not enabled_flag or not resolved_policy.is_enabled:
+                return {
+                    "invoked": False,
+                    "reason": "mode_disabled",
+                    "mode": resolved_policy.mode.value,
+                    "interface": "PlannerDoctorEpoch@1",
+                }
+
+        state_dir = Path(
+            getattr(ctx.config, "state_dir", None)
+            or ctx.strategy_path.parent
+        )
+        resolved_journal = Path(
+            journal_path
+            or state_dir / "planner_doctor_epoch_journal.json"
+        )
+        resolved_work = Path(
+            work_root or state_dir / "planner_doctor_challengers"
+        )
+
+        binding = build_planner_doctor_epoch_binding(
+            repo_root=Path(repo_root),
+            repository_id=str(
+                getattr(ctx.parsed, "planner_doctor_repository_id", None)
+                or repository_id
+            ),
+            tree_id=str(
+                getattr(ctx.parsed, "planner_doctor_tree_id", None) or tree_id
+            ),
+            policy=resolved_policy,
+            objective_revision=str(
+                getattr(ctx.parsed, "planner_doctor_objective_revision", None)
+                or objective_revision
+            ),
+            board_revision=str(
+                getattr(ctx.parsed, "planner_doctor_board_revision", None)
+                or board_revision
+            ),
+            capability_revision=str(
+                getattr(ctx.parsed, "planner_doctor_capability_revision", None)
+                or capability_revision
+            ),
+            operator_revision=operator_revision,
+        )
+        result = run_planner_doctor_epoch(
+            binding=binding,
+            repo_root=Path(repo_root),
+            journal_path=resolved_journal,
+            work_root=resolved_work,
+            evaluation_provider=evaluation_provider,
+            usage_provider=usage_provider,
+        )
+        return {
+            "invoked": True,
+            "interface": "PlannerDoctorEpoch@1",
+            "epoch_id": result.binding.epoch_id,
+            "stop_reason": result.stop_reason.value,
+            "current_stage": result.current_stage.value,
+            "resumed": result.resumed,
+            "idempotent_replay": result.idempotent_replay,
+            "usage": result.usage.to_dict(),
+            "journal_path": result.journal_path,
+            "challenger_root": result.manifest.challenger_root,
+            "baseline_root": result.manifest.baseline_root,
+            "transition_count": len(result.manifest.transitions),
+            "result_id": result.result_id,
+            # Explicitly document that the test-only path was not used.
+            "self_improvement_epoch_used": False,
+        }
+
+    return hook
+
+
+def build_supervisor_planner_doctor_epoch_hooks(
+    *,
+    repo_root: Path,
+    policy: Mapping[str, Any] | object | None = None,
+    journal_path: Path | None = None,
+    work_root: Path | None = None,
+    before: bool = True,
+    after_once: bool = False,
+    log_level: int = logging.INFO,
+    **callback_kwargs: Any,
+) -> tuple[SupervisorRunHook, ...]:
+    """Build before/after hooks that run the Planner/Doctor epoch controller."""
+
+    callback = build_supervisor_planner_doctor_epoch_callback(
+        repo_root=repo_root,
+        policy=policy,
+        journal_path=journal_path,
+        work_root=work_root,
+        **callback_kwargs,
+    )
+    hooks: list[SupervisorRunHook] = []
+    if before:
+        hooks.append(
+            SupervisorRunHook(
+                "before",
+                "Planner/Doctor epoch controller before supervisor pass: %s",
+                callback,
+                log_level=log_level,
+                scan_kind="",
+            )
+        )
+    if after_once:
+        hooks.append(
+            SupervisorRunHook(
+                "after_once",
+                "Planner/Doctor epoch controller after supervisor pass: %s",
+                callback,
+                log_level=log_level,
+                scan_kind="",
+            )
+        )
+    return tuple(hooks)
+
+
 def build_supervisor_objective_refill_callback(
     callback: SupervisorRefillRecordCallback,
     *,
@@ -2319,9 +2509,22 @@ def run_portal_implementation_supervisor(
 ) -> Any:
     """Run a configured supervisor with optional local hooks and runtime repair."""
 
+    authority_revalidation_only = bool(
+        getattr(
+            context.parsed,
+            "manual_completion_authority_revalidation_only",
+            False,
+        )
+    )
+    effective_hooks = () if authority_revalidation_only else hooks
     if bool(getattr(context.parsed, "once", False)):
-        _run_hooks(hooks, phase="before", context=context, logger=logger)
-    elif hooks:
+        _run_hooks(
+            effective_hooks,
+            phase="before",
+            context=context,
+            logger=logger,
+        )
+    elif effective_hooks:
         logger.debug(
             "Skipping supervisor before hooks for long-running startup; "
             "managed watchdog maintenance will run refill hooks after daemon launch."
@@ -2333,14 +2536,19 @@ def run_portal_implementation_supervisor(
         logger.info(ensure_running_message, result)
         return result
 
-    if repair_runtime_callback is not None:
+    if repair_runtime_callback is not None and not authority_revalidation_only:
         repairs = repair_runtime_callback(context)
         if isinstance(repairs, dict) and (repairs.get("removed") or repairs.get("updated_status")):
             logger.info(repair_runtime_message, repairs)
 
     if context.parsed.once:
         result = supervisor.run_once()
-        _run_hooks(hooks, phase="after_once", context=context, logger=logger)
+        _run_hooks(
+            effective_hooks,
+            phase="after_once",
+            context=context,
+            logger=logger,
+        )
         logger.info(once_complete_message, result)
         return result
     return supervisor.run_forever()

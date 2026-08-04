@@ -1,0 +1,62 @@
+{
+  "artifacts": [
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/validation/planner_doctor_quality_oracle.py",
+      "role": "quality_oracle",
+      "sha256": "sha256:f33aa1851b1562bfda5e58332de730ff0dc53cc31622c2cb73ce7dc0dbe76b4c",
+      "size_bytes": 117445
+    },
+    {
+      "path": "test/fixtures/agent_supervisor/planner_doctor_holdout/oracle.manifest.json",
+      "role": "oracle_manifest",
+      "sha256": "sha256:0a40b54e88a9fa1bbe6ea7d5ebbfa2daf1380f6d84a57dc2a79fc46745ef6898",
+      "size_bytes": 46168
+    },
+    {
+      "path": "test/api/test_agent_supervisor_planner_doctor_quality_oracle.py",
+      "role": "quality_oracle_test",
+      "sha256": "sha256:8a675923e9f9d1494cba9b9e94f999d129a3062ba56e3de94bf24e3b3fbcd3b0",
+      "size_bytes": 39490
+    }
+  ],
+  "board_namespace": "agent-supervisor-proof-directed-planner-doctor-v1",
+  "decision": "sealed",
+  "grant": {
+    "allowed_actions": [
+      "activate_quality_oracle"
+    ],
+    "automatic_promotion": false,
+    "board_namespace": "agent-supervisor-proof-directed-planner-doctor-v1",
+    "completion_authority": false,
+    "delegable": false,
+    "mutation_authority": false,
+    "oracle_activation": true,
+    "policy_revision": "1",
+    "promotion_authority": false,
+    "protected_anchor_write_authority": false,
+    "task_status_authority": false,
+    "type": "oracle_activation"
+  },
+  "interface": "PlannerDoctorQualityOracleSeal@1",
+  "operator": {
+    "authority_basis": "scheduler_delegated_operator_completion@1",
+    "automatic_controller": true,
+    "candidate": false,
+    "identity": "delegated_supervisor",
+    "model": false
+  },
+  "policy_revision": "1",
+  "receipt_id": "sha256:677b76d7f141c0b5df7bc098224bd38c169101aacb40e9eaa3216bea43f6ce5d",
+  "receipt_version": "1",
+  "reviewed_base": {
+    "commit": "75e9153c70a21597cf074ced38546c9f029deabe",
+    "corpus_authority": "operator-owned-holdout-judge",
+    "git_object_format": "sha1",
+    "operator_seal_handle": "opaque:operator-seal/planner-doctor-quality-oracle-pdr-072@1",
+    "oracle_handle": "opaque:operator-cas/planner-doctor-quality-oracle@1",
+    "relation_to_activation_head": "equal_or_ancestor",
+    "tree": "81d66f0061443fb39c6524aa7c774592520fbedb"
+  },
+  "schema": "ipfs_accelerate_py.agent_supervisor.planner_doctor.quality_oracle_seal@1",
+  "task_id": "PDR-072"
+}

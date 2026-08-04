@@ -390,6 +390,38 @@ def _rss_bytes() -> int:
     return int(usage.ru_maxrss) * 1024
 
 
+def _measured_rss_bytes() -> int | None:
+    """Return a trustworthy process RSS high-water measurement, if available."""
+
+    try:
+        measured = _rss_bytes()
+    except Exception:
+        # Resource accounting is part of the admission boundary.  An
+        # unavailable or malformed reading must never disable the bound.
+        return None
+    if isinstance(measured, bool) or not isinstance(measured, int) or measured <= 0:
+        return None
+    return measured
+
+
+def _attributable_rss_bytes(baseline_bytes: int | None) -> int | None:
+    """Measure RSS high-water growth attributable to the current campaign."""
+
+    if (
+        isinstance(baseline_bytes, bool)
+        or not isinstance(baseline_bytes, int)
+        or baseline_bytes <= 0
+    ):
+        return None
+    measured = _measured_rss_bytes()
+    if measured is None or measured < baseline_bytes:
+        # ``ru_maxrss`` is monotonic.  A lower observation means the resource
+        # measurement is not trustworthy, so fail closed rather than treating
+        # the apparent decrease as free memory.
+        return None
+    return measured - baseline_bytes
+
+
 def _goal_id(goal: ProgramLogicGoal | Mapping[str, Any] | str) -> str:
     if isinstance(goal, ProgramLogicGoal):
         return goal.goal_id
@@ -1843,6 +1875,7 @@ class LogicPredictionCEGIS:
         cancelled: Any = None,
         wall_started_ms: int | None = None,
         cpu_started_ms: int | None = None,
+        memory_started_bytes: int | None = None,
     ) -> tuple[LogicRefinementState, LogicRefinementRound]:
         """Apply one refinement round.  Monotonic; never weakens original goals."""
 
@@ -1855,6 +1888,11 @@ class LogicPredictionCEGIS:
         round_start_cpu = _cpu_time_ms()
         wall0 = wall_started_ms if wall_started_ms is not None else round_start_wall
         cpu0 = cpu_started_ms if cpu_started_ms is not None else round_start_cpu
+        memory0 = (
+            memory_started_bytes
+            if memory_started_bytes is not None
+            else _measured_rss_bytes()
+        )
 
         actions: list[RefinementAction] = []
         reason_codes: list[str] = []
@@ -1883,6 +1921,7 @@ class LogicPredictionCEGIS:
             state=state,
             wall0=wall0,
             cpu0=cpu0,
+            memory0=memory0,
             projected_goals=len(state.active_goal_ids),
             projected_subgoals=len(state.subgoal_ids),
             projected_premises=len(state.selected_premise_ids),
@@ -2289,6 +2328,7 @@ class LogicPredictionCEGIS:
         state: LogicRefinementState,
         wall0: float,
         cpu0: int,
+        memory0: int | None,
         projected_goals: int,
         projected_subgoals: int,
         projected_premises: int,
@@ -2324,7 +2364,11 @@ class LogicPredictionCEGIS:
         if elapsed_cpu > self.bounds.cpu_time_ms:
             return RefinementStopReason.CPU_TIME_EXHAUSTED
 
-        if _rss_bytes() > self.bounds.memory_bytes:
+        attributable_rss = _attributable_rss_bytes(memory0)
+        if (
+            attributable_rss is None
+            or attributable_rss > self.bounds.memory_bytes
+        ):
             return RefinementStopReason.MEMORY_EXHAUSTED
 
         context_bytes = len(canonical_json(state.to_dict()).encode("utf-8"))
@@ -2355,7 +2399,8 @@ class LogicPredictionCEGIS:
 
         wall0 = time.monotonic()
         cpu0 = _cpu_time_ms()
-        peak_mem = _rss_bytes()
+        memory0 = _measured_rss_bytes()
+        peak_mem = 0
         state = initial
         rounds: list[LogicRefinementRound] = []
         # Cycle detection keys on *semantic* identity so re-applying equivalent
@@ -2382,6 +2427,19 @@ class LogicPredictionCEGIS:
                     reason_codes.append("cancelled")
                     break
 
+                attributable_rss = _attributable_rss_bytes(memory0)
+                if attributable_rss is None:
+                    stop_reason = RefinementStopReason.MEMORY_EXHAUSTED
+                    disposition = RefinementDisposition.BOUND_EXHAUSTED
+                    reason_codes.append("memory_measurement_invalid")
+                    break
+                peak_mem = max(peak_mem, attributable_rss)
+                if attributable_rss > self.bounds.memory_bytes:
+                    stop_reason = RefinementStopReason.MEMORY_EXHAUSTED
+                    disposition = RefinementDisposition.BOUND_EXHAUSTED
+                    reason_codes.append(stop_reason.value)
+                    break
+
                 if state.is_fixed_point():
                     stop_reason = RefinementStopReason.FIXED_POINT
                     disposition = RefinementDisposition.FIXED_POINT
@@ -2398,6 +2456,7 @@ class LogicPredictionCEGIS:
                     state=state,
                     wall0=wall0,
                     cpu0=cpu0,
+                    memory0=memory0,
                     projected_goals=len(state.active_goal_ids),
                     projected_subgoals=len(state.subgoal_ids),
                     projected_premises=len(state.selected_premise_ids),
@@ -2434,6 +2493,7 @@ class LogicPredictionCEGIS:
                         cancelled=cancelled,
                         wall_started_ms=wall0,
                         cpu_started_ms=cpu0,
+                        memory_started_bytes=memory0,
                     )
                 except LogicPredictionCegisAuthorityError as exc:
                     stop_reason = RefinementStopReason.AUTHORITY_VIOLATION
@@ -2459,7 +2519,20 @@ class LogicPredictionCEGIS:
                     break
 
                 rounds.append(rnd)
-                peak_mem = max(peak_mem, _rss_bytes())
+                attributable_rss = _attributable_rss_bytes(memory0)
+                if attributable_rss is None:
+                    state = new_state
+                    stop_reason = RefinementStopReason.MEMORY_EXHAUSTED
+                    disposition = RefinementDisposition.BOUND_EXHAUSTED
+                    reason_codes.append("memory_measurement_invalid")
+                    break
+                peak_mem = max(peak_mem, attributable_rss)
+                if attributable_rss > self.bounds.memory_bytes:
+                    state = new_state
+                    stop_reason = RefinementStopReason.MEMORY_EXHAUSTED
+                    disposition = RefinementDisposition.BOUND_EXHAUSTED
+                    reason_codes.append(stop_reason.value)
+                    break
 
                 if rnd.disposition is RoundDisposition.CANCELLED:
                     stop_reason = RefinementStopReason.CANCELLED

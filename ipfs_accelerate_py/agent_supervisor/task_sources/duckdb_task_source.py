@@ -68,6 +68,28 @@ TASK_SOURCE_MIGRATION_RECEIPT_SCHEMA: Final = (
 MATERIALIZATION_RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/duckdb-materialization-receipt@1"
 )
+DERIVED_RUNTIME_SOURCE_ROLE: Final = "derived_runtime"
+DERIVED_RUNTIME_MATERIALIZATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/duckdb-derived-runtime-materialization@1"
+)
+
+# Operator-protected seed anchors. Derived runtime materialization refuses to
+# install a population whose task outputs target these paths.
+DEFAULT_DERIVED_PROTECTED_ANCHORS: Final[tuple[str, ...]] = (
+    "docs/architecture/AGENT_SUPERVISOR_PROOF_DIRECTED_PLANNER_DOCTOR_PLAN.md",
+    "docs/architecture/agent_supervisor_proof_directed_planner_doctor.objectives.md",
+    "docs/architecture/agent_supervisor_proof_directed_planner_doctor.todo.md",
+    "config/agent_supervisor_proof_directed_planner_doctor_scheduler.json",
+    "docs/architecture/agent_supervisor_planner_doctor_threat_model.md",
+    "config/agent_supervisor_planner_doctor_authority_policy.json",
+    "config/agent_supervisor_planner_doctor_authority_policy.seal.json",
+    "test/api/test_agent_supervisor_planner_doctor_authority_policy.py",
+    "config/agent_supervisor_planner_doctor_benchmark.json",
+    "config/agent_supervisor_planner_doctor_benchmark.seal.json",
+    "docs/architecture/agent_supervisor_planner_doctor_benchmark.md",
+    "test/fixtures/agent_supervisor/planner_doctor_holdout/manifest.json",
+    "test/api/test_agent_supervisor_planner_doctor_benchmark_contract.py",
+)
 
 DEFAULT_QUERY_LIMIT: Final = 100
 MAX_QUERY_LIMIT: Final = 1_000
@@ -1961,6 +1983,208 @@ class DuckDBTaskSource:
 
     install = materialize
 
+    def materialize_derived_runtime(
+        self,
+        source: Any,
+        *,
+        formal_plan_id: str,
+        source_identity: str,
+        parallel_plan_digest: str,
+        admission_receipt_cid: str,
+        repository_tree_id: str = "",
+        plan_root_cid: str = "",
+        receipt: Mapping[str, Any] | None = None,
+        protected_anchors: Sequence[str] = DEFAULT_DERIVED_PROTECTED_ANCHORS,
+        writer_id: str | None = None,
+        fencing_token: int | None = None,
+        fault_injector: Any | None = None,
+    ) -> Mapping[str, Any]:
+        """Admit compiled derived work into this separate DuckDB source.
+
+        Generated work may enter only after independent formal-plan
+        compilation, structural admission, and parallel-plan compilation.
+        The four gate identities are re-checked against a fresh formal
+        recompile before install.  Identical population replay is a no-op.
+        Seed-board anchors cannot appear as task outputs, and the projection
+        is labeled ``source_role=derived_runtime`` so it cannot be confused
+        with the operator-owned seed board.
+        """
+
+        if not (
+            str(formal_plan_id or "").strip()
+            and str(source_identity or "").strip()
+            and str(parallel_plan_digest or "").strip()
+            and str(admission_receipt_cid or "").strip()
+        ):
+            raise TaskSourceIntegrityError(
+                "derived runtime materialization requires independent "
+                "plan/admission/parallel compilation identities"
+            )
+        formal_plan_id = _identifier(formal_plan_id, noun="formal_plan_id")
+        source_identity = _identifier(source_identity, noun="source_identity")
+        parallel_plan_digest = _identifier(
+            parallel_plan_digest, noun="parallel_plan_digest"
+        )
+        admission_receipt_cid = _identifier(
+            admission_receipt_cid, noun="admission_receipt_cid"
+        )
+
+        # Reject candidate self-authorization / completion claims on the source.
+        if isinstance(source, Mapping):
+            for forbidden in (
+                "completion_authority",
+                "mutation_authority",
+                "seed_board_edit",
+                "mutate_seed_board",
+                "threshold_lower_authority",
+                "self_authorization",
+                "mark_complete",
+            ):
+                if source.get(forbidden) not in (None, False, "", 0):
+                    raise TaskSourceIntegrityError(
+                        f"derived source cannot claim {forbidden}"
+                    )
+            if source.get("source_role") not in (
+                None,
+                "",
+                DERIVED_RUNTIME_SOURCE_ROLE,
+            ):
+                raise TaskSourceIntegrityError(
+                    "derived source_role must be derived_runtime"
+                )
+
+        formal_source, graph = _source_and_projection(
+            source, repository_tree_id=repository_tree_id
+        )
+        # Refuse populations that edit protected anchors.
+        bundle = _section_bundle(formal_source)
+        _task_rows(bundle, graph)
+        for record in bundle.get("tasks") or ():
+            if not isinstance(record, Mapping):
+                continue
+            for effect in record.get("effects") or ():
+                if not isinstance(effect, Mapping):
+                    continue
+                path = str(effect.get("path") or "").replace("\\", "/").strip("/")
+                for anchor in protected_anchors:
+                    target = str(anchor).replace("\\", "/").strip("/")
+                    if path and (
+                        path == target or path.startswith(target + "/")
+                    ):
+                        raise TaskSourceIntegrityError(
+                            "derived runtime population targets a protected "
+                            f"anchor path: {path}"
+                        )
+
+        compile_result = FormalPlanCompiler().compile(formal_source)
+        if (
+            compile_result.status is not CompilationStatus.COMPILED
+            or compile_result.plan is None
+        ):
+            diagnostics = "; ".join(
+                item.message for item in compile_result.issues[:5]
+            )
+            raise TaskSourceIntegrityError(
+                "derived runtime formal plan input did not compile successfully"
+                + (f": {diagnostics}" if diagnostics else "")
+            )
+        if (
+            compile_result.plan_id != formal_plan_id
+            or compile_result.source_identity != source_identity
+        ):
+            raise TaskSourceIntegrityError(
+                "derived runtime formal plan identity does not match the "
+                "independent compilation gates"
+            )
+
+        derived_receipt = {
+            **dict(receipt or {}),
+            "schema": DERIVED_RUNTIME_MATERIALIZATION_SCHEMA,
+            "source_role": DERIVED_RUNTIME_SOURCE_ROLE,
+            "mutates_seed_board": False,
+            "completion_authority": False,
+            "mutation_authority": False,
+            "seed_board_edit": False,
+            "threshold_lower_authority": False,
+            "self_authorization": False,
+            "formal_plan_id": formal_plan_id,
+            "source_identity": source_identity,
+            "parallel_plan_digest": parallel_plan_digest,
+            "admission_receipt_cid": admission_receipt_cid,
+        }
+        result = self.materialize(
+            source,
+            repository_tree_id=repository_tree_id,
+            plan_root_cid=plan_root_cid,
+            receipt=derived_receipt,
+            writer_id=writer_id,
+            fencing_token=fencing_token,
+            fault_injector=fault_injector,
+        )
+        # Stamp durable role metadata when the database was installed or
+        # already held the identical population (replay no-op).
+        if self.database_path.exists():
+            with exclusive_file_lock(
+                self._lock_path, timeout_seconds=self.lock_timeout_seconds
+            ):
+                connection = _connect(self.database_path, read_only=False)
+                try:
+                    connection.execute("BEGIN TRANSACTION")
+                    metadata = _metadata(connection)
+                    live_writer = _meta_value(metadata, "writer_id")
+                    live_fence_raw = _meta_value(metadata, "writer_fence")
+                    try:
+                        live_fence = int(live_fence_raw)
+                    except (TypeError, ValueError):
+                        live_fence = 0
+                    selected_writer = _identifier(
+                        writer_id or self.writer_id, noun="writer_id"
+                    )
+                    selected_fence = (
+                        self.fencing_token
+                        if fencing_token is None
+                        else fencing_token
+                    )
+                    if live_writer and live_writer != selected_writer:
+                        raise TaskSourceConflictError(
+                            "stale writer cannot stamp derived runtime metadata"
+                        )
+                    if (
+                        live_fence
+                        and isinstance(selected_fence, int)
+                        and selected_fence < live_fence
+                    ):
+                        raise TaskSourceConflictError(
+                            "stale fencing token cannot stamp derived runtime metadata"
+                        )
+                    for key, value in (
+                        ("source_role", DERIVED_RUNTIME_SOURCE_ROLE),
+                        ("mutates_seed_board", "false"),
+                        ("parallel_plan_digest", parallel_plan_digest),
+                        ("admission_receipt_cid", admission_receipt_cid),
+                        ("derived_runtime", "true"),
+                    ):
+                        _set_metadata(connection, key, value)
+                    connection.execute("COMMIT")
+                except BaseException:
+                    try:
+                        connection.execute("ROLLBACK")
+                    except Exception:
+                        pass
+                    raise
+                finally:
+                    connection.close()
+        return {
+            **dict(result),
+            "source_role": DERIVED_RUNTIME_SOURCE_ROLE,
+            "mutates_seed_board": False,
+            "formal_plan_id": formal_plan_id,
+            "source_identity": source_identity,
+            "parallel_plan_digest": parallel_plan_digest,
+            "admission_receipt_cid": admission_receipt_cid,
+            "derived_runtime": True,
+        }
+
     @classmethod
     def from_formal_plan_input(
         cls,
@@ -2897,6 +3121,270 @@ class DuckDBTaskSource:
         self._recover_atomic_install()
         return self.validate_integrity()
 
+    def plan_revision_projection_cid(self) -> str:
+        """Return the exact content-addressed DuckDB projection CID."""
+
+        if not self.database_path.exists():
+            return ""
+        snapshot = self.snapshot()
+        return str(snapshot.projection_cid)
+
+    def apply_plan_revision(
+        self,
+        *,
+        revision: Any = None,
+        admission: Any = None,
+        goal_graph: Any = None,
+        aliases: Mapping[str, str] | None = None,
+        repository_tree_id: str = "",
+        retained_task_cids: Sequence[str] = (),
+        claimed_task_cids: Sequence[str] = (),
+        deferred_item_keys: Sequence[str] = (),
+        origin: str = "create",
+        delta: Any = None,
+        store_continuation: Any | None = None,
+        idempotency_key: str = "",
+        fencing_token: int | None = None,
+        receipt: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Apply one create/steer plan revision onto this DuckDB projection.
+
+        Create installs an admitted formal plan/graph.  Steer refuses to rewrite
+        claimed or accepted task identity payloads and only admits additive
+        population growth when a full candidate graph is supplied.  Continuation
+        state is written to the optional plan-revision store (CAS), never kept
+        only in process dictionaries.
+        """
+
+        del aliases  # DuckDB materialization derives aliases from the graph.
+        source = goal_graph if goal_graph is not None else admission
+        if source is None:
+            raise TaskSourceIntegrityError(
+                "apply_plan_revision requires a goal graph or formal plan input"
+            )
+        tree_id = repository_tree_id
+        if store_continuation is not None and idempotency_key:
+            putter = getattr(store_continuation, "put_continuation", None)
+            if callable(putter):
+                existing: dict[str, Any] = {}
+                loader = getattr(store_continuation, "load_continuation", None)
+                if callable(loader):
+                    prior = loader(idempotency_key)
+                    if isinstance(prior, Mapping):
+                        existing = dict(prior)
+                existing.update(
+                    {
+                        "duckdb_pending": {
+                            "database_path": str(self.database_path),
+                            "origin": str(origin),
+                            "plan_root_cid": str(
+                                getattr(revision, "plan_root_cid", "") or ""
+                            ),
+                        }
+                    }
+                )
+                putter(idempotency_key, existing)
+
+        claimed = {str(item) for item in claimed_task_cids}
+        retained = {str(item) for item in retained_task_cids}
+        protected = claimed | retained
+
+        if self.database_path.exists():
+            current = self.snapshot()
+            if origin == "create" or str(origin).endswith("create"):
+                # Create is install-once; identical replay is a no-op.
+                result = self.materialize(
+                    source,
+                    repository_tree_id=tree_id,
+                    plan_root_cid="",
+                    receipt=receipt,
+                    fencing_token=fencing_token,
+                )
+                return {
+                    "projection_cid": str(result.get("projection_cid") or ""),
+                    "receipt_cid": str(result.get("receipt_cid") or ""),
+                    "plan_root_cid": str(result.get("plan_root_cid") or ""),
+                    "changed": bool(result.get("changed")),
+                    "replayed": bool(result.get("replayed")),
+                    "deferred_item_keys": list(deferred_item_keys),
+                }
+
+            # Steer: verify protected task identities cannot change and refuse
+            # drops.  Additive population growth is applied by materializing a
+            # candidate into a temp database and swapping under store backups.
+            candidate_root = str(getattr(revision, "plan_root_cid", "") or "")
+            formal_source, graph = _source_and_projection(
+                source, repository_tree_id=tree_id
+            )
+            bundle = _section_bundle(formal_source)
+            task_rows, _task_records = _task_rows(bundle, graph)
+            candidate_cids = {str(row[0]) for row in task_rows}
+            current_tasks = {
+                str(task.task_cid): task for task in self.list_tasks(limit=MAX_TASKS)
+            }
+            current_cids = set(current_tasks)
+            if protected - candidate_cids:
+                missing = sorted(protected - candidate_cids)
+                raise TaskSourceConflictError(
+                    "claimed/accepted tasks missing from candidate plan: "
+                    + ", ".join(missing)
+                )
+            if current_cids - candidate_cids:
+                raise TaskSourceConflictError(
+                    "steer apply would drop existing DuckDB tasks"
+                )
+            if candidate_cids == current_cids and (
+                not candidate_root or candidate_root == current.plan_root_cid
+            ):
+                return {
+                    "projection_cid": current.projection_cid,
+                    "receipt_cid": "",
+                    "plan_root_cid": current.plan_root_cid,
+                    "changed": False,
+                    "replayed": True,
+                    "deferred_item_keys": list(deferred_item_keys),
+                    "delta_cid": str(getattr(delta, "delta_cid", "") or ""),
+                }
+
+            # After lifecycle events exist, a full candidate reinstall would
+            # destroy status history.  Refuse rather than rewrite claimed work.
+            if int(current.event_cursor) > 0:
+                raise TaskSourceConflictError(
+                    "DuckDB plan revision cannot reinstall after lifecycle "
+                    "events; claimed/accepted history must remain durable"
+                )
+            # Verify protected task identities against the live rows before any
+            # candidate install.
+            with self._read_connection() as (live_connection, _metadata):
+                live_identity_rows = live_connection.execute(
+                    "SELECT task_cid, identity_json FROM tasks ORDER BY task_cid"
+                ).fetchall()
+            live_identities = {
+                str(task_cid): _decode_canonical(
+                    identity_json, noun=f"task {task_cid} identity"
+                )
+                for task_cid, identity_json in live_identity_rows
+            }
+            candidate_identities = {
+                str(row[0]): _decode_canonical(
+                    row[6], noun=f"task {row[0]} identity"
+                )
+                for row in task_rows
+            }
+            for task_cid in protected:
+                if task_cid not in live_identities:
+                    continue
+                if live_identities[task_cid] != candidate_identities.get(task_cid):
+                    raise TaskSourceConflictError(
+                        f"claimed/accepted task {task_cid!r} identity "
+                        "would change under steer apply"
+                    )
+
+            # Build a candidate database beside the live path, then atomically
+            # replace under the live lock.  Safe only while no lifecycle events
+            # have been recorded (all tasks still at initial revision).
+            candidate_path = self.database_path.with_name(
+                f".{self.database_path.name}.plan-revision-candidate"
+            )
+            if candidate_path.exists():
+                candidate_path.unlink()
+            candidate = DuckDBTaskSource(
+                candidate_path,
+                writer_id=self.writer_id,
+                fencing_token=(
+                    self.fencing_token if fencing_token is None else fencing_token
+                ),
+                lock_timeout_seconds=self.lock_timeout_seconds,
+            )
+            try:
+                materialize_result = candidate.materialize(
+                    source,
+                    repository_tree_id=tree_id,
+                    plan_root_cid="",
+                    receipt={
+                        **dict(receipt or {}),
+                        "plan_revision_cid": str(
+                            getattr(revision, "revision_cid", "")
+                            or getattr(revision, "content_id", "")
+                            or ""
+                        ),
+                        "plan_revision_plan_root_cid": candidate_root,
+                        "origin": str(origin),
+                        "deferred_item_keys": list(deferred_item_keys),
+                    },
+                    fencing_token=fencing_token,
+                )
+                with exclusive_file_lock(
+                    self._lock_path, timeout_seconds=self.lock_timeout_seconds
+                ):
+                    os.replace(candidate_path, self.database_path)
+                    self._fsync_parent()
+                return {
+                    "projection_cid": str(
+                        materialize_result.get("projection_cid") or ""
+                    ),
+                    "receipt_cid": str(materialize_result.get("receipt_cid") or ""),
+                    "plan_root_cid": str(
+                        materialize_result.get("plan_root_cid") or candidate_root
+                    ),
+                    "changed": True,
+                    "replayed": False,
+                    "deferred_item_keys": list(deferred_item_keys),
+                    "delta_cid": str(getattr(delta, "delta_cid", "") or ""),
+                }
+            except Exception:
+                try:
+                    if candidate_path.exists():
+                        candidate_path.unlink()
+                except OSError:
+                    pass
+                raise
+
+        # DuckDB materialize binds the graph/formal plan root.  The plan
+        # revision root may be an admitted-plan envelope CID and must not be
+        # forced as the projection plan_root_cid.
+        result = self.materialize(
+            source,
+            repository_tree_id=tree_id,
+            plan_root_cid="",
+            receipt={
+                **dict(receipt or {}),
+                "plan_revision_cid": str(
+                    getattr(revision, "revision_cid", "")
+                    or getattr(revision, "content_id", "")
+                    or ""
+                ),
+                "plan_revision_plan_root_cid": str(
+                    getattr(revision, "plan_root_cid", "") or ""
+                ),
+                "deferred_item_keys": list(deferred_item_keys),
+                "origin": str(origin),
+            },
+            fencing_token=fencing_token,
+        )
+        if store_continuation is not None and idempotency_key:
+            putter = getattr(store_continuation, "put_continuation", None)
+            if callable(putter):
+                existing = {}
+                loader = getattr(store_continuation, "load_continuation", None)
+                if callable(loader):
+                    prior = loader(idempotency_key)
+                    if isinstance(prior, Mapping):
+                        existing = dict(prior)
+                existing["duckdb_committed"] = {
+                    "projection_cid": str(result.get("projection_cid") or ""),
+                    "receipt_cid": str(result.get("receipt_cid") or ""),
+                }
+                putter(idempotency_key, existing)
+        return {
+            "projection_cid": str(result.get("projection_cid") or ""),
+            "receipt_cid": str(result.get("receipt_cid") or ""),
+            "plan_root_cid": str(result.get("plan_root_cid") or ""),
+            "changed": bool(result.get("changed")),
+            "replayed": bool(result.get("replayed")),
+            "deferred_item_keys": list(deferred_item_keys),
+        }
+
 
 def materialize_duckdb_task_source(
     database_path: str | os.PathLike[str],
@@ -2910,7 +3398,10 @@ def materialize_duckdb_task_source(
 
 __all__ = [
     "CASResult",
+    "DEFAULT_DERIVED_PROTECTED_ANCHORS",
     "DEFAULT_QUERY_LIMIT",
+    "DERIVED_RUNTIME_MATERIALIZATION_SCHEMA",
+    "DERIVED_RUNTIME_SOURCE_ROLE",
     "DUCKDB_TASK_SOURCE_SCHEMA",
     "DUCKDB_TASK_SOURCE_SCHEMA_VERSION",
     "DuckDBTaskSource",

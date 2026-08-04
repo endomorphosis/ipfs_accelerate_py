@@ -3560,18 +3560,1361 @@ def open_task_source(
 adapt_task_source = open_task_source
 
 
+# ---------------------------------------------------------------------------
+# Active plan revision + compiled execution plan runtime binding (PDR-033)
+# ---------------------------------------------------------------------------
+#
+# The TaskSource protocol remains backend-neutral.  These helpers are the
+# fail-closed join between an active PlanRevision, its compiled
+# ParallelExecutionPlan, and runtime claim/readiness decisions.  They do not
+# create leases, worktrees, or merge-train entries; callers must acquire those
+# compiled names before publishing a claim.
+
+
+PARALLEL_PLAN_RUNTIME_INTERFACE: Final = "ParallelPlanRuntime@1"
+ACTIVE_PLAN_BINDING_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/active-plan-binding@1"
+)
+PLAN_RUNTIME_DISPATCH_RECEIPT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/plan-runtime-dispatch-receipt@1"
+)
+PLAN_RUNTIME_CLAIM_RECEIPT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/plan-runtime-claim-receipt@1"
+)
+
+_CLAIMED_STATUSES: Final = frozenset(
+    {
+        "claimed",
+        "in_progress",
+        "running",
+        "active",
+        "settling",
+        "merge-queued",
+        "merge_queued",
+    }
+)
+_TERMINAL_STATUSES: Final = frozenset(
+    {
+        "completed",
+        "complete",
+        "done",
+        "skipped",
+        "failed",
+        "blocked",
+        "quarantined",
+        "superseded",
+    }
+)
+
+
+class ActivePlanRevisionError(TaskSourceError):
+    """Base error for active plan revision / execution-plan runtime failures."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason: str = "",
+        details: Mapping[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.reason = str(reason or message)
+        self.details = dict(details or {})
+
+
+class MissingActivePlanRevisionError(ActivePlanRevisionError):
+    """No active plan revision is available when one is required."""
+
+
+class PartialPlanRevisionError(ActivePlanRevisionError):
+    """Active pointer, revision body, or execution plan is incomplete."""
+
+
+class MixedPlanRevisionError(ActivePlanRevisionError):
+    """Tasks or pointers from more than one plan revision were mixed."""
+
+
+class SupersededPlanRevisionError(ActivePlanRevisionError):
+    """Dispatch attempted against a superseded (non-active) plan revision."""
+
+
+class ExecutionSliceViolationError(ActivePlanRevisionError):
+    """Task is outside the authorized execution slice for this lane/plan."""
+
+
+class FakeParallelExecutionError(ActivePlanRevisionError):
+    """Caller-authored parallel labels would execute concurrently without graph width."""
+
+
+class ImmutableClaimRevisionError(ActivePlanRevisionError):
+    """A claimed task attempted to migrate off its original immutable revision."""
+
+
+class CompiledAssignmentMissingError(ActivePlanRevisionError):
+    """Compiled lease/worktree/fence assignment is missing for a claim candidate."""
+
+
+def _text_id(value: Any, *, noun: str = "id") -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise ActivePlanRevisionError(f"{noun} is required", reason=f"missing_{noun}")
+    return text
+
+
+def _mapping_payload(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, Mapping):
+        return dict(value)
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        payload = to_dict()
+        if isinstance(payload, Mapping):
+            return dict(payload)
+    raise ActivePlanRevisionError(
+        f"expected mapping payload, got {type(value).__name__}",
+        reason="invalid_payload",
+    )
+
+
+def _string_tuple(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, (str, bytes)):
+        text = str(value).strip()
+        return (text,) if text else ()
+    items: list[str] = []
+    for item in value:
+        text = str(item or "").strip()
+        if text and text not in items:
+            items.append(text)
+    return tuple(items)
+
+
+def _execution_plan_mapping(plan: Any) -> dict[str, Any]:
+    if plan is None:
+        raise PartialPlanRevisionError(
+            "compiled execution plan is required",
+            reason="missing_execution_plan",
+        )
+    if isinstance(plan, Mapping):
+        payload = dict(plan)
+    else:
+        to_dict = getattr(plan, "to_dict", None)
+        if not callable(to_dict):
+            raise PartialPlanRevisionError(
+                "execution plan is not serializable",
+                reason="invalid_execution_plan",
+            )
+        payload = dict(to_dict())
+    if not payload:
+        raise PartialPlanRevisionError(
+            "compiled execution plan is empty",
+            reason="empty_execution_plan",
+        )
+    plan_id = str(payload.get("plan_id") or "").strip()
+    outcome = str(payload.get("outcome") or "").strip().lower()
+    if not plan_id:
+        raise PartialPlanRevisionError(
+            "compiled execution plan is missing plan_id",
+            reason="missing_execution_plan_id",
+        )
+    if outcome == "rejected" or payload.get("admitted") is False:
+        raise PartialPlanRevisionError(
+            "compiled execution plan was rejected and cannot dispatch",
+            reason="execution_plan_rejected",
+            details={"plan_id": plan_id, "outcome": outcome},
+        )
+    return payload
+
+
+def _assignment_records(plan: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    records: dict[str, dict[str, Any]] = {}
+    for item in plan.get("assignments") or ():
+        payload = _mapping_payload(item)
+        task_id = str(payload.get("task_id") or "").strip()
+        if not task_id:
+            continue
+        records[task_id] = payload
+    return records
+
+
+def _ready_wave_task_ids(plan: Mapping[str, Any]) -> tuple[str, ...]:
+    ready: list[str] = []
+    for wave in plan.get("ready_waves") or ():
+        payload = _mapping_payload(wave)
+        for task_id in payload.get("graph_ready_task_ids") or ():
+            text = str(task_id or "").strip()
+            if text and text not in ready:
+                ready.append(text)
+    if ready:
+        return tuple(ready)
+    # Fall back to the first execution wave when ready_waves is empty but the
+    # plan still admits serial/review-only work.
+    for wave in plan.get("execution_waves") or ():
+        payload = _mapping_payload(wave)
+        for task_id in payload.get("task_ids") or ():
+            text = str(task_id or "").strip()
+            if text and text not in ready:
+                ready.append(text)
+        if ready:
+            break
+    return tuple(ready)
+
+
+def _execution_wave_membership(plan: Mapping[str, Any]) -> dict[str, int]:
+    membership: dict[str, int] = {}
+    for wave in plan.get("execution_waves") or ():
+        payload = _mapping_payload(wave)
+        wave_index = int(payload.get("execution_wave") or 0)
+        for task_id in payload.get("task_ids") or ():
+            text = str(task_id or "").strip()
+            if text and text not in membership:
+                membership[text] = wave_index
+    return membership
+
+
+def _merge_step_records(plan: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    records: dict[str, dict[str, Any]] = {}
+    for item in plan.get("merge_order") or ():
+        payload = _mapping_payload(item)
+        task_id = str(payload.get("task_id") or "").strip()
+        if task_id:
+            records[task_id] = payload
+    return records
+
+
+def _conflict_pairs(plan: Mapping[str, Any]) -> frozenset[frozenset[str]]:
+    pairs: set[frozenset[str]] = set()
+    for item in plan.get("conflicts") or ():
+        payload = _mapping_payload(item)
+        if payload.get("blocking") is False:
+            continue
+        left = str(payload.get("left_task_id") or "").strip()
+        right = str(payload.get("right_task_id") or "").strip()
+        if left and right and left != right:
+            pairs.add(frozenset((left, right)))
+    return frozenset(pairs)
+
+
+def _plan_task_ids(plan: Mapping[str, Any]) -> frozenset[str]:
+    ids: set[str] = set()
+    ids.update(_assignment_records(plan))
+    ids.update(_ready_wave_task_ids(plan))
+    ids.update(_execution_wave_membership(plan))
+    for path in ("critical_path",):
+        for task_id in plan.get(path) or ():
+            text = str(task_id or "").strip()
+            if text:
+                ids.add(text)
+    return frozenset(ids)
+
+
+@dataclass(frozen=True)
+class ActivePlanBinding:
+    """Immutable binding of the active plan revision and compiled execution plan."""
+
+    revision_cid: str
+    plan_root_cid: str
+    execution_plan_cid: str
+    semantic_revision: int
+    execution_plan: Mapping[str, Any]
+    event_cursor: str = ""
+    active_cid: str = ""
+    claimed_task_revisions: Mapping[str, str] = field(default_factory=dict)
+    retained_task_ids: tuple[str, ...] = ()
+    superseded_task_ids: tuple[str, ...] = ()
+    execution_slice_task_ids: tuple[str, ...] = ()
+    execution_slice_task_cids: tuple[str, ...] = ()
+    repository_tree_id: str = ""
+    capacity_snapshot_id: str = ""
+    provider_snapshot_ids: tuple[str, ...] = ()
+    schema: str = ACTIVE_PLAN_BINDING_SCHEMA
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "revision_cid", _text_id(self.revision_cid, noun="revision_cid"))
+        object.__setattr__(self, "plan_root_cid", _text_id(self.plan_root_cid, noun="plan_root_cid"))
+        object.__setattr__(
+            self,
+            "execution_plan_cid",
+            _text_id(self.execution_plan_cid, noun="execution_plan_cid"),
+        )
+        plan = _execution_plan_mapping(self.execution_plan)
+        object.__setattr__(self, "execution_plan", MappingProxyType(plan))
+        object.__setattr__(
+            self,
+            "claimed_task_revisions",
+            MappingProxyType(
+                {
+                    str(task_id).strip(): str(revision).strip()
+                    for task_id, revision in dict(self.claimed_task_revisions or {}).items()
+                    if str(task_id).strip() and str(revision).strip()
+                }
+            ),
+        )
+        object.__setattr__(self, "retained_task_ids", _string_tuple(self.retained_task_ids))
+        object.__setattr__(
+            self, "superseded_task_ids", _string_tuple(self.superseded_task_ids)
+        )
+        object.__setattr__(
+            self,
+            "execution_slice_task_ids",
+            _string_tuple(self.execution_slice_task_ids),
+        )
+        object.__setattr__(
+            self,
+            "execution_slice_task_cids",
+            _string_tuple(self.execution_slice_task_cids),
+        )
+        object.__setattr__(
+            self,
+            "provider_snapshot_ids",
+            _string_tuple(
+                self.provider_snapshot_ids
+                or plan.get("provider_snapshot_ids")
+                or ()
+            ),
+        )
+        if not self.repository_tree_id:
+            object.__setattr__(
+                self,
+                "repository_tree_id",
+                str(plan.get("repository_tree_id") or "").strip(),
+            )
+        if not self.capacity_snapshot_id:
+            object.__setattr__(
+                self,
+                "capacity_snapshot_id",
+                str(plan.get("capacity_snapshot_id") or "").strip(),
+            )
+        semantic = int(self.semantic_revision or 0)
+        if semantic < 1:
+            raise PartialPlanRevisionError(
+                "semantic_revision must be >= 1",
+                reason="invalid_semantic_revision",
+            )
+        object.__setattr__(self, "semantic_revision", semantic)
+
+    @property
+    def plan_id(self) -> str:
+        return str(self.execution_plan.get("plan_id") or self.execution_plan_cid)
+
+    @property
+    def assignment_by_task_id(self) -> dict[str, dict[str, Any]]:
+        return _assignment_records(self.execution_plan)
+
+    @property
+    def ready_wave_task_ids(self) -> tuple[str, ...]:
+        return _ready_wave_task_ids(self.execution_plan)
+
+    @property
+    def plan_task_ids(self) -> frozenset[str]:
+        return _plan_task_ids(self.execution_plan)
+
+    @property
+    def conflict_pairs(self) -> frozenset[frozenset[str]]:
+        return _conflict_pairs(self.execution_plan)
+
+    @property
+    def merge_steps(self) -> dict[str, dict[str, Any]]:
+        return _merge_step_records(self.execution_plan)
+
+    @property
+    def critical_path(self) -> tuple[str, ...]:
+        return _string_tuple(self.execution_plan.get("critical_path"))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "interface": PARALLEL_PLAN_RUNTIME_INTERFACE,
+            "revision_cid": self.revision_cid,
+            "plan_root_cid": self.plan_root_cid,
+            "execution_plan_cid": self.execution_plan_cid,
+            "semantic_revision": self.semantic_revision,
+            "event_cursor": self.event_cursor,
+            "active_cid": self.active_cid,
+            "claimed_task_revisions": dict(self.claimed_task_revisions),
+            "retained_task_ids": list(self.retained_task_ids),
+            "superseded_task_ids": list(self.superseded_task_ids),
+            "execution_slice_task_ids": list(self.execution_slice_task_ids),
+            "execution_slice_task_cids": list(self.execution_slice_task_cids),
+            "repository_tree_id": self.repository_tree_id,
+            "capacity_snapshot_id": self.capacity_snapshot_id,
+            "provider_snapshot_ids": list(self.provider_snapshot_ids),
+            "execution_plan": dict(self.execution_plan),
+            "plan_id": self.plan_id,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ActivePlanBinding":
+        data = _mapping_payload(payload)
+        return cls(
+            revision_cid=str(data.get("revision_cid") or ""),
+            plan_root_cid=str(data.get("plan_root_cid") or ""),
+            execution_plan_cid=str(
+                data.get("execution_plan_cid")
+                or data.get("execution_plan", {}).get("plan_id")
+                or ""
+            ),
+            semantic_revision=int(data.get("semantic_revision") or 0),
+            execution_plan=data.get("execution_plan") or {},
+            event_cursor=str(data.get("event_cursor") or ""),
+            active_cid=str(data.get("active_cid") or ""),
+            claimed_task_revisions=dict(data.get("claimed_task_revisions") or {}),
+            retained_task_ids=_string_tuple(data.get("retained_task_ids")),
+            superseded_task_ids=_string_tuple(data.get("superseded_task_ids")),
+            execution_slice_task_ids=_string_tuple(
+                data.get("execution_slice_task_ids")
+            ),
+            execution_slice_task_cids=_string_tuple(
+                data.get("execution_slice_task_cids")
+            ),
+            repository_tree_id=str(data.get("repository_tree_id") or ""),
+            capacity_snapshot_id=str(data.get("capacity_snapshot_id") or ""),
+            provider_snapshot_ids=_string_tuple(data.get("provider_snapshot_ids")),
+        )
+
+
+def bind_active_plan_revision(
+    *,
+    active: Mapping[str, Any] | Any,
+    revision: Mapping[str, Any] | Any,
+    execution_plan: Mapping[str, Any] | Any,
+    claimed_task_revisions: Mapping[str, str] | None = None,
+    execution_slice_task_ids: Iterable[str] = (),
+    execution_slice_task_cids: Iterable[str] = (),
+    require_execution_plan_cid_match: bool = True,
+) -> ActivePlanBinding:
+    """Bind the active pointer, revision body, and compiled execution plan.
+
+    Rejects partial, mixed, superseded, and rejected plans fail-closed.
+    """
+
+    active_payload = _mapping_payload(active)
+    revision_payload = _mapping_payload(revision)
+    plan_payload = _execution_plan_mapping(execution_plan)
+
+    # Prefer explicit fields; do not silently substitute plan_root for a missing
+    # revision identity (that would mask partial bindings).
+    revision_cid = str(
+        active_payload.get("revision_cid")
+        or revision_payload.get("revision_cid")
+        or ""
+    ).strip()
+    plan_root_cid = str(
+        active_payload.get("plan_root_cid")
+        or revision_payload.get("plan_root_cid")
+        or ""
+    ).strip()
+    execution_plan_cid = str(
+        revision_payload.get("execution_plan_cid")
+        or plan_payload.get("plan_id")
+        or ""
+    ).strip()
+    plan_id = str(plan_payload.get("plan_id") or "").strip()
+
+    missing = [
+        name
+        for name, value in (
+            ("revision_cid", revision_cid),
+            ("plan_root_cid", plan_root_cid),
+            ("execution_plan_cid", execution_plan_cid),
+        )
+        if not value
+    ]
+    if missing:
+        raise PartialPlanRevisionError(
+            "active plan binding is partial: " + ", ".join(missing),
+            reason="partial_plan_revision",
+            details={"missing": missing},
+        )
+
+    active_revision = str(active_payload.get("revision_cid") or "").strip()
+    body_revision = str(
+        revision_payload.get("revision_cid")
+        or revision_payload.get("plan_root_cid")
+        or ""
+    ).strip()
+    if active_revision and body_revision and active_revision != body_revision:
+        # Active pointer and loaded body disagree => mixed revisions.
+        if active_revision != plan_root_cid or body_revision != plan_root_cid:
+            if active_revision != body_revision:
+                raise MixedPlanRevisionError(
+                    "active pointer and revision body disagree",
+                    reason="mixed_plan_revision",
+                    details={
+                        "active_revision_cid": active_revision,
+                        "body_revision_cid": body_revision,
+                    },
+                )
+
+    active_root = str(active_payload.get("plan_root_cid") or "").strip()
+    body_root = str(revision_payload.get("plan_root_cid") or "").strip()
+    if active_root and body_root and active_root != body_root:
+        raise MixedPlanRevisionError(
+            "active plan root and revision body root disagree",
+            reason="mixed_plan_root",
+            details={
+                "active_plan_root_cid": active_root,
+                "body_plan_root_cid": body_root,
+            },
+        )
+
+    if require_execution_plan_cid_match and execution_plan_cid and plan_id:
+        # Accept either exact CID equality or revision pointing at plan_id.
+        if (
+            execution_plan_cid != plan_id
+            and not execution_plan_cid.endswith(plan_id)
+            and not plan_id.endswith(execution_plan_cid)
+        ):
+            # Soft identity: plan material may use content digest while the
+            # revision stores the same digest under execution_plan_cid.
+            if execution_plan_cid != plan_id:
+                # Still allow when revision's execution_plan_cid equals plan_id.
+                if str(revision_payload.get("execution_plan_cid") or "").strip() not in {
+                    plan_id,
+                    execution_plan_cid,
+                }:
+                    raise MixedPlanRevisionError(
+                        "revision execution_plan_cid does not match compiled plan",
+                        reason="mixed_execution_plan",
+                        details={
+                            "execution_plan_cid": execution_plan_cid,
+                            "plan_id": plan_id,
+                        },
+                    )
+
+    if bool(active_payload.get("quarantined")):
+        raise PartialPlanRevisionError(
+            "active plan projection is quarantined",
+            reason="plan_quarantined",
+            details={"revision_cid": revision_cid},
+        )
+
+    retained = _string_tuple(
+        revision_payload.get("retained_task_ids")
+        or (revision_payload.get("retained_population") or {}).get("member_ids")
+        or (revision_payload.get("retained_population") or {}).get("member_cids")
+        or ()
+    )
+    superseded = _string_tuple(
+        revision_payload.get("superseded_task_ids")
+        or (revision_payload.get("superseded_population") or {}).get("member_ids")
+        or (revision_payload.get("superseded_population") or {}).get("member_cids")
+        or ()
+    )
+    claimed = {
+        str(task_id).strip(): str(rev).strip()
+        for task_id, rev in dict(
+            claimed_task_revisions
+            or revision_payload.get("claimed_task_revisions")
+            or {}
+        ).items()
+        if str(task_id).strip() and str(rev).strip()
+    }
+
+    return ActivePlanBinding(
+        revision_cid=revision_cid or plan_root_cid,
+        plan_root_cid=plan_root_cid,
+        execution_plan_cid=execution_plan_cid or plan_id,
+        semantic_revision=int(
+            active_payload.get("semantic_revision")
+            or revision_payload.get("semantic_revision")
+            or 1
+        ),
+        execution_plan=plan_payload,
+        event_cursor=str(
+            active_payload.get("event_cursor")
+            or revision_payload.get("event_cursor")
+            or ""
+        ),
+        active_cid=str(active_payload.get("active_cid") or ""),
+        claimed_task_revisions=claimed,
+        retained_task_ids=retained,
+        superseded_task_ids=superseded,
+        execution_slice_task_ids=_string_tuple(execution_slice_task_ids),
+        execution_slice_task_cids=_string_tuple(execution_slice_task_cids),
+        repository_tree_id=str(
+            plan_payload.get("repository_tree_id")
+            or revision_payload.get("repository_tree_id")
+            or ""
+        ),
+        capacity_snapshot_id=str(plan_payload.get("capacity_snapshot_id") or ""),
+        provider_snapshot_ids=_string_tuple(plan_payload.get("provider_snapshot_ids")),
+    )
+
+
+def assert_revision_is_active(
+    binding: ActivePlanBinding,
+    *,
+    observed_active_revision_cid: str,
+    task_id: str = "",
+    task_retained: bool = False,
+) -> None:
+    """Reject dispatch when the bound revision is no longer active.
+
+    Claimed work retained on an immutable original revision is allowed when
+    ``task_retained`` is true or the task appears in the binding's retained set.
+    """
+
+    observed = str(observed_active_revision_cid or "").strip()
+    if not observed:
+        raise MissingActivePlanRevisionError(
+            "observed active revision is missing",
+            reason="missing_active_revision",
+        )
+    if observed == binding.revision_cid or observed == binding.plan_root_cid:
+        return
+    retained = task_retained or (
+        bool(task_id)
+        and (
+            task_id in binding.retained_task_ids
+            or task_id in binding.claimed_task_revisions
+        )
+    )
+    if retained:
+        return
+    raise SupersededPlanRevisionError(
+        f"plan revision {binding.revision_cid!r} is superseded by {observed!r}",
+        reason="superseded_plan_revision",
+        details={
+            "bound_revision_cid": binding.revision_cid,
+            "active_revision_cid": observed,
+            "task_id": task_id,
+        },
+    )
+
+
+def assert_task_in_execution_slice(
+    binding: ActivePlanBinding,
+    *,
+    task_id: str,
+    task_cid: str = "",
+    require_plan_membership: bool = True,
+) -> None:
+    """Reject tasks outside the authorized execution slice / compiled plan."""
+
+    task_id = str(task_id or "").strip()
+    task_cid = str(task_cid or "").strip()
+    if not task_id and not task_cid:
+        raise ExecutionSliceViolationError(
+            "task identity is required for execution-slice checks",
+            reason="missing_task_identity",
+        )
+
+    slice_ids = set(binding.execution_slice_task_ids)
+    slice_cids = set(binding.execution_slice_task_cids)
+    if slice_ids or slice_cids:
+        in_slice = (task_id and task_id in slice_ids) or (
+            task_cid and task_cid in slice_cids
+        )
+        if not in_slice:
+            raise ExecutionSliceViolationError(
+                f"task {task_id or task_cid!r} is outside the execution slice",
+                reason="outside_execution_slice",
+                details={
+                    "task_id": task_id,
+                    "task_cid": task_cid,
+                    "execution_slice_task_ids": list(slice_ids),
+                    "execution_slice_task_cids": list(slice_cids),
+                },
+            )
+
+    if require_plan_membership:
+        plan_ids = binding.plan_task_ids
+        if plan_ids and task_id and task_id not in plan_ids:
+            raise ExecutionSliceViolationError(
+                f"task {task_id!r} is not present in the compiled execution plan",
+                reason="outside_compiled_plan",
+                details={"task_id": task_id, "plan_id": binding.plan_id},
+            )
+
+    if task_id and task_id in binding.superseded_task_ids:
+        if task_id not in binding.retained_task_ids and task_id not in binding.claimed_task_revisions:
+            raise SupersededPlanRevisionError(
+                f"task {task_id!r} was superseded and is not retained",
+                reason="superseded_task",
+                details={"task_id": task_id, "revision_cid": binding.revision_cid},
+            )
+
+
+def assert_claim_retains_original_revision(
+    binding: ActivePlanBinding,
+    *,
+    task_id: str,
+    claim_revision_cid: str,
+    current_status: str = "",
+) -> None:
+    """Keep claimed tasks pinned to their immutable original plan revision."""
+
+    task_id = str(task_id or "").strip()
+    claim_revision = str(claim_revision_cid or "").strip()
+    status = str(current_status or "").strip().lower()
+    if not task_id or not claim_revision:
+        raise ImmutableClaimRevisionError(
+            "claimed task identity and original revision are required",
+            reason="missing_claim_revision",
+        )
+    original = str(binding.claimed_task_revisions.get(task_id) or "").strip()
+    if original and original != claim_revision:
+        raise ImmutableClaimRevisionError(
+            f"claimed task {task_id!r} must retain original revision "
+            f"{original!r}, not {claim_revision!r}",
+            reason="claim_revision_migration",
+            details={
+                "task_id": task_id,
+                "original_revision_cid": original,
+                "attempted_revision_cid": claim_revision,
+            },
+        )
+    if status in _CLAIMED_STATUSES and not original:
+        # First claim: the binding revision becomes the immutable original.
+        return
+    if original and claim_revision != original:
+        raise ImmutableClaimRevisionError(
+            f"task {task_id!r} claim revision drifted",
+            reason="claim_revision_drift",
+            details={
+                "task_id": task_id,
+                "original_revision_cid": original,
+                "attempted_revision_cid": claim_revision,
+            },
+        )
+
+
+def recompute_readiness_statuses(
+    tasks: Sequence[Mapping[str, Any] | TaskSourceTask | Any],
+    *,
+    completed_ids: Iterable[str] = (),
+    blocked_ids: Iterable[str] = (),
+    binding: ActivePlanBinding | None = None,
+    status_overrides: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Recompute readiness from typed dependencies (and optional plan waves).
+
+    Status CAS consumers should treat the returned mapping as the expected
+    pre-claim state: only ``ready`` tasks may be claimed.
+    """
+
+    completed = {
+        str(item).strip() for item in completed_ids if str(item).strip()
+    }
+    blocked = {str(item).strip() for item in blocked_ids if str(item).strip()}
+    overrides = {
+        str(task_id).strip(): str(status).strip().lower()
+        for task_id, status in dict(status_overrides or {}).items()
+        if str(task_id).strip() and str(status).strip()
+    }
+    records: list[tuple[str, str, tuple[str, ...]]] = []
+    for raw in tasks:
+        if isinstance(raw, TaskSourceTask):
+            task_id = raw.task_id
+            status = str(raw.status or "").strip().lower()
+            deps = tuple(
+                dict.fromkeys(
+                    [
+                        *[str(item).strip() for item in raw.dependency_task_ids if str(item).strip()],
+                        *[str(item).strip() for item in raw.dependency_task_cids if str(item).strip()],
+                    ]
+                )
+            )
+        else:
+            payload = _mapping_payload(raw)
+            task_id = str(
+                payload.get("task_id") or payload.get("task_alias") or ""
+            ).strip()
+            status = str(payload.get("status") or "").strip().lower()
+            deps = _string_tuple(
+                payload.get("dependency_task_ids")
+                or payload.get("depends_on")
+                or payload.get("dependencies")
+                or payload.get("dependency_task_cids")
+                or ()
+            )
+        if not task_id:
+            continue
+        records.append((task_id, status, deps))
+        if status in COMPLETED_STATUSES:
+            completed.add(task_id)
+
+    ready_wave = set(binding.ready_wave_task_ids) if binding is not None else set()
+    plan_ids = set(binding.plan_task_ids) if binding is not None else set()
+    resolved: dict[str, str] = {}
+    for task_id, status, deps in records:
+        if task_id in overrides:
+            resolved[task_id] = overrides[task_id]
+            continue
+        if status in COMPLETED_STATUSES or task_id in completed:
+            resolved[task_id] = "completed"
+            continue
+        if status in {"blocked", "quarantined", "failed"} or task_id in blocked:
+            resolved[task_id] = "blocked"
+            continue
+        if status in {"superseded"} or (
+            binding is not None and task_id in binding.superseded_task_ids
+            and task_id not in binding.retained_task_ids
+            and task_id not in binding.claimed_task_revisions
+        ):
+            resolved[task_id] = "superseded"
+            continue
+        if status in _CLAIMED_STATUSES:
+            resolved[task_id] = "in_progress"
+            continue
+        unresolved = [dep for dep in deps if dep not in completed]
+        if unresolved:
+            resolved[task_id] = "waiting"
+            continue
+        if plan_ids and task_id not in plan_ids:
+            resolved[task_id] = "waiting"
+            continue
+        if ready_wave and task_id not in ready_wave:
+            # Present in the plan but not in the current ready wave.
+            resolved[task_id] = "waiting"
+            continue
+        resolved[task_id] = "ready"
+    return resolved
+
+
+def recompute_status_cas(
+    source: TaskSource,
+    task_id: str,
+    *,
+    expected_status: str | Sequence[str],
+    new_status: str,
+    expected_revision: str | int,
+    receipt: Mapping[str, Any] | None = None,
+    binding: ActivePlanBinding | None = None,
+) -> TaskSourceCASResult:
+    """Status CAS that re-checks readiness against an optional active plan."""
+
+    task_id = str(task_id or "").strip()
+    if not task_id:
+        raise TaskSourceBoundsError("task_id is required for status CAS")
+    if binding is not None:
+        assert_task_in_execution_slice(binding, task_id=task_id)
+        current = source.get(task_id)
+        if current is not None:
+            readiness = recompute_readiness_statuses(
+                [current],
+                binding=binding,
+            )
+            recomputed = readiness.get(task_id, str(current.status or "").lower())
+            expected = {
+                str(item).strip().lower()
+                for item in (
+                    (expected_status,)
+                    if isinstance(expected_status, str)
+                    else tuple(expected_status)
+                )
+                if str(item).strip()
+            }
+            if expected and recomputed not in expected and "ready" in expected:
+                # Fail closed: readiness drifted between selection and CAS.
+                raise TaskSourceConflictError(
+                    f"readiness CAS rejected for {task_id}: "
+                    f"recomputed {recomputed!r} not in {sorted(expected)!r}"
+                )
+            if str(new_status).strip().lower() in _CLAIMED_STATUSES:
+                assert_claim_retains_original_revision(
+                    binding,
+                    task_id=task_id,
+                    claim_revision_cid=binding.revision_cid,
+                    current_status=str(current.status or ""),
+                )
+    return source.compare_and_swap_status(
+        task_id,
+        expected_status=expected_status,
+        new_status=new_status,
+        expected_revision=expected_revision,
+        receipt=receipt,
+    )
+
+
+@dataclass(frozen=True)
+class CompiledClaimPreconditions:
+    """Lease/worktree/fence names that must be acquired before a claim."""
+
+    task_id: str
+    revision_cid: str
+    plan_id: str
+    assignment: Mapping[str, Any]
+    lease_id: str
+    lease_scope: str
+    worktree_id: str
+    worktree_path: str
+    fence_epoch: int
+    fence_token: str
+    affinity_key: str
+    exclusive_group: str
+    exclusive_paths: tuple[str, ...]
+    provider_id: str
+    resource_class: str
+    merge_train_id: str
+    post_merge_validation: tuple[str, ...]
+    critical_path_rank: int
+    fairness_key: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": PLAN_RUNTIME_CLAIM_RECEIPT_SCHEMA,
+            "task_id": self.task_id,
+            "revision_cid": self.revision_cid,
+            "plan_id": self.plan_id,
+            "assignment": dict(self.assignment),
+            "lease_id": self.lease_id,
+            "lease_scope": self.lease_scope,
+            "worktree_id": self.worktree_id,
+            "worktree_path": self.worktree_path,
+            "fence_epoch": self.fence_epoch,
+            "fence_token": self.fence_token,
+            "affinity_key": self.affinity_key,
+            "exclusive_group": self.exclusive_group,
+            "exclusive_paths": list(self.exclusive_paths),
+            "provider_id": self.provider_id,
+            "resource_class": self.resource_class,
+            "merge_train_id": self.merge_train_id,
+            "post_merge_validation": list(self.post_merge_validation),
+            "critical_path_rank": self.critical_path_rank,
+            "fairness_key": self.fairness_key,
+        }
+
+
+def compiled_claim_preconditions(
+    binding: ActivePlanBinding,
+    task_id: str,
+) -> CompiledClaimPreconditions:
+    """Return the compiled lease/worktree/fence scope that must precede claim."""
+
+    task_id = str(task_id or "").strip()
+    if not task_id:
+        raise CompiledAssignmentMissingError(
+            "task_id is required",
+            reason="missing_task_id",
+        )
+    assert_task_in_execution_slice(binding, task_id=task_id)
+    assignment = binding.assignment_by_task_id.get(task_id)
+    if not assignment:
+        raise CompiledAssignmentMissingError(
+            f"compiled assignment missing for task {task_id!r}",
+            reason="missing_compiled_assignment",
+            details={"task_id": task_id, "plan_id": binding.plan_id},
+        )
+    lease_id = str(assignment.get("lease_id") or "").strip()
+    worktree_id = str(assignment.get("worktree_id") or "").strip()
+    fence_token = str(assignment.get("fence_token") or "").strip()
+    missing = [
+        name
+        for name, value in (
+            ("lease_id", lease_id),
+            ("worktree_id", worktree_id),
+            ("fence_token", fence_token),
+        )
+        if not value
+    ]
+    if missing:
+        raise CompiledAssignmentMissingError(
+            f"compiled assignment for {task_id!r} missing {', '.join(missing)}",
+            reason="incomplete_compiled_assignment",
+            details={"task_id": task_id, "missing": missing},
+        )
+    merge = binding.merge_steps.get(task_id) or {}
+    critical = list(binding.critical_path)
+    try:
+        critical_rank = critical.index(task_id)
+    except ValueError:
+        critical_rank = len(critical)
+    affinity = str(assignment.get("affinity_key") or "").strip()
+    exclusive_group = str(assignment.get("exclusive_group") or "").strip()
+    return CompiledClaimPreconditions(
+        task_id=task_id,
+        revision_cid=binding.revision_cid,
+        plan_id=binding.plan_id,
+        assignment=dict(assignment),
+        lease_id=lease_id,
+        lease_scope=str(assignment.get("lease_scope") or "task").strip() or "task",
+        worktree_id=worktree_id,
+        worktree_path=str(assignment.get("worktree_path") or "").strip(),
+        fence_epoch=int(assignment.get("fence_epoch") or 0),
+        fence_token=fence_token,
+        affinity_key=affinity,
+        exclusive_group=exclusive_group,
+        exclusive_paths=_string_tuple(assignment.get("exclusive_paths")),
+        provider_id=str(assignment.get("provider_id") or "").strip(),
+        resource_class=str(assignment.get("resource_class") or "").strip(),
+        merge_train_id=str(
+            merge.get("merge_train_id")
+            or assignment.get("merge_target")
+            or ""
+        ).strip(),
+        post_merge_validation=_string_tuple(merge.get("post_merge_validation")),
+        critical_path_rank=critical_rank,
+        fairness_key=affinity or exclusive_group or str(assignment.get("shard_id") or task_id),
+    )
+
+
+def assert_no_conflict_with_active(
+    binding: ActivePlanBinding,
+    task_id: str,
+    *,
+    active_task_ids: Iterable[str] = (),
+) -> None:
+    """Reject concurrent execution of conflict/exclusive-group peers."""
+
+    task_id = str(task_id or "").strip()
+    active = {str(item).strip() for item in active_task_ids if str(item).strip()}
+    active.discard(task_id)
+    if not active:
+        return
+    preconditions = compiled_claim_preconditions(binding, task_id)
+    for other_id in sorted(active):
+        pair = frozenset((task_id, other_id))
+        if pair in binding.conflict_pairs:
+            raise ActivePlanRevisionError(
+                f"task {task_id!r} conflicts with active task {other_id!r}",
+                reason="conflict_surface",
+                details={"task_id": task_id, "active_task_id": other_id},
+            )
+        other_assignment = binding.assignment_by_task_id.get(other_id) or {}
+        other_group = str(other_assignment.get("exclusive_group") or "").strip()
+        if (
+            preconditions.exclusive_group
+            and other_group
+            and preconditions.exclusive_group == other_group
+        ):
+            raise ActivePlanRevisionError(
+                f"task {task_id!r} shares exclusive group "
+                f"{preconditions.exclusive_group!r} with active {other_id!r}",
+                reason="exclusive_group_conflict",
+                details={
+                    "task_id": task_id,
+                    "active_task_id": other_id,
+                    "exclusive_group": preconditions.exclusive_group,
+                },
+            )
+        # Anti-affinity: same affinity key with different exclusive groups may
+        # still be blocked when the compiler recorded anti-affinity on the
+        # conflict surface exclusive_groups field.
+        for conflict in binding.execution_plan.get("conflicts") or ():
+            payload = _mapping_payload(conflict)
+            left = str(payload.get("left_task_id") or "").strip()
+            right = str(payload.get("right_task_id") or "").strip()
+            if {left, right} != {task_id, other_id}:
+                continue
+            anti = {
+                str(item).strip()
+                for item in (payload.get("anti_affinity_keys") or ())
+                if str(item).strip()
+            }
+            if anti and (
+                preconditions.affinity_key in anti
+                or str(other_assignment.get("affinity_key") or "").strip() in anti
+            ):
+                raise ActivePlanRevisionError(
+                    f"task {task_id!r} violates anti-affinity with {other_id!r}",
+                    reason="anti_affinity_conflict",
+                    details={"task_id": task_id, "active_task_id": other_id},
+                )
+
+
+def assert_fake_parallel_not_concurrent(
+    binding: ActivePlanBinding,
+    task_ids: Iterable[str],
+) -> None:
+    """Reject concurrent execution of tasks that only share fake lane labels.
+
+    The compiler records ``FAKE_LANE_LABEL`` by rejecting the plan.  At runtime
+    we additionally refuse to co-schedule tasks that are not co-members of any
+    conflict-free ready wave / execution wave, even when callers stamp matching
+    parallel lane labels.
+    """
+
+    selected = [str(item).strip() for item in task_ids if str(item).strip()]
+    if len(selected) < 2:
+        return
+    allowed_sets: list[set[str]] = []
+    for wave in binding.execution_plan.get("ready_waves") or ():
+        payload = _mapping_payload(wave)
+        for lane in payload.get("conflict_free_lanes") or ():
+            allowed_sets.append({str(item).strip() for item in lane if str(item).strip()})
+    for wave in binding.execution_plan.get("execution_waves") or ():
+        payload = _mapping_payload(wave)
+        allowed_sets.append(
+            {str(item).strip() for item in (payload.get("task_ids") or ()) if str(item).strip()}
+        )
+    selected_set = set(selected)
+    if any(selected_set.issubset(allowed) for allowed in allowed_sets if allowed):
+        return
+    # If the plan never co-schedules these tasks, treat concurrent execution as
+    # fake parallelism regardless of caller-authored lane labels.
+    labels = []
+    for task_id in selected:
+        assignment = binding.assignment_by_task_id.get(task_id) or {}
+        labels.append(str(assignment.get("shard_id") or assignment.get("affinity_key") or ""))
+    raise FakeParallelExecutionError(
+        "tasks are not co-scheduled by the compiled execution plan",
+        reason="fake_parallel_labels",
+        details={
+            "task_ids": selected,
+            "lane_labels": labels,
+            "plan_id": binding.plan_id,
+        },
+    )
+
+
+def order_ready_by_fairness_and_critical_path(
+    binding: ActivePlanBinding,
+    ready_task_ids: Iterable[str],
+) -> tuple[str, ...]:
+    """Order ready tasks by critical path first, then fairness key, then id."""
+
+    ready = [str(item).strip() for item in ready_task_ids if str(item).strip()]
+    critical = {task_id: index for index, task_id in enumerate(binding.critical_path)}
+
+    def sort_key(task_id: str) -> tuple[Any, ...]:
+        try:
+            preconditions = compiled_claim_preconditions(binding, task_id)
+            fairness = preconditions.fairness_key
+            rank = preconditions.critical_path_rank
+        except ActivePlanRevisionError:
+            fairness = task_id
+            rank = critical.get(task_id, len(critical))
+        return (rank, fairness, task_id)
+
+    return tuple(sorted(ready, key=sort_key))
+
+
+@dataclass(frozen=True)
+class PlanRuntimeDispatchDecision:
+    """Result of validating one dispatch candidate against the active plan."""
+
+    admitted: bool
+    task_id: str
+    reason: str
+    binding: ActivePlanBinding | None
+    preconditions: CompiledClaimPreconditions | None = None
+    readiness: Mapping[str, str] = field(default_factory=dict)
+    details: Mapping[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": PLAN_RUNTIME_DISPATCH_RECEIPT_SCHEMA,
+            "interface": PARALLEL_PLAN_RUNTIME_INTERFACE,
+            "admitted": self.admitted,
+            "task_id": self.task_id,
+            "reason": self.reason,
+            "binding": None if self.binding is None else self.binding.to_dict(),
+            "preconditions": (
+                None
+                if self.preconditions is None
+                else self.preconditions.to_dict()
+            ),
+            "readiness": dict(self.readiness),
+            "details": dict(self.details),
+        }
+
+
+def evaluate_plan_runtime_dispatch(
+    binding: ActivePlanBinding,
+    *,
+    task_id: str,
+    task_cid: str = "",
+    tasks: Sequence[Mapping[str, Any] | TaskSourceTask | Any] = (),
+    completed_ids: Iterable[str] = (),
+    blocked_ids: Iterable[str] = (),
+    active_task_ids: Iterable[str] = (),
+    observed_active_revision_cid: str = "",
+    task_status: str = "",
+    concurrent_claim_task_ids: Iterable[str] = (),
+) -> PlanRuntimeDispatchDecision:
+    """Full pre-claim gate: revision, slice, readiness, conflicts, assignment."""
+
+    task_id = str(task_id or "").strip()
+    try:
+        assert_revision_is_active(
+            binding,
+            observed_active_revision_cid=(
+                observed_active_revision_cid or binding.revision_cid
+            ),
+            task_id=task_id,
+            task_retained=task_id in binding.claimed_task_revisions,
+        )
+        assert_task_in_execution_slice(
+            binding,
+            task_id=task_id,
+            task_cid=task_cid,
+        )
+        readiness = recompute_readiness_statuses(
+            tasks,
+            completed_ids=completed_ids,
+            blocked_ids=blocked_ids,
+            binding=binding,
+        )
+        if readiness and readiness.get(task_id, "ready") != "ready":
+            return PlanRuntimeDispatchDecision(
+                admitted=False,
+                task_id=task_id,
+                reason=f"not_ready:{readiness.get(task_id, 'unknown')}",
+                binding=binding,
+                readiness=readiness,
+            )
+        if task_status and str(task_status).strip().lower() in _TERMINAL_STATUSES:
+            return PlanRuntimeDispatchDecision(
+                admitted=False,
+                task_id=task_id,
+                reason=f"terminal_status:{task_status}",
+                binding=binding,
+                readiness=readiness,
+            )
+        assert_no_conflict_with_active(
+            binding,
+            task_id,
+            active_task_ids=active_task_ids,
+        )
+        concurrent = [
+            str(item).strip()
+            for item in concurrent_claim_task_ids
+            if str(item).strip()
+        ]
+        if concurrent:
+            assert_fake_parallel_not_concurrent(
+                binding,
+                [task_id, *concurrent],
+            )
+            assert_no_conflict_with_active(
+                binding,
+                task_id,
+                active_task_ids=concurrent,
+            )
+        preconditions = compiled_claim_preconditions(binding, task_id)
+        assert_claim_retains_original_revision(
+            binding,
+            task_id=task_id,
+            claim_revision_cid=binding.revision_cid,
+            current_status=task_status or readiness.get(task_id, ""),
+        )
+        return PlanRuntimeDispatchDecision(
+            admitted=True,
+            task_id=task_id,
+            reason="admitted",
+            binding=binding,
+            preconditions=preconditions,
+            readiness=readiness,
+            details={
+                "merge_train_id": preconditions.merge_train_id,
+                "post_merge_validation": list(preconditions.post_merge_validation),
+                "lease_id": preconditions.lease_id,
+                "worktree_id": preconditions.worktree_id,
+                "fence_token": preconditions.fence_token,
+            },
+        )
+    except ActivePlanRevisionError as exc:
+        return PlanRuntimeDispatchDecision(
+            admitted=False,
+            task_id=task_id,
+            reason=exc.reason,
+            binding=binding,
+            details=dict(exc.details),
+        )
+
+
+def load_active_plan_binding_from_store(
+    store: Any,
+    *,
+    execution_plan: Mapping[str, Any] | Any | None = None,
+    execution_plan_loader: Any = None,
+    claimed_task_revisions: Mapping[str, str] | None = None,
+    execution_slice_task_ids: Iterable[str] = (),
+    execution_slice_task_cids: Iterable[str] = (),
+) -> ActivePlanBinding:
+    """Load and bind the active plan revision from a PlanRevisionStore-like object."""
+
+    if store is None:
+        raise MissingActivePlanRevisionError(
+            "plan revision store is required",
+            reason="missing_plan_revision_store",
+        )
+    if bool(getattr(store, "is_quarantined", lambda: False)()):
+        raise PartialPlanRevisionError(
+            "plan revision store is quarantined",
+            reason="plan_store_quarantined",
+        )
+    active = store.get_active()
+    if active is None:
+        raise MissingActivePlanRevisionError(
+            "no active plan revision",
+            reason="missing_active_plan_revision",
+        )
+    active_payload = _mapping_payload(active)
+    revision_cid = str(active_payload.get("revision_cid") or "").strip()
+    if not revision_cid:
+        raise PartialPlanRevisionError(
+            "active projection missing revision_cid",
+            reason="partial_active_projection",
+        )
+    load_revision = getattr(store, "load_revision", None)
+    if not callable(load_revision):
+        raise PartialPlanRevisionError(
+            "plan revision store cannot load revisions",
+            reason="store_missing_load_revision",
+        )
+    revision = load_revision(revision_cid)
+    revision_payload = _mapping_payload(revision)
+    plan = execution_plan
+    if plan is None:
+        plan_cid = str(revision_payload.get("execution_plan_cid") or "").strip()
+        if not plan_cid:
+            raise PartialPlanRevisionError(
+                "active revision missing execution_plan_cid",
+                reason="missing_execution_plan_cid",
+            )
+        if callable(execution_plan_loader):
+            plan = execution_plan_loader(plan_cid)
+        else:
+            get_cas = getattr(store, "get_cas", None)
+            if not callable(get_cas):
+                raise PartialPlanRevisionError(
+                    "execution plan loader is required when store has no CAS",
+                    reason="missing_execution_plan_loader",
+                )
+            plan = get_cas(plan_cid)
+    return bind_active_plan_revision(
+        active=active_payload,
+        revision=revision_payload,
+        execution_plan=plan,
+        claimed_task_revisions=claimed_task_revisions,
+        execution_slice_task_ids=execution_slice_task_ids,
+        execution_slice_task_cids=execution_slice_task_cids,
+    )
+
+
 __all__ = [
+    "ACTIVE_PLAN_BINDING_SCHEMA",
+    "ActivePlanBinding",
+    "ActivePlanRevisionError",
     "CANONICAL_PROJECTION_SNAPSHOT_SCHEMA",
     "CanonicalTaskSource",
     "CanonicalProjectionSnapshot",
+    "CompiledAssignmentMissingError",
+    "CompiledClaimPreconditions",
     "DEFAULT_QUERY_LIMIT",
     "DUAL_TASK_SOURCE_SCHEMA",
     "DUAL_TASK_SOURCE_TRANSACTION_SCHEMA",
     "DualTaskSource",
     "DualTaskSourcePartialError",
+    "ExecutionSliceViolationError",
+    "FakeParallelExecutionError",
+    "ImmutableClaimRevisionError",
     "MAX_QUERY_LIMIT",
     "MAX_SNAPSHOT_TASKS",
+    "MissingActivePlanRevisionError",
+    "MixedPlanRevisionError",
+    "PARALLEL_PLAN_RUNTIME_INTERFACE",
+    "PLAN_RUNTIME_CLAIM_RECEIPT_SCHEMA",
+    "PLAN_RUNTIME_DISPATCH_RECEIPT_SCHEMA",
+    "PartialPlanRevisionError",
+    "PlanRuntimeDispatchDecision",
     "SUPPORTED_SOURCE_KINDS",
+    "SupersededPlanRevisionError",
     "TASK_SOURCE_IDENTITY_SCHEMA",
     "TASK_SOURCE_MIGRATION_RECEIPT_SCHEMA",
     "TASK_SOURCE_PARITY_REPORT_SCHEMA",
@@ -3596,10 +4939,23 @@ __all__ = [
     "UnsupportedTaskSourceError",
     "VerifiedCanonicalTaskSourceSnapshot",
     "adapt_task_source",
+    "assert_claim_retains_original_revision",
+    "assert_fake_parallel_not_concurrent",
+    "assert_no_conflict_with_active",
+    "assert_revision_is_active",
+    "assert_task_in_execution_slice",
+    "bind_active_plan_revision",
     "canonical_projection_snapshot",
     "compare_task_source_projections",
     "compare_task_sources",
+    "compiled_claim_preconditions",
+    "evaluate_plan_runtime_dispatch",
+    "load_active_plan_binding_from_store",
     "migrate_task_source_projection",
     "open_task_source",
+    "order_ready_by_fairness_and_critical_path",
     "rebuild_task_source_projection",
+    "recompute_readiness_statuses",
+    "recompute_status_cas",
 ]
+

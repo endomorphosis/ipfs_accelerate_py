@@ -92,6 +92,9 @@ DOCTOR_OPERATOR_DESCRIPTOR_SCHEMA: Final[str] = (
 DOCTOR_REPAIR_OPERATOR_REGISTRY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/deterministic-doctor/operator-registry@1"
 )
+ANALYTICAL_TRANSFORM_CAPABILITY_INTERFACE: Final[str] = (
+    "DeterministicDoctorAnalyticalTransformCapabilities@1"
+)
 PRODUCER_ID: Final[str] = "deterministic-doctor-transforms@1"
 CONTRACT_VERSION: Final[int] = 1
 RENDERER_ID: Final[str] = ANALYTICAL_CHANGE_TRANSFORMER_INTERFACE
@@ -524,6 +527,54 @@ _KIND_BY_OPERATOR: Final[Mapping[DoctorOperatorKind, DoctorOperatorKindBinding]]
 assert frozenset(_KIND_BY_OPERATOR) == frozenset(DoctorOperatorKind), (
     "default doctor operator table must cover every DoctorOperatorKind"
 )
+
+# Public inventory consumed by the reviewed RepairOperatorRegistry@1.  Values
+# are canonical v2 repair-operator kind strings rather than executable
+# callables: looking up this mapping cannot acquire render, proof, or write
+# authority.  One analytical transform may intentionally back more than one
+# semantically distinct reviewed operator.
+ANALYTICAL_TRANSFORM_OPERATOR_BINDINGS: Final[
+    Mapping[TransformKind, tuple[str, ...]]
+] = MappingProxyType(
+    {
+        TransformKind.ADD_ARGUMENT: ("add_argument",),
+        TransformKind.RENAME_ARGUMENT: ("rename_argument",),
+        TransformKind.REORDER_ARGUMENT: ("reorder_argument",),
+        TransformKind.THREAD_PARAMETER: ("thread_argument",),
+        TransformKind.ADD_IMPORT: ("add_import",),
+        TransformKind.ADD_EXPORT: ("add_export",),
+        TransformKind.ADD_REGISTRATION: ("add_registration",),
+        TransformKind.ADD_ADAPTER: ("finite_adapter",),
+        TransformKind.UPDATE_CONSTRUCTOR: (
+            "add_constructor_route",
+            "add_factory_route",
+        ),
+        TransformKind.UPDATE_SCHEMA_FIELD: ("schema_projection",),
+        TransformKind.UPDATE_SERIALIZER: ("serializer_update",),
+        TransformKind.UPDATE_FIXTURE: ("fixture_update",),
+        TransformKind.UPDATE_GENERATED_MANIFEST: ("manifest_update",),
+    }
+)
+
+assert frozenset(ANALYTICAL_TRANSFORM_OPERATOR_BINDINGS) == frozenset(TransformKind), (
+    "repair registry inventory must cover every analytical transform"
+)
+
+
+def analytical_transform_operator_bindings() -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Return the closed analytical-transform inventory in canonical order.
+
+    This is descriptor metadata only.  Rendering still requires an admitted
+    :class:`DoctorOperatorProposal` and the analytical authority checks.
+    """
+
+    return tuple(
+        (kind.value, ANALYTICAL_TRANSFORM_OPERATOR_BINDINGS[kind])
+        for kind in sorted(
+            ANALYTICAL_TRANSFORM_OPERATOR_BINDINGS,
+            key=lambda item: item.value,
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2159,6 +2210,8 @@ def default_operator_registry_id(roots: DoctorAuthorityRoots) -> str:
 
 
 __all__ = (
+    "ANALYTICAL_TRANSFORM_CAPABILITY_INTERFACE",
+    "ANALYTICAL_TRANSFORM_OPERATOR_BINDINGS",
     "CONTRACT_VERSION",
     "DOCTOR_OPERATOR_DESCRIPTOR_SCHEMA",
     "DOCTOR_OPERATOR_PROPOSAL_SCHEMA",
@@ -2176,6 +2229,7 @@ __all__ = (
     "DoctorTransformAuthorityError",
     "DoctorTransformError",
     "DoctorTransformUnsupportedError",
+    "analytical_transform_operator_bindings",
     "build_default_doctor_operator_registry",
     "default_operator_registry_id",
     "doctor_roots_to_propagation_roots",

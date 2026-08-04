@@ -2620,115 +2620,298 @@ def write_provider_index_baseline(
     return path
 
 
-def provider_index_baseline_from_snapshot(
-    multi_root_snapshot: MultiRootRepositorySnapshot,
-    *,
-    notes: str = "",
-) -> dict[str, Any]:
-    """Build a compact SCAEV043MULTIROOT baseline from path ledgers only.
+# ---------------------------------------------------------------------------
+# Planning analysis inventory helpers (PDR-011)
+# ---------------------------------------------------------------------------
 
-    Full AST/CAS index publication is optional: this projection records each
-    provider root's origin/commit/tree/dirty/path identity and explicit
-    contradictions without embedding source bodies.  Snapshot-only rows report
-    partial health so exhaustive parity stays blocked until independent
-    analyzer health is published.
+PLANNING_PATH_CATEGORIES: Final[tuple[str, ...]] = (
+    "tests",
+    "config",
+    "build",
+    "schema",
+    "docs",
+    "policies",
+    "source",
+    "generated",
+    "other",
+)
+
+# Frontiers that remain open until an optional provider certifies support.
+PLANNING_OPEN_FRONTIER_KINDS: Final[tuple[str, ...]] = (
+    "cfg",
+    "dataflow",
+    "native",
+    "generated",
+    "concurrency",
+)
+
+_PLANNING_BUILD_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "build.gradle",
+        "build.gradle.kts",
+        "cargo.lock",
+        "cargo.toml",
+        "cmakelists.txt",
+        "composer.json",
+        "dockerfile",
+        "gemfile",
+        "go.mod",
+        "go.sum",
+        "makefile",
+        "meson.build",
+        "package-lock.json",
+        "package.json",
+        "pnpm-lock.yaml",
+        "poetry.lock",
+        "pom.xml",
+        "pyproject.toml",
+        "requirements.txt",
+        "setup.cfg",
+        "setup.py",
+        "tox.ini",
+        "yarn.lock",
+    }
+)
+_PLANNING_POLICY_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "agents.md",
+        "code_of_conduct.md",
+        "codeowners",
+        "contributing.md",
+        "license",
+        "license.md",
+        "notice",
+        "security.md",
+    }
+)
+_PLANNING_CONFIG_SUFFIXES: Final[frozenset[str]] = frozenset(
+    {".toml", ".ini", ".cfg", ".conf", ".config"}
+)
+_PLANNING_CONFIG_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        ".editorconfig",
+        ".flake8",
+        ".gitattributes",
+        ".gitignore",
+        ".pre-commit-config.yaml",
+        "pytest.ini",
+        "ruff.toml",
+        "setup.cfg",
+        "tox.ini",
+    }
+)
+_PLANNING_SCHEMA_SUFFIXES: Final[frozenset[str]] = frozenset(
+    {".json", ".jsonschema", ".schema", ".proto", ".avsc", ".graphql", ".xsd"}
+)
+_PLANNING_DOC_SUFFIXES: Final[frozenset[str]] = frozenset(
+    {".md", ".mdx", ".rst", ".adoc", ".txt"}
+)
+_PLANNING_GENERATED_PARTS: Final[frozenset[str]] = frozenset(
+    {"generated", "dist", "build", "out", "target", "__pycache__"}
+)
+_PLANNING_NATIVE_SUFFIXES: Final[frozenset[str]] = frozenset(
+    {
+        ".c",
+        ".cc",
+        ".cpp",
+        ".cxx",
+        ".h",
+        ".hpp",
+        ".rs",
+        ".go",
+        ".s",
+        ".S",
+        ".so",
+        ".dylib",
+        ".dll",
+        ".a",
+        ".o",
+    }
+)
+
+
+def planning_path_category(path: str) -> str:
+    """Classify one repository-relative path for the planning inventory."""
+
+    pure = PurePosixPath(_normalize_path(path))
+    name = pure.name.casefold()
+    parts = {part.casefold() for part in pure.parts[:-1]}
+    suffix = pure.suffix.casefold()
+    suffixes = {item.casefold() for item in pure.suffixes}
+
+    if parts & _PLANNING_GENERATED_PARTS or any(
+        part.endswith("_generated") or part.endswith(".generated")
+        for part in pure.parts
+    ):
+        return "generated"
+    if (
+        "test" in parts
+        or "tests" in parts
+        or "testing" in parts
+        or name.startswith("test_")
+        or name.endswith("_test.py")
+        or name.endswith(".spec.js")
+        or name.endswith(".test.ts")
+        or name.endswith(".test.js")
+    ):
+        return "tests"
+    if (
+        name in _PLANNING_POLICY_NAMES
+        or "policy" in name
+        or name.endswith(".todo.md")
+        or name.endswith(".objectives.md")
+        or "policies" in parts
+        or "policy" in parts
+    ):
+        return "policies"
+    if (
+        name in _PLANNING_BUILD_NAMES
+        or (name.startswith("requirements") and suffix == ".txt")
+        or name == "dockerfile"
+    ):
+        return "build"
+    if (
+        "schema" in parts
+        or "schemas" in parts
+        or name.endswith(".schema.json")
+        or ".schema" in suffixes
+        or (
+            suffix in _PLANNING_SCHEMA_SUFFIXES
+            and ("schema" in name or "schemas" in parts or pure.stem.endswith("_schema"))
+        )
+        or suffix in {".proto", ".avsc", ".graphql", ".xsd"}
+    ):
+        return "schema"
+    if (
+        "config" in parts
+        or "configs" in parts
+        or name in _PLANNING_CONFIG_NAMES
+        or suffix in _PLANNING_CONFIG_SUFFIXES
+        or (suffix in {".yaml", ".yml", ".json"} and "config" in name)
+    ):
+        return "config"
+    if (
+        "doc" in parts
+        or "docs" in parts
+        or "documentation" in parts
+        or suffix in _PLANNING_DOC_SUFFIXES
+    ):
+        return "docs"
+    if suffix in {
+        ".py",
+        ".pyi",
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".java",
+        ".kt",
+        ".go",
+        ".rs",
+        ".rb",
+        ".php",
+    } or suffix in _PLANNING_NATIVE_SUFFIXES:
+        return "source"
+    return "other"
+
+
+def planning_category_inventory(
+    paths: Sequence[str],
+    *,
+    max_paths_per_category: int = 256,
+) -> dict[str, Any]:
+    """Build a body-free category inventory for planning and Doctor use."""
+
+    buckets: dict[str, list[str]] = {name: [] for name in PLANNING_PATH_CATEGORIES}
+    for path in paths:
+        category = planning_path_category(path)
+        buckets.setdefault(category, []).append(_normalize_path(path))
+    inventory: dict[str, Any] = {}
+    for category in PLANNING_PATH_CATEGORIES:
+        ordered = tuple(sorted(set(buckets.get(category, ()))))
+        inventory[category] = {
+            "count": len(ordered),
+            "paths": list(ordered[: max(0, int(max_paths_per_category))]),
+            "truncated": len(ordered) > max_paths_per_category,
+        }
+    inventory["totals"] = {
+        category: int(inventory[category]["count"])
+        for category in PLANNING_PATH_CATEGORIES
+    }
+    return inventory
+
+
+def open_frontiers_from_repository_index(
+    index: RepositoryIndex | None,
+    *,
+    optional_provider_status: Mapping[str, str] | None = None,
+) -> tuple[dict[str, Any], ...]:
+    """Record CFG/dataflow/native/generated/concurrency open frontiers.
+
+    Exact local indexing never claims these analyses are closed.  Optional
+    providers may mark a frontier degraded or abstained; they cannot silently
+    claim completeness.
     """
 
-    providers: list[dict[str, Any]] = []
-    for obs in multi_root_snapshot.providers:
-        health_status = "partial" if obs.indexed else ""
-        providers.append(
+    status_map = {
+        str(key): str(value)
+        for key, value in dict(optional_provider_status or {}).items()
+    }
+    native_paths: list[str] = []
+    generated_paths: list[str] = []
+    if index is not None:
+        for row in index.rows:
+            category = planning_path_category(row.path)
+            if (
+                category == "generated"
+                or row.disposition_kind is CoverageKind.BINARY_OR_GENERATED
+            ):
+                generated_paths.append(row.path)
+            pure = PurePosixPath(row.path)
+            if pure.suffix.casefold() in _PLANNING_NATIVE_SUFFIXES:
+                native_paths.append(row.path)
+
+    frontiers: list[dict[str, Any]] = []
+    for kind in PLANNING_OPEN_FRONTIER_KINDS:
+        provider_status = status_map.get(kind, status_map.get(f"frontier:{kind}", ""))
+        if provider_status in {"available", "supported", "closed"}:
+            # Optional providers may only degrade; they never close these
+            # frontiers without a certified capability receipt (out of scope).
+            frontier_status = "degraded"
+            reason = "optional_provider_uncertified"
+        elif provider_status in {"missing", "unavailable", "abstain", "abstained"}:
+            frontier_status = "abstained"
+            reason = "optional_provider_unavailable"
+        elif provider_status in {"error", "failed", "degraded"}:
+            frontier_status = "degraded"
+            reason = "optional_provider_degraded"
+        else:
+            frontier_status = "open"
+            reason = "local_index_does_not_close_frontier"
+
+        evidence_paths: list[str] = []
+        if kind == "native":
+            evidence_paths = sorted(set(native_paths))[:64]
+            if evidence_paths and frontier_status == "open":
+                reason = "native_or_ffi_paths_present"
+        elif kind == "generated":
+            evidence_paths = sorted(set(generated_paths))[:64]
+            if evidence_paths and frontier_status == "open":
+                reason = "generated_paths_present"
+
+        frontiers.append(
             {
-                "package": obs.package,
-                "scope_path": obs.scope_path,
-                "status": obs.status.value,
-                "indexed": bool(obs.indexed),
-                "opaque_gitlink": bool(obs.opaque_gitlink),
-                "origin_url": obs.origin_url,
-                "gitlink_commit_id": obs.gitlink_commit_id,
-                "head_commit_id": obs.head_commit_id,
-                "head_tree_id": obs.head_tree_id,
-                "index_tree_id": obs.index_tree_id,
-                "dirty": bool(obs.dirty),
-                "version_divergent": bool(obs.version_divergent),
-                "moved": bool(obs.moved),
-                "snapshot_id": (
-                    obs.snapshot.snapshot_id if obs.snapshot is not None else ""
-                ),
-                "index_id": "",
-                "health_status": health_status,
-                "tracked_path_count": (
-                    obs.snapshot.stats.tracked_path_count
-                    if obs.snapshot is not None
-                    else 0
-                ),
-                "semantic_path_count": (
-                    obs.snapshot.stats.semantic_path_count
-                    if obs.snapshot is not None
-                    else 0
-                ),
-                "symbol_count": 0,
-                "reason_code": obs.reason_code,
-                "contradictions": [item.to_dict() for item in obs.contradictions],
+                "kind": kind,
+                "frontier_id": f"frontier:{kind}",
+                "status": frontier_status,
+                "reason_code": reason,
+                "path_count": len(evidence_paths),
+                "sample_paths": evidence_paths[:16],
             }
         )
-
-    default_notes = (
-        "Baseline binds multi-root provider package source ledgers "
-        "(ipfs_accelerate_py, ipfs_kit_py, ipfs_datasets_py) as content-addressed "
-        "roots instead of opaque gitlinks (SCAEV043MULTIROOT / SCA-G043). Full "
-        "AST/CAS index publication is exercised by "
-        "test_agent_supervisor_multi_root_repository_index.py; this artifact "
-        "records exact origin/commit/tree/dirty/path identities and explicit "
-        "contradictions. Snapshot-only rows report partial health so exhaustive "
-        "parity stays blocked until independent analyzer health is published."
-    )
-    return {
-        "schema": PROVIDER_INDEX_SCHEMA,
-        "schema_version": 1,
-        "interface": MULTI_ROOT_REPOSITORY_SNAPSHOT_INTERFACE,
-        "evidence_id": MULTI_ROOT_PROVIDER_INDEX_EVIDENCE,
-        "indexer_version": REPOSITORY_INDEXER_VERSION,
-        "multi_root_id": multi_root_snapshot.multi_root_id,
-        "multi_root_snapshot_id": multi_root_snapshot.multi_root_id,
-        "scope_id": multi_root_snapshot.scope_id,
-        "scope_policy_id": multi_root_snapshot.scope_policy_id,
-        "cross_root_join_policy": "package_module_function_exact",
-        "bodies_in_cas": True,
-        "primary_snapshot_distinct": True,
-        "exhaustive_parity_allowed": False,
-        "all_providers_indexed": multi_root_snapshot.all_providers_indexed,
-        "all_providers_healthy": False,
-        "any_opaque_gitlink": any(
-            item.opaque_gitlink for item in multi_root_snapshot.providers
-        ),
-        "has_blocking_contradictions": (
-            multi_root_snapshot.has_blocking_contradictions
-        ),
-        "providers": providers,
-        "contradictions": [
-            item.to_dict() for item in multi_root_snapshot.contradictions
-        ],
-        "notes": str(notes or default_notes),
-    }
-
-
-def write_provider_index_baseline_from_snapshot(
-    multi_root_snapshot: MultiRootRepositorySnapshot,
-    destination: Path | str,
-    *,
-    notes: str = "",
-) -> Path:
-    """Atomically publish a snapshot-only SCAEV043MULTIROOT baseline."""
-
-    path = Path(destination)
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    payload = provider_index_baseline_from_snapshot(
-        multi_root_snapshot, notes=notes
-    )
-    encoded = canonical_repository_index_bytes(payload) + b"\n"
-    _atomic_write(path, encoded, replace=True)
-    return path
+    return tuple(frontiers)
 
 
 __all__ = [
@@ -2743,6 +2926,8 @@ __all__ = [
     "MULTI_ROOT_PROVIDER_INDEX_EVIDENCE",
     "MULTI_ROOT_REPOSITORY_INDEX_SCHEMA",
     "MultiRootRepositoryIndex",
+    "PLANNING_OPEN_FRONTIER_KINDS",
+    "PLANNING_PATH_CATEGORIES",
     "PROVIDER_INDEX_BASELINE_RELATIVE",
     "PROVIDER_INDEX_SCHEMA",
     "ParserStatus",
@@ -2770,7 +2955,9 @@ __all__ = [
     "join_cross_root_symbols",
     "make_cross_root_symbol",
     "module_name_for_package_path",
-    "provider_index_baseline_from_snapshot",
+    "open_frontiers_from_repository_index",
+    "planning_category_inventory",
+    "planning_path_category",
     "write_provider_index_baseline",
     "write_provider_index_baseline_from_snapshot",
 ]
