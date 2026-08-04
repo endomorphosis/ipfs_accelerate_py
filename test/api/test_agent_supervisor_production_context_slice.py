@@ -339,9 +339,10 @@ def test_recomputed_root_cannot_widen_corpus_budget_or_authority(tmp_path) -> No
     )
 
     unbounded = manifest.to_dict()
-    unbounded["budget"]["max_provider_prompt_tokens"] = 8192
+    # Exceed the production context protocol maximum (currently 32_768).
+    unbounded["budget"]["max_provider_prompt_tokens"] = 65_536
     unbounded["budget"]["context_token_limit"] = (
-        8192 - unbounded["budget"]["reserved_prompt_tokens"]
+        65_536 - unbounded["budget"]["reserved_prompt_tokens"]
     )
     _recompute_root(unbounded)
     _assert_reason(

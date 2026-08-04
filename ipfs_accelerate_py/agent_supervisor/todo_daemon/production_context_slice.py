@@ -39,11 +39,16 @@ PRODUCTION_CONTEXT_SLICE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/production-context-slice@1"
 )
 PRODUCTION_CONTEXT_SLICE_INTERFACE: Final = "ProductionContextSlice@1"
-MAX_PROVIDER_PROMPT_TOKENS: Final = 4_096
+# Production implement/review packets must be able to surface complete
+# declared effect files for full-file replacements.  A 4k-token cap forced
+# partial slices on ordinary modules (~16KB+), so admitted Grok proposals
+# that replace those files failed closed at write time as context_insufficient.
+# Keep a hard upper bound well below the router transport envelope.
+MAX_PROVIDER_PROMPT_TOKENS: Final = 32_768
 DEFAULT_RESERVED_PROMPT_TOKENS: Final = 1_536
 DEFAULT_MAX_SCOPE_PATHS: Final = 8
 DEFAULT_MAX_SOURCE_BYTES: Final = 1_048_576
-DEFAULT_WHOLE_FILE_BYTES: Final = 8_192
+DEFAULT_WHOLE_FILE_BYTES: Final = 131_072
 
 _GIT_OID_RE = re.compile(r"\A[0-9a-f]{40}(?:[0-9a-f]{24})?\Z")
 _HUNK_RE = re.compile(
@@ -999,7 +1004,10 @@ def build_production_context_slice(
         if isinstance(value, bool) or not isinstance(value, int) or value < 1:
             _fail("budget_invalid", f"{name} must be a positive integer")
     if max_provider_prompt_tokens > MAX_PROVIDER_PROMPT_TOKENS:
-        _fail("budget_invalid", "provider prompt budget may not exceed 4096")
+        _fail(
+            "budget_invalid",
+            f"provider prompt budget may not exceed {MAX_PROVIDER_PROMPT_TOKENS}",
+        )
     if reserved_prompt_tokens < DEFAULT_RESERVED_PROMPT_TOKENS:
         _fail(
             "budget_invalid",

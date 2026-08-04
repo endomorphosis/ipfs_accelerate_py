@@ -1846,7 +1846,23 @@ class ImplementationProviderRouter:
                     proposal,
                     writer_lease_id,
                 )
-        except Exception:
+        except Exception as exc:
+            # Preserve a bounded secret-free operator note so capacity-recovery
+            # write failures (context reject, path fence, apply error) are
+            # diagnosable instead of collapsing to a bare admitted_write_failed.
+            note = str(exc or "").strip()
+            if note and all(ord(ch) < 128 for ch in note):
+                for prefix in (
+                    "production proposal context rejected: ",
+                    "RuntimeError: ",
+                ):
+                    if note.casefold().startswith(prefix):
+                        note = note[len(prefix) :]
+                        break
+                return (
+                    False,
+                    f"{ProviderReason.WRITE_FAILED.value}:{note}"[:400],
+                )
             return False, ProviderReason.WRITE_FAILED.value
         return True, ""
 
