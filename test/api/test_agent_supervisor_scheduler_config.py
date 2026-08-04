@@ -307,6 +307,29 @@ def test_scheduler_config_activates_protection_only_after_manual_completion(
     )
     first_epoch_id = completed["manual_completion_authority_epoch_id"]
 
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        authority_epoch_seal_projection,
+    )
+    from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+        content_identity,
+    )
+
+    seals = completed["manual_completion_seals"]
+    pin_a = dict(seals["TEST-001"])
+    pin_b = dict(pin_a)
+    pin_b["expected_receipt_id"] = "sha256:" + ("f" * 64)
+    assert content_identity(
+        authority_epoch_seal_projection({"TEST-001": pin_a})
+    ) == content_identity(
+        authority_epoch_seal_projection({"TEST-001": pin_b})
+    )
+    # Live profile reload with the same verified seal must keep the epoch.
+    pin_reload = load_supervisor_scheduler_config(
+        profile_path,
+        repo_root=tmp_path,
+    )
+    assert pin_reload["manual_completion_authority_epoch_id"] == first_epoch_id
+
     replacement_receipt_id = _write_test_operator_seal(
         tmp_path,
         policy_revision="2",

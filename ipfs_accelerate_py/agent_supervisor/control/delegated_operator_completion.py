@@ -3,10 +3,13 @@
 When a program explicitly enables ``delegated_operator_completion`` in its
 scheduler profile, the agent supervisor may:
 
-1. run the task's declared validation command;
-2. issue an activation-only seal under the honest
-   ``delegated_supervisor`` operator profile (not a forged interactive user);
-3. pin the receipt identity in the scheduler config; and
+1. issue a provisional activation-only seal under the honest
+   ``delegated_supervisor`` operator profile (not a forged interactive user)
+   so validators that reload every declared task output (including the seal)
+   can see current tree evidence;
+2. run the task's declared validation command;
+3. pin the receipt identity in the scheduler config only after green
+   validation; and
 4. mark the board task ``Status: completed``.
 
 This is opt-in automation.  It does not grant mutation, promotion, or
@@ -179,6 +182,37 @@ def _update_scheduler_pin(
     )
 
 
+def _build_and_write_delegated_seal(
+    *,
+    repo_root: Path,
+    task_id: str,
+    board_namespace: str,
+    seal_config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Materialize one delegated seal from current artifact bytes."""
+
+    receipt = build_manual_completion_seal(
+        repo_root=repo_root,
+        task_id=task_id,
+        board_namespace=board_namespace,
+        schema=str(seal_config["schema"]),
+        interface=str(seal_config["interface"]),
+        policy_revision=str(seal_config["policy_revision"]),
+        artifact_paths=dict(seal_config["artifact_paths"]),
+        grant_type=str(seal_config["grant_type"]),
+        grant_action=str(seal_config["grant_action"]),
+        reviewed_base_claims=dict(seal_config.get("reviewed_base_claims") or {}),
+        grant_claims=dict(seal_config.get("grant_claims") or {}),
+        operator=DELEGATED_SUPERVISOR_OPERATOR,
+    )
+    seal_path = write_manual_completion_seal(
+        str(seal_config["receipt_path"]),
+        receipt,
+        repo_root=repo_root,
+    )
+    return {"receipt": receipt, "seal_path": seal_path}
+
+
 def complete_sealed_manual_task(
     *,
     repo_root: Path,
@@ -190,7 +224,20 @@ def complete_sealed_manual_task(
     validation_command: str = "",
     policy: DelegatedOperatorCompletionPolicy | None = None,
 ) -> dict[str, Any]:
-    """Validate, seal, pin, and mark one manual seal-gated task complete."""
+    """Validate, seal, pin, and mark one manual seal-gated task complete.
+
+    Order is intentionally **seal-before-validate**:
+
+    1. Require non-seal producer artifacts.
+    2. Write a provisional delegated seal so validators that reload every
+       declared task output (including the seal receipt itself) can pass.
+    3. Run the task validation command against that tree.
+    4. Only after a green validation pin the receipt, re-verify, and mark the
+       board complete.
+
+    Failures never mark the board.  A provisional seal may remain for diagnosis
+    when validation fails; the scheduler pin is only updated on success.
+    """
 
     policy = policy or DelegatedOperatorCompletionPolicy.disabled()
     if not policy.allows(task_id):
@@ -207,6 +254,15 @@ def complete_sealed_manual_task(
             f"{task_id} missing sealed artifacts: {missing}"
         )
 
+    # Provisional seal so source-artifact reload / terminal gates that include
+    # the receipt path among task outputs do not fail closed before issuance.
+    provisional = _build_and_write_delegated_seal(
+        repo_root=root,
+        task_id=task_id,
+        board_namespace=board_namespace,
+        seal_config=seal_config,
+    )
+
     validation: dict[str, Any] = {"ran": False}
     if policy.require_validation:
         validation = _run_validation(
@@ -215,25 +271,16 @@ def complete_sealed_manual_task(
             timeout_seconds=policy.validation_timeout_seconds,
         )
 
-    receipt = build_manual_completion_seal(
+    # Refresh after validation so digests match any side-effect-free reloads
+    # and so a successful path never pins a stale provisional body.
+    issued = _build_and_write_delegated_seal(
         repo_root=root,
         task_id=task_id,
         board_namespace=board_namespace,
-        schema=str(seal_config["schema"]),
-        interface=str(seal_config["interface"]),
-        policy_revision=str(seal_config["policy_revision"]),
-        artifact_paths=dict(seal_config["artifact_paths"]),
-        grant_type=str(seal_config["grant_type"]),
-        grant_action=str(seal_config["grant_action"]),
-        reviewed_base_claims=dict(seal_config.get("reviewed_base_claims") or {}),
-        grant_claims=dict(seal_config.get("grant_claims") or {}),
-        operator=DELEGATED_SUPERVISOR_OPERATOR,
+        seal_config=seal_config,
     )
-    seal_path = write_manual_completion_seal(
-        str(seal_config["receipt_path"]),
-        receipt,
-        repo_root=root,
-    )
+    receipt = issued["receipt"]
+    seal_path = issued["seal_path"]
     _update_scheduler_pin(
         scheduler_path=scheduler_path,
         task_id=task_id,
@@ -273,6 +320,9 @@ def complete_sealed_manual_task(
         "board_changed": board_changed,
         "operator": DELEGATED_SUPERVISOR_OPERATOR,
         "validation": validation,
+        "provisional_receipt_id": str(
+            provisional["receipt"].get("receipt_id") or ""
+        ),
     }
 
 

@@ -226,6 +226,29 @@ def _scheduler_config_relative_path(
     return normalized
 
 
+def authority_epoch_seal_projection(
+    manual_seals: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Project seal configs into the authority-epoch preimage.
+
+    ``expected_receipt_id`` is a mechanical pin rewrite after delegated
+    completion verifies a seal.  Including it in the epoch preimage reopens
+    the entire revalidation closure whenever a pin is updated even when the
+    durable seal shape and verified receipt set are unchanged.
+    """
+
+    projected: dict[str, dict[str, Any]] = {}
+    for task_id, seal_body in sorted(manual_seals.items()):
+        if not isinstance(seal_body, Mapping):
+            continue
+        projected[str(task_id)] = {
+            key: value
+            for key, value in dict(seal_body).items()
+            if key != "expected_receipt_id"
+        }
+    return projected
+
+
 def load_supervisor_scheduler_config(
     path: Path | str,
     *,
@@ -710,7 +733,9 @@ def load_supervisor_scheduler_config(
         "board_namespace": str(normalized["board_namespace"]),
         "taskboard_path": str(normalized["taskboard_path"]),
         "protected_after_manual_completion": staged_protected_paths,
-        "manual_completion_seals": manual_seals,
+        "manual_completion_seals": authority_epoch_seal_projection(
+            manual_seals
+        ),
         "verified_manual_completion_seals": verified_manual_seals,
         "task_ids": list(normalized["manual_completion_authority_task_ids"]),
         "required_task_ids": list(
@@ -1624,6 +1649,11 @@ class PortalImplementationSupervisor:
 
         Fail-closed and no-op when the scheduler profile is absent, the policy
         is disabled, or no seal-configured pending tasks are eligible.
+
+        Also no-ops while an implementation protected-path fence is active or
+        latched: delegated completion mutates the scheduler pin and taskboard,
+        which are themselves protected paths.  Running under an active fence
+        latches a false-positive incident and freezes the lane.
         """
 
         scheduler_path = self.config.scheduler_config_path
@@ -1634,6 +1664,24 @@ class PortalImplementationSupervisor:
                 DelegatedOperatorCompletionPolicy,
                 complete_ready_sealed_manual_tasks,
             )
+
+            # Quiet fence probe: do not emit maintenance-blocked events for a
+            # deferred delegated-completion attempt.
+            implementation_state_dir = self.config.state_path.parent
+            fence_active = (
+                implementation_state_dir
+                / IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME
+            ).exists()
+            fence_incident = (
+                implementation_state_dir / IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME
+            ).exists()
+            if fence_active or fence_incident:
+                return {
+                    "attempted": False,
+                    "reason": "implementation_protected_path_fence_active",
+                    "active_snapshot_exists": fence_active,
+                    "incident_exists": fence_incident,
+                }
 
             profile = load_supervisor_scheduler_config(
                 scheduler_path,
