@@ -1,0 +1,2243 @@
+{
+  "schema_version": "formal-verification-replayed-hyper-authorization-semantics/v1",
+  "interface": "ReplayedHyperAuthorizationSemantics@1",
+  "goal_id": "FVT-G229",
+  "task_id": "FVT-097",
+  "program": "formal-verification-tactician/replayed-hyper-authorization-semantics",
+  "handler_id": "replayed_hyper_authorization_semantics@1",
+  "certification_surface": "tools.logic.certify_formal_verification_replayed_hyper_authorization",
+  "host_platform": "linux-aarch64",
+  "lock_path": "config/formal_verification_toolchains.lock.json",
+  "lock_digest_sha256": "sha256:b1d1bbad034fcc8d6189fa6eaa17555783720456ee01ca860a57a68fcce29ec2",
+  "managed_root": "<managed-tool-path-redacted>",
+  "managed_root_present": true,
+  "managed_root_approved_immutable": true,
+  "deployment_identity": "334324a1cd2800052819b2bee6cb93432ff3aeb87f7b5708bc550a21eaa13470",
+  "deployment_identity_expected": "334324a1cd2800052819b2bee6cb93432ff3aeb87f7b5708bc550a21eaa13470",
+  "deployment_identity_matched": true,
+  "certified": true,
+  "semantic_certification": true,
+  "certification_phase": {
+    "status": "completed",
+    "offline": true,
+    "network": false,
+    "download": false,
+    "install": false,
+    "skip_install": true,
+    "ambient_path_mutated": false,
+    "user_site_mutated": false,
+    "source_tree_mutated": false,
+    "system_package_mutated": false,
+    "managed_root": "<managed-tool-path-redacted>",
+    "hyper_install_root": "<managed-tool-path-redacted>",
+    "souffle_install_root": "<managed-tool-path-redacted>/souffle-vendor",
+    "dependency_prefix": "<managed-tool-path-redacted>/build-dependencies/souffle/ubuntu-noble-arm64/root",
+    "reason_codes": []
+  },
+  "policy": {
+    "offline_certification_forbids_network": true,
+    "offline_certification_forbids_download": true,
+    "offline_certification_forbids_install": true,
+    "offline_certification_forbids_ambient_path_mutation": true,
+    "offline_certification_forbids_user_site_mutation": true,
+    "offline_certification_forbids_source_tree_mutation": true,
+    "offline_certification_forbids_system_package_mutation": true,
+    "skip_install_only": true,
+    "owns_hyperproperty_and_souffle_replay_fanin": true,
+    "does_not_edit_legacy_secpal_artifact_intake": true,
+    "does_not_elevate_external_shadows_to_authorization_authority": true,
+    "hyperproperty_authority_ceiling": "bounded",
+    "souffle_authority_ceiling": "none",
+    "secpal_compatibility_not_interchangeable": true,
+    "reuses_family_certifiers_without_weakening_ceilings": true,
+    "no_central_certificate_edit": true
+  },
+  "hyperproperty": {
+    "lane_id": "hyperproperty_vendor",
+    "interface": "HyperpropertyVendorToolchainCertification@1",
+    "schema_version": "hyperproperty-vendor-toolchain-certification/v1",
+    "goal_id": "FVT-G208",
+    "task_id": "FVT-061",
+    "certified": true,
+    "authority_ceiling": "bounded",
+    "forbids_theorem_authority": true,
+    "forbids_universal_claims_beyond_bounds": true,
+    "authorizes_universal_proof": false,
+    "is_theorem_authority": false,
+    "engine_ids": [
+      "hyperltl",
+      "autohyper",
+      "mchyper"
+    ],
+    "engines": [
+      {
+        "tool_id": "hyperltl",
+        "version": "e3a41290",
+        "certified": true,
+        "usable": true,
+        "role": "authority",
+        "authority_ceiling": "bounded",
+        "authorizes_universal_proof": false,
+        "is_theorem_authority": false,
+        "is_vendor_build": true,
+        "is_hermetic_engine": false,
+        "host_platform": "linux-aarch64",
+        "executable": "<managed-tool-path-redacted>/hyperproperty-vendor/hyperltl/e3a41290/upstream/eahyper_src/eahyper.native",
+        "executable_basename": "eahyper.native",
+        "executable_sha256": "9fd58bd24bcde41d3ca4593a4584d7b3fdb776da10a4f398516e2f3f59c2ee7d",
+        "artifact_sha256": "9fd58bd24bcde41d3ca4593a4584d7b3fdb776da10a4f398516e2f3f59c2ee7d",
+        "source_archive_sha256": "1c5a41a650a887e40adc9338cac46b6f432dd7d06588c66a44c4b8b672e8444a",
+        "source_archive_url": "https://github.com/reactive-systems/eahyper/archive/e3a412909cc767fe3bc5afd91cc718da5e3c649a.tar.gz",
+        "runtime_digest_sha256": "9fd58bd24bcde41d3ca4593a4584d7b3fdb776da10a4f398516e2f3f59c2ee7d",
+        "git_commit": "e3a412909cc767fe3bc5afd91cc718da5e3c649a",
+        "build_dependencies": {
+          "dune": ">=2.0",
+          "menhir": ">=20201216",
+          "ocaml": ">=4.08",
+          "opam": ">=2.0"
+        },
+        "runtime_dependencies": {},
+        "decidable_fragment_ceiling": "EAHyper decidable HyperLTL fragment (exists*/forall* and forall*/exists* quantifier shapes; not full HyperLTL)",
+        "supported_fragment": "",
+        "dotnet_runtime": "",
+        "spot_version": "",
+        "abc_version": "",
+        "aiger_tools_version": "",
+        "upstream_product": "eahyper",
+        "native_binary_format": null,
+        "native_machine": null,
+        "identity_manifest_sha256": null,
+        "dependency_prefix": null,
+        "checks_passed": 22,
+        "checks_total": 22,
+        "check_kinds": [
+          "authority",
+          "bounds",
+          "disagreement_quarantine",
+          "install",
+          "malformed",
+          "mutation",
+          "positive",
+          "replay",
+          "role",
+          "timeout",
+          "translation",
+          "violation"
+        ],
+        "case_results_total": 10,
+        "case_bindings": [
+          {
+            "case_id": "case:ni_holds",
+            "engine_id": "hyperltl",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/hyperltl/e3a41290/upstream/eahyper_src/eahyper.native",
+            "engine_version": "e3a41290",
+            "document_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "output_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "policy_or_formula_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:ni_holds:replay",
+            "engine_id": "hyperltl",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/hyperltl/e3a41290/upstream/eahyper_src/eahyper.native",
+            "engine_version": "e3a41290",
+            "document_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "output_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "policy_or_formula_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:replay_holds",
+            "engine_id": "hyperltl",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/hyperltl/e3a41290/upstream/eahyper_src/eahyper.native",
+            "engine_version": "e3a41290",
+            "document_digest": "e41f5388c8e95fc705312eab459a135a9f83862aab89ea6433fddbad98354193",
+            "output_digest": "e41f5388c8e95fc705312eab459a135a9f83862aab89ea6433fddbad98354193",
+            "policy_or_formula_digest": "e41f5388c8e95fc705312eab459a135a9f83862aab89ea6433fddbad98354193",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:replay_holds:replay",
+            "engine_id": "hyperltl",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/hyperltl/e3a41290/upstream/eahyper_src/eahyper.native",
+            "engine_version": "e3a41290",
+            "document_digest": "e41f5388c8e95fc705312eab459a135a9f83862aab89ea6433fddbad98354193",
+            "output_digest": "e41f5388c8e95fc705312eab459a135a9f83862aab89ea6433fddbad98354193",
+            "policy_or_formula_digest": "e41f5388c8e95fc705312eab459a135a9f83862aab89ea6433fddbad98354193",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:bounds_exact",
+            "engine_id": "hyperltl",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/hyperltl/e3a41290/upstream/eahyper_src/eahyper.native",
+            "engine_version": "e3a41290",
+            "document_digest": "85ea7f3151017c2758f1199fb39b510a4259371d3ceab35df52cbc104304e2fd",
+            "output_digest": "85ea7f3151017c2758f1199fb39b510a4259371d3ceab35df52cbc104304e2fd",
+            "policy_or_formula_digest": "85ea7f3151017c2758f1199fb39b510a4259371d3ceab35df52cbc104304e2fd",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:ni_holds:baseline",
+            "engine_id": "hyperltl",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/hyperltl/e3a41290/upstream/eahyper_src/eahyper.native",
+            "engine_version": "e3a41290",
+            "document_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "output_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "policy_or_formula_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:mutation_observation",
+            "engine_id": "hyperltl",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/hyperltl/e3a41290/upstream/eahyper_src/eahyper.native",
+            "engine_version": "e3a41290",
+            "document_digest": "5586f1775d3e0bb32ff9cc4f580138738fb588a42ed7fb94ba007ce7a3ad42b9",
+            "output_digest": "5586f1775d3e0bb32ff9cc4f580138738fb588a42ed7fb94ba007ce7a3ad42b9",
+            "policy_or_formula_digest": "5586f1775d3e0bb32ff9cc4f580138738fb588a42ed7fb94ba007ce7a3ad42b9",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:malformed",
+            "engine_id": "hyperltl",
+            "expected": "error",
+            "outcome": "error",
+            "agreed": false,
+            "timed_out": false,
+            "malformed": true,
+            "quarantined": true,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/hyperltl/e3a41290/upstream/eahyper_src/eahyper.native",
+            "engine_version": "e3a41290",
+            "document_digest": "bc383bce101c954da9337e84a83af3483dfd4a2f1777c1454d1f9cbb67ca88e5",
+            "output_digest": "bc383bce101c954da9337e84a83af3483dfd4a2f1777c1454d1f9cbb67ca88e5",
+            "policy_or_formula_digest": "bc383bce101c954da9337e84a83af3483dfd4a2f1777c1454d1f9cbb67ca88e5",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:timeout",
+            "engine_id": "hyperltl",
+            "expected": "satisfied",
+            "outcome": "timeout",
+            "agreed": false,
+            "timed_out": true,
+            "malformed": false,
+            "quarantined": true,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/hyperltl/e3a41290/upstream/eahyper_src/eahyper.native",
+            "engine_version": "e3a41290",
+            "document_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "output_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "policy_or_formula_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:disagreement",
+            "engine_id": "hyperltl",
+            "expected": "satisfied",
+            "outcome": "unknown",
+            "agreed": false,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": true,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/hyperltl/e3a41290/upstream/eahyper_src/eahyper.native",
+            "engine_version": "e3a41290",
+            "document_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "output_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "policy_or_formula_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          }
+        ],
+        "block_reasons": []
+      },
+      {
+        "tool_id": "autohyper",
+        "version": "c94722d1",
+        "certified": true,
+        "usable": true,
+        "role": "authority",
+        "authority_ceiling": "bounded",
+        "authorizes_universal_proof": false,
+        "is_theorem_authority": false,
+        "is_vendor_build": true,
+        "is_hermetic_engine": false,
+        "host_platform": "linux-aarch64",
+        "executable": "<managed-tool-path-redacted>/hyperproperty-vendor/autohyper/c94722d1/upstream/app/AutoHyper",
+        "executable_basename": "AutoHyper",
+        "executable_sha256": "0325981bad29fdf9278ddaf1169703110e9d1623694ae05f058e256d099e17e4",
+        "artifact_sha256": "0325981bad29fdf9278ddaf1169703110e9d1623694ae05f058e256d099e17e4",
+        "source_archive_sha256": "cebb08063fcfde162039273ed91c0f2df618bc0df26c8561fc388fe92c192837",
+        "source_archive_url": "https://github.com/AutoHyper/AutoHyper/archive/c94722d1f3c6d6f38a0967fcc580e26146c26109.tar.gz",
+        "runtime_digest_sha256": "0325981bad29fdf9278ddaf1169703110e9d1623694ae05f058e256d099e17e4",
+        "git_commit": "c94722d1f3c6d6f38a0967fcc580e26146c26109",
+        "build_dependencies": {
+          "dotnet-sdk": "8.0.300",
+          "spot": ">=2.12",
+          "spot-tools": "ltl2tgba,autfilt,dstar2tgba"
+        },
+        "runtime_dependencies": {
+          "dotnet-runtime": "8.0",
+          "spot": ">=2.12"
+        },
+        "decidable_fragment_ceiling": "",
+        "supported_fragment": "",
+        "dotnet_runtime": "8.0",
+        "spot_version": ">=2.12",
+        "abc_version": "",
+        "aiger_tools_version": "",
+        "upstream_product": "autohyper",
+        "native_binary_format": null,
+        "native_machine": null,
+        "identity_manifest_sha256": null,
+        "dependency_prefix": null,
+        "checks_passed": 22,
+        "checks_total": 22,
+        "check_kinds": [
+          "authority",
+          "bounds",
+          "disagreement_quarantine",
+          "install",
+          "malformed",
+          "mutation",
+          "positive",
+          "replay",
+          "role",
+          "timeout",
+          "translation",
+          "violation"
+        ],
+        "case_results_total": 11,
+        "case_bindings": [
+          {
+            "case_id": "case:ni_holds",
+            "engine_id": "autohyper",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/autohyper/c94722d1/upstream/app/AutoHyper",
+            "engine_version": "c94722d1",
+            "document_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "output_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "policy_or_formula_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:ni_holds:replay",
+            "engine_id": "autohyper",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/autohyper/c94722d1/upstream/app/AutoHyper",
+            "engine_version": "c94722d1",
+            "document_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "output_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "policy_or_formula_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:ni_violated",
+            "engine_id": "autohyper",
+            "expected": "violated",
+            "outcome": "violated",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/autohyper/c94722d1/upstream/app/AutoHyper",
+            "engine_version": "c94722d1",
+            "document_digest": "bac3dde5967bf1a40aa9f2a106bf10e1cfc714c730d37b4c8e1996643b6f955d",
+            "output_digest": "bac3dde5967bf1a40aa9f2a106bf10e1cfc714c730d37b4c8e1996643b6f955d",
+            "policy_or_formula_digest": "bac3dde5967bf1a40aa9f2a106bf10e1cfc714c730d37b4c8e1996643b6f955d",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:replay_holds",
+            "engine_id": "autohyper",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/autohyper/c94722d1/upstream/app/AutoHyper",
+            "engine_version": "c94722d1",
+            "document_digest": "e41f5388c8e95fc705312eab459a135a9f83862aab89ea6433fddbad98354193",
+            "output_digest": "e41f5388c8e95fc705312eab459a135a9f83862aab89ea6433fddbad98354193",
+            "policy_or_formula_digest": "e41f5388c8e95fc705312eab459a135a9f83862aab89ea6433fddbad98354193",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:replay_holds:replay",
+            "engine_id": "autohyper",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/autohyper/c94722d1/upstream/app/AutoHyper",
+            "engine_version": "c94722d1",
+            "document_digest": "e41f5388c8e95fc705312eab459a135a9f83862aab89ea6433fddbad98354193",
+            "output_digest": "e41f5388c8e95fc705312eab459a135a9f83862aab89ea6433fddbad98354193",
+            "policy_or_formula_digest": "e41f5388c8e95fc705312eab459a135a9f83862aab89ea6433fddbad98354193",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:bounds_exact",
+            "engine_id": "autohyper",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/autohyper/c94722d1/upstream/app/AutoHyper",
+            "engine_version": "c94722d1",
+            "document_digest": "85ea7f3151017c2758f1199fb39b510a4259371d3ceab35df52cbc104304e2fd",
+            "output_digest": "85ea7f3151017c2758f1199fb39b510a4259371d3ceab35df52cbc104304e2fd",
+            "policy_or_formula_digest": "85ea7f3151017c2758f1199fb39b510a4259371d3ceab35df52cbc104304e2fd",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:ni_holds:baseline",
+            "engine_id": "autohyper",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/autohyper/c94722d1/upstream/app/AutoHyper",
+            "engine_version": "c94722d1",
+            "document_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "output_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "policy_or_formula_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:mutation_observation",
+            "engine_id": "autohyper",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/autohyper/c94722d1/upstream/app/AutoHyper",
+            "engine_version": "c94722d1",
+            "document_digest": "5586f1775d3e0bb32ff9cc4f580138738fb588a42ed7fb94ba007ce7a3ad42b9",
+            "output_digest": "5586f1775d3e0bb32ff9cc4f580138738fb588a42ed7fb94ba007ce7a3ad42b9",
+            "policy_or_formula_digest": "5586f1775d3e0bb32ff9cc4f580138738fb588a42ed7fb94ba007ce7a3ad42b9",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:malformed",
+            "engine_id": "autohyper",
+            "expected": "error",
+            "outcome": "error",
+            "agreed": false,
+            "timed_out": false,
+            "malformed": true,
+            "quarantined": true,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/autohyper/c94722d1/upstream/app/AutoHyper",
+            "engine_version": "c94722d1",
+            "document_digest": "bc383bce101c954da9337e84a83af3483dfd4a2f1777c1454d1f9cbb67ca88e5",
+            "output_digest": "bc383bce101c954da9337e84a83af3483dfd4a2f1777c1454d1f9cbb67ca88e5",
+            "policy_or_formula_digest": "bc383bce101c954da9337e84a83af3483dfd4a2f1777c1454d1f9cbb67ca88e5",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:timeout",
+            "engine_id": "autohyper",
+            "expected": "satisfied",
+            "outcome": "timeout",
+            "agreed": false,
+            "timed_out": true,
+            "malformed": false,
+            "quarantined": true,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/autohyper/c94722d1/upstream/app/AutoHyper",
+            "engine_version": "c94722d1",
+            "document_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "output_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "policy_or_formula_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:disagreement",
+            "engine_id": "autohyper",
+            "expected": "satisfied",
+            "outcome": "unknown",
+            "agreed": false,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": true,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/autohyper/c94722d1/upstream/app/AutoHyper",
+            "engine_version": "c94722d1",
+            "document_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "output_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "policy_or_formula_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          }
+        ],
+        "block_reasons": []
+      },
+      {
+        "tool_id": "mchyper",
+        "version": "87f0f857",
+        "certified": true,
+        "usable": true,
+        "role": "authority",
+        "authority_ceiling": "bounded",
+        "authorizes_universal_proof": false,
+        "is_theorem_authority": false,
+        "is_vendor_build": true,
+        "is_hermetic_engine": false,
+        "host_platform": "linux-aarch64",
+        "executable": "<managed-tool-path-redacted>/hyperproperty-vendor/mchyper/87f0f857/upstream/mchyper.py",
+        "executable_basename": "mchyper.py",
+        "executable_sha256": "ab420fe860aad3e47a5ee978b4c3a80a640b79e62d25c565bc63dd8413d469ab",
+        "artifact_sha256": "ab420fe860aad3e47a5ee978b4c3a80a640b79e62d25c565bc63dd8413d469ab",
+        "source_archive_sha256": "4c49f369ab04f48d93a4612a0b3259b361a7c3e3b22b3f99b240d0fdc46a7815",
+        "source_archive_url": "https://github.com/reactive-systems/MCHyper/archive/87f0f857f5cb19782b79d99b11ef78c723852bb9.tar.gz",
+        "runtime_digest_sha256": "ab420fe860aad3e47a5ee978b4c3a80a640b79e62d25c565bc63dd8413d469ab",
+        "git_commit": "87f0f857f5cb19782b79d99b11ef78c723852bb9",
+        "build_dependencies": {
+          "abc": "1.01",
+          "aiger-tools": "1.9.4",
+          "cabal": ">=2.4",
+          "ghc": ">=8.4",
+          "python": ">=2.7"
+        },
+        "runtime_dependencies": {
+          "abc": "1.01",
+          "aiger-tools": "1.9.4"
+        },
+        "decidable_fragment_ceiling": "",
+        "supported_fragment": "HyperLTL model checking over AIGER hardware circuits via ABC (PDR/BMC); live witness/counterexample paths",
+        "dotnet_runtime": "",
+        "spot_version": "",
+        "abc_version": "1.01",
+        "aiger_tools_version": "1.9.4",
+        "upstream_product": "mchyper",
+        "native_binary_format": null,
+        "native_machine": null,
+        "identity_manifest_sha256": null,
+        "dependency_prefix": null,
+        "checks_passed": 22,
+        "checks_total": 22,
+        "check_kinds": [
+          "authority",
+          "bounds",
+          "disagreement_quarantine",
+          "install",
+          "malformed",
+          "mutation",
+          "positive",
+          "replay",
+          "role",
+          "timeout",
+          "translation",
+          "violation"
+        ],
+        "case_results_total": 11,
+        "case_bindings": [
+          {
+            "case_id": "case:ni_holds",
+            "engine_id": "mchyper",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/mchyper/87f0f857/upstream/mchyper.py",
+            "engine_version": "87f0f857",
+            "document_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "output_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "policy_or_formula_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:ni_holds:replay",
+            "engine_id": "mchyper",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/mchyper/87f0f857/upstream/mchyper.py",
+            "engine_version": "87f0f857",
+            "document_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "output_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "policy_or_formula_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:ni_violated",
+            "engine_id": "mchyper",
+            "expected": "violated",
+            "outcome": "violated",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/mchyper/87f0f857/upstream/mchyper.py",
+            "engine_version": "87f0f857",
+            "document_digest": "bac3dde5967bf1a40aa9f2a106bf10e1cfc714c730d37b4c8e1996643b6f955d",
+            "output_digest": "bac3dde5967bf1a40aa9f2a106bf10e1cfc714c730d37b4c8e1996643b6f955d",
+            "policy_or_formula_digest": "bac3dde5967bf1a40aa9f2a106bf10e1cfc714c730d37b4c8e1996643b6f955d",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:replay_holds",
+            "engine_id": "mchyper",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/mchyper/87f0f857/upstream/mchyper.py",
+            "engine_version": "87f0f857",
+            "document_digest": "e41f5388c8e95fc705312eab459a135a9f83862aab89ea6433fddbad98354193",
+            "output_digest": "e41f5388c8e95fc705312eab459a135a9f83862aab89ea6433fddbad98354193",
+            "policy_or_formula_digest": "e41f5388c8e95fc705312eab459a135a9f83862aab89ea6433fddbad98354193",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:replay_holds:replay",
+            "engine_id": "mchyper",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/mchyper/87f0f857/upstream/mchyper.py",
+            "engine_version": "87f0f857",
+            "document_digest": "e41f5388c8e95fc705312eab459a135a9f83862aab89ea6433fddbad98354193",
+            "output_digest": "e41f5388c8e95fc705312eab459a135a9f83862aab89ea6433fddbad98354193",
+            "policy_or_formula_digest": "e41f5388c8e95fc705312eab459a135a9f83862aab89ea6433fddbad98354193",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:bounds_exact",
+            "engine_id": "mchyper",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/mchyper/87f0f857/upstream/mchyper.py",
+            "engine_version": "87f0f857",
+            "document_digest": "85ea7f3151017c2758f1199fb39b510a4259371d3ceab35df52cbc104304e2fd",
+            "output_digest": "85ea7f3151017c2758f1199fb39b510a4259371d3ceab35df52cbc104304e2fd",
+            "policy_or_formula_digest": "85ea7f3151017c2758f1199fb39b510a4259371d3ceab35df52cbc104304e2fd",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:ni_holds:baseline",
+            "engine_id": "mchyper",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/mchyper/87f0f857/upstream/mchyper.py",
+            "engine_version": "87f0f857",
+            "document_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "output_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "policy_or_formula_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:mutation_observation",
+            "engine_id": "mchyper",
+            "expected": "satisfied",
+            "outcome": "satisfied",
+            "agreed": true,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": false,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/mchyper/87f0f857/upstream/mchyper.py",
+            "engine_version": "87f0f857",
+            "document_digest": "5586f1775d3e0bb32ff9cc4f580138738fb588a42ed7fb94ba007ce7a3ad42b9",
+            "output_digest": "5586f1775d3e0bb32ff9cc4f580138738fb588a42ed7fb94ba007ce7a3ad42b9",
+            "policy_or_formula_digest": "5586f1775d3e0bb32ff9cc4f580138738fb588a42ed7fb94ba007ce7a3ad42b9",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:malformed",
+            "engine_id": "mchyper",
+            "expected": "error",
+            "outcome": "error",
+            "agreed": false,
+            "timed_out": false,
+            "malformed": true,
+            "quarantined": true,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/mchyper/87f0f857/upstream/mchyper.py",
+            "engine_version": "87f0f857",
+            "document_digest": "bc383bce101c954da9337e84a83af3483dfd4a2f1777c1454d1f9cbb67ca88e5",
+            "output_digest": "bc383bce101c954da9337e84a83af3483dfd4a2f1777c1454d1f9cbb67ca88e5",
+            "policy_or_formula_digest": "bc383bce101c954da9337e84a83af3483dfd4a2f1777c1454d1f9cbb67ca88e5",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:timeout",
+            "engine_id": "mchyper",
+            "expected": "satisfied",
+            "outcome": "timeout",
+            "agreed": false,
+            "timed_out": true,
+            "malformed": false,
+            "quarantined": true,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/mchyper/87f0f857/upstream/mchyper.py",
+            "engine_version": "87f0f857",
+            "document_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "output_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "policy_or_formula_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 0
+            },
+            "host_platform": null
+          },
+          {
+            "case_id": "case:disagreement",
+            "engine_id": "mchyper",
+            "expected": "satisfied",
+            "outcome": "violated",
+            "agreed": false,
+            "timed_out": false,
+            "malformed": false,
+            "quarantined": true,
+            "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/hyperproperty-vendor/mchyper/87f0f857/upstream/mchyper.py",
+            "engine_version": "87f0f857",
+            "document_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "output_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "policy_or_formula_digest": "9782c6f0e6f3b9b19baf7356f9dd04e788b2f52623cc7ae3197e1ac8e1a91614",
+            "quantifier_signature": [
+              "forall",
+              "forall"
+            ],
+            "observation_fields": [
+              "status",
+              "public_token"
+            ],
+            "parser_decisions": {
+              "translation_preserved": true,
+              "quantifier_signature": [
+                "forall",
+                "forall"
+              ],
+              "observation_fields": [
+                "status",
+                "public_token"
+              ]
+            },
+            "bounds": {
+              "authority": "bounded",
+              "authorizes_universal_proof": false,
+              "is_theorem_authority": false,
+              "counterexample_traces": 2
+            },
+            "host_platform": null
+          }
+        ],
+        "block_reasons": []
+      }
+    ],
+    "categories_exercised": [
+      "bounds",
+      "disagreement",
+      "malformed",
+      "mutation",
+      "replay",
+      "satisfaction",
+      "timeout",
+      "violation"
+    ],
+    "mutation_kinds": [
+      "observation",
+      "quantifier"
+    ],
+    "required_categories": [
+      "bounds",
+      "disagreement",
+      "malformed",
+      "mutation",
+      "replay",
+      "satisfaction",
+      "timeout",
+      "violation"
+    ],
+    "required_mutation_kinds": [
+      "observation",
+      "quantifier"
+    ],
+    "checks_passed": 66,
+    "checks_total": 66,
+    "source_certificate_digest_sha256": "0688db45d44e4cb474e7c3be35fb2bc803028299286d21dec7e87a7ed0b09161",
+    "block_reasons": [],
+    "policy": {
+      "quantifiers_and_observation_projections_preserved": true,
+      "disagreement_quarantines_promotion": true,
+      "never_grants_theorem_authority": true,
+      "never_authorizes_universal_proof": true,
+      "cannot_make_universal_claims_beyond_bounds": true,
+      "hermetic_engines_cannot_satisfy_vendor": true,
+      "case_oracle_cannot_satisfy_vendor": true,
+      "authority_ceiling": "bounded"
+    }
+  },
+  "external_authorization": {
+    "lane_id": "external_authorization_vendor",
+    "interface": "ExternalAuthorizationVendorCertification@1",
+    "schema_version": "external-authorization-vendor-certification/v1",
+    "goal_id": "FVT-G209",
+    "task_id": "FVT-055",
+    "certified": true,
+    "authority_ceiling": "none",
+    "forbids_theorem_authority": true,
+    "forbids_authorization_authority_on_shadows": true,
+    "grants_authorization_decision_authority": false,
+    "external_authorization_shadow": true,
+    "engine_ids": [
+      "souffle"
+    ],
+    "souffle": {
+      "tool_id": "souffle",
+      "version": "2.4.1",
+      "certified": true,
+      "usable": true,
+      "role": "shadow",
+      "authority_ceiling": "none",
+      "authorizes_universal_proof": false,
+      "is_theorem_authority": false,
+      "is_vendor_build": true,
+      "is_hermetic_engine": false,
+      "host_platform": "linux-aarch64",
+      "executable": "<managed-tool-path-redacted>/souffle-vendor/authorization-vendor/souffle/2.4.1/bin/souffle",
+      "executable_basename": "souffle",
+      "executable_sha256": "064e4309de40862e484461e078a586acfa9b55a31d79e7b330e4b5b3d3e18e67",
+      "artifact_sha256": "064e4309de40862e484461e078a586acfa9b55a31d79e7b330e4b5b3d3e18e67",
+      "source_archive_sha256": "08d9b19cb4a8f570ac75dea73016b6a326d87ac28fccd4afeba217ace2071587",
+      "source_archive_url": "https://github.com/souffle-lang/souffle/archive/refs/tags/2.4.1.tar.gz",
+      "runtime_digest_sha256": "c4d14408013b0f8e745ecc4d9837b031b0eae2a1419cc373d2399b2e36e27119",
+      "git_commit": null,
+      "build_dependencies": {
+        "bison": ">=3.0",
+        "cmake": ">=3.15",
+        "flex": ">=2.6",
+        "libffi": ">=3.0",
+        "mcpp": ">=2.7",
+        "python3": ">=3.8",
+        "sqlite3": ">=3.0"
+      },
+      "runtime_dependencies": {},
+      "decidable_fragment_ceiling": "",
+      "supported_fragment": "",
+      "dotnet_runtime": "",
+      "spot_version": "",
+      "abc_version": "",
+      "aiger_tools_version": "",
+      "upstream_product": "",
+      "native_binary_format": "elf",
+      "native_machine": "aarch64",
+      "identity_manifest_sha256": "c4d14408013b0f8e745ecc4d9837b031b0eae2a1419cc373d2399b2e36e27119",
+      "dependency_prefix": "<managed-tool-path-redacted>/build-dependencies/souffle/ubuntu-noble-arm64/root",
+      "checks_passed": 32,
+      "checks_total": 32,
+      "check_kinds": [
+        "authority",
+        "differential",
+        "disagreement_quarantine",
+        "install",
+        "malformed",
+        "mutation",
+        "positive",
+        "replay",
+        "role",
+        "timeout"
+      ],
+      "case_results_total": 15,
+      "case_bindings": [
+        {
+          "case_id": "case:allow",
+          "engine_id": "souffle",
+          "expected": null,
+          "outcome": "allow",
+          "agreed": true,
+          "timed_out": false,
+          "malformed": false,
+          "quarantined": false,
+          "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/souffle-vendor/authorization-vendor/souffle/2.4.1/bin/souffle",
+          "engine_version": "2.4.1",
+          "document_digest": null,
+          "output_digest": null,
+          "policy_or_formula_digest": null,
+          "quantifier_signature": [],
+          "observation_fields": [],
+          "parser_decisions": {
+            "translation_preserved": null,
+            "quantifier_signature": [],
+            "observation_fields": []
+          },
+          "bounds": {
+            "authority": "none",
+            "authorizes_universal_proof": false,
+            "is_theorem_authority": false,
+            "counterexample_traces": null
+          },
+          "host_platform": null
+        },
+        {
+          "case_id": "case:deny",
+          "engine_id": "souffle",
+          "expected": null,
+          "outcome": "deny",
+          "agreed": true,
+          "timed_out": false,
+          "malformed": false,
+          "quarantined": false,
+          "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/souffle-vendor/authorization-vendor/souffle/2.4.1/bin/souffle",
+          "engine_version": "2.4.1",
+          "document_digest": null,
+          "output_digest": null,
+          "policy_or_formula_digest": null,
+          "quantifier_signature": [],
+          "observation_fields": [],
+          "parser_decisions": {
+            "translation_preserved": null,
+            "quantifier_signature": [],
+            "observation_fields": []
+          },
+          "bounds": {
+            "authority": "none",
+            "authorizes_universal_proof": false,
+            "is_theorem_authority": false,
+            "counterexample_traces": null
+          },
+          "host_platform": null
+        },
+        {
+          "case_id": "case:deny:replay",
+          "engine_id": "souffle",
+          "expected": null,
+          "outcome": "deny",
+          "agreed": true,
+          "timed_out": false,
+          "malformed": false,
+          "quarantined": false,
+          "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/souffle-vendor/authorization-vendor/souffle/2.4.1/bin/souffle",
+          "engine_version": "2.4.1",
+          "document_digest": null,
+          "output_digest": null,
+          "policy_or_formula_digest": null,
+          "quantifier_signature": [],
+          "observation_fields": [],
+          "parser_decisions": {
+            "translation_preserved": null,
+            "quantifier_signature": [],
+            "observation_fields": []
+          },
+          "bounds": {
+            "authority": "none",
+            "authorizes_universal_proof": false,
+            "is_theorem_authority": false,
+            "counterexample_traces": null
+          },
+          "host_platform": null
+        },
+        {
+          "case_id": "case:unknown",
+          "engine_id": "souffle",
+          "expected": null,
+          "outcome": "unknown",
+          "agreed": true,
+          "timed_out": false,
+          "malformed": false,
+          "quarantined": false,
+          "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/souffle-vendor/authorization-vendor/souffle/2.4.1/bin/souffle",
+          "engine_version": "2.4.1",
+          "document_digest": null,
+          "output_digest": null,
+          "policy_or_formula_digest": null,
+          "quantifier_signature": [],
+          "observation_fields": [],
+          "parser_decisions": {
+            "translation_preserved": null,
+            "quantifier_signature": [],
+            "observation_fields": []
+          },
+          "bounds": {
+            "authority": "none",
+            "authorizes_universal_proof": false,
+            "is_theorem_authority": false,
+            "counterexample_traces": null
+          },
+          "host_platform": null
+        },
+        {
+          "case_id": "case:unknown:replay",
+          "engine_id": "souffle",
+          "expected": null,
+          "outcome": "unknown",
+          "agreed": true,
+          "timed_out": false,
+          "malformed": false,
+          "quarantined": false,
+          "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/souffle-vendor/authorization-vendor/souffle/2.4.1/bin/souffle",
+          "engine_version": "2.4.1",
+          "document_digest": null,
+          "output_digest": null,
+          "policy_or_formula_digest": null,
+          "quantifier_signature": [],
+          "observation_fields": [],
+          "parser_decisions": {
+            "translation_preserved": null,
+            "quantifier_signature": [],
+            "observation_fields": []
+          },
+          "bounds": {
+            "authority": "none",
+            "authorizes_universal_proof": false,
+            "is_theorem_authority": false,
+            "counterexample_traces": null
+          },
+          "host_platform": null
+        },
+        {
+          "case_id": "case:conflict",
+          "engine_id": "souffle",
+          "expected": null,
+          "outcome": "conflict",
+          "agreed": true,
+          "timed_out": false,
+          "malformed": false,
+          "quarantined": false,
+          "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/souffle-vendor/authorization-vendor/souffle/2.4.1/bin/souffle",
+          "engine_version": "2.4.1",
+          "document_digest": null,
+          "output_digest": null,
+          "policy_or_formula_digest": null,
+          "quantifier_signature": [],
+          "observation_fields": [],
+          "parser_decisions": {
+            "translation_preserved": null,
+            "quantifier_signature": [],
+            "observation_fields": []
+          },
+          "bounds": {
+            "authority": "none",
+            "authorizes_universal_proof": false,
+            "is_theorem_authority": false,
+            "counterexample_traces": null
+          },
+          "host_platform": null
+        },
+        {
+          "case_id": "case:conflict:replay",
+          "engine_id": "souffle",
+          "expected": null,
+          "outcome": "conflict",
+          "agreed": true,
+          "timed_out": false,
+          "malformed": false,
+          "quarantined": false,
+          "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/souffle-vendor/authorization-vendor/souffle/2.4.1/bin/souffle",
+          "engine_version": "2.4.1",
+          "document_digest": null,
+          "output_digest": null,
+          "policy_or_formula_digest": null,
+          "quantifier_signature": [],
+          "observation_fields": [],
+          "parser_decisions": {
+            "translation_preserved": null,
+            "quantifier_signature": [],
+            "observation_fields": []
+          },
+          "bounds": {
+            "authority": "none",
+            "authorizes_universal_proof": false,
+            "is_theorem_authority": false,
+            "counterexample_traces": null
+          },
+          "host_platform": null
+        },
+        {
+          "case_id": "case:delegation",
+          "engine_id": "souffle",
+          "expected": null,
+          "outcome": "allow",
+          "agreed": true,
+          "timed_out": false,
+          "malformed": false,
+          "quarantined": false,
+          "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/souffle-vendor/authorization-vendor/souffle/2.4.1/bin/souffle",
+          "engine_version": "2.4.1",
+          "document_digest": null,
+          "output_digest": null,
+          "policy_or_formula_digest": null,
+          "quantifier_signature": [],
+          "observation_fields": [],
+          "parser_decisions": {
+            "translation_preserved": null,
+            "quantifier_signature": [],
+            "observation_fields": []
+          },
+          "bounds": {
+            "authority": "none",
+            "authorizes_universal_proof": false,
+            "is_theorem_authority": false,
+            "counterexample_traces": null
+          },
+          "host_platform": null
+        },
+        {
+          "case_id": "case:mutation.rule:baseline",
+          "engine_id": "souffle",
+          "expected": null,
+          "outcome": "allow",
+          "agreed": true,
+          "timed_out": false,
+          "malformed": false,
+          "quarantined": false,
+          "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/souffle-vendor/authorization-vendor/souffle/2.4.1/bin/souffle",
+          "engine_version": "2.4.1",
+          "document_digest": null,
+          "output_digest": null,
+          "policy_or_formula_digest": null,
+          "quantifier_signature": [],
+          "observation_fields": [],
+          "parser_decisions": {
+            "translation_preserved": null,
+            "quantifier_signature": [],
+            "observation_fields": []
+          },
+          "bounds": {
+            "authority": "none",
+            "authorizes_universal_proof": false,
+            "is_theorem_authority": false,
+            "counterexample_traces": null
+          },
+          "host_platform": null
+        },
+        {
+          "case_id": "case:mutation.rule",
+          "engine_id": "souffle",
+          "expected": null,
+          "outcome": "unknown",
+          "agreed": true,
+          "timed_out": false,
+          "malformed": false,
+          "quarantined": false,
+          "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/souffle-vendor/authorization-vendor/souffle/2.4.1/bin/souffle",
+          "engine_version": "2.4.1",
+          "document_digest": null,
+          "output_digest": null,
+          "policy_or_formula_digest": null,
+          "quantifier_signature": [],
+          "observation_fields": [],
+          "parser_decisions": {
+            "translation_preserved": null,
+            "quantifier_signature": [],
+            "observation_fields": []
+          },
+          "bounds": {
+            "authority": "none",
+            "authorizes_universal_proof": false,
+            "is_theorem_authority": false,
+            "counterexample_traces": null
+          },
+          "host_platform": null
+        },
+        {
+          "case_id": "case:mutation.scope:baseline",
+          "engine_id": "souffle",
+          "expected": null,
+          "outcome": "allow",
+          "agreed": true,
+          "timed_out": false,
+          "malformed": false,
+          "quarantined": false,
+          "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/souffle-vendor/authorization-vendor/souffle/2.4.1/bin/souffle",
+          "engine_version": "2.4.1",
+          "document_digest": null,
+          "output_digest": null,
+          "policy_or_formula_digest": null,
+          "quantifier_signature": [],
+          "observation_fields": [],
+          "parser_decisions": {
+            "translation_preserved": null,
+            "quantifier_signature": [],
+            "observation_fields": []
+          },
+          "bounds": {
+            "authority": "none",
+            "authorizes_universal_proof": false,
+            "is_theorem_authority": false,
+            "counterexample_traces": null
+          },
+          "host_platform": null
+        },
+        {
+          "case_id": "case:mutation.scope",
+          "engine_id": "souffle",
+          "expected": null,
+          "outcome": "unknown",
+          "agreed": true,
+          "timed_out": false,
+          "malformed": false,
+          "quarantined": false,
+          "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/souffle-vendor/authorization-vendor/souffle/2.4.1/bin/souffle",
+          "engine_version": "2.4.1",
+          "document_digest": null,
+          "output_digest": null,
+          "policy_or_formula_digest": null,
+          "quantifier_signature": [],
+          "observation_fields": [],
+          "parser_decisions": {
+            "translation_preserved": null,
+            "quantifier_signature": [],
+            "observation_fields": []
+          },
+          "bounds": {
+            "authority": "none",
+            "authorizes_universal_proof": false,
+            "is_theorem_authority": false,
+            "counterexample_traces": null
+          },
+          "host_platform": null
+        },
+        {
+          "case_id": "case:malformed",
+          "engine_id": "souffle",
+          "expected": null,
+          "outcome": "error",
+          "agreed": true,
+          "timed_out": false,
+          "malformed": true,
+          "quarantined": true,
+          "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/souffle-vendor/authorization-vendor/souffle/2.4.1/bin/souffle",
+          "engine_version": "2.4.1",
+          "document_digest": null,
+          "output_digest": null,
+          "policy_or_formula_digest": null,
+          "quantifier_signature": [],
+          "observation_fields": [],
+          "parser_decisions": {
+            "translation_preserved": null,
+            "quantifier_signature": [],
+            "observation_fields": []
+          },
+          "bounds": {
+            "authority": "none",
+            "authorizes_universal_proof": false,
+            "is_theorem_authority": false,
+            "counterexample_traces": null
+          },
+          "host_platform": null
+        },
+        {
+          "case_id": "case:timeout",
+          "engine_id": "souffle",
+          "expected": null,
+          "outcome": "timeout",
+          "agreed": false,
+          "timed_out": true,
+          "malformed": false,
+          "quarantined": true,
+          "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/souffle-vendor/authorization-vendor/souffle/2.4.1/bin/souffle",
+          "engine_version": "2.4.1",
+          "document_digest": null,
+          "output_digest": null,
+          "policy_or_formula_digest": null,
+          "quantifier_signature": [],
+          "observation_fields": [],
+          "parser_decisions": {
+            "translation_preserved": null,
+            "quantifier_signature": [],
+            "observation_fields": []
+          },
+          "bounds": {
+            "authority": "none",
+            "authorizes_universal_proof": false,
+            "is_theorem_authority": false,
+            "counterexample_traces": null
+          },
+          "host_platform": null
+        },
+        {
+          "case_id": "case:disagreement",
+          "engine_id": "souffle",
+          "expected": null,
+          "outcome": "deny",
+          "agreed": false,
+          "timed_out": false,
+          "malformed": false,
+          "quarantined": true,
+          "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/souffle-vendor/authorization-vendor/souffle/2.4.1/bin/souffle",
+          "engine_version": "2.4.1",
+          "document_digest": null,
+          "output_digest": null,
+          "policy_or_formula_digest": null,
+          "quantifier_signature": [],
+          "observation_fields": [],
+          "parser_decisions": {
+            "translation_preserved": null,
+            "quantifier_signature": [],
+            "observation_fields": []
+          },
+          "bounds": {
+            "authority": "none",
+            "authorizes_universal_proof": false,
+            "is_theorem_authority": false,
+            "counterexample_traces": null
+          },
+          "host_platform": null
+        }
+      ],
+      "block_reasons": []
+    },
+    "categories_exercised": [
+      "allow",
+      "conflict",
+      "delegation",
+      "deny",
+      "unknown"
+    ],
+    "mutation_kinds": [
+      "rule",
+      "scope"
+    ],
+    "required_categories": [
+      "allow",
+      "conflict",
+      "delegation",
+      "deny",
+      "unknown"
+    ],
+    "required_mutation_kinds": [
+      "rule",
+      "scope"
+    ],
+    "checks_passed": 32,
+    "checks_total": 32,
+    "source_certificate_digest_sha256": "66c596bb3e4d63dc0e48f9449dd15a5bda2171d5c2a37ed3c627f5e24025f1b9",
+    "secpal_compatibility": {
+      "tool_id": "secpal",
+      "interchangeable_with_souffle_vendor": false,
+      "interchangeable_with_hyperproperty_authority": false,
+      "exception": true,
+      "installed": false,
+      "complete": false,
+      "authoritative": false,
+      "production_certified": false,
+      "host_platform": "linux-aarch64",
+      "classification": "unsupported_here",
+      "notes": "Microsoft SecPAL compatibility evidence is not interchangeable with managed Souffl\u00e9 vendor semantics or hyperproperty authority."
+    },
+    "block_reasons": [],
+    "policy": {
+      "external_engines_are_shadows": true,
+      "in_process_references_retain_authorization_authority": true,
+      "hermetic_shadows_are_differential_only": true,
+      "hermetic_shadows_cannot_satisfy_vendor": true,
+      "never_grants_authorization_authority_to_shadows": true,
+      "never_grants_theorem_authority": true,
+      "secpal_compatibility_not_interchangeable": true,
+      "runner_owned_fault_injection": true,
+      "authority_ceiling": "none"
+    }
+  },
+  "lanes": {
+    "hyperproperty": {
+      "certified": true,
+      "authority_ceiling": "bounded",
+      "engine_ids": [
+        "hyperltl",
+        "autohyper",
+        "mchyper"
+      ]
+    },
+    "external_authorization": {
+      "certified": true,
+      "authority_ceiling": "none",
+      "engine_ids": [
+        "souffle"
+      ]
+    }
+  },
+  "summary": {
+    "certified": true,
+    "hyperproperty_certified": true,
+    "external_authorization_certified": true,
+    "hyper_engine_ids": [
+      "hyperltl",
+      "autohyper",
+      "mchyper"
+    ],
+    "souffle_tool_id": "souffle",
+    "hyper_checks_passed": 66,
+    "hyper_checks_total": 66,
+    "souffle_checks_passed": 32,
+    "souffle_checks_total": 32,
+    "hyper_categories": [
+      "bounds",
+      "disagreement",
+      "malformed",
+      "mutation",
+      "replay",
+      "satisfaction",
+      "timeout",
+      "violation"
+    ],
+    "souffle_categories": [
+      "allow",
+      "conflict",
+      "delegation",
+      "deny",
+      "unknown"
+    ],
+    "secpal_interchangeable": false,
+    "block_reasons": []
+  },
+  "acceptance": {
+    "goal_id": "FVT-G229",
+    "task_id": "FVT-097",
+    "hyperltl_autohyper_mchyper_bounded_information_flow_hyperproperties": true,
+    "trace_pair_witnesses_mutation_replay_malformed_timeout_disagreement": true,
+    "souffle_allow_deny_unknown_conflict_delegation_rule_scope_mutation_replay": true,
+    "receipts_bind_executable_runtime_source_host_policy_bounds_parser_output": true,
+    "hyperproperty_authority_remains_bounded": true,
+    "souffle_remains_external_authorization_shadow": true,
+    "microsoft_secpal_compatibility_not_interchangeable": true
+  },
+  "depends_on": [
+    "FVT-G208",
+    "FVT-G209",
+    "FVT-G226"
+  ],
+  "env_flags": {
+    "FORMAL_VERIFICATION_CERTIFY_OFFLINE": "1",
+    "FORMAL_VERIFICATION_FORBID_INSTALL": "1",
+    "FORMAL_VERIFICATION_FORBID_NETWORK": "1",
+    "FORMAL_VERIFICATION_REPLAYED_HYPER_AUTHORIZATION_OFFLINE": "1"
+  },
+  "receipt_digest_sha256": "sha256:0c96e431eda8afea1476f92f62bb58c63958e5286256742887569346a81784f0",
+  "certificate_digest_sha256": "sha256:0c96e431eda8afea1476f92f62bb58c63958e5286256742887569346a81784f0"
+}
