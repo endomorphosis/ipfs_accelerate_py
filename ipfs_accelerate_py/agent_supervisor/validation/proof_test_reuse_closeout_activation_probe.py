@@ -784,7 +784,13 @@ def produce_closeout_activation_probe(
     remaining = tuple(
         item.operator_action
         for item in claims
-        if item.operator_action and not item.proven
+        if item.operator_action
+        and (
+            # activation_gap.proven means the gap is confirmed present — still
+            # an open operator action — whereas other proven claims are done.
+            not item.proven
+            or (item.field == "activation_gap" and item.proven)
+        )
     )
     # Deduplicate while preserving order.
     seen: set[str] = set()
