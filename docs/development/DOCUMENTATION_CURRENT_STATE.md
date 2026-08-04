@@ -132,20 +132,22 @@ pages must **name both sides** until a code/test task reconciles them.
 
 | Blocker | Evidence | Owner |
 | --- | --- | --- |
-| Package version string disagreement | `pyproject.toml` / `setup.py` report `0.0.45`; `ipfs_accelerate_py.__version__` is `0.4.0` | packaging / package maintainers |
 | Optional capability stacks | CUDA, IPFS, P2P, external LLMs, provers may be absent after a successful import | subsystem maintainers; docs use capability language |
 | Nested product gitlinks | Submodule / gitlink trees may be empty offline | integration maintainers; [NESTED_PACKAGES.md](../NESTED_PACKAGES.md) |
 | No full-tree link CI gate | Weekly documentation-maintenance workflow is not a required PR link checker | documentation governance / CI (see [DOCUMENTATION_MAINTENANCE.md](DOCUMENTATION_MAINTENANCE.md)) |
 
-**Resolved (2026-08-03 revalidation):** the unified CLI module docstring and
-parser epilog no longer advertise unregistered `inference` / `queue` /
-`network` examples. Historical docs and completion reports may still mention
-those strings; the live `choices=` set rejects them.
+**Resolved (2026-08-03 revalidation):**
+
+- Unified CLI module docstring and parser epilog no longer advertise
+  unregistered `inference` / `queue` / `network` examples. Historical docs and
+  completion reports may still mention those strings; the live `choices=` set
+  rejects them.
+- Package version pin is `0.0.45` in `pyproject.toml` / `setup.py`, and
+  `ipfs_accelerate_py.__version__` uses the same `_PACKAGING_VERSION` pin.
 
 The second console script, `ipfs_accelerate`, intentionally uses the separate
 `ai_inference_cli:main` parser. That split is a documented interface boundary.
-Documentation tasks must not invent a single version string or merge the two
-CLI surfaces in prose.
+Documentation tasks must not merge the two CLI surfaces in prose.
 
 ---
 
@@ -227,8 +229,8 @@ the following occur:
    package `__init__` files.
 3. Supervisor domain packages move or the primary-doc ticket-ID checker path
    list changes.
-4. The packaging version disagreement is resolved in code (update all Current
-   install/API pages and this blocker table).
+4. The packaging version pin changes in `pyproject.toml` / `setup.py` (keep
+   `_PACKAGING_VERSION` and Current install pages aligned).
 5. A dedicated allowlisted link checker is added under `scripts/docs/` or CI.
 6. Nested product submodules become required for a Current journey.
 

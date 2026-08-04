@@ -6,8 +6,8 @@
 **Scope:** Python range, published and editable installs, optional extras from
 `pyproject.toml`, CUDA/PyTorch selection, MCP and IPFS/P2P prerequisites, and
 offline verification
-**Non-goals:** Resolving packaging-versus-runtime version disagreement in code;
-deep MCP, hardware, or supervisor operations (see the linked guides)
+**Non-goals:** Deep MCP, hardware, or supervisor operations (see the linked
+guides)
 **Sources:** `pyproject.toml` (`[project]`, `[project.optional-dependencies]`,
 `[project.scripts]`), `setup.py` (`version=`), `ipfs_accelerate_py/__init__.py`
 (`__version__`, `get_instance`), `requirements.txt`,
@@ -15,7 +15,7 @@ deep MCP, hardware, or supervisor operations (see the linked guides)
 `install/requirements_torch_cu130_nightly.txt`,
 `scripts/install_torch_cuda_cu130_nightly.sh`,
 `docs/architecture/INFERENCE_RUNTIME.md`
-**Last-verified:** 2026-08-03 @ b128cceef
+**Last-verified:** 2026-08-03 @ f1d0bbefd (version sources reconciled)
 
 IPFS Accelerate Python currently has a broad always-installed dependency set,
 loaded dynamically from `requirements.txt`, plus feature-scoped optional
@@ -40,18 +40,15 @@ updated to this page.
 Model size and device memory are workload-dependent. There is no universal RAM,
 GPU, or storage requirement for every supported model.
 
-## Version sources (code-owned disagreement)
+## Version sources
 
-Packaging metadata and the runtime export currently disagree. Documentation
-must not invent a single “true” product version:
+Distribution metadata and the runtime export share one product pin:
 
 | Source | Field | Value on this tree |
 | --- | --- | --- |
 | `pyproject.toml` | `[project].version` | `0.0.45` |
 | `setup.py` | `version=` | `0.0.45` |
-| `ipfs_accelerate_py/__init__.py` | `__version__` | `0.4.0` |
-
-When you need a version string, quote the file it came from. For example:
+| `ipfs_accelerate_py/__init__.py` | `_PACKAGING_VERSION` / `__version__` | `0.0.45` |
 
 ```bash
 # Packaging metadata (installed dist, when available)
@@ -61,9 +58,8 @@ python -m pip show ipfs-accelerate-py
 python -c "import ipfs_accelerate_py; print(ipfs_accelerate_py.__version__)"
 ```
 
-Those two commands may print different values until packaging and the package
-export are reconciled in code. Do not treat either value as proof that the
-other is wrong in prose.
+When bumping a release, update `pyproject.toml`, `setup.py`, and
+`_PACKAGING_VERSION` in `ipfs_accelerate_py/__init__.py` together.
 
 ## Published package
 
@@ -305,7 +301,7 @@ python -m pip show ipfs-accelerate-py
 | MCP status fails | Check the port, server log, and `ipfs-accelerate mcp status`. |
 | IPFS connection is refused | Start/configure the external daemon, or use local storage instead. |
 | Native dependency fails to build | Use a supported Python/OS toolchain and follow that dependency’s own install docs. |
-| Version strings disagree | Expected until code reconciles packaging (`0.0.45`) and `__version__` (`0.4.0`); cite the source of each value. |
+| Version strings disagree | Re-run both packaging and runtime checks above; they should report `0.0.45` after the 2026-08-03 reconciliation. |
 
 ## Development install check
 

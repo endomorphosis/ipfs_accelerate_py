@@ -12,7 +12,7 @@ version reconciliation
 (`get_instance`, `__version__`), `ipfs_accelerate_py/cli_entry.py`,
 `ipfs_accelerate_py/ipfs_accelerate.py` (`run_model`, `get_capabilities`),
 `docs/architecture/INFERENCE_RUNTIME.md`
-**Last-verified:** 2026-08-03 @ b128cceef
+**Last-verified:** 2026-08-03 @ f1d0bbefd (version pin reconciled)
 
 This guide gets a source checkout or an installed package to a verified Python
 import, a capability report, and an optional MCP server. The framework has
@@ -62,10 +62,9 @@ This is an import/version check only. It deliberately does not call
 may initialize storage, caches, configuration, daemons, or external-resource
 integrations.
 
-`ipfs_accelerate_py.__version__` is the runtime export. Packaging metadata in
-`pyproject.toml` / `setup.py` currently declares `0.0.45` while
-`__version__` is `0.4.0`. Quote the source of any version string; do not
-assume which side “wins.” See [installation](installation.md#version-sources-code-owned-disagreement).
+`ipfs_accelerate_py.__version__` is the runtime export and matches packaging
+metadata (`0.0.45` on this tree). See
+[installation version sources](installation.md#version-sources).
 
 The base import is intentionally defensive. It may expose an availability flag
 or a fallback object when optional dependencies are missing.

@@ -12,7 +12,7 @@ sources disagree
 `ipfs_accelerate_py/cli_entry.py` → `ipfs_accelerate_py/cli.py`,
 `ipfs_accelerate_py/__init__.py`, `ipfs_accelerate_py/mcp_server/`,
 `docs/architecture/INFERENCE_RUNTIME.md`
-**Last-verified:** 2026-08-03 @ b128cceef
+**Last-verified:** 2026-08-03 @ f1d0bbefd (version pin reconciled)
 
 This guide uses the current `ipfs-accelerate` CLI and Python exports. Optional
 model, CUDA, IPFS, MCP, and P2P integrations require their corresponding
@@ -55,10 +55,8 @@ This cold check deliberately avoids `get_instance()`. Constructing the process
 coordinator may initialize storage, caches, configuration, daemons, and
 configured external integrations.
 
-Packaging metadata currently declares `0.0.45` while
-`ipfs_accelerate_py.__version__` is `0.4.0`. Report both sources when needed;
-do not guess which declaration should win. Details:
-[version sources](getting-started/installation.md#version-sources-code-owned-disagreement).
+Runtime `__version__` matches packaging metadata (`0.0.45` on this tree).
+Details: [version sources](getting-started/installation.md#version-sources).
 
 ## Inspect capabilities
 
