@@ -1307,6 +1307,14 @@ def classify_coverage_kind(
                 "generated_suffix",
                 f"generated_suffixes:{generated_suffix}",
             )
+    # Symlinks must be typed before extension routing so a semantic-looking
+    # suffix (for example ``.py``) cannot force a language parse of a link.
+    if entry_kind is EntryKind.SYMLINK:
+        return (
+            CoverageKind.TEXT_REFERENCE,
+            "symlink_target_text",
+            "entry_kind:symlink",
+        )
     suffix = _suffix(path)
     if suffix in policy.binary_extensions:
         return (
@@ -1331,12 +1339,6 @@ def classify_coverage_kind(
             CoverageKind.TEXT_REFERENCE,
             "text_extension",
             f"text_extensions:{suffix}",
-        )
-    if entry_kind is EntryKind.SYMLINK:
-        return (
-            CoverageKind.TEXT_REFERENCE,
-            "symlink_target_text",
-            "entry_kind:symlink",
         )
     return (
         CoverageKind.UNSUPPORTED,

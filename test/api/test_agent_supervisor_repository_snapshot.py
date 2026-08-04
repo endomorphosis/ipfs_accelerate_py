@@ -346,6 +346,52 @@ def test_symlink_is_hashed_and_escape_is_rejected(tmp_path: Path) -> None:
         _snapshot(repository)
 
 
+def test_semantic_looking_symlinks_are_typed_before_suffix_routing(
+    tmp_path: Path,
+) -> None:
+    """SCA-235: EntryKind.SYMLINK wins over semantic/structured extensions.
+
+    Covers positive in-tree links and negative escape links for ten
+    semantic-looking suffixes that would otherwise force language parse.
+    """
+
+    repository = _repository(tmp_path)
+    target = repository / "src" / "payload.bin"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"payload")
+
+    # Ten semantic-looking suffixes: five positive in-tree links, five escape
+    # links (untracked allowlisted overlays that must fail closed).
+    positive_suffixes = (".py", ".ts", ".js", ".json", ".md")
+    negative_suffixes = (".py", ".ts", ".js", ".json", ".md")
+    outside = tmp_path / "outside-payload"
+    outside.write_bytes(b"secret")
+
+    for suffix in positive_suffixes:
+        name = f"positive{suffix}"
+        os.symlink("src/payload.bin", repository / name)
+        _git(repository, "add", name)
+    _git(repository, "commit", "-qm", "positive semantic-looking symlinks")
+
+    snapshot = _snapshot(repository)
+    for suffix in positive_suffixes:
+        name = f"positive{suffix}"
+        disposition = snapshot.disposition_for_path(name)
+        assert disposition is not None, name
+        assert disposition.entry_kind is EntryKind.SYMLINK, name
+        assert disposition.kind is CoverageKind.TEXT_REFERENCE, name
+        assert disposition.reason_code == "symlink_target_text", name
+        assert disposition.policy_rule == "entry_kind:symlink", name
+        assert disposition.kind is not CoverageKind.SEMANTIC_AST, name
+        assert disposition.kind is not CoverageKind.STRUCTURED_DATA, name
+
+    for index, suffix in enumerate(negative_suffixes):
+        name = f"escape-{index}{suffix}"
+        os.symlink(outside, repository / name)
+    with pytest.raises(SymlinkEscapeError):
+        _snapshot(repository)
+
+
 def test_path_escape_helpers_and_malformed_paths() -> None:
     assert repo_path("src/service.ts") == "src/service.ts"
     assert repo_path("./src/service.ts") == "src/service.ts"
