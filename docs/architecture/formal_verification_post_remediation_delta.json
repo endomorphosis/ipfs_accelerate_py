@@ -52,7 +52,7 @@
     "certificate_lock_digest_matches": true,
     "matrix_audit_complete": true,
     "matrix_deployment_ready": false,
-    "matrix_digest_sha256": "7c69fb3b41453d7a10c308069f96a8f789245a574bae687778550058ddc42ad7",
+    "matrix_digest_sha256": "39342c9f1dbee82f30124f742e7046164d0597670638fcf35d84c98dfc716361",
     "ready_count": 27,
     "ready_provider_ids": [
       "apalache",
@@ -85,7 +85,7 @@
     ],
     "total_count": 28
   },
-  "delta_digest_sha256": "13b691d7018343fd41b7944f772c27d305495ecfadd7b934af7e0c8623eb6cfa",
+  "delta_digest_sha256": "d7bd87bd4c0cbe2741f54f0c31f83fed2cd9f82c3dce22887ea15a4c9432536f",
   "deployment_readiness_inputs": {
     "audit_complete": true,
     "certificate_lock_fresh": true,
@@ -118,7 +118,7 @@
       "kind": "repository_file",
       "path": "docs/architecture/formal_verification_authoritative_vendor_release.json",
       "present": true,
-      "sha256": "sha256:c5629d4006206b30469fb77e2495e61f73144ae8f12630a196b9d650f0c36d84"
+      "sha256": "sha256:df816815219ec52e4ee6b5c26b5913f1823f60dde51490bf5e00555351eec5b6"
     },
     "end_to_end_assurance_matrix": {
       "evidence_id": "end_to_end_assurance_matrix",
@@ -181,7 +181,7 @@
     }
   },
   "interface": "FormalVerificationPostRemediationAssurance@1",
-  "observed_at": "2026-08-04T22:30:04+00:00",
+  "observed_at": "2026-08-04T22:34:24+00:00",
   "production_authorization_replacement_row": {
     "axes": {
       "authority": {

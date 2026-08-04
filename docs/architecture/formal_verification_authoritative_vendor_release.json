@@ -129,15 +129,15 @@
       "file_sha256": "sha256:eeaf6f6a9a1b03a29b8a02fea3be41f4429686ad622f5ad0849e478fd9a62e7e",
       "fresh": true,
       "freshness": {
-        "age_seconds": 14128.0,
+        "age_seconds": 15415.0,
         "clock_skew_seconds": 300,
         "failures": [],
         "max_age_seconds": 86400,
-        "release_wall_clock_age_seconds": 0.209848,
+        "release_wall_clock_age_seconds": 0.156233,
         "timestamp": "2026-08-04T18:17:30Z",
         "valid": true,
-        "wall_clock_age_seconds": 14128.209848,
-        "wall_clock_observed_at": "2026-08-04T22:12:58.209848Z"
+        "wall_clock_age_seconds": 15415.156233,
+        "wall_clock_observed_at": "2026-08-04T22:34:25.156233Z"
       },
       "goal_id": "FVT-G220",
       "identity_valid": true,
@@ -175,15 +175,15 @@
       "file_sha256": "sha256:6517d6f52e7aa1305d6688372128dcd451302ed65b540d4355a0cd225d03a634",
       "fresh": true,
       "freshness": {
-        "age_seconds": 10381.0,
+        "age_seconds": 11668.0,
         "clock_skew_seconds": 300,
         "failures": [],
         "max_age_seconds": 86400,
-        "release_wall_clock_age_seconds": 0.209848,
+        "release_wall_clock_age_seconds": 0.156233,
         "timestamp": "2026-08-04T19:19:57Z",
         "valid": true,
-        "wall_clock_age_seconds": 10381.209848,
-        "wall_clock_observed_at": "2026-08-04T22:12:58.209848Z"
+        "wall_clock_age_seconds": 11668.156233,
+        "wall_clock_observed_at": "2026-08-04T22:34:25.156233Z"
       },
       "goal_id": "FVT-G218",
       "identity_valid": true,
@@ -221,15 +221,15 @@
       "file_sha256": "sha256:d9c22f220d324c7b06be6062d742f14e4882c948960c21d66f020a76903ab5e1",
       "fresh": true,
       "freshness": {
-        "age_seconds": 1411.0,
+        "age_seconds": 2698.0,
         "clock_skew_seconds": 300,
         "failures": [],
         "max_age_seconds": 86400,
-        "release_wall_clock_age_seconds": 0.209848,
+        "release_wall_clock_age_seconds": 0.156233,
         "timestamp": "2026-08-04T21:49:27Z",
         "valid": true,
-        "wall_clock_age_seconds": 1411.209848,
-        "wall_clock_observed_at": "2026-08-04T22:12:58.209848Z"
+        "wall_clock_age_seconds": 2698.156233,
+        "wall_clock_observed_at": "2026-08-04T22:34:25.156233Z"
       },
       "goal_id": "FVT-G214",
       "identity_valid": true,
@@ -267,15 +267,15 @@
       "file_sha256": "sha256:21a174efba2db036d923067227e60ea38aa84f73eee3e3b122b66e8d1a71a9da",
       "fresh": true,
       "freshness": {
-        "age_seconds": 3158.0,
+        "age_seconds": 4445.0,
         "clock_skew_seconds": 300,
         "failures": [],
         "max_age_seconds": 86400,
-        "release_wall_clock_age_seconds": 0.209848,
+        "release_wall_clock_age_seconds": 0.156233,
         "timestamp": "2026-08-04T21:20:20Z",
         "valid": true,
-        "wall_clock_age_seconds": 3158.209848,
-        "wall_clock_observed_at": "2026-08-04T22:12:58.209848Z"
+        "wall_clock_age_seconds": 4445.156233,
+        "wall_clock_observed_at": "2026-08-04T22:34:25.156233Z"
       },
       "goal_id": "FVT-G213",
       "identity_valid": true,
@@ -313,15 +313,15 @@
       "file_sha256": "sha256:6ce269f01904084ce10378a7e00f073e8b0916a5636302309ab7d8e17af939c7",
       "fresh": true,
       "freshness": {
-        "age_seconds": 18582.0,
+        "age_seconds": 19869.0,
         "clock_skew_seconds": 300,
         "failures": [],
         "max_age_seconds": 86400,
-        "release_wall_clock_age_seconds": 0.209848,
+        "release_wall_clock_age_seconds": 0.156233,
         "timestamp": "2026-08-04T17:03:16Z",
         "valid": true,
-        "wall_clock_age_seconds": 18582.209848,
-        "wall_clock_observed_at": "2026-08-04T22:12:58.209848Z"
+        "wall_clock_age_seconds": 19869.156233,
+        "wall_clock_observed_at": "2026-08-04T22:34:25.156233Z"
       },
       "goal_id": "FVT-G219",
       "identity_valid": true,
@@ -359,15 +359,15 @@
       "file_sha256": "sha256:8f03886cf10d8abb2636fdeddf31b60c83f30416dcf7c620fd25145607060be0",
       "fresh": true,
       "freshness": {
-        "age_seconds": 51.0,
+        "age_seconds": 1338.0,
         "clock_skew_seconds": 300,
         "failures": [],
         "max_age_seconds": 86400,
-        "release_wall_clock_age_seconds": 0.209848,
+        "release_wall_clock_age_seconds": 0.156233,
         "timestamp": "2026-08-04T22:12:07Z",
         "valid": true,
-        "wall_clock_age_seconds": 51.209848,
-        "wall_clock_observed_at": "2026-08-04T22:12:58.209848Z"
+        "wall_clock_age_seconds": 1338.156233,
+        "wall_clock_observed_at": "2026-08-04T22:34:25.156233Z"
       },
       "goal_id": null,
       "identity_valid": true,
@@ -1343,7 +1343,7 @@
     "This receipt never attests FVT-089's own future merge or publication.",
     "assessment_complete records a finished fail-closed fan-in; it does not imply deployment_ready when blockers remain disclosed."
   ],
-  "observed_at": "2026-08-04T22:12:58Z",
+  "observed_at": "2026-08-04T22:34:25Z",
   "policy": {
     "advisor_proposal_only_does_not_block_replacement_fanin": true,
     "advisory_ergoai_never_grants_proof_authority": true,
@@ -1666,7 +1666,7 @@
     "post_merge_ready": false,
     "source_and_merged_trees_bound": false
   },
-  "release_identity": "sha256:ce2b0846e612780215752d1d240d159778380bf1358ad4746e48b992f87be5e6",
+  "release_identity": "sha256:558802c517f96ef4425038c93fbdae1b1a8c5112b0d5966317089a0b73ebbffc",
   "schema_version": "formal-verification-authoritative-vendor-release/v1",
   "status": "authoritative_vendor_release_blocked",
   "task_id": "FVT-089",
@@ -1732,7 +1732,7 @@
       "raw_checks_digest_bound": true,
       "rederived_interface": "ErgoAILiveToolchainContract@1",
       "rederived_raw_checks_digest_sha256": "6b92793bf2f20581322a5ba11db246a0a2e39c9689f627cffb2aa34048ba509c",
-      "rederived_receipt_digest_sha256": "1434954835834d0514564906ae62ab6eea0b6137af483003c6e6341c5a46fc2f",
+      "rederived_receipt_digest_sha256": "b70ec8bb6e6663b90cb62ebd90523ca84376ae4e1ba2448d11749d81bd131f3b",
       "release_artifact_identity_bound": true,
       "repository_receipt_bound": true,
       "semantic_cases": {
