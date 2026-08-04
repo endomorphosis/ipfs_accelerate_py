@@ -231,6 +231,9 @@ GENERIC_BUNDLE_RESOURCE_CLASSES = (
     "process-control",
     "provider-io",
     "provider-llm",
+    # Local-profile / signed-authority setup work (ASE2-003 and similar).
+    "security-small",
+    "security",
 )
 # Default hosts advertise the architecture's distinct work classes.
 # Generic bundle classes remain interoperable through the compatibility check
