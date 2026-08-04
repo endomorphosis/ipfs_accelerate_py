@@ -192,6 +192,7 @@ from .production_provider_cli import (
     production_landed_task_guard,
 )
 from .production_context_slice import (
+    MAX_PROVIDER_PROMPT_TOKENS,
     ProductionContextSliceError,
     assert_proposal_covered_by_context,
     build_production_context_slice,
@@ -19543,14 +19544,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 baseline_ref=context_baseline,
                 symbol_hints=raw_symbol_hints,
                 max_provider_prompt_tokens=min(
-                    4096,
+                    MAX_PROVIDER_PROMPT_TOKENS,
                     int(
                         getattr(
                             self,
                             "production_provider_context_budget_tokens",
                             0,
                         )
-                        or 4096
+                        or DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS
                     ),
                 ),
             )
