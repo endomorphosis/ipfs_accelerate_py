@@ -6003,6 +6003,28 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-cpu-percent", type=int, default=90)
     parser.add_argument("--max-memory-percent", type=int, default=90)
     parser.add_argument("--max-disk-percent", type=int, default=95)
+    parser.add_argument(
+        "--max-cpu-proof-concurrency",
+        type=int,
+        default=0,
+        help=(
+            "Maximum concurrent CPU proof/validation pool slots. "
+            "Zero defaults to --max-lanes so multi-lane programs are not "
+            "starved by the one-slot lease-budget default."
+        ),
+    )
+    parser.add_argument(
+        "--max-model-concurrency",
+        type=int,
+        default=0,
+        help="Maximum concurrent model/inference pool slots (0 => --max-lanes).",
+    )
+    parser.add_argument(
+        "--max-artifact-concurrency",
+        type=int,
+        default=0,
+        help="Maximum concurrent artifact/I/O pool slots (0 => --max-lanes).",
+    )
     parser.add_argument("--minimum-memory-available-bytes", type=int, default=0)
     parser.add_argument("--minimum-disk-available-bytes", type=int, default=0)
     parser.add_argument("--maximum-provider-latency-ms", type=int, default=120_000)
@@ -6100,6 +6122,33 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
             ),
             resource_policy={
                 "max_lanes": getattr(args, "max_lanes", 1) or 1,
+                # Scale CPU/model/artifact pools with the configured lane
+                # budget so multi-lane FVT programs are not capped at one
+                # concurrent validation/proof slot by the zero defaults.
+                "max_cpu_proof_concurrency": int(
+                    getattr(args, "max_cpu_proof_concurrency", 0)
+                    or getattr(args, "max_lanes", 1)
+                    or 1
+                ),
+                "max_model_concurrency": int(
+                    getattr(args, "max_model_concurrency", 0)
+                    or getattr(args, "max_lanes", 1)
+                    or 1
+                ),
+                "max_artifact_concurrency": int(
+                    getattr(args, "max_artifact_concurrency", 0)
+                    or getattr(args, "max_lanes", 1)
+                    or 1
+                ),
+                "adaptive_enabled": True,
+                "stage_concurrency_limits": {
+                    "analysis": int(getattr(args, "max_lanes", 1) or 1),
+                    "inference": int(getattr(args, "max_lanes", 1) or 1),
+                    "validation": int(getattr(args, "max_lanes", 1) or 1),
+                    "proof": int(getattr(args, "max_lanes", 1) or 1),
+                    "merge": max(1, min(2, int(getattr(args, "max_lanes", 1) or 1))),
+                    "persistence": int(getattr(args, "max_lanes", 1) or 1),
+                },
                 "max_cpu_percent": getattr(args, "max_cpu_percent", 90),
                 "max_memory_percent": getattr(args, "max_memory_percent", 90),
                 "max_disk_percent": getattr(args, "max_disk_percent", 95),
