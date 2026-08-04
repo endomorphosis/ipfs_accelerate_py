@@ -1,9 +1,11 @@
 """Authoritative, fail-closed vendor release fan-in (FVT-089 / FVT-G221).
 
-The checked artifact is expected to be blocked on this repository snapshot.
-Authentic SecPAL provenance and compatibility execution are valuable evidence,
-but the reviewed EULA, unsupported vendor platform, and missing production
-authority cannot be converted into deployment readiness.
+The checked artifact is expected to be a complete assessment that remains
+blocked on this repository snapshot. Authentic SecPAL provenance and
+compatibility execution are valuable evidence, but the reviewed EULA,
+unsupported vendor platform, and missing production authority cannot be
+converted into deployment readiness. ``assessment_complete`` may be true while
+``deployment_ready`` is false whenever blockers remain disclosed.
 """
 
 from __future__ import annotations
@@ -316,6 +318,35 @@ def test_expected_outputs_and_builder_constants(builder) -> None:
     assert builder.DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_RELATIVE.as_posix() == (
         "docs/architecture/formal_verification_authoritative_vendor_release.json"
     )
+    assert builder.DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_TEST_RELATIVE.as_posix() == (
+        "test/integration/test_formal_verification_authoritative_vendor_release.py"
+    )
+    assert set(builder.AUTHORITATIVE_VENDOR_RELEASE_DEPENDENCY_KEYS) == {
+        "end_to_end_assurance_matrix",
+        "secpal_authoritative_live",
+        "ergoai_managed_vendor_live",
+        "role_aware_release_candidate",
+        "post_merge_deployment_attestation",
+        "tactician_completion",
+    }
+    required_acceptance = set(builder.AUTHORITATIVE_VENDOR_RELEASE_ACCEPTANCE_KEYS)
+    for term in (
+        "clean_wheel_evidence_bound",
+        "lazy_install_receipts_bound",
+        "exact_dependency_and_platform_identities_bound",
+        "complete_specialized_semantic_cases_bound",
+        "secpal_authoritative_live_receipt_bound",
+        "ergoai_managed_vendor_live_receipt_bound",
+        "authority_ceilings_bound",
+        "disagreement_quarantines_bound",
+        "public_safe_envelopes_bound",
+        "durable_supervisor_completion_bound",
+        "source_and_merged_trees_bound",
+        "recursive_gitlinks_bound",
+        "origin_publication_bound",
+        "no_fixture_shim_unsupported_proposal_or_stale_lane",
+    ):
+        assert term in required_acceptance
 
 
 def test_checked_release_is_content_addressed_public_and_blocked(builder) -> None:
@@ -325,11 +356,24 @@ def test_checked_release_is_content_addressed_public_and_blocked(builder) -> Non
     assert release["goal_id"] == GOAL_ID
     assert release["task_id"] == TASK_ID
     assert release["status"] == "authoritative_vendor_release_blocked"
+    # Complete fail-closed assessment may (and on this snapshot must) remain
+    # non-deployable while still covering the objective evidence terms.
+    assert release["assessment_complete"] is True
     assert release["deployment_ready"] is False
+    assert release["claims"]["assessment_complete"] is True
     assert release["claims"]["deployment_ready"] is False
     assert release["claims"]["current_task_merge"] is False
     assert release["claims"]["current_release_artifact_published"] is False
     assert release["public_evidence_policy"]["satisfied"] is True
+    assert set(release["dependency_bindings"]) == set(
+        builder.AUTHORITATIVE_VENDOR_RELEASE_DEPENDENCY_KEYS
+    )
+    assert set(release["acceptance"]) == set(
+        builder.AUTHORITATIVE_VENDOR_RELEASE_ACCEPTANCE_KEYS
+    )
+    assert release["blockers"] == sorted(
+        key for key, satisfied in release["acceptance"].items() if not satisfied
+    )
     assert release["release_identity"] == builder.content_digest(
         {key: value for key, value in release.items() if key != "release_identity"}
     )
@@ -342,7 +386,126 @@ def test_checked_release_is_content_addressed_public_and_blocked(builder) -> Non
         "not_intended_for_live_environment"
     )
     assert release["evidence"]["validation_command"] == VALIDATION_COMMAND
+    assert release["evidence"]["objective_evidence_terms"] == [
+        "docs/architecture/formal_verification_authoritative_vendor_release.json",
+        "test/integration/test_formal_verification_authoritative_vendor_release.py",
+    ]
     assert RELEASE_PATH.stat().st_size < 500_000
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing_dependency",
+        "missing_binding_field",
+        "non_boolean_acceptance",
+        "blocker_mismatch",
+        "assessment_claim_mismatch",
+        "deployment_claim_mismatch",
+        "status_mismatch",
+        "objective_terms_missing",
+    ],
+)
+def test_malformed_assessment_state_cannot_claim_complete(
+    builder,
+    mutation: str,
+) -> None:
+    checked = json.loads(RELEASE_PATH.read_text(encoding="utf-8"))
+    assert builder._authoritative_assessment_complete(checked) is True
+    malformed = copy.deepcopy(checked)
+
+    if mutation == "missing_dependency":
+        malformed["dependency_bindings"].pop("secpal_authoritative_live")
+    elif mutation == "missing_binding_field":
+        malformed["dependency_bindings"][
+            "ergoai_managed_vendor_live"
+        ].pop("freshness")
+    elif mutation == "non_boolean_acceptance":
+        malformed["acceptance"]["dependencies_fresh"] = "blocked"
+    elif mutation == "blocker_mismatch":
+        malformed["blockers"] = []
+    elif mutation == "assessment_claim_mismatch":
+        malformed["claims"]["assessment_complete"] = False
+    elif mutation == "deployment_claim_mismatch":
+        malformed["claims"]["deployment_ready"] = True
+    elif mutation == "status_mismatch":
+        malformed["status"] = (
+            "authoritative_vendor_release_ready_for_publication"
+        )
+    else:
+        malformed["evidence"]["objective_evidence_terms"] = []
+
+    assert builder._authoritative_assessment_complete(malformed) is False
+
+
+def test_public_audit_observes_claim_and_failure_demotes_consistently(
+    builder,
+    monkeypatch,
+) -> None:
+    observed_at = _now()
+    audited_claims: list[tuple[bool, bool]] = []
+    original_audit = builder._authoritative_public_audit
+
+    def reject_authoritative_release(*, certifier, payload, repo_root):
+        if payload.get("interface") == INTERFACE:
+            audited_claims.append(
+                (
+                    payload.get("assessment_complete"),
+                    payload.get("claims", {}).get("assessment_complete"),
+                )
+            )
+            return {
+                "satisfied": False,
+                "failure_count": 1,
+                "failures": ["forced_assessment_claim_rejection"],
+            }
+        return original_audit(
+            certifier=certifier,
+            payload=payload,
+            repo_root=repo_root,
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "_authoritative_public_audit",
+        reject_authoritative_release,
+    )
+    monkeypatch.setattr(
+        builder,
+        "_observe_recursive_gitlinks",
+        lambda _root: {
+            "valid": True,
+            "gitlink_count": 1,
+            "rows": [{"path": "ipfs_datasets_py", "bound": True}],
+            "network_used": False,
+            "fetch_attempted": False,
+        },
+    )
+    release = builder.build_authoritative_vendor_release(
+        repo_root=REPO_ROOT,
+        observed_at=observed_at,
+        **_inputs(builder, observed_at),
+    )
+
+    # The affirmative candidate claim is audited, not added afterward.
+    assert audited_claims == [(True, True)]
+    assert release["public_evidence_policy"] == {
+        "satisfied": False,
+        "failure_count": 1,
+        "failures": ["forced_assessment_claim_rejection"],
+    }
+    assert release["assessment_complete"] is False
+    assert release["claims"]["assessment_complete"] is False
+    assert release["deployment_ready"] is False
+    assert release["claims"]["deployment_ready"] is False
+    assert release["status"] == "authoritative_vendor_release_blocked"
+    assert release["acceptance"]["public_safe_envelopes_bound"] is False
+    assert "public_safe_envelopes_bound" in release["blockers"]
+    assert release["blockers"] == sorted(
+        key
+        for key, satisfied in release["acceptance"].items()
+        if not satisfied
+    )
 
 
 def test_exact_recovered_secpal_eula_is_an_unoverrideable_hard_gate(builder) -> None:
@@ -392,7 +555,11 @@ def test_all_other_counterfactual_inputs_still_cannot_override_eula(
     assert release["acceptance"]["recursive_gitlinks_bound"] is True
     assert release["acceptance"]["secpal_production_use_permitted"] is False
     assert release["acceptance"]["secpal_authoritative_live_receipt_bound"] is False
+    # EULA / identity blockers keep deployment closed, but the assessment itself
+    # is still a complete, public-safe, content-addressed fan-in.
+    assert release["assessment_complete"] is True
     assert release["deployment_ready"] is False
+    assert release["claims"]["assessment_complete"] is True
     assert "secpal_production_use_permitted" in release["blockers"]
 
 
@@ -473,6 +640,9 @@ def test_fixture_shim_unsupported_proposal_stale_and_missing_authority_fail_clos
     encoded_evidence = json.dumps(release["disallowed_evidence"])
     encoded_details = json.dumps(release["blocker_details"])
     encoded_freshness = json.dumps(release["dependency_bindings"])
+    # Disclosed fixture/shim/unsupported/proposal/stale/missing-authority lanes
+    # keep deployment_ready false but do not prevent assessment_complete.
+    assert release["assessment_complete"] is True
     assert release["deployment_ready"] is False
     assert expected in encoded_evidence + encoded_details + encoded_freshness
     if mutation in {"fixture", "shim", "unsupported", "proposal"}:
@@ -563,4 +733,10 @@ def test_cli_standalone_mode_does_not_rewrite_completion(builder, tmp_path) -> N
     assert completion.read_bytes() == before
     generated = json.loads(output.read_text(encoding="utf-8"))
     assert generated["interface"] == INTERFACE
+    assert generated["assessment_complete"] is True
     assert generated["deployment_ready"] is False
+    assert generated["claims"]["assessment_complete"] is True
+    assert generated["evidence"]["objective_evidence_terms"] == [
+        "docs/architecture/formal_verification_authoritative_vendor_release.json",
+        "test/integration/test_formal_verification_authoritative_vendor_release.py",
+    ]
