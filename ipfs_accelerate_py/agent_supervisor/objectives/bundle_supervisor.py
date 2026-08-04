@@ -4048,14 +4048,14 @@ class DynamicBundleScheduler:
             policy_values = dict(resource_policy or {}) if isinstance(resource_policy, dict) else None
             if policy_values is not None:
                 policy_values["max_lanes"] = self.max_lanes
-                policy_values.setdefault("adaptive_enabled", True)
+                policy_values.setdefault("adaptive_enabled", False)
                 policy = ResourcePolicy.from_mapping(policy_values)
             elif isinstance(resource_policy, ResourcePolicy):
                 policy = replace(resource_policy, max_lanes=self.max_lanes)
             else:
                 policy = ResourcePolicy(
                     max_lanes=self.max_lanes,
-                    adaptive_enabled=True,
+                    adaptive_enabled=False,
                 )
             self.resource_scheduler = ResourceScheduler(policy)
         self._host_resource_source = host_resource_source or sample_host_resources
@@ -6140,7 +6140,10 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
                     or getattr(args, "max_lanes", 1)
                     or 1
                 ),
-                "adaptive_enabled": True,
+                # Adaptive contraction was reducing multi-lane FVT programs to a
+                # single analysis slot under shared-host load, starving ready
+                # work. Keep deterministic stage/pool caps equal to max-lanes.
+                "adaptive_enabled": False,
                 "stage_concurrency_limits": {
                     "analysis": int(getattr(args, "max_lanes", 1) or 1),
                     "inference": int(getattr(args, "max_lanes", 1) or 1),
