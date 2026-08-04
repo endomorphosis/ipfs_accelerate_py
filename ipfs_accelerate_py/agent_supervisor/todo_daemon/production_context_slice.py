@@ -1219,17 +1219,33 @@ def build_production_context_slice(
             whole_file_bytes,
             max(4_096, context_limit * 3),
         )
-        sources.append(
-            _source_record(
-                path=path,
-                mode=mode,
-                git_blob_oid=oid,
-                source=baseline_bytes,
-                effect=path in effects,
-                symbol_hints=tuple(hints.get(path, ())),
-                whole_file_bytes=budgeted_whole,
-            )
+        path_operator_hints = tuple(hints.get(path, ()))
+        record = _source_record(
+            path=path,
+            mode=mode,
+            git_blob_oid=oid,
+            source=baseline_bytes,
+            effect=path in effects,
+            symbol_hints=path_operator_hints,
+            whole_file_bytes=budgeted_whole,
         )
+        # Promote deterministic auto-selected symbols into the bound scope so
+        # verify can re-check the same operator-effective hints.  Operator-
+        # supplied hints remain authoritative and are never overwritten.
+        selection = record.get("selection")
+        if (
+            isinstance(selection, Mapping)
+            and selection.get("mode") == "python-qualified-symbols@1"
+            and not path_operator_hints
+        ):
+            auto_symbols = selection.get("qualified_symbols")
+            if isinstance(auto_symbols, list) and auto_symbols:
+                hints[path] = list(auto_symbols)
+        sources.append(record)
+
+    # Re-order after promotions so the scope map stays path-sorted/canonical.
+    if hints:
+        hints = {path: hints[path] for path in sorted(hints)}
 
     scope = {
         "absence_proofs": absence_proofs,
@@ -1572,7 +1588,7 @@ def verify_production_context_slice(
         field_name="expected_effect_paths",
         maximum=DEFAULT_MAX_SCOPE_PATHS,
     )
-    operator_hints = _canonical_symbol_hints(
+    operator_provided_hints = _canonical_symbol_hints(
         expected_symbol_hints,
         read_paths=operator_reads,
     )
@@ -1580,15 +1596,23 @@ def verify_production_context_slice(
         scope.get("symbol_hints"),
         read_paths=reads,
     )
-    if (
-        reads != operator_reads
-        or effects != operator_effects
-        or manifest_hints != operator_hints
-    ):
+    if reads != operator_reads or effects != operator_effects:
         _fail(
             "scope_authority_mismatch",
             "context scope differs from the operator/task-derived scope",
         )
+    if operator_provided_hints:
+        if manifest_hints != operator_provided_hints:
+            _fail(
+                "scope_authority_mismatch",
+                "context scope differs from the operator/task-derived scope",
+            )
+        operator_hints = operator_provided_hints
+    else:
+        # Operator omitted path→symbol bindings.  The builder may have filled
+        # scope.symbol_hints with a deterministic budgeted auto-subset; treat
+        # those as operator-effective hints after per-source validation below.
+        operator_hints = manifest_hints
     expected_absences: list[dict[str, str]] = []
     for path in effects:
         _target, exists = _assert_safe_effect_path(root, path)
@@ -1738,6 +1762,34 @@ def verify_production_context_slice(
                     "scope_authority_mismatch",
                     "AST symbols differ from operator/task-derived hints",
                 )
+            if not operator_provided_hints:
+                # Re-derive the budgeted auto-subset under the same envelope the
+                # builder used so callers cannot widen symbol scope by writing
+                # arbitrary qualified names into an empty-hint manifest.
+                try:
+                    source_text = baseline_bytes.decode("utf-8", errors="strict")
+                except UnicodeDecodeError as exc:
+                    raise ProductionContextSliceError(
+                        "declared source is not UTF-8",
+                        reason_code="source_encoding_invalid",
+                    ) from exc
+                context_limit = int(maximum) - int(reserved)
+                budgeted_whole = min(
+                    DEFAULT_WHOLE_FILE_BYTES,
+                    max(4_096, context_limit * 3),
+                )
+                auto_symbols = list(
+                    _budgeted_top_level_python_symbols(
+                        source_text,
+                        baseline_bytes,
+                        max_visible_bytes=max(4_096, budgeted_whole // 2),
+                    )
+                )
+                if symbols != auto_symbols:
+                    _fail(
+                        "scope_authority_mismatch",
+                        "auto AST symbols are not the budgeted deterministic subset",
+                    )
             # Zero forces AST mode on rebuild; header compaction itself uses
             # DEFAULT_WHOLE_FILE_BYTES inside _source_record and is therefore
             # independent of this rebuild threshold.
