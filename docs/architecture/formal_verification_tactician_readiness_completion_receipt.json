@@ -6,15 +6,15 @@
   "completion_goal_id": "FVT-G090",
   "task_id": "FVT-036",
   "program": "formal-verification-tactician/readiness",
-  "observed_at": "2026-08-04T22:42:00Z",
+  "observed_at": "2026-08-04T22:46:27Z",
   "binding_mode": "current_tree_content_identity",
   "source": {
-    "parent_commit": "f51272f86ea5d61cd9e2dc5811286c9456f1ac68",
-    "parent_tree": "9bac20cf92370332a840b1b736c806859228ab26",
+    "parent_commit": "1ee7d434e936dc73f813f48338ab726cb8b95d6f",
+    "parent_tree": "5202495578eac7d2820d5c4778791dbd9269ca14",
     "datasets_gitlink": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
     "datasets_embedded_head": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
     "datasets_origin_main": "354631938920f89b9af62f02c904f41e70832ed0",
-    "parent_origin_main": "03ebf4daf2e0d260c7924be0c4d48b63d5083f47",
+    "parent_origin_main": "1ee7d434e936dc73f813f48338ab726cb8b95d6f",
     "binding_mode": "current_tree_content_identity"
   },
   "acceptance": {
@@ -304,11 +304,11 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "f51272f86ea5d61cd9e2dc5811286c9456f1ac68",
-        "tree": "9bac20cf92370332a840b1b736c806859228ab26",
-        "origin_main": "03ebf4daf2e0d260c7924be0c4d48b63d5083f47",
+        "commit": "1ee7d434e936dc73f813f48338ab726cb8b95d6f",
+        "tree": "5202495578eac7d2820d5c4778791dbd9269ca14",
+        "origin_main": "1ee7d434e936dc73f813f48338ab726cb8b95d6f",
         "clean": false,
-        "matches_origin_main": false
+        "matches_origin_main": true
       },
       "gitlink": {
         "path": "ipfs_datasets_py",
@@ -324,7 +324,7 @@
         "matches_origin_main": false
       },
       "publication_gates": {
-        "parent_publication_lag": true,
+        "parent_publication_lag": false,
         "datasets_publication_lag": true,
         "fetches_forbidden": true,
         "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
@@ -332,8 +332,7 @@
       "aligned_for_implementation": false,
       "diagnostics": [
         "parent_working_tree_dirty",
-        "datasets_publication_lag_vs_origin_main",
-        "parent_publication_lag_vs_origin_main"
+        "datasets_publication_lag_vs_origin_main"
       ]
     },
     "exact_tools": [
@@ -1194,7 +1193,7 @@
     },
     "unsupported_semantics": [],
     "publication_gates": {
-      "parent_publication_lag": true,
+      "parent_publication_lag": false,
       "datasets_publication_lag": true,
       "fetches_forbidden": true,
       "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
@@ -4555,7 +4554,7 @@
       "vampire"
     ],
     "publication_gates": {
-      "parent_publication_lag": true,
+      "parent_publication_lag": false,
       "datasets_publication_lag": true,
       "fetches_forbidden": true,
       "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
@@ -4600,5 +4599,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:ee0cece874956103d6cd0dd8949af06b4b67b59b57ac602ec4dffeb003c05891"
+  "receipt_identity": "sha256:c632891a8590e11ea04073438b57621032ffc690dffee1936105e158dd33b3ba"
 }
