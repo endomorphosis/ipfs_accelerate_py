@@ -10728,6 +10728,31 @@ def _filter_deferred_disallowed_findings(
         ):
             continue
 
+        # Post-merge attestation discloses managed capability gaps for tools
+        # that are merely usable or host-unavailable.  Those are residual
+        # disclosures, not missing terminal merge evidence; once G213 is
+        # bound they must not keep the replacement-stack AVR closed.
+        if dependency_name == "post_merge_deployment_attestation":
+            if any(
+                token in path
+                for token in (
+                    "supported_managed_capability_blockers",
+                    "supported_managed_dependency_blockers",
+                    "managed_deployment_readiness.capability_blockers",
+                    "managed_deployment_readiness.dependency_blockers",
+                )
+            ) and any(
+                token in reason
+                for token in (
+                    "unavailable",
+                    "external_prover_installation_pending",
+                    "proposal_only",
+                    "hermetic",
+                    "shim",
+                )
+            ):
+                continue
+
         retained.append(finding)
     return retained
 
