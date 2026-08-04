@@ -44945,8 +44945,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self,
         latest_results: dict[str, dict[str, Any]] | None = None,
     ) -> set[str]:
-        """Return queued tasks whose bounded train attempts are exhausted."""
+        """Return queued tasks whose bounded train attempts are exhausted.
 
+        Some terminal merge reasons mean the *candidate* is unusable while the
+        *task* should re-implement from the current tip (for example a stale
+        task-owned submodule integration binding after concurrent lands). Those
+        must not permanently block selection as ``blocked``.
+        """
+
+        reimplementable_quarantine_reasons = frozenset(
+            {
+                "task_owned_submodule_integration_binding_stale",
+                "submodule_integration_target_changed_since_validation",
+            }
+        )
         quarantined: set[str] = set()
         if not hasattr(self.merge_queue, "get"):
             return quarantined
@@ -44956,8 +44968,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 continue
             request_id = str(merge_result.get("request_id") or "")
             request = self.merge_queue.get(request_id) if request_id else None
-            if request is not None and str(getattr(request, "status", "")) == "quarantined":
-                quarantined.add(task_id)
+            if request is None or str(getattr(request, "status", "")) != "quarantined":
+                continue
+            reason = str(getattr(request, "failure_reason", "") or "").strip()
+            if reason in reimplementable_quarantine_reasons:
+                continue
+            quarantined.add(task_id)
         return quarantined
 
 
