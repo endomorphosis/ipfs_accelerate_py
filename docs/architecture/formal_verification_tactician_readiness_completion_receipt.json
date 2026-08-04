@@ -6,11 +6,11 @@
   "completion_goal_id": "FVT-G090",
   "task_id": "FVT-036",
   "program": "formal-verification-tactician/readiness",
-  "observed_at": "2026-08-04T21:49:17Z",
+  "observed_at": "2026-08-04T21:54:20Z",
   "binding_mode": "current_tree_content_identity",
   "source": {
-    "parent_commit": "2c6964f8874c56dd8b33a453cf25795be16b3c9a",
-    "parent_tree": "cd36d3370adf4ddbb8f5f9635ac04354dbea9154",
+    "parent_commit": "730c56d2c6cca26e423336c812120064a1f75f96",
+    "parent_tree": "057614bc7c73c4761c6fe76ecf7ecee4f93eaf66",
     "datasets_gitlink": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
     "datasets_embedded_head": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
     "datasets_origin_main": "2f8d0407018106ccf28a442b929362b7860cdd85",
@@ -304,8 +304,8 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "2c6964f8874c56dd8b33a453cf25795be16b3c9a",
-        "tree": "cd36d3370adf4ddbb8f5f9635ac04354dbea9154",
+        "commit": "730c56d2c6cca26e423336c812120064a1f75f96",
+        "tree": "057614bc7c73c4761c6fe76ecf7ecee4f93eaf66",
         "origin_main": "03ebf4daf2e0d260c7924be0c4d48b63d5083f47",
         "clean": false,
         "matches_origin_main": false
@@ -1298,7 +1298,7 @@
     "completion_test": {
       "path": "test/api/test_formal_verification_tactician_readiness_completion.py",
       "present": true,
-      "content_identity": "sha256:1967d3eeeeb57e4d33fc289d1c9436953479ee80d53fc9d500dff5c451344f26"
+      "content_identity": "sha256:79e88ca87599fd64dff64aaf571cde6b38c70b877e12e4fc1278ac713043b2a1"
     },
     "role_aware_certifier": {
       "path": "tools/logic/certify_formal_verification_toolchains.py",
@@ -4600,5 +4600,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:823c74faffbb7f03eff3858ee744ed29d6545a996d0424729fe5f8d1b8067610"
+  "receipt_identity": "sha256:f4866376eca5c21cf164e0e70f96e8ac62a1d355d19daae328eab4273dcc95e8"
 }
