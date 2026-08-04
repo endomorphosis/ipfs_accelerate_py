@@ -4,12 +4,12 @@
   "approval_complete": false,
   "canonical_binding": {
     "adversarial_receipt_digest_sha256": "12f330c257459f3f74a0f541eedb8bacfa4cea159d5d79f431e7e38c0d7a84b7",
-    "approval_scope": "Deployment approval for the project-owned production-authorization-replacement provider only, bound to commit 2bfe7ec446c69d0b5a3c7ec546fa4013bb5d9c4d / tree 99aa0f15216ea0fcc9fca3677c8966171338533b. Does not approve Microsoft SecPAL live use, does not complete FVT-G219, and does not waive publication or supervisor gates.",
+    "approval_scope": "Deployment approval for the project-owned production-authorization-replacement provider only, bound to commit df844ec817973787cef816f114d9b94f98961bb6 / tree 3c980593a17c9507d3d9f1c9403423359cdf235c. Does not approve Microsoft SecPAL live use, does not complete FVT-G219, and does not waive publication or supervisor gates.",
     "clean_room_record_digest_sha256": "7db00c6a27fb35556d1b2080b4ee7e9ca52cbe5ac9964281a9c811a74d05b1bd",
     "dependency_license_inventory_digest_sha256": "d8b0367face7c3e75fb59dadb408247744784a557aa7344bc7f06eb47e093739",
-    "expiry_or_review_at": "2027-08-04T22:10:53Z",
-    "implementation_commit": "2bfe7ec446c69d0b5a3c7ec546fa4013bb5d9c4d",
-    "implementation_tree": "99aa0f15216ea0fcc9fca3677c8966171338533b",
+    "expiry_or_review_at": "2027-08-04T22:13:20Z",
+    "implementation_commit": "df844ec817973787cef816f114d9b94f98961bb6",
+    "implementation_tree": "3c980593a17c9507d3d9f1c9403423359cdf235c",
     "operational_controls": "In-process Python provider only; no external SecPAL binary install; fail-closed authorization ceiling; denial-safety and deterministic replay required; lazy install does not acquire restricted Microsoft artifacts; deployment remains gated on this G232 envelope and publication gates.",
     "patent_ip_disposition": "Project-owned clean-room implementation of a separately named production-authorization-replacement provider derived from public formal specifications; no claim of Microsoft SecPAL authority, trademark, or restricted-bytes lineage; independent legal review required.",
     "residual_risks": [
@@ -26,7 +26,7 @@
     ],
     "threat_model_digest_sha256": "3ae8dc7ee8466237cce908845f0e350894c82721f7a9d784755bc3f7db0ff822"
   },
-  "canonical_binding_digest_sha256": "3805f560a243d65ea40c2effdcf1117796e8f5c97f4d580b1197c65cd9bd41fd",
+  "canonical_binding_digest_sha256": "ab4726c81077cced5474a8aa56e224c99a1d11ef332bef43102eec5703e451ec",
   "deployment_owner_approval_complete": false,
   "disclosures": {
     "chat_or_roleplay_approval_is_not_a_signature": true,
@@ -38,8 +38,8 @@
   "goal_id": "FVT-G232",
   "interface": "AuthorizationReplacementExternalApprovalSignerPackage@1",
   "legal_approval_complete": false,
-  "observed_at": "2026-08-04T22:10:53Z",
-  "purpose": "Public-safe binding package prepared by the implementation agent for independent external legal/IP, security, and deployment-owner signers. This package is NOT a completed G232 approval. Signers must replace placeholder signature digests with digests of their independent signatures over the canonical binding body and set the official envelope to external_approval_complete only after three distinct human signers sign.",
+  "observed_at": "2026-08-04T22:13:20Z",
+  "purpose": "Public-safe binding package prepared by the implementation agent for independent external legal/IP, security, and deployment-owner signers. This package is NOT a completed G232 approval. Chat/roleplay approval is not a signature. Signers must attach real signature digests for three distinct human identities and only then set the official envelope complete.",
   "schema_version": "authorization-replacement-external-approval-signer-package/v1",
   "security_approval_complete": false,
   "self_approval_forbidden": true,
@@ -62,19 +62,19 @@
         "identity": "<HUMAN_IDENTITY_FOR_DEPLOYMENT_OWNER>",
         "signature_digest_sha256": null,
         "signed": false,
-        "signed_statement": "I, as deployment_owner, approve the production-authorization-replacement provider bound to implementation_commit=2bfe7ec446c69d0b5a3c7ec546fa4013bb5d9c4d implementation_tree=99aa0f15216ea0fcc9fca3677c8966171338533b under the approval_scope and residual_risks in canonical_binding."
+        "signed_statement": "I, as deployment_owner, approve the production-authorization-replacement provider bound to implementation_commit=df844ec817973787cef816f114d9b94f98961bb6 implementation_tree=3c980593a17c9507d3d9f1c9403423359cdf235c under the approval_scope and residual_risks in canonical_binding."
       },
       "legal_ip_reviewer": {
         "identity": "<HUMAN_IDENTITY_FOR_LEGAL_IP_REVIEWER>",
         "signature_digest_sha256": null,
         "signed": false,
-        "signed_statement": "I, as legal_ip_reviewer, approve the production-authorization-replacement provider bound to implementation_commit=2bfe7ec446c69d0b5a3c7ec546fa4013bb5d9c4d implementation_tree=99aa0f15216ea0fcc9fca3677c8966171338533b under the approval_scope and residual_risks in canonical_binding."
+        "signed_statement": "I, as legal_ip_reviewer, approve the production-authorization-replacement provider bound to implementation_commit=df844ec817973787cef816f114d9b94f98961bb6 implementation_tree=3c980593a17c9507d3d9f1c9403423359cdf235c under the approval_scope and residual_risks in canonical_binding."
       },
       "security_reviewer": {
         "identity": "<HUMAN_IDENTITY_FOR_SECURITY_REVIEWER>",
         "signature_digest_sha256": null,
         "signed": false,
-        "signed_statement": "I, as security_reviewer, approve the production-authorization-replacement provider bound to implementation_commit=2bfe7ec446c69d0b5a3c7ec546fa4013bb5d9c4d implementation_tree=99aa0f15216ea0fcc9fca3677c8966171338533b under the approval_scope and residual_risks in canonical_binding."
+        "signed_statement": "I, as security_reviewer, approve the production-authorization-replacement provider bound to implementation_commit=df844ec817973787cef816f114d9b94f98961bb6 implementation_tree=3c980593a17c9507d3d9f1c9403423359cdf235c under the approval_scope and residual_risks in canonical_binding."
       }
     }
   },
