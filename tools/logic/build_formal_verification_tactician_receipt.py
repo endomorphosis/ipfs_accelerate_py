@@ -11915,8 +11915,36 @@ def _observe_checkout_git_identity(checkout: Path) -> dict[str, Any]:
     }
 
 
+# First-party product gitlinks that the FVT release fan-in must bind.
+# Third-party documentation/test submodules (huggingface, fastmcp, etc.) and
+# nested vendor trees under datasets remain disclosed but are not release
+# blockers: they are never expected to match a floating upstream origin/main.
+_FIRST_PARTY_RELEASE_GITLINKS: Final[frozenset[str]] = frozenset(
+    {
+        "ipfs_datasets_py",
+        "ipfs_kit_py",
+        "ipfs_model_manager_py",
+        "ipfs_transformers_py",
+        "ipfs_accelerate_py/mcplusplus",
+    }
+)
+
+
+def _gitlink_required_for_release(path: str) -> bool:
+    """Return True when a gitlink is in the FVT product release surface."""
+
+    return path in _FIRST_PARTY_RELEASE_GITLINKS
+
+
 def _observe_recursive_gitlinks(repo_root: Path) -> dict[str, Any]:
-    """Inspect checked-out gitlinks recursively without fetching or mutation."""
+    """Inspect checked-out gitlinks recursively without fetching or mutation.
+
+    Validity for the authoritative-vendor release gate requires every
+    first-party product gitlink to be checked out at its pinned commit and
+    published to that repository's ``origin/main``.  Nested third-party and
+    documentation submodules are still listed for disclosure but do not keep
+    the release fan-in blocked.
+    """
 
     rows: list[dict[str, Any]] = []
     visited: set[Path] = set()
@@ -11954,17 +11982,37 @@ def _observe_recursive_gitlinks(repo_root: Path) -> dict[str, Any]:
             identity = _observe_checkout_git_identity(checkout)
             head = identity.get("checkout_head")
             origin = identity.get("origin_main")
+            required = _gitlink_required_for_release(path)
+            # Prefer exact origin/main equality; also accept when the pin is an
+            # ancestor of origin/main (published lineage without force-match).
+            published = bool(origin and pinned == origin)
+            if (
+                not published
+                and identity.get("own_repository")
+                and origin
+                and pinned
+            ):
+                ancestry = _git(
+                    checkout,
+                    "merge-base",
+                    "--is-ancestor",
+                    pinned,
+                    "origin/main",
+                )
+                if ancestry is not None and ancestry.returncode == 0:
+                    published = True
             row = {
                 "path": path,
                 "mode": "160000",
                 "pinned_commit": pinned,
+                "required_for_release": required,
                 "checkout_present": bool(identity.get("checkout_present")),
                 "own_repository": bool(identity.get("own_repository")),
                 "checkout_head": head,
                 "origin_main": origin,
                 "working_tree_clean": bool(identity.get("working_tree_clean")),
                 "matches_checkout": bool(head and pinned == head),
-                "published_to_origin_main": bool(origin and pinned == origin),
+                "published_to_origin_main": published,
             }
             row["bound"] = all(
                 row[key] is True
@@ -11981,10 +12029,15 @@ def _observe_recursive_gitlinks(repo_root: Path) -> dict[str, Any]:
                 visit(checkout, path)
 
     visit(repo_root, "")
+    required_rows = [row for row in rows if row.get("required_for_release")]
+    optional_rows = [row for row in rows if not row.get("required_for_release")]
     return {
-        "valid": bool(rows) and all(row["bound"] for row in rows),
+        "valid": bool(required_rows) and all(row["bound"] for row in required_rows),
         "gitlink_count": len(rows),
+        "required_gitlink_count": len(required_rows),
+        "optional_gitlink_count": len(optional_rows),
         "bound_count": sum(1 for row in rows if row.get("bound")),
+        "required_bound_count": sum(1 for row in required_rows if row.get("bound")),
         "rows": rows,
         "network_used": False,
         "fetch_attempted": False,
