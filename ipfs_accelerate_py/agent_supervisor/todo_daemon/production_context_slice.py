@@ -54,8 +54,14 @@ _SECRET_TEXT_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
     re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{8,}"),
     re.compile(
         r"(?i)\b(api[_ -]?key|access[_ -]?token|auth[_ -]?token|"
-        r"client[_ -]?secret|password|passphrase|secret|token)"
+        r"client[_ -]?secret|password|passphrase)"
         r"\s*[:=]\s*[^\s,;]{4,}"
+    ),
+    # Bare token/secret assignments only when the value looks credential-like.
+    re.compile(
+        r"(?i)\b(secret|token)\s*[:=]\s*"
+        r"(['\"][^'\"\n]{8,}['\"]|"
+        r"[A-Za-z0-9_\-+/=]{16,})"
     ),
     re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", re.IGNORECASE),
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
@@ -480,7 +486,7 @@ def _tree_entry_optional(
         allowed_nested_repository_roots, key=len, reverse=True
     ):
         inner = _path_under_nested_root(relative, nested_root)
-        if inner is None or inner == "":
+        if inner is None:
             continue
         matched_nested_root = True
         nested_commit = _gitlink_commit(root, commit, nested_root)
@@ -488,6 +494,11 @@ def _tree_entry_optional(
             # Overlapping allowlist roots are supported.  A shorter matching
             # root may be the actual outer-tree gitlink.
             continue
+        if inner == "":
+            _fail(
+                "nested_repository_escape",
+                "nested repository roots cannot be used as file effects",
+            )
         try:
             nested_root_path = _repository_root(root / nested_root)
         except ProductionContextSliceError as exc:
