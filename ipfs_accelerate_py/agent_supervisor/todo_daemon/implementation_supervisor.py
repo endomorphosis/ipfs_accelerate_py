@@ -271,6 +271,7 @@ class ObjectiveCompletionArtifactRefreshError(RuntimeError):
 
 OBJECTIVE_REFILL_ANALYZER_VERSION = "objective-daemon-v1"
 CODEBASE_REFILL_ANALYZER_VERSION = "codebase-scan-v1"
+POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION = "post-completion-ops-refill/v1"
 
 # Fields derived exclusively from a validated ``ProofRolloutStatus``.  Keeping
 # the set explicit lets a long-running supervisor replace the whole projection
@@ -479,6 +480,11 @@ class PortalSupervisorConfig:
     codebase_scan_commit_outputs: bool = False
     codebase_scan_commit_subject: str = "Agent: record supervisor codebase scan findings"
     objective_refill_enabled: bool = False
+    post_completion_ops_refill_enabled: bool = False
+    post_completion_ops_catalog_path: Path | None = None
+    post_completion_ops_config_path: Path | None = None
+    post_completion_ops_board_namespace: str = ""
+    post_completion_ops_require_drained: bool = True
     objective_task_janitor_enabled: bool = True
     objective_task_janitor_max_blocked_tasks: int = 50
     objective_task_janitor_max_deprioritized_tasks: int = 50
@@ -2152,6 +2158,45 @@ class PortalImplementationSupervisor:
                     "changed": False,
                     "reason": "no_mapped_contradictions",
                 }
+            update_maintenance_phase("post_completion_ops_refill")
+            post_completion_started_at = datetime.now(timezone.utc)
+            try:
+                post_completion_result = self._adapt_legacy_objective_result(
+                    self._run_protected_refill_mutation(
+                        scan_kind="post_completion_ops",
+                        scan_mode="supervisor_callback",
+                        analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
+                        started_at=post_completion_started_at,
+                        output_paths=self._post_completion_ops_refill_output_paths(),
+                        callback=self.refill_post_completion_ops_backlog,
+                    )
+                    if self.config.post_completion_ops_refill_enabled
+                    else self.refill_post_completion_ops_backlog(),
+                    scan_mode="supervisor_callback",
+                    started_at=post_completion_started_at,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Post-completion ops refill failed; leaving supervisor alive",
+                    exc_info=True,
+                )
+                post_completion_result = self._terminal_refill_result(
+                    ScanTerminalReason.FAILED,
+                    scan_mode="supervisor_callback",
+                    analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
+                    started_at=post_completion_started_at,
+                    error=f"{type(exc).__name__}: {exc}",
+                    metadata={"error_type": type(exc).__name__},
+                )
+            post_completion_scan = self._persist_refill_result(
+                "post_completion_ops", post_completion_result
+            )
+            post_completion_payload = dict(post_completion_result.metadata)
+            post_completion_generated_count = int(
+                post_completion_payload.get("generated_count")
+                or len(post_completion_payload.get("task_ids") or [])
+                or post_completion_result.generated_count
+            )
         else:
             update_maintenance_phase("preflight_refill_deferred")
             objective_payload = {}
@@ -2175,6 +2220,16 @@ class PortalImplementationSupervisor:
                 "changed": False,
                 "reason": "refill_deferred",
             }
+            post_completion_result = self._terminal_refill_result(
+                ScanTerminalReason.DISABLED,
+                scan_mode="preflight_deferred",
+                analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
+                started_at=datetime.now(timezone.utc),
+                metadata={"deferred_reason": "preflight_refill_deferred_until_daemon_loop"},
+            )
+            post_completion_scan = {}
+            post_completion_payload = {}
+            post_completion_generated_count = 0
         update_maintenance_phase("post_refill_generated_dirty_repair")
         post_refill_generated_dirty_repair = self.repair_generated_dirty_checkouts()
         update_maintenance_phase("supervisor_check_event")
@@ -2252,8 +2307,12 @@ class PortalImplementationSupervisor:
                 ),
                 "codebase_refill_count": codebase_result.generated_count,
                 "codebase_deferred_reason": codebase_deferred_reason,
+                "post_completion_ops_refill_count": post_completion_generated_count,
+                "post_completion_ops_reason": post_completion_payload.get("reason")
+                or getattr(post_completion_result, "terminal_reason", ""),
                 "objective_scan": objective_scan,
                 "codebase_scan": codebase_scan,
+                "post_completion_ops_scan": post_completion_scan,
                 "generated_dirty_repair_committed_count": int(
                     generated_dirty_repair.get("committed_count") or 0
                 ),
@@ -2280,6 +2339,8 @@ class PortalImplementationSupervisor:
             "objective_contradiction_reconciliation": objective_contradiction_reconciliation,
             "codebase_refill_count": codebase_result.generated_count,
             "codebase_deferred_reason": codebase_deferred_reason,
+            "post_completion_ops_refill_count": post_completion_generated_count,
+            "post_completion_ops_scan": post_completion_scan,
             "objective_scan": objective_scan,
             "codebase_scan": codebase_scan,
             "event_log_repair": event_log_repair,
@@ -4293,6 +4354,95 @@ class PortalImplementationSupervisor:
             operation="generated_dirty_repair",
             callback=run_and_commit,
             deferred_result=deferred,
+        )
+
+    def _post_completion_ops_refill_output_paths(self) -> tuple[Path, ...]:
+        paths: list[Path] = [self.config.todo_path, self.config.strategy_path]
+        if self.config.post_completion_ops_config_path is not None:
+            paths.append(self.config.post_completion_ops_config_path)
+        return tuple(paths)
+
+    def refill_post_completion_ops_backlog(self) -> RefillScanResult:
+        """Seed reviewed post-completion ops tasks when the board is drained."""
+
+        started_at = datetime.now(timezone.utc)
+        if not self.config.post_completion_ops_refill_enabled:
+            return self._terminal_refill_result(
+                ScanTerminalReason.DISABLED,
+                scan_mode="disabled",
+                analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
+                started_at=started_at,
+            )
+        catalog_path = self.config.post_completion_ops_catalog_path
+        if catalog_path is None:
+            return self._terminal_refill_result(
+                ScanTerminalReason.FAILED,
+                scan_mode="prerequisite_check",
+                analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
+                started_at=started_at,
+                error="post_completion_ops_catalog_path is not configured",
+            )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.objectives.post_completion_ops_refill import (
+                load_post_completion_ops_catalog,
+                seed_post_completion_ops,
+            )
+
+            catalog = load_post_completion_ops_catalog(Path(catalog_path))
+            seed_result = seed_post_completion_ops(
+                todo_path=self.config.todo_path,
+                strategy_path=self.config.strategy_path,
+                catalog=catalog,
+                state_path=self.config.state_path,
+                config_path=self.config.post_completion_ops_config_path,
+                board_namespace=self.config.post_completion_ops_board_namespace
+                or catalog.program,
+                shard_count=max(1, int(self.config.task_shard_count)),
+                shard_index=int(self.config.task_shard_index),
+                require_drained=bool(self.config.post_completion_ops_require_drained),
+            )
+        except Exception as exc:
+            return self._terminal_refill_result(
+                ScanTerminalReason.FAILED,
+                scan_mode="seed",
+                analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
+                started_at=started_at,
+                error=f"{type(exc).__name__}: {exc}",
+                metadata={"error_type": type(exc).__name__},
+            )
+
+        # Expand the in-process execution slice so managed daemons restarted
+        # after this pass can select newly seeded post-completion tasks.
+        expanded = tuple(
+            str(task_id).strip()
+            for task_id in seed_result.expanded_execution_slice_task_ids
+            if str(task_id).strip()
+        )
+        if expanded:
+            merged = list(self.config.execution_slice_task_ids)
+            for task_id in expanded:
+                if task_id not in merged:
+                    merged.append(task_id)
+            self.config.execution_slice_task_ids = tuple(merged)
+
+        metadata = seed_result.to_metadata()
+        if seed_result.error:
+            terminal = ScanTerminalReason.FAILED
+        elif seed_result.seeded_task_ids or seed_result.config_updated:
+            terminal = ScanTerminalReason.GENERATED
+        elif seed_result.reason in {"already_seeded", "already_present"}:
+            terminal = ScanTerminalReason.DUPLICATE_ONLY
+        elif seed_result.reason == "board_not_drained":
+            terminal = ScanTerminalReason.THRESHOLD_SATISFIED
+        else:
+            terminal = ScanTerminalReason.PARTIAL
+        return self._terminal_refill_result(
+            terminal,
+            scan_mode=seed_result.reason or "seed",
+            analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
+            started_at=started_at,
+            metadata=metadata,
+            error=seed_result.error or None,
         )
 
     def _objective_refill_output_paths(self) -> tuple[Path, ...]:
@@ -12977,6 +13127,41 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Refine the objective heap and append objective-gap todos when the supervised backlog is low or drained.",
     )
     parser.add_argument(
+        "--post-completion-ops-refill",
+        action="store_true",
+        help=(
+            "When the todo board is fully drained, seed reviewed post-completion "
+            "ops tasks from --post-completion-ops-catalog and expand execution slices."
+        ),
+    )
+    parser.add_argument(
+        "--post-completion-ops-catalog",
+        type=Path,
+        default=None,
+        help="JSON catalog of post-completion ops tasks to seed after board drain.",
+    )
+    parser.add_argument(
+        "--post-completion-ops-config",
+        type=Path,
+        default=None,
+        help=(
+            "Optional supervisor config JSON whose lane_slices should be expanded "
+            "when post-completion ops tasks are seeded."
+        ),
+    )
+    parser.add_argument(
+        "--post-completion-ops-board-namespace",
+        default="",
+        help="Board namespace stamped onto seeded post-completion task cards.",
+    )
+    parser.add_argument(
+        "--post-completion-ops-allow-before-drain",
+        dest="post_completion_ops_require_drained",
+        action="store_false",
+        help="Allow catalog seeding even when open tasks remain (idempotent).",
+    )
+    parser.set_defaults(post_completion_ops_require_drained=True)
+    parser.add_argument(
         "--no-objective-task-janitor",
         dest="objective_task_janitor_enabled",
         action="store_false",
@@ -13394,6 +13579,19 @@ def supervisor_config_from_args(
         codebase_scan_commit_outputs=args.codebase_scan_commit_outputs,
         codebase_scan_commit_subject=args.codebase_scan_commit_subject,
         objective_refill_enabled=args.objective_refill_scan and not reconciliation_only,
+        post_completion_ops_refill_enabled=(
+            bool(args.post_completion_ops_refill)
+            and args.post_completion_ops_catalog is not None
+            and not reconciliation_only
+        ),
+        post_completion_ops_catalog_path=args.post_completion_ops_catalog,
+        post_completion_ops_config_path=args.post_completion_ops_config,
+        post_completion_ops_board_namespace=str(
+            args.post_completion_ops_board_namespace or ""
+        ),
+        post_completion_ops_require_drained=bool(
+            args.post_completion_ops_require_drained
+        ),
         objective_task_janitor_enabled=args.objective_task_janitor_enabled and not reconciliation_only,
         objective_task_janitor_max_blocked_tasks=args.objective_task_janitor_max_blocked_tasks,
         objective_task_janitor_max_deprioritized_tasks=args.objective_task_janitor_max_deprioritized_tasks,
