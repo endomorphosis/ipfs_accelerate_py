@@ -1,0 +1,217 @@
+{
+  "advisors_never_promote_alone": true,
+  "authoritative_live_evidence": false,
+  "authority_ceiling": "advisory",
+  "authority_scope": "candidate_generation_only",
+  "block_reasons": [
+    "hermetic_advisor_shim_is_not_vendor",
+    "managed_vendor_provenance_unverified",
+    "mutation_semantic_check_failed",
+    "negative_semantic_check_failed",
+    "positive_semantic_check_failed",
+    "replay_semantic_check_failed",
+    "replay_semantic_invariant_failed"
+  ],
+  "checks": [
+    {
+      "bindings": {
+        "executable_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/bin/ergoai",
+        "platform": "linux-aarch64"
+      },
+      "check_id": "advisors.ergoai_live.identity",
+      "detail": "",
+      "expected": "ErgoAI 3.0",
+      "kind": "install",
+      "observed": "managed_vendor_provenance_unverified",
+      "reason_codes": [
+        "managed_vendor_provenance_unverified"
+      ],
+      "status": "failed",
+      "tool_id": "ergoai"
+    },
+    {
+      "bindings": {
+        "identity_manifest_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/advisors/ergoai/3.0/identity.json",
+        "is_hermetic_advisor_shim": true
+      },
+      "check_id": "advisors.ergoai_live.provenance",
+      "detail": "",
+      "expected": "checksummed_non_shim_managed_vendor_identity",
+      "kind": "policy",
+      "observed": "hermetic_advisor_shim_is_not_vendor",
+      "reason_codes": [
+        "hermetic_advisor_shim_is_not_vendor"
+      ],
+      "status": "failed",
+      "tool_id": "ergoai"
+    },
+    {
+      "bindings": {
+        "output_digest_sha256": null,
+        "program_digest_sha256": null,
+        "query_digest_sha256": null,
+        "returncode": null
+      },
+      "check_id": "advisors.ergoai_live.positive",
+      "detail": "",
+      "expected": "yes",
+      "kind": "positive",
+      "observed": "unavailable",
+      "reason_codes": [
+        "positive_semantic_check_failed"
+      ],
+      "status": "failed",
+      "tool_id": "ergoai"
+    },
+    {
+      "bindings": {
+        "output_digest_sha256": null,
+        "program_digest_sha256": null,
+        "query_digest_sha256": null,
+        "returncode": null
+      },
+      "check_id": "advisors.ergoai_live.negative",
+      "detail": "",
+      "expected": "no",
+      "kind": "negative",
+      "observed": "unavailable",
+      "reason_codes": [
+        "negative_semantic_check_failed"
+      ],
+      "status": "failed",
+      "tool_id": "ergoai"
+    },
+    {
+      "bindings": {
+        "output_digest_sha256": null,
+        "program_digest_sha256": null,
+        "query_digest_sha256": null,
+        "returncode": null
+      },
+      "check_id": "advisors.ergoai_live.mutation",
+      "detail": "",
+      "expected": "no",
+      "kind": "mutation",
+      "observed": "unavailable",
+      "reason_codes": [
+        "mutation_semantic_check_failed"
+      ],
+      "status": "failed",
+      "tool_id": "ergoai"
+    },
+    {
+      "bindings": {
+        "output_digest_sha256": null,
+        "program_digest_sha256": null,
+        "query_digest_sha256": null,
+        "returncode": null
+      },
+      "check_id": "advisors.ergoai_live.replay",
+      "detail": "",
+      "expected": "yes",
+      "kind": "replay",
+      "observed": "unavailable",
+      "reason_codes": [
+        "replay_semantic_check_failed"
+      ],
+      "status": "failed",
+      "tool_id": "ergoai"
+    },
+    {
+      "bindings": {},
+      "check_id": "advisors.ergoai_live.authority_boundary",
+      "detail": "",
+      "expected": "advisor_only_never_proof_authority",
+      "kind": "authority",
+      "observed": "ceiling=advisory;can_satisfy=False",
+      "reason_codes": [],
+      "status": "passed",
+      "tool_id": "ergoai"
+    },
+    {
+      "bindings": {
+        "comparison_scope": "normalized_semantics_not_console_bytes",
+        "replay_bound": false
+      },
+      "check_id": "advisors.ergoai_live.replay_invariant",
+      "detail": "",
+      "expected": "same_input_same_normalized_semantic_result",
+      "kind": "replay",
+      "observed": "normalized_semantics_mismatch",
+      "reason_codes": [
+        "replay_semantic_invariant_failed"
+      ],
+      "status": "failed",
+      "tool_id": "ergoai"
+    }
+  ],
+  "download_attempted": false,
+  "evidence_class": "unverified_or_incomplete",
+  "executable_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/bin/ergoai",
+  "goal_id": "FVT-G160",
+  "grants_proof_authority": false,
+  "grants_theorem_authority": false,
+  "identity_manifest_digest_sha256": "7e3f931b792bc79a3f5779d202d21b08324c651669ca63824519c1caf00afa42",
+  "identity_manifest_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/advisors/ergoai/3.0/identity.json",
+  "independent_reconstruction_complete": false,
+  "install_attempted": false,
+  "interface": "LiveErgoAIAdvisorCertification@1",
+  "managed_identity": {
+    "atomic_publish": null,
+    "checksum_verified": null,
+    "developer_rebuild_metadata_relocated": null,
+    "identity_digest_sha256": null,
+    "install_publication_model": null,
+    "is_hermetic_advisor_shim": true,
+    "is_live_vendor": null,
+    "launcher_sha256": null,
+    "license_components": null,
+    "release_artifact_sha256": null,
+    "release_artifact_size_bytes": null,
+    "release_tag": null,
+    "release_url": null,
+    "relocatable_install": null,
+    "relocation_certification_scope": null,
+    "runtime_paths_relative": null,
+    "runtime_workspace_cleanup_policy": null,
+    "schema_version": null,
+    "selected_platform": null,
+    "tool_id": "ergoai",
+    "vendor_executable_sha256": null,
+    "version": "3.0",
+    "xsb_configuration": null,
+    "xsb_executable_sha256": null
+  },
+  "managed_vendor_live_evidence": false,
+  "network_isolation_enforced": false,
+  "network_used": false,
+  "observed_at": "2026-08-04T18:25:51Z",
+  "production_certified": false,
+  "program": "formal-verification-tactician/advisor-toolchains",
+  "promotion_blocked": true,
+  "public_evidence_policy": {
+    "failures": [],
+    "host_private_paths_forbidden": true,
+    "max_public_string_bytes": 8192,
+    "raw_process_output_forbidden": true,
+    "raw_secret_or_witness_forbidden": true,
+    "repo_root_paths_forbidden": true,
+    "safe": true,
+    "satisfied": true,
+    "violation_count": 0,
+    "violations": []
+  },
+  "receipt_digest_sha256": "f35b3f77b5e4b6639962ca002e0f5c9c7fd0bb909d8475335841f010b7a54490",
+  "schema_version": "live-ergoai-advisor-certification/v1",
+  "selected_platform": "linux-aarch64",
+  "semantic_evidence_digest_sha256": null,
+  "source_binding": {
+    "release_sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+    "release_tag": "v3.0_release",
+    "release_url": "https://github.com/ErgoAI/.github/releases/download/v3.0_release/ergoAI_3.0.run",
+    "repo_root": "<repo-root>"
+  },
+  "task_id": "FVT-050",
+  "tool_id": "ergoai",
+  "vendor_certified": false
+}
