@@ -167,28 +167,35 @@ def _production_response_json_schema(
     binding_required = ["packet_id", "snapshot_id", "task_id"]
     if request.role is ProviderRole.GROK_IMPLEMENT:
         paths = _request_write_paths(request)
-        proposal_properties: dict[str, Any] = {
-            "declared_paths": {
-                "type": "array",
-                "items": {"type": "string", "enum": list(paths)},
-                "minItems": 1,
-                "maxItems": len(paths),
-                "uniqueItems": True,
+        path_enum = list(paths)
+        declared_paths_schema: dict[str, Any] = {
+            "type": "array",
+            "items": {"type": "string", "enum": path_enum},
+            "minItems": 1,
+            "maxItems": len(paths),
+            "uniqueItems": True,
+        }
+        file_item_schema: dict[str, Any] = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "path": {"type": "string", "enum": path_enum},
+                "content": {
+                    "type": "string",
+                    "maxLength": request.bounds.max_response_bytes,
+                },
             },
+            "required": ["path", "content"],
+        }
+        # Prefer exclusive anyOf branches over requiring both files and patch
+        # with oneOf constraints: constrained decoding handles exclusive
+        # required-key variants more reliably than mutually exclusive
+        # min/max constraints on always-present fields.
+        proposal_properties: dict[str, Any] = {
+            "declared_paths": declared_paths_schema,
             "files": {
                 "type": "array",
-                "items": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "properties": {
-                        "path": {"type": "string", "enum": list(paths)},
-                        "content": {
-                            "type": "string",
-                            "maxLength": request.bounds.max_response_bytes,
-                        },
-                    },
-                    "required": ["path", "content"],
-                },
+                "items": file_item_schema,
                 "maxItems": len(paths),
             },
             "patch": {
@@ -199,24 +206,39 @@ def _production_response_json_schema(
         properties = {
             **binding_properties,
             "proposal": {
-                "type": "object",
-                "additionalProperties": False,
-                "properties": proposal_properties,
-                "required": ["declared_paths", "files", "patch"],
-                "oneOf": [
+                "anyOf": [
                     {
+                        "type": "object",
+                        "additionalProperties": False,
                         "properties": {
-                            "files": {"minItems": 1},
-                            "patch": {"maxLength": 0},
-                        }
+                            "declared_paths": declared_paths_schema,
+                            "files": {
+                                "type": "array",
+                                "items": file_item_schema,
+                                "minItems": 1,
+                                "maxItems": len(paths),
+                            },
+                        },
+                        "required": ["declared_paths", "files"],
                     },
                     {
+                        "type": "object",
+                        "additionalProperties": False,
                         "properties": {
-                            "files": {"maxItems": 0},
-                            "patch": {"minLength": 1},
-                        }
+                            "declared_paths": declared_paths_schema,
+                            "patch": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": request.bounds.max_response_bytes,
+                            },
+                        },
+                        "required": ["declared_paths", "patch"],
                     },
                 ],
+                # Keep a properties map for the independent validator (which
+                # coerces the exclusive files/patch contract into the full
+                # supervisor-normalized shape).
+                "properties": proposal_properties,
             },
         }
         required = [*binding_required, "proposal"]
@@ -307,6 +329,16 @@ def _validate_production_native_response(
             files = []
         if patch is None:
             patch = ""
+        # Tolerate common constrained-output drift: a non-empty files list
+        # with an accidental empty patch string, or the inverse.
+        if isinstance(files, list) and files and isinstance(patch, str) and not patch.strip():
+            patch = ""
+        if isinstance(patch, str) and patch.strip() and files in (None, []):
+            files = []
+        # When both are present and non-empty, prefer files (complete
+        # replacements) and drop the patch so the exclusive contract holds.
+        if isinstance(files, list) and files and isinstance(patch, str) and patch.strip():
+            patch = ""
         proposal = {
             "declared_paths": declared,
             "files": files,
@@ -330,9 +362,18 @@ def _validate_production_native_response(
             or not isinstance(patch, str)
             or bool(files) == bool(patch)
         ):
+            detail_parts = [
+                f"declared_type={type(declared).__name__}",
+                f"declared_len={len(declared) if isinstance(declared, list) else 'n/a'}",
+                f"files_type={type(files).__name__}",
+                f"files_len={len(files) if isinstance(files, list) else 'n/a'}",
+                f"patch_type={type(patch).__name__}",
+                f"patch_len={len(patch) if isinstance(patch, str) else 'n/a'}",
+            ]
             raise RuntimeError(
                 "production Grok response violates its strict schema: "
-                "proposal must declare exact paths and exactly one of files/patch"
+                "proposal must declare exact paths and exactly one of files/patch "
+                f"({'; '.join(detail_parts)})"
             )
         file_paths: list[str] = []
         for item in files:

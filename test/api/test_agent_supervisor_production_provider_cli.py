@@ -415,11 +415,22 @@ def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
         assert schema["properties"]["task_id"]["enum"] == [request.task_id]
     grok_schema = observed["grok_cli"]["schema"]
     proposal_schema = grok_schema["properties"]["proposal"]
-    assert proposal_schema["additionalProperties"] is False
+    assert "anyOf" in proposal_schema
+    assert len(proposal_schema["anyOf"]) == 2
+    assert all(
+        branch.get("additionalProperties") is False
+        for branch in proposal_schema["anyOf"]
+    )
     assert proposal_schema["properties"]["declared_paths"]["items"][
         "enum"
     ] == ["module.py"]
-    assert "oneOf" in proposal_schema
+    anyof_required = {
+        frozenset(branch["required"]) for branch in proposal_schema["anyOf"]
+    }
+    assert anyof_required == {
+        frozenset({"declared_paths", "files"}),
+        frozenset({"declared_paths", "patch"}),
+    }
     assert observed["grok_cli"]["command"][
         observed["grok_cli"]["command"].index("--tools") + 1
     ] == ""

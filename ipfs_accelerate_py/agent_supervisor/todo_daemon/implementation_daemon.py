@@ -382,7 +382,17 @@ PROVIDER_CAPACITY_PATTERNS = (
             re.IGNORECASE,
         ),
     ),
-    ("goose", re.compile(r"(?:goose.*(?:rate limit|quota|usage limit)|provider.*exhausted)", re.IGNORECASE)),
+    # Do not match the disposition field name ``provider_capacity_exhausted``
+    # (``provider.*exhausted`` is a false positive on that JSON key, including
+    # when the value is explicitly false).
+    (
+        "goose",
+        re.compile(
+            r"(?:goose.*(?:rate limit|quota|usage limit)|"
+            r"(?<![\w_])provider(?!_capacity)(?:\s+(?:is|was))?\s+exhausted\b)",
+            re.IGNORECASE,
+        ),
+    ),
     (
         "grok",
         re.compile(
@@ -2079,6 +2089,9 @@ def classify_provider_capacity_failure(text: str) -> dict[str, Any]:
     # Typed production-route timeouts and native CLI stalls are capacity-like:
     # the model never produced an admitted proposal, so burning the task attempt
     # budget only converts host contention into a permanent blocked task.
+    # The same applies to constrained-schema flakiness: the implementer did not
+    # land a usable proposal, so a non-consuming retry is preferred over
+    # burning the task attempt budget.
     lowered = str(text or "").casefold()
     if (
         "provider_timeout" in lowered
@@ -2086,6 +2099,10 @@ def classify_provider_capacity_failure(text: str) -> dict[str, Any]:
         or "exceeded its timeout" in lowered
         or "max turns reached" in lowered
         or "structured output missing" in lowered
+        or "structured result failed" in lowered
+        or "structuredoutputerror" in lowered
+        or "violates its strict schema" in lowered
+        or "did not produce structured output" in lowered
         or re.search(r"\btimed?\s*out\b", lowered)
     ):
         return {
