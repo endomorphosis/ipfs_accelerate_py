@@ -462,6 +462,10 @@ class PortalSupervisorConfig:
     generated_dirty_repair_max_paths: int = 200
     generated_dirty_repair_stale_lock_seconds: float = 300.0
     generated_dirty_repair_paths: tuple[Path, ...] = field(default_factory=tuple)
+    # Generic crash-avoidance heal for every board: auto-commit trusted
+    # protected/generated dirt and soft-defer healable maintenance failures
+    # instead of killing the supervisor loop.
+    supervisor_auto_heal_enabled: bool = True
     external_reservation_manifest_paths: tuple[Path, ...] = field(default_factory=tuple)
     assumed_completed_task_ids: tuple[str, ...] = field(default_factory=tuple)
     execution_slice_task_ids: tuple[str, ...] = field(default_factory=tuple)
@@ -1902,23 +1906,37 @@ class PortalImplementationSupervisor:
         update_maintenance_phase("main_checkout_repair")
         main_checkout_repair = self.repair_main_checkout_merge_state()
         update_maintenance_phase("generated_dirty_repair")
-        generated_dirty_repair = self.repair_generated_dirty_checkouts()
-        update_maintenance_phase("worktree_reconciliation")
-        worktree_reconciliation = self.reconcile_backlogged_worktrees(
-            preacquired_implementation_lock=(
-                implementation_maintenance_lease
-            ),
+        generated_dirty_repair = self._run_healable_maintenance_step(
+            "generated_dirty_repair",
+            lambda: self.repair_generated_dirty_checkouts(),
+            default={"attempted": False, "reason": "auto_heal_deferred"},
         )
-        update_maintenance_phase("worktree_reconciliation_replay")
-        worktree_reconciliation_replay = (
-            self.recover_already_merged_reconciliation_candidates(
+        update_maintenance_phase("worktree_reconciliation")
+        worktree_reconciliation = self._run_healable_maintenance_step(
+            "worktree_reconciliation",
+            lambda: self.reconcile_backlogged_worktrees(
                 preacquired_implementation_lock=(
                     implementation_maintenance_lease
                 ),
-            )
+            ),
+            default={},
+        )
+        update_maintenance_phase("worktree_reconciliation_replay")
+        worktree_reconciliation_replay = self._run_healable_maintenance_step(
+            "worktree_reconciliation_replay",
+            lambda: self.recover_already_merged_reconciliation_candidates(
+                preacquired_implementation_lock=(
+                    implementation_maintenance_lease
+                ),
+            ),
+            default={},
         )
         update_maintenance_phase("worktree_cleanup")
-        worktree_cleanup = self.cleanup_backlogged_worktrees()
+        worktree_cleanup = self._run_healable_maintenance_step(
+            "worktree_cleanup",
+            lambda: self.cleanup_backlogged_worktrees(),
+            default={},
+        )
         # Proactively heal protected generated dirt so later board producers
         # (guardrail release, refill, janitor) do not hard-crash the loop.
         update_maintenance_phase("protected_dirty_auto_heal")
@@ -1926,36 +1944,47 @@ class PortalImplementationSupervisor:
             reason="pre_board_mutation_maintenance",
         )
         update_maintenance_phase("strategy_state_repair")
-        strategy_file_repair = self.ensure_strategy_file()
-        todo_board_repair = self.ensure_todo_board_for_refill()
+        strategy_file_repair = self._run_healable_maintenance_step(
+            "strategy_state_repair",
+            self.ensure_strategy_file,
+            default={"repaired": False, "reason": "auto_heal_deferred"},
+        )
+        todo_board_repair = self._run_healable_maintenance_step(
+            "todo_board_repair",
+            self.ensure_todo_board_for_refill,
+            default={"repaired": False, "reason": "auto_heal_deferred"},
+        )
         update_maintenance_phase("objective_goal_migration")
-        objective_goal_migration = self.migrate_legacy_objective_goal_completion()
+        objective_goal_migration = self._run_healable_maintenance_step(
+            "objective_goal_migration",
+            self.migrate_legacy_objective_goal_completion,
+            default={"changed": False, "reason": "auto_heal_deferred"},
+        )
         update_maintenance_phase("objective_task_janitor")
-        objective_task_janitor = self.reconcile_objective_task_janitor()
+        objective_task_janitor = self._run_healable_maintenance_step(
+            "objective_task_janitor",
+            self.reconcile_objective_task_janitor,
+            default={"changed": False, "reason": "auto_heal_deferred"},
+        )
         update_maintenance_phase("reconciliation_guardrails")
-        reconciliation_findings = self.record_reconciliation_guardrails(
-            worktree_reconciliation,
-            worktree_cleanup,
+        reconciliation_findings = self._run_healable_maintenance_step(
+            "reconciliation_guardrails",
+            lambda: self.record_reconciliation_guardrails(
+                worktree_reconciliation,
+                worktree_cleanup,
+            ),
+            default=[],
         )
         update_maintenance_phase("guardrail_releases")
-        try:
-            guardrail_releases = self.release_completed_guardrail_blocks(
+        guardrail_releases = self._run_healable_maintenance_step(
+            "guardrail_releases",
+            lambda: self.release_completed_guardrail_blocks(
                 reconciliation_result=worktree_reconciliation,
                 cleanup_result=worktree_cleanup,
                 replay_result=worktree_reconciliation_replay,
-            )
-        except RuntimeError as exc:
-            message = str(exc)
-            if "protected generated outputs are unsafe" not in message:
-                raise
-            logger.warning(
-                "Guardrail release deferred after protected dirty auto-heal failed: %s",
-                message,
-            )
-            self._auto_heal_protected_generated_dirt(
-                reason="guardrail_release_runtime_error",
-            )
-            guardrail_releases = []
+            ),
+            default=[],
+        )
         state = PortalTaskState.load(self.config.state_path)
         now_ts = time.time()
         stuck, reason = self.is_stuck(state, now_ts=now_ts)
@@ -3335,12 +3364,14 @@ class PortalImplementationSupervisor:
                 )
                 # When the only fault is pre-existing protected generated dirt,
                 # auto-heal once (force commit of trusted supervisor outputs)
-                # instead of crashing the entire maintenance loop.
+                # instead of crashing the entire maintenance loop. Applies to
+                # every board when supervisor_auto_heal_enabled is true.
                 if (
                     not initial_verdict.get("release_allowed")
                     and not dirty_repair_preflight
                     and not _auto_heal_attempted
                     and operation != "generated_dirty_repair"
+                    and getattr(self.config, "supervisor_auto_heal_enabled", True)
                     and self._generated_dirty_repair_preflight_allowed(
                         initial_verdict
                     )
@@ -3547,6 +3578,78 @@ class PortalImplementationSupervisor:
             for item in failed_scopes
         )
 
+    @staticmethod
+    def _is_healable_supervisor_error(exc: BaseException) -> bool:
+        """Return True for errors the generic auto-heal path can recover from."""
+
+        if not isinstance(exc, RuntimeError):
+            return False
+        message = str(exc).lower()
+        healable_markers = (
+            "protected generated outputs are unsafe",
+            "protected_generated_outputs_dirty",
+            "checkout_mutation_protected_recovery_required",
+            "checkout_mutation_lock",
+            "protected_generated_history",
+            "protected_outputs",
+        )
+        return any(marker in message for marker in healable_markers)
+
+    def _run_healable_maintenance_step(
+        self,
+        step_name: str,
+        callback,
+        *,
+        default: Any,
+    ) -> Any:
+        """Run a maintenance step; auto-heal and soft-defer on healable crashes.
+
+        Applies to every board when ``supervisor_auto_heal_enabled`` is true
+        (the default). Non-healable exceptions still propagate.
+        """
+
+        try:
+            return callback()
+        except Exception as exc:
+            if not getattr(self.config, "supervisor_auto_heal_enabled", True):
+                raise
+            if not self._is_healable_supervisor_error(exc):
+                raise
+            logger.warning(
+                "Maintenance step %s hit healable error; auto-healing: %s",
+                step_name,
+                exc,
+            )
+            heal = self._auto_heal_protected_generated_dirt(
+                reason=f"maintenance_step:{step_name}",
+            )
+            try:
+                return callback()
+            except Exception as retry_exc:
+                if not self._is_healable_supervisor_error(retry_exc):
+                    raise
+                logger.warning(
+                    "Maintenance step %s deferred after auto-heal retry failed: %s",
+                    step_name,
+                    retry_exc,
+                )
+                try:
+                    self._record_event(
+                        "supervisor_maintenance_step_deferred",
+                        {
+                            "step": step_name,
+                            "error": f"{type(retry_exc).__name__}: {retry_exc}",
+                            "heal": heal,
+                        },
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to record deferred maintenance step %s",
+                        step_name,
+                        exc_info=True,
+                    )
+                return default
+
     def _auto_heal_protected_generated_dirt(
         self,
         *,
@@ -3554,12 +3657,18 @@ class PortalImplementationSupervisor:
     ) -> dict[str, Any]:
         """Commit trusted protected generated dirt so maintenance can proceed.
 
-        This is intentionally force-enabled: reviewed boards often mark the todo
-        board and operator configs as implementation-protected, and supervisor
-        refill/seed writes leave those paths dirty until a trusted generated
-        commit is produced. Failing the whole maintenance pass is worse than
-        auto-committing those already-authorized generated outputs.
+        Generic for every supervised board: todo/strategy/protected paths often
+        receive supervisor-authored writes (refill, guardrail, janitor). Leaving
+        those dirty crashes later maintenance producers; auto-committing the
+        already-authorized generated outputs keeps the supervisor alive.
         """
+
+        if not getattr(self.config, "supervisor_auto_heal_enabled", True):
+            return {
+                "attempted": False,
+                "reason": "supervisor_auto_heal_disabled",
+                "trigger": reason,
+            }
 
         protected_candidates = [
             self.config.todo_path,
@@ -13138,6 +13247,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.set_defaults(generated_dirty_repair_enabled=False)
     parser.add_argument(
+        "--no-supervisor-auto-heal",
+        dest="supervisor_auto_heal_enabled",
+        action="store_false",
+        help=(
+            "Disable generic supervisor auto-heal. By default the supervisor heals "
+            "protected generated dirt and soft-defers healable maintenance crashes "
+            "for every board instead of killing the loop."
+        ),
+    )
+    parser.set_defaults(supervisor_auto_heal_enabled=True)
+    parser.add_argument(
         "--generated-dirty-commit-subject",
         default="Agent: commit generated supervisor outputs",
     )
@@ -13684,6 +13804,9 @@ def supervisor_config_from_args(
         generated_dirty_repair_max_paths=args.generated_dirty_max_paths,
         generated_dirty_repair_stale_lock_seconds=args.generated_dirty_stale_lock_seconds,
         generated_dirty_repair_paths=tuple(args.generated_dirty_repair_paths),
+        supervisor_auto_heal_enabled=bool(
+            getattr(args, "supervisor_auto_heal_enabled", True)
+        ),
         codebase_refill_enabled=args.codebase_refill_scan and not reconciliation_only,
         codebase_scan_discovery_dir=args.codebase_scan_discovery_dir,
         codebase_scan_discovery_output_path=args.codebase_scan_discovery_output_path,

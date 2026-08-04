@@ -4528,6 +4528,7 @@ def test_generated_board_auto_heals_preexisting_protected_dirt(
         encoding="utf-8",
     )
     assert supervisor.config.generated_dirty_repair_enabled is False
+    assert supervisor.config.supervisor_auto_heal_enabled is True
 
     observed: list[str] = []
 
@@ -4553,6 +4554,39 @@ def test_generated_board_auto_heals_preexisting_protected_dirt(
         event.get("type") == "generated_protected_dirty_auto_heal"
         for event in events
     )
+
+
+def test_healable_maintenance_step_soft_defers_after_failed_retry(
+    tmp_path: Path,
+) -> None:
+    """Generic auto-heal wraps maintenance steps for every board."""
+
+    supervisor, repo, todo_path = _generated_protected_supervisor(tmp_path)
+    todo_path.write_text("# Tasks\n\n## EX-002 Dirt\n", encoding="utf-8")
+    calls = {"n": 0}
+
+    def boom() -> list[str]:
+        calls["n"] += 1
+        raise RuntimeError("protected generated outputs are unsafe before mutation: protected_generated_outputs_dirty")
+
+    # First call auto-heals (commits dirt) then retries boom which still fails → default.
+    result = supervisor._run_healable_maintenance_step(
+        "unit_test_step",
+        boom,
+        default=["deferred"],
+    )
+    assert result == ["deferred"]
+    assert calls["n"] == 2
+    assert supervisor.config.supervisor_auto_heal_enabled is True
+
+    # Disabled auto-heal re-raises.
+    supervisor.config.supervisor_auto_heal_enabled = False
+    with pytest.raises(RuntimeError, match="protected_generated_outputs_dirty"):
+        supervisor._run_healable_maintenance_step(
+            "unit_test_step_disabled",
+            boom,
+            default=["nope"],
+        )
 
 
 def test_fresh_generated_dirty_repair_journals_before_callback_and_retains(
