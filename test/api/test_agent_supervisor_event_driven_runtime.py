@@ -283,6 +283,52 @@ def test_all_runtime_wake_kinds_use_canonical_cursors_and_two_phase_acknowledgem
     )
 
 
+def test_validation_wake_ignores_single_flight_coordination_noise(
+    tmp_path: Path,
+) -> None:
+    daemon = _drained_daemon(tmp_path)
+    cache_root = Path(daemon.validation_cache_dir)
+    authoritative_entries = cache_root / "entries" / "validation"
+    authoritative_entries.mkdir(parents=True, exist_ok=True)
+    validation_targets = daemon._runtime_source_paths()["validation"]
+
+    assert validation_targets == (authoritative_entries,)
+
+    clock = LogicalClock()
+    watcher = LogicalWatcher(clock)
+    coordinator = RuntimeWakeCoordinator(
+        {RuntimeWakeKind.VALIDATION: validation_targets},
+        safety_interval_seconds=300.0,
+        watcher=watcher,
+        clock=clock,
+    )
+    try:
+        # Single-flight leases and lock heartbeats coordinate producers but
+        # are not successful validation evidence.
+        coordination_db = cache_root / "single-flight.sqlite3"
+        coordination_db.touch()
+        coordinator.notify(
+            RuntimeWakeKind.VALIDATION,
+            revision="coordination-only-revision",
+        )
+        noise = coordinator.wait(timeout=0.0)
+        assert noise.kinds == (RuntimeWakeKind.OBSERVATION_WINDOW,)
+        coordinator.acknowledge(noise)
+
+        entry = authoritative_entries / "aa" / "result.json"
+        entry.parent.mkdir(parents=True)
+        entry.write_text('{"passed":true}\n', encoding="utf-8")
+        coordinator.notify(
+            RuntimeWakeKind.VALIDATION,
+            revision="authoritative-result-revision",
+        )
+        result = coordinator.wait()
+        assert result.kinds == (RuntimeWakeKind.VALIDATION,)
+        coordinator.acknowledge(result)
+    finally:
+        coordinator.close()
+
+
 def test_unsupported_native_watcher_falls_back_to_blocking_timer(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

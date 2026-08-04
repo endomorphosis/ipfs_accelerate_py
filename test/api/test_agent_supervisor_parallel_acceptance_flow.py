@@ -180,7 +180,14 @@ def _g060_completion_packet(tmp_path: Path) -> dict[str, object]:
     assert restored_acceptance.verify_integrity() is False
     repository_tree = accepted["target_commit"]
 
-    policy = ResourcePolicy(max_lanes=2, adaptive_enabled=True)
+    # G060's acceptance criterion is an explicit >=2x adaptive-throughput
+    # proof. Keep the fixture bound to that criterion even though the global
+    # policy default is stricter for ordinary production runs.
+    policy = ResourcePolicy(
+        max_lanes=2,
+        adaptive_enabled=True,
+        adaptive_minimum_throughput_multiplier=2,
+    )
     fixture_ids = ("analysis", "validation")
     adaptive_receipt = evaluate_adaptive_throughput_benchmark(
         AdaptiveThroughputRun(
@@ -272,8 +279,13 @@ def _g060_completion_packet(tmp_path: Path) -> dict[str, object]:
             "receipt_cid": "scan:asi-083:implementation",
             "binding": dict(binding),
             "scan_mode": "exhaustive",
+            "analyzer_version": "asi-083/implementation-v1",
+            "passed": True,
             "healthy": True,
+            "exhaustive": True,
             "safe_for_completion_reasoning": True,
+            "conclusive": True,
+            "contradicted": False,
             "finished_at": (now - timedelta(minutes=4)).isoformat(),
         },
         {
@@ -282,8 +294,13 @@ def _g060_completion_packet(tmp_path: Path) -> dict[str, object]:
             "receipt_cid": "scan:asi-083:audit",
             "binding": dict(binding),
             "scan_mode": "exhaustive",
+            "analyzer_version": "asi-083/independent-audit-v1",
+            "passed": True,
             "healthy": True,
+            "exhaustive": True,
             "safe_for_completion_reasoning": True,
+            "conclusive": True,
+            "contradicted": False,
             "finished_at": (now - timedelta(minutes=3)).isoformat(),
         },
     ]
@@ -306,6 +323,7 @@ def _g060_completion_packet(tmp_path: Path) -> dict[str, object]:
         "analyzer_health": {
             "status": "healthy",
             "healthy": True,
+            "exhaustive": True,
             "safe_for_completion_reasoning": True,
             "binding": dict(binding),
         },

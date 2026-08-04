@@ -14,7 +14,7 @@ import sys
 import time
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from hashlib import sha1
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -40,6 +40,17 @@ from ..runtime.event_log import append_jsonl_event, repair_jsonl_event_log, uniq
 from .implementation_supervisor_runner import (
     persist_goal_completion_projection,
     persist_supervisor_scan_receipt,
+)
+from .legacy_landed_attestation import LegacyLandedReviewAuthority
+from .legacy_landed_review import load_legacy_landed_review_policy
+from .production_provider_attestation import (
+    DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME,
+)
+from .production_provider_cli import (
+    DEFAULT_CONTEXT_BUDGET_TOKENS as DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS,
+    DEFAULT_PROVIDER_TIMEOUT_SECONDS as DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS,
+    PRODUCTION_CLI_POLICY_NAME,
+    ProductionCLIProviderPolicy,
 )
 from ..merge.merge_conflict_repair import resolve_append_only_markdown_conflicts
 from ..objectives.scan_receipts import (
@@ -393,6 +404,12 @@ class PortalSupervisorConfig:
     reconciliation_only: bool = False
     implement: bool = False
     implementation_command: str = ""
+    production_provider_policy: str = ""
+    production_provider_context_budget_tokens: int = 0
+    production_provider_timeout_seconds: float = 0.0
+    production_provider_review_authority_key_path: Path | None = None
+    legacy_landed_review_policy_path: Path | None = None
+    legacy_landed_review_key_path: Path | None = None
     llm_merge_resolver_command: str = ""
     llm_merge_resolver_timeout_seconds: float | None = None
     implementation_timeout: float = 1800.0
@@ -2357,6 +2374,9 @@ class PortalImplementationSupervisor:
             loop = self.shared_supervisor_loop_class(
                 self.build_supervisor_loop_config(),
                 watchdog_hook=self._supervisor_loop_watchdog_decision,
+                stale_heartbeat_hook=(
+                    self._provider_backoff_stale_heartbeat_decision
+                ),
             )
             result = loop.run()
             self.restart_count = result.restart_count
@@ -2550,6 +2570,25 @@ class PortalImplementationSupervisor:
                 "task_prefix": self.config.task_prefix,
                 "state_prefix": self.config.state_prefix,
                 "max_task_attempts": max(0, int(self.config.max_task_attempts)),
+                "production_provider_policy": (
+                    self.config.production_provider_policy
+                ),
+                "production_provider_context_budget_tokens": int(
+                    self.config.production_provider_context_budget_tokens
+                ),
+                "production_provider_timeout_seconds": float(
+                    self.config.production_provider_timeout_seconds
+                ),
+                "production_provider_review_authority_key_path": str(
+                    self.config.production_provider_review_authority_key_path
+                    or ""
+                ),
+                "legacy_landed_review_policy_path": str(
+                    self.config.legacy_landed_review_policy_path or ""
+                ),
+                "legacy_landed_review_key_path": str(
+                    self.config.legacy_landed_review_key_path or ""
+                ),
                 "worktree_no_child_stall_seconds": max(
                     0.0,
                     float(self.config.implementation_log_stall_seconds),
@@ -2632,6 +2671,137 @@ class PortalImplementationSupervisor:
                 detail={"active_task_id": result.get("active_task_id") or ""},
             )
         return SupervisorLoopDecision.keep_running()
+
+    def _provider_backoff_watchdog_pause(
+        self,
+        current_status: Mapping[str, Any],
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Return a bounded stale-heartbeat exception for a durable retry latch.
+
+        Provider-capacity deferrals deliberately leave task state, queues, and
+        events unchanged while the daemon sleeps until ``retry_at``.  That is
+        healthy idle time, not a stalled child.  Admit the exception only from
+        the latest exact, non-consuming provider-exhaustion event and only for
+        the task that the current lane still exposes as ready.
+        """
+
+        if (
+            current_status.get("selection_idle_reason")
+            != "provider_capacity_backoff"
+            or bool(current_status.get("active_task_id"))
+            or current_status.get("implementation_in_progress") is True
+        ):
+            return {}
+
+        heartbeat_at = parse_timestamp(
+            str(current_status.get("heartbeat_at") or "")
+        )
+        if heartbeat_at is None:
+            return {}
+
+        ready_task_ids: set[str] = set()
+        for field_name in (
+            "eligible_ready_task_ids",
+            "selectable_ready_task_ids",
+            "ready_task_ids",
+        ):
+            value = current_status.get(field_name)
+            if not isinstance(value, (list, tuple, set, frozenset)):
+                continue
+            ready_task_ids.update(
+                str(item).strip() for item in value if str(item).strip()
+            )
+        if not ready_task_ids:
+            return {}
+
+        latest_boundary: dict[str, Any] | None = None
+        events_path = self._managed_daemon_events_path()
+        try:
+            with events_path.open("r", encoding="utf-8") as handle:
+                for raw_line in handle:
+                    if not raw_line.strip():
+                        continue
+                    event = json.loads(raw_line)
+                    if not isinstance(event, dict):
+                        return {}
+                    if str(event.get("type") or "") in {
+                        "implementation_provider_exhausted",
+                        "implementation_started",
+                        "implementation_finished",
+                    }:
+                        latest_boundary = event
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+        if (
+            latest_boundary is None
+            or latest_boundary.get("type")
+            != "implementation_provider_exhausted"
+            or latest_boundary.get("reason") != "provider_capacity_exhausted"
+            or latest_boundary.get("deferred") is not True
+            or latest_boundary.get("attempt_consumed") is not False
+        ):
+            return {}
+
+        task_id = str(latest_boundary.get("task_id") or "").strip()
+        if not task_id or task_id not in ready_task_ids:
+            return {}
+        raw_providers = latest_boundary.get("providers")
+        if not isinstance(raw_providers, (list, tuple, set, frozenset)):
+            return {}
+        providers = [
+            str(item).strip()
+            for item in raw_providers
+            if str(item).strip()
+        ]
+        if not providers:
+            return {}
+
+        retry_at = parse_timestamp(str(latest_boundary.get("retry_at") or ""))
+        if retry_at is None or retry_at <= heartbeat_at:
+            return {}
+        now_at = now or datetime.now(timezone.utc)
+        if now_at.tzinfo is None:
+            now_at = now_at.replace(tzinfo=timezone.utc)
+        grace_seconds = max(30.0, float(self.config.check_interval) * 2.0)
+        watchdog_until = retry_at + timedelta(seconds=grace_seconds)
+        if watchdog_until <= now_at:
+            return {}
+
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "provider-backoff-watchdog-pause@1"
+            ),
+            "reason": "provider_capacity_backoff",
+            "task_id": task_id,
+            "providers": providers,
+            "retry_at": retry_at.isoformat(),
+            "watchdog_until": watchdog_until.isoformat(),
+            "remaining_seconds": max(
+                0.0,
+                (watchdog_until - now_at).total_seconds(),
+            ),
+            "attempt_consumed": False,
+            "events_path": str(events_path),
+        }
+
+    def _provider_backoff_stale_heartbeat_decision(
+        self,
+        _loop: SupervisorLoop,
+        _child: Any,
+        current_status: Mapping[str, Any],
+    ) -> SupervisorLoopDecision | None:
+        pause = self._provider_backoff_watchdog_pause(current_status)
+        if not pause:
+            return None
+        return SupervisorLoopDecision(
+            action="continue",
+            reason="provider_capacity_backoff",
+            detail=pause,
+        )
 
     def repair_main_checkout_merge_state(self) -> dict[str, Any]:
         """Resolve or abort an interrupted merge in the shared repository checkout."""
@@ -11712,6 +11882,46 @@ class PortalImplementationSupervisor:
         if self.config.implement:
             command.append("--implement")
             command.extend(["--implementation-timeout", str(self.config.implementation_timeout)])
+            if self.config.production_provider_policy:
+                review_authority_key_path = (
+                    self.config.production_provider_review_authority_key_path
+                    or self.config.state_dir
+                    / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
+                )
+                command.extend(
+                    [
+                        "--production-provider-policy",
+                        self.config.production_provider_policy,
+                        "--production-provider-context-budget-tokens",
+                        str(
+                            int(
+                                self.config.production_provider_context_budget_tokens
+                            )
+                        ),
+                        "--production-provider-timeout-seconds",
+                        str(float(self.config.production_provider_timeout_seconds)),
+                        "--production-provider-review-authority-key-path",
+                        str(review_authority_key_path),
+                    ]
+                )
+            if (self.config.legacy_landed_review_policy_path is None) != (
+                self.config.legacy_landed_review_key_path is None
+            ):
+                raise ValueError(
+                    "legacy landed review requires both explicit policy and key paths"
+                )
+            if (
+                self.config.legacy_landed_review_policy_path is not None
+                and self.config.legacy_landed_review_key_path is not None
+            ):
+                command.extend(
+                    [
+                        "--legacy-landed-review-policy-path",
+                        str(self.config.legacy_landed_review_policy_path),
+                        "--legacy-landed-review-key-path",
+                        str(self.config.legacy_landed_review_key_path),
+                    ]
+                )
             if self.config.implementation_command:
                 command.extend(["--implementation-command", self.config.implementation_command])
             if self.config.llm_merge_resolver_command:
@@ -11795,6 +12005,9 @@ class PortalImplementationSupervisor:
 
     def _managed_daemon_pid_path(self) -> Path:
         return self.config.state_dir / f"{self.config.state_prefix}_managed_daemon.pid"
+
+    def _managed_daemon_events_path(self) -> Path:
+        return self.config.state_dir / f"{self.config.state_prefix}_events.jsonl"
 
     def _terminate_managed_daemon_tree(self, *, grace_seconds: float = 1.0) -> dict[str, Any]:
         """Stop the daemon this supervisor owns, including late-spawned workers."""
@@ -12059,6 +12272,70 @@ class PortalImplementationSupervisor:
             self.config.execution_slice_task_cids
         ):
             return False
+        expected_provider_policies = (
+            {self.config.production_provider_policy}
+            if self.config.implement and self.config.production_provider_policy
+            else set()
+        )
+        if option_values("--production-provider-policy") != expected_provider_policies:
+            return False
+        expected_provider_budgets = (
+            {str(int(self.config.production_provider_context_budget_tokens))}
+            if expected_provider_policies
+            else set()
+        )
+        if (
+            option_values("--production-provider-context-budget-tokens")
+            != expected_provider_budgets
+        ):
+            return False
+        expected_provider_timeouts = (
+            {str(float(self.config.production_provider_timeout_seconds))}
+            if expected_provider_policies
+            else set()
+        )
+        if (
+            option_values("--production-provider-timeout-seconds")
+            != expected_provider_timeouts
+        ):
+            return False
+        expected_review_authority_key_paths = (
+            {
+                str(
+                    self.config.production_provider_review_authority_key_path
+                    or self.config.state_dir
+                    / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
+                )
+            }
+            if expected_provider_policies
+            else set()
+        )
+        if (
+            option_values(
+                "--production-provider-review-authority-key-path"
+            )
+            != expected_review_authority_key_paths
+        ):
+            return False
+        expected_legacy_policy_paths = (
+            {str(self.config.legacy_landed_review_policy_path)}
+            if self.config.implement
+            and self.config.legacy_landed_review_policy_path is not None
+            and self.config.legacy_landed_review_key_path is not None
+            else set()
+        )
+        expected_legacy_key_paths = (
+            {str(self.config.legacy_landed_review_key_path)}
+            if expected_legacy_policy_paths
+            else set()
+        )
+        if (
+            option_values("--legacy-landed-review-policy-path")
+            != expected_legacy_policy_paths
+            or option_values("--legacy-landed-review-key-path")
+            != expected_legacy_key_paths
+        ):
+            return False
         expected_merge_targets = (
             {self.config.merge_target_branch}
             if self.config.merge_target_branch
@@ -12162,6 +12439,62 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "gpt-5.6-terra medium fallback; other failures and predispatch "
             "unavailability fail closed. Explicit Grok selection has no "
             "fallback."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-policy",
+        default="",
+        choices=("", PRODUCTION_CLI_POLICY_NAME),
+        help=(
+            "Opt in to the typed production packet route using Grok for "
+            "implementation and a distinct Codex CLI invocation for review. "
+            "This is an operator policy overlay and does not rewrite task metadata."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-context-budget-tokens",
+        type=int,
+        default=0,
+        help=(
+            "Positive bounded context budget for --production-provider-policy. "
+            f"Zero selects the policy default ({DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS})."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-timeout-seconds",
+        type=float,
+        default=0.0,
+        help=(
+            "Positive bounded per-provider timeout for the production route. "
+            f"Zero selects the policy default ({DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS:g}s)."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-review-authority-key-path",
+        type=Path,
+        default=None,
+        help=(
+            "Operator-controlled Ed25519 private-key file forwarded unchanged "
+            "to the managed daemon. Bundle supervisors use one shared path "
+            "for every lane."
+        ),
+    )
+    parser.add_argument(
+        "--legacy-landed-review-policy-path",
+        type=Path,
+        default=None,
+        help=(
+            "Explicit operator-owned LegacyLandedReviewPolicy@2 JSON forwarded "
+            "unchanged; omitted by default and never inferred from task metadata."
+        ),
+    )
+    parser.add_argument(
+        "--legacy-landed-review-key-path",
+        type=Path,
+        default=None,
+        help=(
+            "Explicit mode-0600 Ed25519 key bound by the legacy policy. Both "
+            "legacy paths are required together."
         ),
     )
     parser.add_argument(
@@ -12817,6 +13150,76 @@ def supervisor_config_from_args(
     llm_merge_resolver_command = args.llm_merge_resolver_command
     if reconciliation_only and not args.allow_reconciliation_only_llm_resolver:
         llm_merge_resolver_command = ""
+    production_provider_policy = str(
+        getattr(args, "production_provider_policy", "") or ""
+    ).strip()
+    raw_production_budget = int(
+        getattr(args, "production_provider_context_budget_tokens", 0) or 0
+    )
+    raw_production_timeout = float(
+        getattr(args, "production_provider_timeout_seconds", 0.0) or 0.0
+    )
+    raw_review_authority_key_path = getattr(
+        args, "production_provider_review_authority_key_path", None
+    )
+    if (
+        raw_production_budget
+        or raw_production_timeout
+        or raw_review_authority_key_path is not None
+    ) and not production_provider_policy:
+        raise ValueError(
+            "production provider bounds/review authority require a production "
+            "provider policy"
+        )
+    production_provider_context_budget_tokens = 0
+    production_provider_timeout_seconds = 0.0
+    production_provider_review_authority_key_path = None
+    if production_provider_policy:
+        production_policy = ProductionCLIProviderPolicy(
+            name=production_provider_policy,
+            context_budget_tokens=(
+                raw_production_budget
+                or DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS
+            ),
+            provider_timeout_seconds=(
+                raw_production_timeout
+                or DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS
+            ),
+        )
+        production_provider_context_budget_tokens = (
+            production_policy.context_budget_tokens
+        )
+        production_provider_timeout_seconds = float(
+            production_policy.provider_timeout_seconds
+        )
+        production_provider_review_authority_key_path = Path(
+            raw_review_authority_key_path
+            or args.state_dir / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
+        )
+    legacy_landed_review_policy_path = getattr(
+        args, "legacy_landed_review_policy_path", None
+    )
+    legacy_landed_review_key_path = getattr(
+        args, "legacy_landed_review_key_path", None
+    )
+    if (legacy_landed_review_policy_path is None) != (
+        legacy_landed_review_key_path is None
+    ):
+        raise ValueError(
+            "legacy landed review requires both explicit policy and key paths"
+        )
+    if (
+        legacy_landed_review_policy_path is not None
+        and legacy_landed_review_key_path is not None
+    ):
+        legacy_policy = load_legacy_landed_review_policy(
+            legacy_landed_review_policy_path
+        )
+        legacy_authority = LegacyLandedReviewAuthority.from_private_key_path(
+            legacy_landed_review_key_path
+        )
+        if legacy_policy.issuer_key_id != legacy_authority.issuer_key_id:
+            raise ValueError("legacy landed review policy/key binding is invalid")
     return PortalSupervisorConfig(
         todo_path=args.todo_path,
         state_path=state_path or args.state_dir / f"{args.state_prefix}_task_state.json",
@@ -12834,6 +13237,16 @@ def supervisor_config_from_args(
         reconciliation_only=reconciliation_only,
         implement=implement,
         implementation_command=args.implementation_command,
+        production_provider_policy=production_provider_policy,
+        production_provider_context_budget_tokens=(
+            production_provider_context_budget_tokens
+        ),
+        production_provider_timeout_seconds=production_provider_timeout_seconds,
+        production_provider_review_authority_key_path=(
+            production_provider_review_authority_key_path
+        ),
+        legacy_landed_review_policy_path=legacy_landed_review_policy_path,
+        legacy_landed_review_key_path=legacy_landed_review_key_path,
         llm_merge_resolver_command=llm_merge_resolver_command,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
         implementation_timeout=args.implementation_timeout,

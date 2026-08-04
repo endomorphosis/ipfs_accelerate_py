@@ -211,23 +211,31 @@ LEGACY_RESOURCE_CLASSES = (
     "cpu-medium",
     "cpu-large",
 )
+# Prompt/objective plans use workload-oriented labels in addition to the
+# proof scheduler's physical worker classes.  These labels still execute on a
+# CPU host; provider, network, disk, and other specialized requirements are
+# enforced independently through capabilities, provider admission, and stage
+# headroom checks.  Without this compatibility set, a default host advertising
+# the canonical proof classes rejects ordinary prompt-plan work even when it
+# has idle CPU capacity.
+GENERIC_BUNDLE_RESOURCE_CLASSES = (
+    "coordinator",
+    "crypto-small",
+    "git-merge",
+    "io-database",
+    "io-medium",
+    "io-network",
+    "io-small",
+    "network",
+    "network-small",
+    "process-control",
+    "provider-io",
+    "provider-llm",
+)
 # Default hosts advertise the architecture's distinct work classes.
 # Generic bundle classes remain interoperable through the compatibility check
 # in ``_host_reasons`` and can still be advertised explicitly by old workers.
 DEFAULT_RESOURCE_CLASSES = PROOF_RESOURCE_CLASSES
-
-# Planner extensions for repository-local proof toolchains which consume the
-# ordinary CPU proof pool.  Keep this list explicit: arbitrary extension,
-# provider, and accelerator classes must not acquire local capacity merely
-# because the host has a CPU.
-LOCAL_CPU_TOOLCHAIN_RESOURCE_CLASSES = frozenset(
-    {
-        "exclusive-jvm-toolchain",
-        "exclusive-opam-toolchain",
-        "jvm-proof-solver",
-        "large-kernel-toolchain",
-    }
-)
 
 _RESOURCE_CLASS_ALIASES = {
     "translate": ProofResourceClass.TRANSLATION.value,
@@ -2767,28 +2775,6 @@ class ResourceScheduler:
             and host.resource_classes
             and requirement.resource_class not in host.resource_classes
         ):
-            # Planner-defined CPU subclasses (for example
-            # ``cpu-proof-sanitize`` or ``cpu-install-test``) still execute on
-            # the local CPU pool.  Requiring every descriptive subclass to be
-            # copied into host telemetry makes otherwise ordinary CPU work
-            # permanently unschedulable.  Keep accelerator/provider classes
-            # fail-closed, and retain the independent capability check below
-            # for subclasses that require features such as AVX or containers.
-            advertised_local_cpu_proof = (
-                "cpu" in host.capabilities
-                and any(
-                    resource_class.startswith("cpu-")
-                    for resource_class in host.resource_classes
-                )
-            )
-            cpu_extension_compatible = (
-                advertised_local_cpu_proof
-                and (
-                    requirement.resource_class.startswith("cpu-")
-                    or requirement.resource_class
-                    in LOCAL_CPU_TOOLCHAIN_RESOURCE_CLASSES
-                )
-            )
             legacy_compatible = (
                 requirement.resource_class in LEGACY_RESOURCE_CLASSES
                 and bool(set(host.resource_classes).intersection(PROOF_RESOURCE_CLASSES))
@@ -2796,7 +2782,11 @@ class ResourceScheduler:
                 requirement.resource_class in PROOF_RESOURCE_CLASSES
                 and bool(set(host.resource_classes).intersection(LEGACY_RESOURCE_CLASSES))
             )
-            if not (cpu_extension_compatible or legacy_compatible):
+            generic_bundle_compatible = (
+                requirement.resource_class in GENERIC_BUNDLE_RESOURCE_CLASSES
+                and "cpu" in host.capabilities
+            )
+            if not (legacy_compatible or generic_bundle_compatible):
                 reasons.append("resource_class_mismatch")
         if requirement.provider_required:
             host_required = {
@@ -2973,8 +2963,6 @@ class ResourceScheduler:
         if pool_occupied + req.process_slots > self._pool_limit(req.resource_pool):
             host_reasons.append(f"{req.resource_pool.replace('-', '_')}_concurrency")
         class_limit = self.policy.resource_class_limits.get(req.resource_class)
-        if class_limit is None and req.resource_class.startswith("exclusive-"):
-            class_limit = 1
         class_occupied = sum(
             item.process_slots
             for item in active_items

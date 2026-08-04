@@ -259,12 +259,9 @@ def test_provider_route_prefers_grok_with_bounded_typed_codex_fallback(
     assert route["fallback_must_remain_within_profile_budget"] is True
     assert route["fallback_chain_may_not_expand"] is True
     assert fallback["receipt_must_commit_before_fallback_dispatch"] is True
-    assert set(fallback["allowed_typed_reasons"]) == {
-        "preferred_provider_unavailable",
-        "preferred_provider_quota_exhausted",
-        "preferred_provider_capacity_unavailable",
-        "preferred_provider_pre_effect_failure",
-    }
+    assert fallback["allowed_typed_reasons"] == [
+        "preferred_provider_quota_exhausted"
+    ]
     assert {
         "reason_code",
         "observed_capability_cid",
@@ -273,9 +270,12 @@ def test_provider_route_prefers_grok_with_bounded_typed_codex_fallback(
         "attempt_id",
     } <= set(fallback["receipt_required_fields"])
 
-    expected_fallbacks = {
+    quota = cases["grok-quota-falls-back-to-codex"]
+    assert quota["selected_provider"] == "codex"
+    assert quota["fallback_reason"] == "preferred_provider_quota_exhausted"
+
+    expected_fail_closed = {
         "grok-unavailable-falls-back-to-codex": "preferred_provider_unavailable",
-        "grok-quota-falls-back-to-codex": "preferred_provider_quota_exhausted",
         "grok-capacity-falls-back-to-codex": (
             "preferred_provider_capacity_unavailable"
         ),
@@ -283,8 +283,8 @@ def test_provider_route_prefers_grok_with_bounded_typed_codex_fallback(
             "preferred_provider_pre_effect_failure"
         ),
     }
-    for case_id, reason in expected_fallbacks.items():
-        assert cases[case_id]["selected_provider"] == "codex"
+    for case_id, reason in expected_fail_closed.items():
+        assert cases[case_id]["selected_provider"] == "unavailable"
         assert cases[case_id]["fallback_reason"] == reason
 
 

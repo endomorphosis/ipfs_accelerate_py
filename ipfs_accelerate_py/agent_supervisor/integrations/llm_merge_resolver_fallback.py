@@ -17,6 +17,8 @@ import time
 from pathlib import Path
 from typing import Sequence
 
+from ..todo_daemon.llm_defaults import DEFAULT_CODEX_MODEL
+
 
 # Recursion depth guard: prevents infinite loops when Codex/Copilot
 # invokes this resolver which in turn re-invokes Codex/Copilot.
@@ -161,7 +163,10 @@ def _run_codex(prompt: str, workspace: Path) -> int | None:
     codex_bin = os.environ.get("CODEX_BIN", "").strip() or shutil.which("codex")
     if not codex_bin or os.environ.get("PREFER_COPILOT_MERGE_RESOLVER", "0") == "1":
         return None
-    codex_model = os.environ.get("IPFS_ACCELERATE_AGENT_CODEX_MODEL", "").strip()
+    codex_model = (
+        os.environ.get("IPFS_ACCELERATE_AGENT_CODEX_MODEL", "").strip()
+        or DEFAULT_CODEX_MODEL
+    )
     codex_reasoning = os.environ.get("IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT", "high").strip()
     command = [
         codex_bin,

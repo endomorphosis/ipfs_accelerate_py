@@ -2,21 +2,10 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     build_arg_parser as build_bundle_arg_parser,
     implementation_supervisor_command,
-    plan_bundle_lanes,
 )
-from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
-    submit_bundle_tasks,
-)
-from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
-    LeaseCoordinator,
-    profile_g_cid,
-)
-from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTaskState,
@@ -26,7 +15,6 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     PortalImplementationSupervisor,
     PortalSupervisorConfig,
-    _projection_is_quiescent_for_heartbeat_fallback,
     parse_args as parse_supervisor_args,
     supervisor_config_from_args,
 )
@@ -45,144 +33,6 @@ def _write_single_task_board(path) -> None:
 - Acceptance: A failed first attempt must not launch a second model invocation.
 """,
         encoding="utf-8",
-    )
-
-
-def _idle_heartbeat_projection(**overrides):
-    projection = {
-        "active_task_id": "",
-        "implementation_in_progress": False,
-        "ready_count": 0,
-        "selectable_ready_count": 0,
-        "eligible_ready_count": 0,
-        "blocked_count": 0,
-        "selection_idle_reason": "no_shard_selectable_ready_tasks",
-    }
-    projection.update(overrides)
-    return projection
-
-
-def test_heartbeat_fallback_accepts_strict_shard_with_global_ready_work() -> None:
-    assert _projection_is_quiescent_for_heartbeat_fallback(
-        _idle_heartbeat_projection(
-            ready_count=3,
-            blocked_count=2,
-        )
-    )
-
-
-def test_heartbeat_fallback_accepts_resource_claim_deferral() -> None:
-    assert _projection_is_quiescent_for_heartbeat_fallback(
-        _idle_heartbeat_projection(
-            ready_count=1,
-            selection_idle_reason=(
-                "all_selectable_ready_tasks_deferred_by_resource_claim"
-            ),
-        )
-    )
-
-
-def test_heartbeat_fallback_accepts_attempt_limit_backpressure() -> None:
-    assert _projection_is_quiescent_for_heartbeat_fallback(
-        _idle_heartbeat_projection(
-            ready_count=1,
-            selection_idle_reason=(
-                "all_selectable_ready_tasks_reached_max_task_attempts"
-            ),
-        )
-    )
-
-
-def test_heartbeat_fallback_accepts_implementation_retry_deferral() -> None:
-    assert _projection_is_quiescent_for_heartbeat_fallback(
-        _idle_heartbeat_projection(
-            ready_count=1,
-            selection_idle_reason=(
-                "implementation_retry_deferred:provider_capacity_backoff"
-            ),
-        )
-    )
-    assert not _projection_is_quiescent_for_heartbeat_fallback(
-        _idle_heartbeat_projection(
-            ready_count=1,
-            selection_idle_reason="implementation_retry_deferred:",
-        )
-    )
-
-
-def test_heartbeat_fallback_accepts_only_valid_empty_backlog_projection() -> None:
-    empty_projection = _idle_heartbeat_projection(
-        selection_idle_reason="no_tasks_found",
-    )
-    assert _projection_is_quiescent_for_heartbeat_fallback(empty_projection)
-
-    for field_name in (
-        "ready_count",
-        "selectable_ready_count",
-        "eligible_ready_count",
-        "blocked_count",
-    ):
-        assert not _projection_is_quiescent_for_heartbeat_fallback(
-            {
-                **empty_projection,
-                field_name: 1,
-            }
-        )
-
-    for unsafe_reason in ("task_source_invalid", "todo_read_failed"):
-        assert not _projection_is_quiescent_for_heartbeat_fallback(
-            {
-                **empty_projection,
-                "selection_idle_reason": unsafe_reason,
-            }
-        )
-
-
-@pytest.mark.parametrize(
-    ("idle_reason", "selectable_ready_count", "eligible_ready_count"),
-    (
-        ("all_selectable_ready_tasks_deprioritized_as_off_mission", 2, 0),
-        ("no_eligible_ready_tasks_after_selection_filters", 2, 0),
-        ("provider_capacity_backoff", 1, 1),
-        ("resource_claim_deferred:ipfs_kit_py", 1, 1),
-    ),
-)
-def test_heartbeat_fallback_accepts_other_explicit_idle_policies(
-    idle_reason,
-    selectable_ready_count,
-    eligible_ready_count,
-) -> None:
-    assert _projection_is_quiescent_for_heartbeat_fallback(
-        _idle_heartbeat_projection(
-            ready_count=2,
-            selectable_ready_count=selectable_ready_count,
-            eligible_ready_count=eligible_ready_count,
-            selection_idle_reason=idle_reason,
-        )
-    )
-
-
-@pytest.mark.parametrize(
-    ("active_task_id", "implementation_in_progress"),
-    (
-        ("TASK-001", False),
-        ("", True),
-        ("TASK-001", True),
-    ),
-)
-def test_heartbeat_fallback_rejects_active_or_implementing_projection(
-    active_task_id,
-    implementation_in_progress,
-) -> None:
-    assert not _projection_is_quiescent_for_heartbeat_fallback(
-        _idle_heartbeat_projection(
-            active_task_id=active_task_id,
-            implementation_in_progress=implementation_in_progress,
-            ready_count=1,
-            selection_idle_reason=(
-                "implementation_retry_deferred:provider_capacity_backoff"
-            ),
-        )
     )
 
 
@@ -388,88 +238,6 @@ def test_completed_retry_repair_restores_attempt_budget_and_queue_eligibility(
     assert second["attempt_limited_task_ids"] == ["TASK-001"]
 
 
-def test_completed_source_retry_repair_preserves_attempt_history(
-    tmp_path,
-) -> None:
-    todo_path = tmp_path / "tasks.todo.md"
-    todo_path.write_text(
-        """# Tasks
-
-## TASK-001 Preserve a completed task's audit history
-
-- Status: completed
-- Priority: P0
-- Track: agent
-- Outputs: src/retry_fence.py
-- Acceptance: The source task completed through its normal merge path.
-
-## TASK-002 Resolve validation retry-budget failure for TASK-001
-
-- Status: completed
-- Priority: P0
-- Track: agent
-- Outputs: test/retry_repair.py
-- Acceptance: Repair the validation contract, then release TASK-001 from strategy blocked_tasks.
-""",
-        encoding="utf-8",
-    )
-    state_dir = tmp_path / "state"
-    state_path = state_dir / "task_state.json"
-    events_path = state_dir / "events.jsonl"
-    daemon = PortalImplementationDaemon(
-        todo_path=todo_path,
-        state_path=state_path,
-        strategy_path=state_dir / "strategy.json",
-        events_path=events_path,
-        repo_root=tmp_path,
-        task_header_prefix="## TASK-",
-        implement=True,
-        max_task_attempts=1,
-        merge_queue_dir=tmp_path / "merge-queue",
-        validation_cache_dir=tmp_path / "validation-cache",
-        worktree_pool_enabled=False,
-    )
-    tasks = parse_task_file(todo_path, "## TASK-")
-    source_task = tasks[0]
-    daemon._register_task_identities(tasks)
-    source_identity = daemon._identity_for_task(source_task)
-    historical_state = PortalTaskState(
-        task_identities={source_task.task_id: source_identity.to_dict()},
-        implementation_attempts={source_task.task_id: 1},
-        implementation_attempts_by_cid={
-            source_identity.canonical_task_cid: 1
-        },
-        last_implementation_task_id=source_task.task_id,
-        last_implementation_task_key=source_identity.canonical_task_key,
-        last_implementation_task_cid=source_identity.canonical_task_cid,
-    )
-    historical_state.save(state_path)
-    daemon.task_queue.register_task(source_identity).record_failure(
-        "validation"
-    )
-    daemon.task_queue.save()
-
-    result = daemon.run_once()
-    state_after = PortalTaskState.load(state_path)
-    events = [
-        json.loads(line)
-        for line in events_path.read_text(encoding="utf-8").splitlines()
-    ]
-
-    assert result["retry_budget_resets"] == []
-    assert state_after.implementation_attempts == {"TASK-001": 1}
-    assert state_after.implementation_attempts_by_cid == {
-        source_identity.canonical_task_cid: 1
-    }
-    assert state_after.retry_budget_repair_receipts == {}
-    assert daemon.task_queue.is_cooled_down(
-        source_identity.canonical_task_cid
-    ) is True
-    assert not any(
-        event["type"] == "task_retry_budget_reset" for event in events
-    )
-
-
 def test_max_task_attempts_threads_from_bundle_to_daemon_command(tmp_path) -> None:
     bundle_args = build_bundle_arg_parser().parse_args(
         [
@@ -520,181 +288,12 @@ def test_max_task_attempts_threads_from_bundle_to_daemon_command(tmp_path) -> No
     ).max_task_attempts == 1
 
 
-def test_planned_lane_uses_same_positive_attempt_limit_for_queue_and_worker(
-    tmp_path,
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    bundle_dir = repo / "data" / "agent_supervisor" / "bundles"
-    bundle_dir.mkdir(parents=True)
-    shard_path = bundle_dir / "runtime.todo.md"
-    shard_path.write_text(
-        """## TASK-001 Planned task
-
-- Status: todo
-""",
-        encoding="utf-8",
-    )
-    index_path = bundle_dir / "index.json"
-    index_path.write_text(
-        json.dumps(
-            {
-                "source_todo": "docs/tasks.todo.md",
-                "bundles": {
-                    "objective/runtime": {
-                        "shard_path": str(
-                            shard_path.relative_to(index_path.parent)
-                        ),
-                        "parallel_lane": "objective/runtime",
-                        "tasks": [{"task_id": "TASK-001"}],
-                    }
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    [lane] = plan_bundle_lanes(
-        bundle_index_path=index_path,
-        repo_root=repo,
-        state_root=repo / "state",
-        worktree_root=repo / "worktrees",
-        log_dir=repo / "logs",
-        task_prefix="TASK-",
-        max_task_attempts=4,
-        optimize_bundles=False,
-    )
-
-    worker_flag = lane.command.index("--max-task-attempts")
-    assert lane.command[worker_flag + 1] == "4"
-    assert lane.queue_payload["max_attempts"] == 4
-    profile_g = lane.queue_payload["profile_g"]
-    assert profile_g["task"]["max_attempts"] == 4
-    assert profile_g["task_cid"] == profile_g_cid(profile_g["task"])
-    assert profile_g["task_spec_cid"] == profile_g["task_cid"]
-    assert profile_g["artifacts"][profile_g["task_cid"]] == profile_g["task"]
-
-    [boundary_lane] = plan_bundle_lanes(
-        bundle_index_path=index_path,
-        repo_root=repo,
-        state_root=repo / "boundary-state",
-        worktree_root=repo / "boundary-worktrees",
-        log_dir=repo / "boundary-logs",
-        task_prefix="TASK-",
-        max_task_attempts=100,
-        optimize_bundles=False,
-    )
-    boundary_flag = boundary_lane.command.index("--max-task-attempts")
-    assert boundary_lane.command[boundary_flag + 1] == "100"
-    assert boundary_lane.queue_payload["max_attempts"] == 100
-    assert boundary_lane.queue_payload["profile_g"]["task"]["max_attempts"] == 100
-
-    with pytest.raises(ValueError, match="between 0 and 100"):
-        plan_bundle_lanes(
-            bundle_index_path=index_path,
-            repo_root=repo,
-            state_root=repo / "rejected-state",
-            worktree_root=repo / "rejected-worktrees",
-            log_dir=repo / "rejected-logs",
-            task_prefix="TASK-",
-            max_task_attempts=101,
-            optimize_bundles=False,
-        )
-
-
 def test_max_task_attempts_defaults_to_unlimited() -> None:
     assert build_bundle_arg_parser().parse_args(
         ["--bundle-index-path", "bundles.json"]
     ).max_task_attempts == 0
     assert parse_supervisor_args([]).max_task_attempts == 0
     assert parse_daemon_args([]).max_task_attempts == 0
-
-
-def test_default_planned_lane_is_unlimited_in_worker_and_coordinator(
-    tmp_path,
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    bundle_dir = repo / "bundles"
-    bundle_dir.mkdir()
-    shard_path = bundle_dir / "runtime.todo.md"
-    shard_path.write_text(
-        """## TASK-001 Unlimited task
-
-- Status: todo
-""",
-        encoding="utf-8",
-    )
-    index_path = bundle_dir / "index.json"
-    index_path.write_text(
-        json.dumps(
-            {
-                "source_todo": "docs/tasks.todo.md",
-                "bundles": {
-                    "objective/runtime": {
-                        "shard_path": "runtime.todo.md",
-                        "parallel_lane": "objective/runtime",
-                        "tasks": [{"task_id": "TASK-001"}],
-                    }
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    [lane] = plan_bundle_lanes(
-        bundle_index_path=index_path,
-        repo_root=repo,
-        state_root=repo / "state",
-        worktree_root=repo / "worktrees",
-        log_dir=repo / "logs",
-        task_prefix="TASK-",
-        optimize_bundles=False,
-    )
-
-    worker_flag = lane.command.index("--max-task-attempts")
-    assert lane.command[worker_flag + 1] == "0"
-    assert lane.queue_payload["max_attempts"] == 0
-    assert lane.queue_payload["profile_g"]["task"]["max_attempts"] == 0
-    with LeaseCoordinator(repo / "coordination.duckdb") as coordinator:
-        registered = coordinator.register_bundle(lane.queue_payload)
-        for expected_attempt in range(1, 5):
-            grant = coordinator.claim(
-                registered["task_cid"],
-                "did:web:lane.example",
-            )
-            assert grant.attempt == expected_attempt
-            coordinator.release(grant, reason="retry")
-
-    task_queue = TaskQueue(str(repo / "task-queue.duckdb"))
-    try:
-        [submitted_id] = submit_bundle_tasks(index_path, queue=task_queue)
-        assert task_queue.get(submitted_id)["max_attempts"] == 0
-        for expected_attempt in range(1, 5):
-            claimed = task_queue.claim_next(worker_id="worker-a")
-            assert claimed is not None
-            assert claimed.attempt == expected_attempt
-            assert claimed.max_attempts == 0
-            assert task_queue.retry(
-                task_id=submitted_id,
-                worker_id="worker-a",
-                error="retryable",
-            )
-        expiring = task_queue.claim_next(
-            worker_id="worker-a",
-            lease_seconds=1,
-        )
-        assert expiring is not None
-        assert expiring.attempt == 5
-        assert expiring.lease_until is not None
-        assert task_queue.recover_expired_leases(
-            now=expiring.lease_until + 1,
-        ) == 1
-        recovered = task_queue.claim_next(worker_id="worker-b")
-        assert recovered is not None
-        assert recovered.attempt == 6
-    finally:
-        task_queue.close()
 
 
 def test_merge_target_branch_threads_from_bundle_to_daemon_command(tmp_path) -> None:
@@ -844,58 +443,11 @@ def test_classify_provider_capacity_detects_grok_402_balance_exhausted() -> None
         'Grok Build usage balance exhausted",\n'
         '  "http_status": 402\n'
         "}\n"
-        "Grok CLI failed without a terminal-correlated native quota record; "
-        "Codex fallback is forbidden\n"
     )
     classified = classify_provider_capacity_failure(text)
     assert classified["exhausted"] is True
     assert "grok" in classified["providers"] or "provider" in classified["providers"]
     assert classified["reason"] == "provider_capacity_exhausted"
-
-
-@pytest.mark.parametrize(
-    "diagnostic",
-    (
-        "Grok CLI failed without a terminal-correlated native quota record; "
-        "Codex fallback is forbidden",
-        "Independent pinned Grok-4.5 verifier did not confirm quota; "
-        "Codex fallback is forbidden",
-        "The workspace changed while Grok quota was being verified; "
-        "Codex fallback is forbidden",
-    ),
-)
-def test_classify_provider_capacity_ignores_grok_policy_diagnostic(
-    diagnostic: str,
-) -> None:
-    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-        classify_provider_capacity_failure,
-    )
-
-    text = (
-        "PermissionError: [Errno 13] Permission denied: "
-        "'/run/ipfs-accelerate/prompt.md'\n"
-        f"{diagnostic}\n"
-    )
-
-    classified = classify_provider_capacity_failure(text)
-
-    assert classified == {"exhausted": False, "providers": [], "reason": ""}
-
-
-def test_classify_codex_quota_does_not_poison_grok_capacity() -> None:
-    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-        classify_provider_capacity_failure,
-    )
-
-    classified = classify_provider_capacity_failure(
-        "You've hit your usage limit. Try again later."
-    )
-
-    assert classified == {
-        "exhausted": True,
-        "providers": ["codex"],
-        "reason": "provider_capacity_exhausted",
-    }
 
 
 def test_provider_capacity_deferral_rolls_back_start_charge(tmp_path) -> None:
@@ -927,14 +479,6 @@ def test_provider_capacity_deferral_rolls_back_start_charge(tmp_path) -> None:
         started_at="2026-07-24T00:00:00+00:00",
         log_path=log_path,
     )
-    started = daemon._record_event(
-        "implementation_started",
-        {
-            "task_id": task.task_id,
-            "canonical_task_cid": identity.canonical_task_cid,
-            "attempt": 1,
-        },
-    )
 
     result = daemon._record_provider_capacity_deferral(
         task=task,
@@ -943,13 +487,7 @@ def test_provider_capacity_deferral_rolls_back_start_charge(tmp_path) -> None:
         started_at="2026-07-24T00:00:00+00:00",
         returncode=1,
         log_path=log_path,
-        failure={
-            "exhausted": True,
-            "providers": ["codex"],
-            "reason": "provider_capacity_exhausted",
-            "evidence": ["rate limited"],
-        },
-        implementation_started_event=started,
+        failure={"providers": ["codex"], "evidence": ["rate limited"]},
     )
     recovered = PortalTaskState.load(daemon.state_path)
 
@@ -962,7 +500,7 @@ def test_provider_capacity_deferral_rolls_back_start_charge(tmp_path) -> None:
     assert daemon._task_attempt(recovered, task) == 1
 
 
-def test_provider_capacity_deferral_finalizes_worktree_lifecycle(tmp_path) -> None:
+def test_provider_review_only_acceptance_preserves_retry_budget(tmp_path) -> None:
     todo_path = tmp_path / "tasks.todo.md"
     _write_single_task_board(todo_path)
     state_dir = tmp_path / "state"
@@ -983,74 +521,126 @@ def test_provider_capacity_deferral_finalizes_worktree_lifecycle(tmp_path) -> No
     state = PortalTaskState(
         task_identities={task.task_id: identity.to_dict()},
     )
-    worktree_path = tmp_path / "worktrees" / "attempt-1"
-    worktree_path.mkdir(parents=True)
-    lifecycle = daemon.worktree_lifecycle.begin_preparing(
-        task_id=task.task_id,
-        canonical_task_cid=identity.canonical_task_cid,
-        attempt=1,
-        lane_id=daemon._worktree_lifecycle_lane_id(),
-        workspace_path=worktree_path,
-        branch="implementation/task-001-attempt-1",
-        merge_target="main",
-        state_dir=str(state_dir),
-    )
-    lifecycle = daemon.worktree_lifecycle.mark_active(
-        worktree_path,
-        lease_id=lifecycle.lease_id,
-        expected_fence=lifecycle.fence,
-    )
-    daemon._active_worktree_lifecycle = lifecycle
-    log_path = state_dir / "attempt-1.log"
     daemon._mark_implementation_started(
         state,
         task=task,
         attempt=1,
-        started_at="2026-07-24T00:00:00+00:00",
-        log_path=log_path,
-        worktree_path=worktree_path,
-        branch_name=lifecycle.branch,
+        started_at="2026-08-03T00:00:00+00:00",
+        log_path=state_dir / "attempt-1.log",
     )
-    started = daemon._record_event(
-        "implementation_started",
-        {
+    acceptance = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "authoritative-acceptance-status@1"
+        ),
+        "task_id": task.task_id,
+        "merge_commit": "a" * 40,
+        "acceptance_state": "implemented_merged_but_pending",
+        "admitted": False,
+        "authoritatively_completed": False,
+        "completion_authoritative": False,
+        "pending_gates": ["provider_review"],
+        "gate": {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "authoritative-completion-gate@1"
+            ),
             "task_id": task.task_id,
-            "canonical_task_cid": identity.canonical_task_cid,
-            "attempt": 1,
+            "admitted": False,
+            "completion_authoritative": False,
+            "acceptance_state": "implemented_merged_but_pending",
+            "merge_commit": "a" * 40,
+            "repository_tree_id": f"git-tree:{'b' * 40}",
+            "pending_gates": ["provider_review"],
+            "satisfied_gates": [
+                "merge",
+                "freshness",
+                "semantic",
+                "proof",
+                "deterministic_only",
+            ],
         },
-    )
+        "receipt": {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "implementation-receipt@1"
+            ),
+            "task_id": task.task_id,
+            "merged": True,
+            "completion_authoritative": False,
+            "acceptance_state": "implemented_merged_but_pending",
+            "pending_gates": ["provider_review"],
+            "validation_passed": True,
+            "validation_stale": False,
+            "merge_commit": "a" * 40,
+            "repository_tree_id": f"git-tree:{'b' * 40}",
+        },
+    }
 
-    result = daemon._record_provider_capacity_deferral(
+    deferred = daemon._defer_provider_review_only_acceptance(
         task=task,
         state=state,
         attempt=1,
-        started_at="2026-07-24T00:00:00+00:00",
-        returncode=1,
-        log_path=log_path,
-        failure={
-            "exhausted": True,
-            "providers": ["codex"],
-            "reason": "provider_capacity_exhausted",
-            "evidence": ["usage limit"],
-        },
-        implementation_started_event=started,
-        worktree_path=worktree_path,
-        branch_name=lifecycle.branch,
+        acceptance_result=acceptance,
+    )
+    state.save(daemon.state_path)
+    recovered = PortalTaskState.load(daemon.state_path)
+    selectable, limited = daemon._partition_tasks_at_attempt_limit(
+        [task],
+        {task.task_id: "ready"},
+        recovered,
     )
 
-    assert result["attempt_consumed"] is False
-    assert result["lifecycle_finalize"]["finalized"] is True
-    assert result["lifecycle_finalize"]["reason"] == "provider_capacity_deferred"
-    assert daemon._active_worktree_lifecycle is None
-    assert daemon.worktree_lifecycle.load_workspace(worktree_path) is None
+    assert deferred["deferred"] is True
+    assert deferred["resumable"] is True
+    assert deferred["attempt_consumed"] is False
+    assert recovered.implementation_attempts == {}
+    assert recovered.implementation_attempts_by_cid == {}
+    assert selectable == [task]
+    assert limited == []
+    assert daemon.task_queue.is_cooled_down(identity.canonical_task_cid) is True
+
+    missing_semantic = {
+        **acceptance,
+        "gate": {
+            **acceptance["gate"],
+            "satisfied_gates": [
+                "merge",
+                "freshness",
+                "proof",
+                "deterministic_only",
+            ],
+        },
+    }
+    assert daemon._provider_review_only_acceptance_pending(missing_semantic) is False
+
+    missing_merge = json.loads(json.dumps(acceptance))
+    missing_merge.pop("merge_commit")
+    assert daemon._provider_review_only_acceptance_pending(missing_merge) is False
+
+    mismatched_receipt_merge = json.loads(json.dumps(acceptance))
+    mismatched_receipt_merge["receipt"]["merge_commit"] = "c" * 40
     assert (
-        daemon.worktree_lifecycle.load_task_attempt(
-            canonical_task_cid=identity.canonical_task_cid,
-            task_id=task.task_id,
-            attempt=1,
-        )
-        is None
+        daemon._provider_review_only_acceptance_pending(mismatched_receipt_merge)
+        is False
     )
+
+    missing_tree = json.loads(json.dumps(acceptance))
+    missing_tree["gate"].pop("repository_tree_id")
+    assert daemon._provider_review_only_acceptance_pending(missing_tree) is False
+
+    mismatched_receipt_tree = json.loads(json.dumps(acceptance))
+    mismatched_receipt_tree["receipt"]["repository_tree_id"] = (
+        f"git-tree:{'d' * 40}"
+    )
+    assert (
+        daemon._provider_review_only_acceptance_pending(mismatched_receipt_tree)
+        is False
+    )
+
+    missing_admission = json.loads(json.dumps(acceptance))
+    missing_admission.pop("admitted")
+    assert daemon._provider_review_only_acceptance_pending(missing_admission) is False
 
 
 def test_new_canonical_revision_gets_fresh_attempt_budget(

@@ -1424,10 +1424,11 @@ class ProviderRouteProvenance(_CanonicalContract):
                     raise EntrypointContractError(
                         "profile override is not a fallback failure"
                     )
-            elif (
-                reason is ProviderFallbackReason.NONE
-                or not self.fallback_receipt_cid
-            ):
+            elif reason is not ProviderFallbackReason.PREFERRED_QUOTA_EXHAUSTED:
+                raise EntrypointContractError(
+                    "Codex fallback requires confirmed Grok quota exhaustion"
+                )
+            elif not self.fallback_receipt_cid:
                 raise EntrypointContractError(
                     "Codex fallback requires a typed committed fallback receipt"
                 )
@@ -1436,9 +1437,13 @@ class ProviderRouteProvenance(_CanonicalContract):
                     "Codex implementation requires an independent reviewer"
                 )
         else:
-            if reason is ProviderFallbackReason.NONE or not self.fallback_receipt_cid:
+            if reason is ProviderFallbackReason.NONE:
                 raise EntrypointContractError(
-                    "an unavailable route requires a typed committed fallback receipt"
+                    "an unavailable route requires a typed provider failure reason"
+                )
+            if self.fallback_receipt_cid:
+                raise EntrypointContractError(
+                    "an unavailable route cannot claim a Codex fallback receipt"
                 )
             if self.attempt_cid or self.worktree_cid:
                 raise EntrypointContractError(

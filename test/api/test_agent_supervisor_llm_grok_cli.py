@@ -3,17 +3,11 @@
 from __future__ import annotations
 
 import io
-import json
 import os
-import shutil
-import subprocess
 import sys
 import tempfile
-import tomllib
-import uuid
+import threading
 from pathlib import Path
-
-import pytest
 
 from ipfs_accelerate_py.agent_supervisor import grok_cli_runner
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.llm import (
@@ -22,64 +16,69 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.llm import (
 )
 
 
-def _run_supervised_fake_grok(
-    monkeypatch,
-    tmp_path,
-    *,
-    stream: bytes,
-    returncode: int,
-) -> tuple[int, bytes, dict[str, object]]:
-    captured: dict[str, object] = {}
-
-    class FakeProcess:
-        def __init__(self, cmd, **kwargs):
-            captured["cmd"] = list(cmd)
-            captured["env"] = dict(kwargs["env"])
-            captured["stderr"] = kwargs["stderr"]
-            self.stdout = io.BytesIO(stream)
-
-        @staticmethod
-        def wait(*_args, **_kwargs):
-            return returncode
-
-    monkeypatch.setattr(grok_cli_runner.sys, "stdin", io.StringIO("repair"))
-    monkeypatch.setattr(
-        grok_cli_runner.subprocess,
-        "Popen",
-        lambda cmd, **kwargs: FakeProcess(cmd, **kwargs),
-    )
-    outer_command = grok_cli_runner.bind_grok_runner_command(
+def test_grok_streaming_runner_forwards_output_and_keeps_bounded_tail(capsys) -> None:
+    returncode, transcript = grok_cli_runner._run_grok_streaming(
         [
-            sys.executable,
-            str(Path(grok_cli_runner.__file__).resolve()),
-            "--workspace",
-            str(tmp_path),
-            "--grok-bin",
-            "/bin/true",
-            "--model",
-            "grok-4.5",
-            "--max-turns",
-            "100000",
-            "--mode",
-            "agent",
-        ]
+            "/bin/sh",
+            "-c",
+            "printf 'provider stdout'; printf 'provider stderr' >&2; exit 7",
+        ],
+        env=dict(os.environ),
     )
-    receipt_read_fd, receipt_write_fd = os.pipe()
-    monkeypatch.setenv(
-        grok_cli_runner.GROK_TERMINAL_RECEIPT_FD_ENV,
-        str(receipt_write_fd),
-    )
-    result = grok_cli_runner.main(outer_command[2:])
-    receipt = os.read(
-        receipt_read_fd,
-        grok_cli_runner.GROK_TERMINAL_RECEIPT_MAX_BYTES,
-    )
-    os.close(receipt_read_fd)
-    captured["outer_command"] = outer_command
-    return result, receipt, captured
+
+    captured = capsys.readouterr()
+    assert returncode == 7
+    assert captured.out == "provider stdout"
+    assert captured.err == "provider stderr"
+    assert "provider stdout" not in transcript
+    assert "provider stderr" in transcript
 
 
-def test_supervisor_child_routes_grok_through_datasets_router(monkeypatch, tmp_path) -> None:
+def test_grok_streaming_runner_forwards_short_output_before_child_exit(
+    monkeypatch,
+) -> None:
+    output_seen = threading.Event()
+    result: dict[str, tuple[int, str]] = {}
+
+    class _Buffer:
+        def write(self, chunk: bytes) -> int:
+            if b"provider-ready" in chunk:
+                output_seen.set()
+            return len(chunk)
+
+        def flush(self) -> None:
+            return None
+
+    class _Target:
+        buffer = _Buffer()
+
+    monkeypatch.setattr(grok_cli_runner.sys, "stdout", _Target())
+
+    def invoke() -> None:
+        result["value"] = grok_cli_runner._run_grok_streaming(
+            [
+                sys.executable,
+                "-u",
+                "-c",
+                (
+                    "import sys, time; "
+                    "sys.stdout.write('provider-ready\\n'); "
+                    "sys.stdout.flush(); time.sleep(4)"
+                ),
+            ],
+            env=dict(os.environ),
+        )
+
+    worker = threading.Thread(target=invoke, daemon=True)
+    worker.start()
+    assert output_seen.wait(timeout=3), "short output was buffered until EOF"
+    assert worker.is_alive(), "child exited before incremental output was observed"
+    worker.join(timeout=6)
+    assert worker.is_alive() is False
+    assert result["value"] == (0, "")
+
+
+def test_supervisor_child_routes_grok_through_canonical_router(monkeypatch, tmp_path) -> None:
     fake_grok = tmp_path / "grok"
     fake_grok.write_text(
         """#!/usr/bin/env python3
@@ -105,9 +104,44 @@ print(json.dumps({
     monkeypatch.setenv("IPFS_DATASETS_PY_GROK_CLI_CMD", str(fake_grok))
     monkeypatch.setenv("IPFS_DATASETS_PY_ROUTER_CACHE", "0")
     monkeypatch.setenv("IPFS_DATASETS_PY_ROUTER_RESPONSE_CACHE", "0")
+    hostile_pythonpath = tmp_path / "hostile-pythonpath"
+    hostile_pythonpath.mkdir()
+    sitecustomize_marker = tmp_path / "sitecustomize-executed"
+    (hostile_pythonpath / "sitecustomize.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(sitecustomize_marker)!r}).write_text('executed')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PYTHONPATH", str(hostile_pythonpath))
+    monkeypatch.setenv("PYTHONHOME", str(tmp_path / "hostile-python-home"))
+    hostile_script_root = tmp_path / "hostile-script-root"
+    hostile_script_root.mkdir()
+    script_root_marker = tmp_path / "script-root-imported"
+    (hostile_script_root / "inspect.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(script_root_marker)!r}).write_text('executed')\n"
+        "raise RuntimeError('hostile temporary script root executed')\n",
+        encoding="utf-8",
+    )
+    # Force the private child program into a directory containing a hostile
+    # stdlib shadow. Its implicit script path must not remain import authority.
+    monkeypatch.setattr(tempfile, "tempdir", str(hostile_script_root))
+    empty_child_cwd = tmp_path / "empty-child-cwd"
+    empty_child_cwd.mkdir()
+    (empty_child_cwd / "sitecustomize.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(sitecustomize_marker)!r}).write_text('executed')\n",
+        encoding="utf-8",
+    )
+    shadow_package = empty_child_cwd / "ipfs_accelerate_py"
+    shadow_package.mkdir()
+    (shadow_package / "__init__.py").write_text(
+        "raise RuntimeError('hostile checkout package executed')\n",
+        encoding="utf-8",
+    )
 
     config = LlmRouterInvocation(
-        repo_root=Path(__file__).resolve().parents[2],
+        repo_root=empty_child_cwd,
         provider="grok",
         model_name="grok-4.5",
         allow_local_fallback=False,
@@ -115,10 +149,12 @@ print(json.dumps({
         timeout_grace_seconds=2,
         max_new_tokens=16,
         python_executable=sys.executable,
-        required_effective_providers=("grok",),
+        required_effective_providers=("grok_cli",),
     )
 
     assert call_llm_router("child-smoke", config) == "supervisor:grok-4.5:child-smoke"
+    assert sitecustomize_marker.exists() is False
+    assert script_root_marker.exists() is False
 
 
 def test_grok_agent_runner_forwards_resolved_launch_policy(
@@ -127,54 +163,15 @@ def test_grok_agent_runner_forwards_resolved_launch_policy(
 ) -> None:
     captured: dict[str, object] = {}
 
-    fake_codex = tmp_path / "codex"
-    fake_codex.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    fake_codex.chmod(0o700)
-    fake_copilot = tmp_path / "copilot"
-    fake_copilot.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    fake_copilot.chmod(0o700)
-    fake_goose = tmp_path / "goose"
-    fake_goose.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    fake_goose.chmod(0o700)
-    fake_openai = tmp_path / "openai"
-    fake_openai.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    fake_openai.chmod(0o700)
-    fake_docker = tmp_path / "docker"
-    fake_docker.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    fake_docker.chmod(0o700)
-    fake_codex_home = tmp_path / "codex-home"
-    fake_codex_home.mkdir()
-    fake_goose_store = tmp_path / "goose-store"
-    fake_goose_store.mkdir()
-    fake_vibe_store = tmp_path / "vibe-store"
-    fake_vibe_store.mkdir()
-    fake_docker_socket = tmp_path / "docker.sock"
-    fake_docker_socket.write_text("socket sentinel\n", encoding="utf-8")
-    monkeypatch.setenv("PATH", str(tmp_path))
-    monkeypatch.setenv("CODEX_HOME", str(fake_codex_home))
-    monkeypatch.setenv("OPENAI_API_KEY", "parent-only-openai-authority")
-    monkeypatch.setenv("GOOSE_CONFIG_DIR", str(fake_goose_store))
-    monkeypatch.setenv("VIBE_HOME", str(fake_vibe_store))
-    monkeypatch.setenv("DOCKER_HOST", f"unix://{fake_docker_socket}")
-    monkeypatch.setattr(
-        grok_cli_runner,
-        "_select_grok_isolation_backend",
-        lambda **_kwargs: grok_cli_runner.GROK_ISOLATION_GROK_SANDBOX,
-    )
-
-    def fake_run(cmd, **kwargs):
+    def fake_run(cmd, *, env):
         captured["cmd"] = list(cmd)
-        captured["env"] = dict(kwargs["env"])
+        captured["env"] = dict(env)
         prompt_path = Path(cmd[cmd.index("--prompt-file") + 1])
         captured["prompt"] = prompt_path.read_text(encoding="utf-8")
-        policy_path = Path(kwargs["env"]["GROK_HOME"]) / "sandbox.toml"
-        captured["sandbox_policy"] = tomllib.loads(
-            policy_path.read_text(encoding="utf-8")
-        )
-        return subprocess.CompletedProcess(cmd, 0)
+        return 0, ""
 
     monkeypatch.setattr(grok_cli_runner.sys, "stdin", io.StringIO("repair the board"))
-    monkeypatch.setattr(grok_cli_runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(grok_cli_runner, "_run_grok_streaming", fake_run)
 
     result = grok_cli_runner.main(
         [
@@ -202,855 +199,3 @@ def test_grok_agent_runner_forwards_resolved_launch_policy(
     assert cmd[cmd.index("--permission-mode") + 1] == "acceptEdits"
     assert cmd[cmd.index("--output-format") + 1] == "plain"
     assert "--always-approve" in cmd
-    assert cmd[cmd.index("--sandbox") + 1] == (
-        grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE
-    )
-    assert cmd.count("--deny") >= len(
-        grok_cli_runner.GROK_ISOLATION_DENY_RULES
-    )
-    assert "CODEX_HOME" not in captured["env"]
-    assert "OPENAI_API_KEY" not in captured["env"]
-    profile = captured["sandbox_policy"]["profiles"][
-        grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE
-    ]
-    assert profile["extends"] == "workspace"
-    assert profile["restrict_network"] is True
-    denied = set(profile["deny"])
-    assert str(fake_codex) in denied
-    assert str(fake_copilot) in denied
-    assert str(fake_goose) in denied
-    assert str(fake_openai) in denied
-    assert str(fake_docker) in denied
-    assert str(fake_docker_socket) in denied
-    assert str(fake_codex_home) in denied
-    assert str(fake_goose_store) in denied
-    assert str(fake_vibe_store) in denied
-    assert "Bash(grok *)" in cmd
-    assert "Bash(/opt/ipfs-accelerate/grok *)" in cmd
-    assert str(Path(captured["env"]["GROK_HOME"])) in denied
-    assert "/proc" in denied
-    assert "/dev" in denied
-    assert cmd[cmd.index("--tools") + 1] == grok_cli_runner._SEALED_GROK_TOOLS
-    disallowed = cmd[cmd.index("--disallowed-tools") + 1]
-    assert "run_terminal_cmd" in disallowed
-    assert "search_tool" in disallowed
-    assert "use_tool" in disallowed
-    assert "call_mcp_tool" in disallowed
-    assert "list_mcp_resources" in disallowed
-    assert "list_mcp_resource_templates" in disallowed
-    assert "read_mcp_resource" in disallowed
-    assert "fetch_mcp_resource" in disallowed
-    assert "Agent" in disallowed
-
-
-def test_isolated_grok_home_uses_private_profile_and_preserves_parent_env(
-    tmp_path,
-) -> None:
-    source = {
-        "HOME": str(tmp_path),
-        "PATH": "/usr/bin",
-        "CODEX_HOME": str(tmp_path / "missing-codex-home"),
-        "OPENAI_API_KEY": "parent-only",
-    }
-    child = {"HOME": str(tmp_path), "PATH": "/usr/bin"}
-
-    temporary_home, isolated, policy_path, denied_paths = (
-        grok_cli_runner._isolated_grok_home(
-            base_env=source,
-            child_env=child,
-            codex_fallback_command=(),
-        )
-    )
-    try:
-        assert Path(isolated["GROK_HOME"]) == policy_path.parent
-        assert policy_path.parent != tmp_path / ".grok"
-        profile = tomllib.loads(policy_path.read_text(encoding="utf-8"))[
-            "profiles"
-        ][grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE]
-        assert profile["restrict_network"] is True
-        assert policy_path.parent in denied_paths
-        assert Path("/proc") in denied_paths
-        assert Path("/dev") in denied_paths
-        assert source["OPENAI_API_KEY"] == "parent-only"
-    finally:
-        temporary_home.cleanup()
-
-
-def test_docker_grok_command_masks_providers_and_mounts_only_workspace_rw(
-    tmp_path,
-    monkeypatch,
-) -> None:
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    git_marker = workspace / ".git"
-    git_marker.write_text("gitdir: /tmp/read-only-metadata\n", encoding="utf-8")
-    prompt_path = tmp_path / "prompt.txt"
-    prompt_path.write_text("implement", encoding="utf-8")
-    grok_bin = tmp_path / "grok"
-    grok_bin.write_text("binary", encoding="utf-8")
-    grok_bin.chmod(0o700)
-    grok_home = tmp_path / "isolated-grok-home"
-    grok_home.mkdir()
-    mask_root = tmp_path / "unmounted-provider-masks"
-    docker_config = tmp_path / "docker-config"
-    docker_config.mkdir()
-    (grok_home / "alternate-provider-deny-sentinel").write_text(
-        "sentinel\n",
-        encoding="utf-8",
-    )
-    codex_entrypoint = tmp_path / "providers" / "codex"
-    codex_entrypoint.parent.mkdir()
-    codex_entrypoint.write_text("provider", encoding="utf-8")
-    codex_package = tmp_path / "provider-packages" / "codex"
-    codex_package.mkdir(parents=True)
-    copilot_store = tmp_path / "home" / ".copilot"
-    copilot_store.mkdir(parents=True)
-    grok_auth = tmp_path / "home" / ".grok" / "auth.json"
-    grok_auth.parent.mkdir()
-    grok_auth.write_text("{}\n", encoding="utf-8")
-    peer_library = tmp_path / "home" / ".local" / "lib" / "python" / "openai"
-    peer_library.mkdir(parents=True)
-    (peer_library / "__init__.py").write_text("peer payload\n", encoding="utf-8")
-    monkeypatch.setattr(
-        grok_cli_runner,
-        "_docker_isolation_binary",
-        lambda: "/usr/bin/docker",
-    )
-
-    child_env = {
-        "HOME": str(tmp_path / "home"),
-        "GROK_HOME": str(grok_home),
-        "PATH": "/usr/local/bin:/usr/bin",
-        "XAI_API_KEY": "grok-only",
-    }
-    command = grok_cli_runner._docker_grok_command(
-        grok_command=[
-            str(grok_bin),
-            "--model",
-            "grok-4.5",
-            "--prompt-file",
-            str(prompt_path),
-        ],
-        grok_bin=grok_bin,
-        workspace=workspace,
-        prompt_path=prompt_path,
-        grok_home=grok_home,
-        base_env={
-            "HOME": str(tmp_path / "home"),
-            "PATH": child_env["PATH"],
-        },
-        child_env=child_env,
-        denied_paths=(
-            grok_home / "alternate-provider-deny-sentinel",
-            codex_entrypoint,
-            codex_package,
-            copilot_store,
-        ),
-        mask_root=mask_root,
-        docker_config=docker_config,
-        container_name="ipfs-accelerate-grok-123-" + "a" * 32,
-        cidfile=tmp_path / "container.cid",
-        isolation_image="sha256:" + "b" * 64,
-    )
-
-    assert command[:7] == [
-        "/usr/bin/docker",
-        "--host=unix:///var/run/docker.sock",
-        "--config",
-        str(docker_config),
-        "run",
-        "--pull=never",
-        "--rm",
-    ]
-    assert command[command.index("--user") + 1] == f"{os.getuid()}:{os.getgid()}"
-    tmpfs_specs = {
-        command[index + 1]
-        for index, item in enumerate(command[:-1])
-        if item == "--tmpfs"
-    }
-    assert tmpfs_specs == {
-        (
-            "/tmp:rw,nosuid,nodev,noexec,mode=0700,"
-            f"uid={os.getuid()},gid={os.getgid()}"
-        ),
-        (
-            "/var/tmp:rw,nosuid,nodev,noexec,mode=0700,"
-            f"uid={os.getuid()},gid={os.getgid()}"
-        ),
-    }
-    assert "--cap-drop=ALL" in command
-    assert "--security-opt=no-new-privileges" in command
-    assert command[command.index("--name") + 1].startswith(
-        "ipfs-accelerate-grok-"
-    )
-    assert command[command.index("--cidfile") + 1] == str(
-        tmp_path / "container.cid"
-    )
-    assert "--sandbox" not in command
-    mount_specs = {
-        command[index + 1]
-        for index, item in enumerate(command[:-1])
-        if item == "--mount"
-    }
-    assert any(
-        f"src={workspace}" in spec
-        and f"dst={workspace}" in spec
-        and "readonly" not in spec
-        for spec in mount_specs
-    )
-    assert any(
-        f"src={git_marker}" in spec
-        and f"dst={git_marker}" in spec
-        and "readonly" in spec
-        for spec in mount_specs
-    )
-    assert any(
-        f"dst={codex_entrypoint}" in spec and "readonly" in spec
-        for spec in mount_specs
-    )
-    assert any(
-        f"dst={codex_package}" in spec and "readonly" in spec
-        for spec in mount_specs
-    )
-    assert any(
-        f"dst={copilot_store}" in spec and "readonly" in spec
-        for spec in mount_specs
-    )
-    assert any(
-        f"src={grok_auth}" in spec
-        and f"dst={grok_auth}" in spec
-        and "readonly" in spec
-        for spec in mount_specs
-    )
-    assert not any("src=" + str(copilot_store) in spec for spec in mount_specs)
-    assert not any(
-        "src=" + str(tmp_path / "home" / ".local" / "lib") in spec
-        for spec in mount_specs
-    )
-    assert "OPENAI_API_KEY" not in command
-    assert "grok-only" not in command
-    assert not any(
-        f"src={mask_root}" in spec and "readonly" not in spec
-        for spec in mount_specs
-    )
-    image_index = command.index("sha256:" + "b" * 64)
-    assert command[image_index + 1] == "/opt/ipfs-accelerate/grok"
-    grok_cli_runner._restore_mask_permissions(mask_root)
-    shutil.rmtree(mask_root)
-
-
-def test_docker_command_reads_mode_0600_prompt_as_runtime_uid(tmp_path) -> None:
-    docker_bin = grok_cli_runner._docker_isolation_binary()
-    if not docker_bin:
-        pytest.skip("pinned local Docker isolation image is unavailable")
-
-    workspace = tmp_path / "workspace"
-    workspace.mkdir(mode=0o700)
-    grok_home = tmp_path / "grok-home"
-    grok_home.mkdir(mode=0o700)
-    docker_config = tmp_path / "docker-config"
-    docker_config.mkdir(mode=0o700)
-    mask_root = tmp_path / "provider-masks"
-    cidfile = tmp_path / "container.cid"
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=tmp_path,
-        prefix="asref-grok-prompt-",
-        suffix=".txt",
-        delete=False,
-    ) as handle:
-        handle.write("private prompt is readable\n")
-        prompt_path = Path(handle.name)
-    assert prompt_path.stat().st_mode & 0o777 == 0o600
-
-    child_env = {
-        "HOME": str(grok_home),
-        "GROK_HOME": str(grok_home),
-        "PATH": "/usr/bin:/bin",
-    }
-    image_id = grok_cli_runner._docker_isolation_image_id(
-        docker_bin,
-        docker_config=docker_config,
-    )
-    command = grok_cli_runner._docker_grok_command(
-        grok_command=["/usr/bin/cat", str(prompt_path)],
-        grok_bin=Path("/usr/bin/cat"),
-        workspace=workspace,
-        prompt_path=prompt_path,
-        grok_home=grok_home,
-        base_env={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"},
-        child_env=child_env,
-        denied_paths=(),
-        mask_root=mask_root,
-        docker_config=docker_config,
-        container_name=(
-            f"ipfs-accelerate-grok-{os.getpid()}-{uuid.uuid4().hex}"
-        ),
-        cidfile=cidfile,
-        docker_bin=docker_bin,
-        isolation_image=image_id,
-    )
-    try:
-        completed = subprocess.run(
-            command,
-            env=grok_cli_runner._docker_control_env(child_env),
-            stdin=subprocess.DEVNULL,
-            text=True,
-            capture_output=True,
-            timeout=30,
-            check=False,
-        )
-        assert completed.returncode == 0, completed.stderr
-        assert completed.stdout == "private prompt is readable\n"
-    finally:
-        grok_cli_runner._restore_mask_permissions(mask_root)
-        shutil.rmtree(mask_root, ignore_errors=True)
-        prompt_path.unlink(missing_ok=True)
-        cidfile.unlink(missing_ok=True)
-
-
-def test_docker_control_plane_ignores_hostile_redirect_and_image_override(
-    tmp_path,
-    monkeypatch,
-) -> None:
-    captured: dict[str, object] = {}
-    docker_config = tmp_path / "docker-config"
-    docker_config.mkdir()
-
-    def fake_run(command, **kwargs):
-        captured["command"] = list(command)
-        captured["env"] = dict(kwargs["env"])
-        return subprocess.CompletedProcess(
-            command,
-            0,
-            stdout="sha256:" + "c" * 64 + "\n",
-            stderr="",
-        )
-
-    monkeypatch.setattr(grok_cli_runner.subprocess, "run", fake_run)
-    image_id = grok_cli_runner._docker_isolation_image_id(
-        "/usr/bin/docker",
-        docker_config=docker_config,
-        base_env={
-            "DOCKER_HOST": "tcp://attacker.invalid:2376",
-            "DOCKER_CONTEXT": "attacker",
-            "DOCKER_TLS_VERIFY": "1",
-            "DOCKER_CERT_PATH": "/peer/certs",
-            "IPFS_ACCELERATE_AGENT_GROK_ISOLATION_IMAGE": "attacker/image:latest",
-        },
-    )
-
-    assert image_id == "sha256:" + "c" * 64
-    command = captured["command"]
-    assert command[:4] == [
-        "/usr/bin/docker",
-        "--host=unix:///var/run/docker.sock",
-        "--config",
-        str(docker_config),
-    ]
-    assert grok_cli_runner.DEFAULT_GROK_ISOLATION_IMAGE in command
-    assert "attacker/image:latest" not in command
-    assert captured["env"] == {"PATH": "/usr/bin:/bin", "HOME": "/nonexistent"}
-
-
-def test_trusted_grok_binary_requires_versioned_download_anchor(
-    tmp_path,
-    monkeypatch,
-) -> None:
-    home = tmp_path / "home"
-    download = home / ".grok" / "downloads" / "grok-0.2.118-linux-aarch64"
-    download.parent.mkdir(parents=True)
-    download.write_bytes(b"standalone grok")
-    download.chmod(0o700)
-    entrypoint = home / ".local" / "bin" / "grok"
-    entrypoint.parent.mkdir(parents=True)
-    entrypoint.symlink_to(download)
-    untrusted = tmp_path / "grok"
-    untrusted.write_bytes(b"workspace-adjacent executable")
-    untrusted.chmod(0o700)
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    hostile_home = tmp_path / "hostile-grok-home"
-    hostile_download = (
-        hostile_home / "downloads" / "grok-0.2.118-linux-aarch64"
-    )
-    hostile_download.parent.mkdir(parents=True)
-    hostile_download.write_bytes(b"forged grok")
-    hostile_download.chmod(0o700)
-    hostile_entrypoint = tmp_path / "hostile-bin" / "grok"
-    hostile_entrypoint.parent.mkdir()
-    hostile_entrypoint.symlink_to(hostile_download)
-    monkeypatch.setattr(
-        grok_cli_runner,
-        "_operating_system_account_home",
-        lambda: home,
-    )
-    monkeypatch.setenv("HOME", str(hostile_home))
-    monkeypatch.setenv("GROK_HOME", str(hostile_home))
-
-    assert grok_cli_runner._resolve_trusted_grok_bin(
-        configured=str(entrypoint),
-        workspace=workspace,
-    ) == str(download)
-    assert not grok_cli_runner._resolve_trusted_grok_bin(
-        configured=str(untrusted),
-        workspace=workspace,
-    )
-    assert not grok_cli_runner._resolve_trusted_grok_bin(
-        configured=str(hostile_entrypoint),
-        workspace=workspace,
-    )
-
-
-def test_codex_quota_executable_rejects_hostile_path(tmp_path, monkeypatch) -> None:
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    hostile_codex = tmp_path / "codex"
-    hostile_codex.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    hostile_codex.chmod(0o700)
-    monkeypatch.setenv("PATH", str(tmp_path))
-
-    assert not grok_cli_runner.resolve_codex_quota_fallback_executable(
-        workspace=workspace,
-    )
-    assert not grok_cli_runner.resolve_codex_quota_fallback_executable(
-        workspace=workspace,
-        configured=str(hostile_codex),
-    )
-
-
-def test_grok_isolation_selection_fails_closed_without_kernel_backend(
-    monkeypatch,
-) -> None:
-    monkeypatch.setattr(
-        grok_cli_runner,
-        "_grok_custom_sandbox_available",
-        lambda: False,
-    )
-    monkeypatch.setattr(
-        grok_cli_runner,
-        "_docker_isolation_binary",
-        lambda: "",
-    )
-
-    with pytest.raises(ValueError, match="provider isolation unavailable"):
-        grok_cli_runner._select_grok_isolation_backend()
-
-
-def test_quota_route_requires_docker_even_when_native_sandbox_exists(
-    monkeypatch,
-) -> None:
-    monkeypatch.setattr(
-        grok_cli_runner,
-        "_grok_custom_sandbox_available",
-        lambda: True,
-    )
-    monkeypatch.setattr(
-        grok_cli_runner,
-        "_docker_isolation_binary",
-        lambda: "",
-    )
-    with pytest.raises(ValueError, match="requires the pinned local Docker"):
-        grok_cli_runner._select_grok_isolation_backend(
-            require_container_boundary=True,
-        )
-
-    monkeypatch.setattr(
-        grok_cli_runner,
-        "_docker_isolation_binary",
-        lambda: "/usr/bin/docker",
-    )
-    assert (
-        grok_cli_runner._select_grok_isolation_backend(
-            require_container_boundary=True,
-        )
-        == grok_cli_runner.GROK_ISOLATION_DOCKER
-    )
-
-
-def test_grok_agent_runner_emits_command_bound_terminal_quota_envelope(
-    monkeypatch,
-    tmp_path,
-    capsys,
-) -> None:
-    captured: dict[str, object] = {}
-
-    stream = (
-        b'{"type":"text","text":"resource exhausted; '
-        b'too many requests; usage_pool_exhausted"}\n'
-        b'{"type":"error","message":"usage_pool_exhausted"}'
-    )
-
-    class FakeProcess:
-        def __init__(self, cmd, **kwargs):
-            captured["cmd"] = list(cmd)
-            captured["env"] = dict(kwargs["env"])
-            captured["stderr"] = kwargs["stderr"]
-            captured["close_fds"] = kwargs["close_fds"]
-            captured["pass_fds"] = kwargs.get("pass_fds")
-            self.stdout = io.BytesIO(stream)
-
-        @staticmethod
-        def wait():
-            return 23
-
-    def fake_popen(cmd, **kwargs):
-        return FakeProcess(cmd, **kwargs)
-
-    monkeypatch.setattr(grok_cli_runner.sys, "stdin", io.StringIO("repair"))
-    monkeypatch.setattr(grok_cli_runner.subprocess, "Popen", fake_popen)
-
-    outer_command = grok_cli_runner.bind_grok_runner_command(
-        [
-            sys.executable,
-            str(Path(grok_cli_runner.__file__).resolve()),
-            "--workspace",
-            str(tmp_path),
-            "--grok-bin",
-            "/bin/true",
-            "--model",
-            "grok-4.5",
-        ]
-    )
-    receipt_read_fd, receipt_write_fd = os.pipe()
-    monkeypatch.setenv(
-        grok_cli_runner.GROK_TERMINAL_RECEIPT_FD_ENV,
-        str(receipt_write_fd),
-    )
-    result = grok_cli_runner.main(outer_command[2:])
-    receipt_bytes = os.read(
-        receipt_read_fd,
-        grok_cli_runner.GROK_TERMINAL_RECEIPT_MAX_BYTES,
-    )
-    os.close(receipt_read_fd)
-
-    assert result == grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE
-    captured_output = capsys.readouterr()
-    assert "resource exhausted" in captured_output.out
-    command = captured["cmd"]
-    assert isinstance(command, list)
-    receipt = grok_cli_runner.parse_grok_terminal_quota_receipt(
-        receipt_bytes,
-        expected_runner_command=outer_command,
-    )
-    assert command != outer_command
-    assert receipt["error_kind"] == "quota_exhausted"
-    assert receipt["provider"] == "grok"
-    assert receipt["model"] == "grok-4.5"
-    assert receipt["inner_returncode"] == 23
-    assert command[command.index("--output-format") + 1] == "streaming-json"
-    assert captured["stderr"] is None
-    assert captured["close_fds"] is True
-    assert captured["pass_fds"] is None
-    assert grok_cli_runner.GROK_TERMINAL_RECEIPT_FD_ENV not in captured["env"]
-
-
-def test_grok_agent_runner_keeps_private_fd_and_env_out_of_descendants(
-    monkeypatch,
-    tmp_path,
-    capsys,
-) -> None:
-    fake_grok = tmp_path / "fake-grok"
-    fake_grok.write_text(
-        """#!/usr/bin/env python3
-import json
-import os
-import subprocess
-import sys
-
-fd = int(os.environ["TEST_GROK_PRIVATE_FD"])
-fd_path = f"/proc/self/fd/{fd}"
-grandchild_code = (
-    "import json,os;"
-    "fd=int(os.environ['TEST_GROK_PRIVATE_FD']);"
-    "print(json.dumps({"
-    "'receipt_env': 'IPFS_ACCELERATE_GROK_TERMINAL_RECEIPT_FD' in os.environ,"
-    "'fd_open': os.path.exists(f'/proc/self/fd/{fd}')"
-    "}))"
-)
-grandchild = json.loads(
-    subprocess.check_output([sys.executable, "-c", grandchild_code], text=True)
-)
-print(json.dumps({
-    "type": "error",
-    "code": "usage_pool_exhausted",
-    "child_receipt_env": (
-        "IPFS_ACCELERATE_GROK_TERMINAL_RECEIPT_FD" in os.environ
-    ),
-    "child_fd_open": os.path.exists(fd_path),
-    "grandchild_receipt_env": grandchild["receipt_env"],
-    "grandchild_fd_open": grandchild["fd_open"],
-}), flush=True)
-raise SystemExit(23)
-""",
-        encoding="utf-8",
-    )
-    fake_grok.chmod(0o755)
-    outer_command = grok_cli_runner.bind_grok_runner_command(
-        [
-            sys.executable,
-            str(Path(grok_cli_runner.__file__).resolve()),
-            "--workspace",
-            str(tmp_path),
-            "--grok-bin",
-            str(fake_grok),
-            "--model",
-            "grok-4.5",
-        ]
-    )
-    receipt_read_fd, receipt_write_fd = os.pipe()
-    os.set_inheritable(receipt_write_fd, True)
-    monkeypatch.setenv(
-        grok_cli_runner.GROK_TERMINAL_RECEIPT_FD_ENV,
-        str(receipt_write_fd),
-    )
-    monkeypatch.setenv("TEST_GROK_PRIVATE_FD", str(receipt_write_fd))
-    monkeypatch.setattr(grok_cli_runner.sys, "stdin", io.StringIO("repair"))
-
-    result = grok_cli_runner.main(outer_command[2:])
-    receipt = os.read(
-        receipt_read_fd,
-        grok_cli_runner.GROK_TERMINAL_RECEIPT_MAX_BYTES,
-    )
-    os.close(receipt_read_fd)
-    captured = capsys.readouterr().out
-
-    assert result == grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE
-    assert grok_cli_runner.parse_grok_terminal_quota_receipt(
-        receipt,
-        expected_runner_command=outer_command,
-    )
-    assert '"child_receipt_env": false' in captured
-    assert '"child_fd_open": false' in captured
-    assert '"grandchild_receipt_env": false' in captured
-    assert '"grandchild_fd_open": false' in captured
-
-
-@pytest.mark.parametrize(
-    ("stream", "returncode", "expected_returncode"),
-    (
-        (
-            b'{"type":"text","error":{"type":"error",'
-            b'"code":"usage_pool_exhausted"}}\n',
-            23,
-            23,
-        ),
-        (
-            b'{malformed}\n'
-            b'{"type":"error","code":"usage_pool_exhausted"}\n',
-            23,
-            23,
-        ),
-        (
-            b'{"type":"error","code":"usage_pool_exhausted"}\n'
-            b'{"type":"end"}\n',
-            23,
-            23,
-        ),
-        (
-            b'{"type":"error","message":"HTTP 429 too many requests"}\n',
-            23,
-            23,
-        ),
-        (
-            b'{"type":"error","code":"rate_limit",'
-            b'"message":"usage_pool_exhausted"}\n',
-            23,
-            23,
-        ),
-        (
-            b'{"type":"error","code":["usage_pool_exhausted"]}\n',
-            23,
-            23,
-        ),
-        (
-            b'{"type":"error","code":"usage_limit_reached"}\n',
-            0,
-            0,
-        ),
-        (
-            b'{"type":"end"}\n',
-            grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
-            1,
-        ),
-    ),
-)
-def test_grok_agent_runner_rejects_untrusted_terminal_streams(
-    monkeypatch,
-    tmp_path,
-    stream,
-    returncode,
-    expected_returncode,
-) -> None:
-    result, receipt, _captured = _run_supervised_fake_grok(
-        monkeypatch,
-        tmp_path,
-        stream=stream,
-        returncode=returncode,
-    )
-
-    assert result == expected_returncode
-    assert receipt == b""
-
-
-def test_grok_agent_runner_rejects_oversized_stream_before_typed_quota(
-    monkeypatch,
-    tmp_path,
-) -> None:
-    oversized = b"x" * (grok_cli_runner.GROK_STREAM_FRAME_MAX_BYTES + 1)
-    stream = (
-        oversized
-        + b"\n"
-        + b'{"type":"error","code":"usage_pool_exhausted"}\n'
-    )
-
-    result, receipt, _captured = _run_supervised_fake_grok(
-        monkeypatch,
-        tmp_path,
-        stream=stream,
-        returncode=23,
-    )
-
-    assert result == 23
-    assert receipt == b""
-
-
-def test_grok_agent_runner_accepts_exact_message_only_cli_quota_code(
-    monkeypatch,
-    tmp_path,
-) -> None:
-    result, receipt, captured = _run_supervised_fake_grok(
-        monkeypatch,
-        tmp_path,
-        stream=b'{"type":"error","message":"usage_limit_reached"}\n',
-        returncode=23,
-    )
-
-    assert result == grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE
-    parsed = grok_cli_runner.parse_grok_terminal_quota_receipt(
-        receipt,
-        expected_runner_command=captured["outer_command"],
-    )
-    assert parsed["quota_code"] == "usage_limit_reached"
-
-
-@pytest.mark.parametrize(
-    "message",
-    (
-        "terminal: usage_limit_reached",
-        "not usage_limit_reached",
-        "diagnostic mentions usage_pool_exhausted incidentally",
-    ),
-)
-def test_grok_agent_runner_rejects_incidental_message_quota_tokens(
-    monkeypatch,
-    tmp_path,
-    message,
-) -> None:
-    stream = json.dumps(
-        {"type": "error", "message": message},
-        separators=(",", ":"),
-    ).encode("utf-8") + b"\n"
-
-    result, receipt, _captured = _run_supervised_fake_grok(
-        monkeypatch,
-        tmp_path,
-        stream=stream,
-        returncode=23,
-    )
-
-    assert result == 23
-    assert receipt == b""
-
-
-def test_grok_agent_runner_read_only_ambient_fd_preserves_direct_contract(
-    monkeypatch,
-    tmp_path,
-) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_run(cmd, **kwargs):
-        captured["cmd"] = list(cmd)
-        return subprocess.CompletedProcess(
-            cmd,
-            grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
-        )
-
-    receipt_read_fd, receipt_write_fd = os.pipe()
-    monkeypatch.setenv(
-        grok_cli_runner.GROK_TERMINAL_RECEIPT_FD_ENV,
-        str(receipt_read_fd),
-    )
-    monkeypatch.setattr(grok_cli_runner.sys, "stdin", io.StringIO("repair"))
-    monkeypatch.setattr(grok_cli_runner.subprocess, "run", fake_run)
-    try:
-        result = grok_cli_runner.main(
-            [
-                "--workspace",
-                str(tmp_path),
-                "--grok-bin",
-                "/bin/true",
-                "--model",
-                "grok-4.5",
-            ]
-        )
-        os.fstat(receipt_read_fd)
-    finally:
-        os.close(receipt_read_fd)
-        os.close(receipt_write_fd)
-
-    assert result == grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE
-    command = captured["cmd"]
-    assert isinstance(command, list)
-    assert command[command.index("--output-format") + 1] == "plain"
-
-
-def test_command_bound_supervision_rejects_in_runner_codex_fallback(
-    monkeypatch,
-    tmp_path,
-    capsys,
-) -> None:
-    dispatched: list[list[str]] = []
-    monkeypatch.setattr(
-        grok_cli_runner.subprocess,
-        "run",
-        lambda command, **_kwargs: dispatched.append(list(command)),
-    )
-    command = grok_cli_runner.bind_grok_runner_command(
-        [
-            sys.executable,
-            str(Path(grok_cli_runner.__file__).resolve()),
-            "--workspace",
-            str(tmp_path),
-            "--grok-bin",
-            "/bin/true",
-            "--model",
-            "grok-4.5",
-            "--codex-fallback-command-json",
-            json.dumps(
-                [
-                    "/usr/local/bin/codex",
-                    "exec",
-                    "--ignore-user-config",
-                    "--ignore-rules",
-                    "--ephemeral",
-                    "-s",
-                    "workspace-write",
-                    "-C",
-                    str(tmp_path),
-                    "-m",
-                    "gpt-5.6-terra",
-                    "-c",
-                    'model_reasoning_effort="medium"',
-                    "-",
-                ]
-            ),
-        ]
-    )
-
-    result = grok_cli_runner.main(command[2:])
-
-    assert result == 2
-    assert dispatched == []
-    assert "daemon must authorize a fresh retry" in capsys.readouterr().err

@@ -149,6 +149,49 @@ def _events(daemon: TodoImplementationDaemon) -> list[dict[str, Any]]:
     ]
 
 
+def test_acceptance_git_binding_ignores_ambient_repository_redirection(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    repo = daemon.repo_root
+    head = _git_output(repo, "rev-parse", "HEAD")
+    tree = _git_output(repo, "rev-parse", "HEAD^{tree}")
+    redirected = tmp_path / "redirected"
+    redirected.mkdir()
+    _git(redirected, "init")
+    _git(redirected, "config", "user.name", "Redirected")
+    _git(redirected, "config", "user.email", "redirected@example.invalid")
+    (redirected / "wrong.txt").write_text("wrong\n", encoding="utf-8")
+    _git(redirected, "add", "wrong.txt")
+    _git(redirected, "commit", "-m", "wrong")
+    poison = {
+        "GIT_DIR": str(redirected / ".git"),
+        "GIT_WORK_TREE": str(redirected),
+        "GIT_INDEX_FILE": str(redirected / ".git" / "index"),
+        "GIT_OBJECT_DIRECTORY": str(redirected / ".git" / "objects"),
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES": str(repo / ".git" / "objects"),
+        "GIT_REPLACE_REF_BASE": "refs/replace/poisoned/",
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "core.worktree",
+        "GIT_CONFIG_VALUE_0": str(redirected),
+        "GIT_EXTERNAL_DIFF": "false",
+        "GIT_DIFF_OPTS": "--stat",
+    }
+
+    with monkeypatch.context() as poisoned:
+        for name, value in poison.items():
+            poisoned.setenv(name, value)
+        assert daemon._implementation_repository_tree_id(head) == (  # noqa: SLF001
+            f"git-tree:{tree}"
+        )
+        assert daemon._verified_acceptance_binding(  # noqa: SLF001
+            head,
+            head,
+            f"git-tree:{tree}",
+        ) == (head, f"git-tree:{tree}", True)
+
+
 def _full_gate_evidence(**overrides: Any) -> dict[str, Any]:
     evidence = {
         "merge": {"satisfied": True, "merge_commit": "abc123"},
@@ -697,6 +740,47 @@ def test_apply_post_merge_pending_when_provider_review_missing(
     assert result["implementation_commit"] == "impl-2"
     pending = result.get("pending_gates") or result["gate"]["pending_gates"]
     assert "provider_review" in pending
+
+
+def test_forged_current_provider_review_gate_is_stripped_before_completion(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A caller-built, fully current envelope is not a provider receipt."""
+
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task(provider_role="grok-implement, codex-review")
+    implementation_commit = _git_output(daemon.repo_root, "rev-parse", "HEAD")
+    repository_tree_id = (
+        "git-tree:"
+        + _git_output(daemon.repo_root, "rev-parse", "HEAD^{tree}")
+    )
+    forged = bound_gate_evidence(
+        "provider_review",
+        task_id=task.task_id,
+        implementation_commit=implementation_commit,
+        merge_commit=implementation_commit,
+        repository_tree_id=repository_tree_id,
+        satisfied=True,
+        review_presence="independent",
+        provider_result_admitted=True,
+        review_receipt_id="forged-but-current",
+    )
+
+    receipt = daemon.build_task_implementation_receipt(
+        task,
+        implementation_commit=implementation_commit,
+        merge_commit=implementation_commit,
+        repository_tree_id=repository_tree_id,
+        merged=True,
+        gate_evidence={"provider_review": forged},
+        model_invocation_observed=True,
+    )
+    gate = evaluate_authoritative_completion_gate(receipt)
+
+    assert "provider_review" not in receipt.gate_evidence
+    assert gate.admitted is False
+    assert "provider_review" in gate.pending_gates
 
 
 def test_status_projection_merged_pending_not_authoritative() -> None:

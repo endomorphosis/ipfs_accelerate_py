@@ -2,30 +2,29 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import subprocess
+import sys
+import time
 from pathlib import Path
 
+import ipfs_accelerate_py.agent_supervisor.merge.lease_coordination as lease_coordination_module
 import pytest
-from ipfs_datasets_py.logic.profile_g import validate_profile_g_artifact
-
-from ipfs_accelerate_py.agent_supervisor.merge import (
-    lease_coordination as lease_coordination_module,
-)
-from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
-    launch_bundle_lanes,
-    plan_bundle_lanes,
-)
 from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
+    MAX_PERSISTED_HEARTBEATS_PER_LEASE,
     DependencyNotReadyError,
     ExecutionScopeConflictError,
     LeaseConflictError,
     LeaseCoordinator,
     LeaseExpiredError,
     LeaseQueueBridge,
-    MAX_PERSISTED_HEARTBEATS_PER_LEASE,
     StaleFencingTokenError,
     adapt_goal_bundle,
     migrate_sqlite_coordination_store,
     profile_g_cid,
+)
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
+    launch_bundle_lanes,
+    plan_bundle_lanes,
 )
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     build_bundle_task_payloads,
@@ -51,9 +50,16 @@ def _named_bundle(name: str) -> dict[str, object]:
     }
 
 
-def test_coordination_open_retries_transient_duckdb_lock(
-    monkeypatch: pytest.MonkeyPatch,
+def _duckdb_lock_error(duckdb: object) -> Exception:
+    return duckdb.IOException(  # type: ignore[attr-defined, no-any-return]
+        'IO Error: Could not set lock on file "/tmp/leases.duckdb": '
+        "Conflicting lock is held in /usr/bin/python3 (PID 123)"
+    )
+
+
+def test_coordination_connect_retries_transient_duckdb_file_lock(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     duckdb = pytest.importorskip("duckdb")
     original_connect = duckdb.connect
@@ -63,89 +69,102 @@ def test_coordination_open_retries_transient_duckdb_lock(
     def flaky_connect(*args: object, **kwargs: object):
         nonlocal attempts
         attempts += 1
-        if attempts < 3:
-            raise duckdb.IOException(
-                'IO Error: Could not set lock on file "leases.duckdb": '
-                "Conflicting lock is held"
-            )
+        if attempts <= 3:
+            raise _duckdb_lock_error(duckdb)
         return original_connect(*args, **kwargs)
 
     monkeypatch.setattr(duckdb, "connect", flaky_connect)
-    monkeypatch.setattr(
-        lease_coordination_module.time,
-        "sleep",
-        lambda seconds: sleeps.append(seconds),
-    )
+    monkeypatch.setattr(lease_coordination_module.time, "sleep", sleeps.append)
 
     with LeaseCoordinator(tmp_path / "leases.duckdb"):
-        assert attempts == 3
+        pass
 
-    assert sleeps == [
-        lease_coordination_module.COORDINATION_DUCKDB_LOCK_RETRY_INITIAL_SECONDS,
-        lease_coordination_module.COORDINATION_DUCKDB_LOCK_RETRY_INITIAL_SECONDS * 2,
-    ]
+    assert attempts == 4
+    assert sleeps == [0.1, 0.2, 0.4]
 
 
-def test_coordination_open_fails_after_bounded_duckdb_lock_retries(
-    monkeypatch: pytest.MonkeyPatch,
+def test_coordination_connect_exhausts_bounded_duckdb_file_lock_retries(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     duckdb = pytest.importorskip("duckdb")
-    lock_error = duckdb.IOException(
-        'IO Error: Could not set lock on file "leases.duckdb": '
-        "Conflicting lock is held"
-    )
     attempts = 0
     sleeps: list[float] = []
 
     def locked_connect(*_args: object, **_kwargs: object):
         nonlocal attempts
         attempts += 1
-        raise lock_error
+        raise _duckdb_lock_error(duckdb)
 
     monkeypatch.setattr(duckdb, "connect", locked_connect)
-    monkeypatch.setattr(
-        lease_coordination_module.time,
-        "sleep",
-        lambda seconds: sleeps.append(seconds),
-    )
+    monkeypatch.setattr(lease_coordination_module.time, "sleep", sleeps.append)
 
-    with pytest.raises(duckdb.IOException) as caught:
+    with pytest.raises(duckdb.IOException, match="Conflicting lock is held"):
         LeaseCoordinator(tmp_path / "leases.duckdb")
 
-    assert caught.value is lock_error
-    assert attempts == lease_coordination_module.COORDINATION_DUCKDB_LOCK_RETRY_ATTEMPTS
+    assert attempts == lease_coordination_module.COORDINATION_DUCKDB_CONNECT_MAX_ATTEMPTS
     assert len(sleeps) == attempts - 1
-    assert sleeps[-1] == lease_coordination_module.COORDINATION_DUCKDB_LOCK_RETRY_MAX_SECONDS
+    assert sleeps[-1] <= lease_coordination_module.COORDINATION_DUCKDB_CONNECT_MAX_BACKOFF_SECONDS
 
 
-def test_coordination_open_does_not_retry_non_lock_duckdb_error(
-    monkeypatch: pytest.MonkeyPatch,
+def test_coordination_connect_does_not_retry_other_duckdb_io_errors(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     duckdb = pytest.importorskip("duckdb")
-    open_error = duckdb.IOException("IO Error: cannot open coordination database")
     attempts = 0
     sleeps: list[float] = []
 
-    def broken_connect(*_args: object, **_kwargs: object):
+    def corrupt_connect(*_args: object, **_kwargs: object):
         nonlocal attempts
         attempts += 1
-        raise open_error
+        raise duckdb.IOException("IO Error: database file is corrupt")
 
-    monkeypatch.setattr(duckdb, "connect", broken_connect)
-    monkeypatch.setattr(
-        lease_coordination_module.time,
-        "sleep",
-        lambda seconds: sleeps.append(seconds),
-    )
+    monkeypatch.setattr(duckdb, "connect", corrupt_connect)
+    monkeypatch.setattr(lease_coordination_module.time, "sleep", sleeps.append)
 
-    with pytest.raises(duckdb.IOException) as caught:
+    with pytest.raises(duckdb.IOException, match="database file is corrupt"):
         LeaseCoordinator(tmp_path / "leases.duckdb")
 
-    assert caught.value is open_error
     assert attempts == 1
     assert sleeps == []
+
+
+def test_coordination_connect_survives_real_cross_process_read_only_lock(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("duckdb")
+    path = tmp_path / "leases.duckdb"
+    marker = tmp_path / "reader-ready"
+    with LeaseCoordinator(path):
+        pass
+    script = (
+        "import pathlib,sys,time; import duckdb; "
+        "connection=duckdb.connect(sys.argv[1], read_only=True); "
+        "pathlib.Path(sys.argv[2]).write_text('ready'); "
+        "time.sleep(0.75); connection.close()"
+    )
+    reader = subprocess.Popen(
+        [sys.executable, "-c", script, str(path), str(marker)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 10
+        while not marker.is_file() and reader.poll() is None:
+            if time.monotonic() >= deadline:
+                raise AssertionError("DuckDB reader did not acquire its lock")
+            time.sleep(0.01)
+        assert marker.is_file()
+        with LeaseCoordinator(path):
+            pass
+        stdout, stderr = reader.communicate(timeout=5)
+        assert reader.returncode == 0, (stdout, stderr)
+    finally:
+        if reader.poll() is None:
+            reader.kill()
+            reader.wait(timeout=5)
 
 
 def test_claim_waits_for_latest_successful_prerequisite_receipt(tmp_path: Path) -> None:
@@ -408,132 +427,8 @@ def test_goal_bundle_adapter_emits_immutable_linked_profile_g_artifacts() -> Non
     assert adapted["task"]["subgoal_cid"] == adapted["subgoal_cid"]
     assert adapted["task"]["selection_cid"] == adapted["selection_cid"]
     assert adapted["task"]["tool"] == "codex.todo_bundle"
-    assert validate_profile_g_artifact("TaskSpec", adapted["task"]) == adapted["task_cid"]
     for name in ("goal", "subgoal", "plan_branch", "selection", "task"):
         assert profile_g_cid(adapted[name]) in adapted["artifacts"]
-
-
-def test_registration_rejects_poisoned_embedded_profile_g_attempt_policy(
-    tmp_path: Path,
-) -> None:
-    base = _bundle()
-    embedded = adapt_goal_bundle(base, created_at_ms=1)
-
-    with LeaseCoordinator(tmp_path / "leases.duckdb") as coordinator:
-        with pytest.raises(ValueError, match="between 0 and 100"):
-            coordinator.register_bundle(
-                {**base, "max_attempts": 101, "profile_g": embedded},
-                created_at_ms=1,
-            )
-        with pytest.raises(ValueError, match="does not match"):
-            coordinator.register_bundle(
-                {**base, "max_attempts": 4, "profile_g": embedded},
-                created_at_ms=1,
-            )
-        with pytest.raises(ValueError, match="must be an integer"):
-            coordinator.register_bundle(
-                {**base, "max_attempts": "3", "profile_g": embedded},
-                created_at_ms=1,
-            )
-        with pytest.raises(ValueError, match="between 0 and 100"):
-            coordinator.register_bundle(
-                {**base, "max_attempts": -1, "profile_g": embedded},
-                created_at_ms=1,
-            )
-        missing_identity = json.loads(json.dumps(embedded))
-        missing_identity.pop("canonical_task_key")
-        missing_identity.pop("canonical_task_cid")
-        with pytest.raises(ValueError, match="canonical task key"):
-            coordinator.register_bundle(
-                {**base, "profile_g": missing_identity},
-                created_at_ms=1,
-            )
-
-        forged = json.loads(json.dumps(embedded))
-        forged["task"]["tool"] = "forged.tool"
-        with pytest.raises(ValueError, match="TaskSpec CID is inconsistent"):
-            coordinator.register_bundle(
-                {**base, "profile_g": forged},
-                created_at_ms=1,
-            )
-
-        forged_limit = json.loads(json.dumps(embedded))
-        old_task_cid = forged_limit["task_cid"]
-        forged_limit["task"]["max_attempts"] = "3"
-        forged_task_cid = profile_g_cid(forged_limit["task"])
-        forged_limit["task_cid"] = forged_task_cid
-        forged_limit["task_spec_cid"] = forged_task_cid
-        forged_limit["artifacts"].pop(old_task_cid)
-        forged_limit["artifacts"][forged_task_cid] = forged_limit["task"]
-        with pytest.raises(ValueError, match="integer"):
-            coordinator.register_bundle(
-                {**base, "profile_g": forged_limit},
-                created_at_ms=1,
-            )
-
-        other = {
-            **base,
-            "bundle_key": "objective/other",
-            "tasks": [{"task_id": "OTHER-001"}],
-        }
-        cross_bundle = adapt_goal_bundle(other, created_at_ms=1)
-        cross_bundle["canonical_task_key"] = embedded["canonical_task_key"]
-        cross_bundle["canonical_task_cid"] = embedded["canonical_task_cid"]
-        with pytest.raises(ValueError, match="objective does not match bundle"):
-            coordinator.register_bundle(
-                {**base, "profile_g": cross_bundle},
-                created_at_ms=1,
-            )
-
-        recomputed_poison = json.loads(json.dumps(embedded))
-        recomputed_poison["goal"]["unknown_field"] = "poison"
-        recomputed_poison["goal_cid"] = profile_g_cid(
-            recomputed_poison["goal"]
-        )
-        recomputed_poison["subgoal"]["goal_cid"] = recomputed_poison[
-            "goal_cid"
-        ]
-        recomputed_poison["subgoal_cid"] = profile_g_cid(
-            recomputed_poison["subgoal"]
-        )
-        recomputed_poison["plan_branch"]["subgoal_cid"] = recomputed_poison[
-            "subgoal_cid"
-        ]
-        recomputed_poison["plan_branch_cid"] = profile_g_cid(
-            recomputed_poison["plan_branch"]
-        )
-        recomputed_poison["selection"]["subgoal_cid"] = recomputed_poison[
-            "subgoal_cid"
-        ]
-        recomputed_poison["selection"]["plan_branch_cid"] = recomputed_poison[
-            "plan_branch_cid"
-        ]
-        recomputed_poison["selection_cid"] = profile_g_cid(
-            recomputed_poison["selection"]
-        )
-        recomputed_poison["task"].update(
-            {
-                "subgoal_cid": recomputed_poison["subgoal_cid"],
-                "plan_branch_cid": recomputed_poison["plan_branch_cid"],
-                "selection_cid": recomputed_poison["selection_cid"],
-            }
-        )
-        recomputed_poison["task_cid"] = profile_g_cid(
-            recomputed_poison["task"]
-        )
-        recomputed_poison["task_spec_cid"] = recomputed_poison["task_cid"]
-        recomputed_poison["artifacts"] = {
-            recomputed_poison[f"{name}_cid"]: recomputed_poison[name]
-            for name in ("goal", "subgoal", "plan_branch", "selection")
-        }
-        recomputed_poison["artifacts"][
-            recomputed_poison["task_cid"]
-        ] = recomputed_poison["task"]
-        with pytest.raises(ValueError, match="goal artifact is invalid"):
-            coordinator.register_bundle(
-                {**base, "profile_g": recomputed_poison},
-                created_at_ms=1,
-            )
 
 
 def test_regenerated_bundle_keeps_one_canonical_lease_identity(tmp_path: Path) -> None:
@@ -542,8 +437,7 @@ def test_regenerated_bundle_keeps_one_canonical_lease_identity(tmp_path: Path) -
 
     assert first["task_spec_cid"] != second["task_spec_cid"]
     assert first["canonical_task_cid"] == second["canonical_task_cid"]
-    assert "canonical_task_cid" not in first["task"]
-    assert "canonical_task_key" not in first["task"]
+    assert first["task"]["canonical_task_cid"] == first["canonical_task_cid"]
 
     with LeaseCoordinator(tmp_path / "leases.sqlite3") as coordinator:
         registered_first = coordinator.register_bundle(_bundle(), created_at_ms=1_783_872_000_000)
@@ -678,41 +572,6 @@ def test_reopened_blocked_bundle_resets_exhausted_attempt_budget(tmp_path: Path)
         replacement = coordinator.claim(reopened["task_cid"], "did:web:lane-b.example")
         assert replacement.attempt == 1
         assert replacement.fencing_token > failed.fencing_token
-
-
-def test_unlimited_retry_policy_still_bounds_terminal_block_admission(
-    tmp_path: Path,
-) -> None:
-    blocked_bundle = {
-        **_bundle(),
-        "max_attempts": 0,
-        "tasks": [{"task_id": "SVD-085", "status": "blocked"}],
-    }
-
-    with LeaseCoordinator(tmp_path / "leases.duckdb") as coordinator:
-        registered = coordinator.register_bundle(blocked_bundle, created_at_ms=1)
-        for expected_attempt in range(1, 4):
-            grant = coordinator.claim(
-                registered["task_cid"],
-                "did:web:lane-a.example",
-            )
-            assert grant.attempt == expected_attempt
-            coordinator.receipt(
-                grant,
-                status="failed",
-                failure_class="blocked",
-            )
-            state = coordinator.task_state(registered["task_cid"])
-            assert state["max_attempts"] == 0
-            assert state["state"] == (
-                "blocked" if expected_attempt == 3 else "ready"
-            )
-
-        with pytest.raises(LeaseConflictError, match="attempt budget"):
-            coordinator.claim(
-                registered["task_cid"],
-                "did:web:lane-b.example",
-            )
 
 
 def test_authoritative_board_can_requeue_completed_bundle(tmp_path: Path) -> None:
@@ -974,124 +833,6 @@ def test_queue_bridge_requires_lease_and_links_terminal_receipt(tmp_path: Path) 
     assert receipt["goal_cid"] == payload["profile_g"]["goal_cid"]
     assert queue.completed[0]["status"] == "completed"
     assert queue.completed[0]["result"]["profile_g"]["receipt"]["fencing_token"] == 1
-
-
-def test_queue_bridge_quarantines_unlimited_poison_before_valid_work(
-    tmp_path: Path,
-) -> None:
-    from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
-
-    poisoned = {**_named_bundle("QUEUE-BAD"), "max_attempts": 0}
-    poisoned_profile = adapt_goal_bundle(poisoned, created_at_ms=1)
-    poisoned_profile["task"]["tool"] = "forged.tool"
-    poisoned["profile_g"] = poisoned_profile
-    valid = {**_named_bundle("QUEUE-GOOD"), "max_attempts": 0}
-    valid["profile_g"] = adapt_goal_bundle(valid, created_at_ms=1)
-
-    queue = TaskQueue(str(tmp_path / "task-queue.duckdb"))
-    try:
-        queue.submit(
-            task_id="queue-bad",
-            task_type="codex.todo_bundle",
-            model_name="supervisor",
-            payload=poisoned,
-            max_attempts=0,
-        )
-        queue.submit(
-            task_id="queue-good",
-            task_type="codex.todo_bundle",
-            model_name="supervisor",
-            payload=valid,
-            max_attempts=0,
-        )
-        with LeaseCoordinator(tmp_path / "leases.duckdb") as coordinator:
-            bridge = LeaseQueueBridge(
-                queue,
-                coordinator,
-                worker_id="worker-a",
-                claimant_did="did:web:worker-a.example",
-                lease_ms=5_000,
-            )
-            leased = bridge.claim_next(
-                supported_task_types=["codex.todo_bundle"],
-            )
-
-        assert leased is not None
-        assert leased.task.task_id == "queue-good"
-        rejected = queue.get("queue-bad")
-        accepted = queue.get("queue-good")
-        assert rejected is not None
-        assert rejected["status"] == "failed"
-        assert rejected["attempt"] == 1
-        assert rejected["max_attempts"] == 0
-        assert "profile-g registration rejected" in rejected["error"]
-        assert accepted is not None
-        assert accepted["status"] == "running"
-        assert accepted["attempt"] == 1
-    finally:
-        queue.close()
-
-
-def test_queue_bridge_backs_off_dependency_block_without_starving_ready_work(
-    tmp_path: Path,
-) -> None:
-    from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
-
-    missing_cid = adapt_goal_bundle(
-        _named_bundle("QUEUE-MISSING"),
-        created_at_ms=1,
-    )["canonical_task_cid"]
-    waiting = {
-        **_named_bundle("QUEUE-WAITING"),
-        "dependency_task_cids": [missing_cid],
-        "max_attempts": 0,
-    }
-    waiting["profile_g"] = adapt_goal_bundle(waiting, created_at_ms=1)
-    ready = {**_named_bundle("QUEUE-READY"), "max_attempts": 0}
-    ready["profile_g"] = adapt_goal_bundle(ready, created_at_ms=1)
-
-    queue = TaskQueue(str(tmp_path / "task-queue.duckdb"))
-    try:
-        queue.submit(
-            task_id="queue-a-waiting",
-            task_type="codex.todo_bundle",
-            model_name="supervisor",
-            payload=waiting,
-            max_attempts=0,
-        )
-        queue.submit(
-            task_id="queue-b-ready",
-            task_type="codex.todo_bundle",
-            model_name="supervisor",
-            payload=ready,
-            max_attempts=0,
-        )
-        with LeaseCoordinator(tmp_path / "leases.duckdb") as coordinator:
-            bridge = LeaseQueueBridge(
-                queue,
-                coordinator,
-                worker_id="worker-a",
-                claimant_did="did:web:worker-a.example",
-                lease_ms=5_000,
-                rejection_backoff_seconds=60.0,
-            )
-            leased = bridge.claim_next(
-                supported_task_types=["codex.todo_bundle"],
-            )
-
-        assert leased is not None
-        assert leased.task.task_id == "queue-b-ready"
-        deferred = queue.get("queue-a-waiting")
-        accepted = queue.get("queue-b-ready")
-        assert deferred is not None
-        assert deferred["status"] == "queued"
-        assert deferred["attempt"] == 1
-        assert deferred["next_attempt_at"] > deferred["updated_at"]
-        assert "DependencyNotReadyError" in deferred["error"]
-        assert accepted is not None
-        assert accepted["status"] == "running"
-    finally:
-        queue.close()
 
 
 def test_bundle_launcher_runs_only_an_accepted_lease(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

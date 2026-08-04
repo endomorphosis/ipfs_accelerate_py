@@ -65,7 +65,7 @@ def _route(
         fallback_provider="codex",
         selected_provider=selected,
         fallback_reason=(
-            ProviderFallbackReason.PREFERRED_UNAVAILABLE
+            ProviderFallbackReason.PREFERRED_QUOTA_EXHAUSTED
             if fallback
             else ProviderFallbackReason.NONE
         ),
@@ -620,7 +620,9 @@ def test_grok_route_codex_fallback_and_storage_roles_are_typed(
     assert grok.fallback_provider == "codex"
     assert grok.fallback_reason is ProviderFallbackReason.NONE
     assert codex.fallback_receipt_cid
-    assert codex.fallback_reason is ProviderFallbackReason.PREFERRED_UNAVAILABLE
+    assert codex.fallback_reason is (
+        ProviderFallbackReason.PREFERRED_QUOTA_EXHAUSTED
+    )
     assert codex.maximum_fallback_dispatches == 1
     assert coordination.backend == "duckdb"
     assert coordination.write_model == "single_writer_transactional_cas"
@@ -866,17 +868,15 @@ def test_receipt_projection_containment_and_owner_binding_fail_closed(
         replace(profile, principal_ref="did:key:not-the-owner")
 
 
-def test_provider_pre_effect_fallback_requires_independent_review() -> None:
-    codex = replace(
-        _route(ProviderSelection.CODEX),
-        fallback_reason=ProviderFallbackReason.PREFERRED_PRE_EFFECT_FAILURE,
-    )
-    assert (
-        codex.fallback_reason
-        is ProviderFallbackReason.PREFERRED_PRE_EFFECT_FAILURE
-    )
+def test_only_quota_fallback_requires_independent_review() -> None:
+    codex = _route(ProviderSelection.CODEX)
     with pytest.raises(EntrypointContractError, match="independent reviewer"):
         replace(codex, independent_review_required=False)
+    with pytest.raises(EntrypointContractError, match="quota exhaustion"):
+        replace(
+            codex,
+            fallback_reason=ProviderFallbackReason.PREFERRED_PRE_EFFECT_FAILURE,
+        )
 
 
 def test_contract_cid_codecs_are_semantically_typed() -> None:

@@ -124,10 +124,7 @@
     },
     "fallback": {
       "allowed_typed_reasons": [
-        "preferred_provider_unavailable",
-        "preferred_provider_quota_exhausted",
-        "preferred_provider_capacity_unavailable",
-        "preferred_provider_pre_effect_failure"
+        "preferred_provider_quota_exhausted"
       ],
       "receipt_must_commit_before_fallback_dispatch": true,
       "receipt_required_fields": [
@@ -168,7 +165,7 @@
         "id": "grok-unavailable-falls-back-to-codex",
         "profile_override": null,
         "preferred_capability": "unavailable",
-        "selected_provider": "codex",
+        "selected_provider": "unavailable",
         "fallback_reason": "preferred_provider_unavailable"
       },
       {
@@ -182,14 +179,14 @@
         "id": "grok-capacity-falls-back-to-codex",
         "profile_override": null,
         "preferred_capability": "capacity_unavailable",
-        "selected_provider": "codex",
+        "selected_provider": "unavailable",
         "fallback_reason": "preferred_provider_capacity_unavailable"
       },
       {
         "id": "grok-pre-effect-failure-falls-back-to-codex",
         "profile_override": null,
         "preferred_capability": "pre_effect_failure",
-        "selected_provider": "codex",
+        "selected_provider": "unavailable",
         "fallback_reason": "preferred_provider_pre_effect_failure"
       },
       {
