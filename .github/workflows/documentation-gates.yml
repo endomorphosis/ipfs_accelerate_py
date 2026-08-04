@@ -1,0 +1,126 @@
+# Offline documentation gates for maintained surfaces.
+#
+# Runs the allowlisted link checker, supervisor primary-doc vocabulary gate,
+# and packaging version-pin alignment. No package install is required.
+#
+# Path-filtered so ordinary code-only PRs are not delayed. To make this a
+# required status check, add "Documentation Gates" under branch protection
+# for main (repository settings; not declared by this file alone).
+
+name: Documentation Gates
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "README.md"
+      - "scripts/docs/**"
+      - "ipfs_accelerate_py/__init__.py"
+      - "pyproject.toml"
+      - "setup.py"
+      - ".github/workflows/documentation-gates.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "README.md"
+      - "scripts/docs/**"
+      - "ipfs_accelerate_py/__init__.py"
+      - "pyproject.toml"
+      - "setup.py"
+      - ".github/workflows/documentation-gates.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: documentation-gates-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  documentation-gates:
+    name: documentation-gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Supervisor primary-doc vocabulary
+        run: python scripts/docs/check_agent_supervisor_docs.py
+
+      - name: Maintained-surface relative links
+        run: python scripts/docs/check_current_docs_links.py
+
+      - name: Packaging version pin alignment
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import re
+          import sys
+          from pathlib import Path
+
+          root = Path(".")
+
+
+          def need(path: Path, pattern: str, label: str) -> str:
+              text = path.read_text(encoding="utf-8")
+              match = re.search(pattern, text, flags=re.M)
+              if not match:
+                  print(f"FAIL: {label} not found in {path}", file=sys.stderr)
+                  raise SystemExit(1)
+              return match.group(1)
+
+
+          pyproject = need(
+              root / "pyproject.toml",
+              r'^version\s*=\s*"([^"]+)"\s*$',
+              "pyproject version",
+          )
+          setup = need(
+              root / "setup.py",
+              r'^\s*version\s*=\s*"([^"]+)"\s*,?\s*$',
+              "setup.py version",
+          )
+          packaging = need(
+              root / "ipfs_accelerate_py" / "__init__.py",
+              r'^_PACKAGING_VERSION\s*=\s*"([^"]+)"\s*$',
+              "_PACKAGING_VERSION",
+          )
+          init_text = (root / "ipfs_accelerate_py" / "__init__.py").read_text(
+              encoding="utf-8"
+          )
+          if not re.search(
+              r'^__version__\s*=\s*_PACKAGING_VERSION\s*$',
+              init_text,
+              flags=re.M,
+          ):
+              print(
+                  "FAIL: __version__ must be assigned from _PACKAGING_VERSION",
+                  file=sys.stderr,
+              )
+              raise SystemExit(1)
+          if not (pyproject == setup == packaging):
+              print(
+                  "FAIL: version pins disagree: "
+                  f"pyproject={pyproject!r} setup={setup!r} "
+                  f"_PACKAGING_VERSION={packaging!r}",
+                  file=sys.stderr,
+              )
+              raise SystemExit(1)
+          print(f"OK: packaging pins aligned at {pyproject}")
+          PY
+
+      - name: Closeout navigation markers
+        run: |
+          set -euo pipefail
+          grep -q 'Documentation baseline' docs/INDEX.md
+          grep -q 'Last verified' docs/development/DOCUMENTATION_CURRENT_STATE.md
+          test -f docs/development/DOCUMENTATION_VALIDATION_2026_08.md
+          echo "OK: closeout navigation markers present"

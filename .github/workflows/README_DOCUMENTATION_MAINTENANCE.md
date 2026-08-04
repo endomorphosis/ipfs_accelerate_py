@@ -1,8 +1,25 @@
 # Documentation Maintenance Workflow
 
-This directory contains a GitHub Actions workflow for automated weekly documentation maintenance.
+This directory contains GitHub Actions workflows for documentation quality.
 
-## Overview
+## PR / push documentation gates
+
+**Workflow:** [`documentation-gates.yml`](documentation-gates.yml)
+
+Path-filtered job for pull requests and pushes to `main` that touch docs,
+doc checkers, packaging version pins, or the workflow itself. It runs:
+
+1. `python scripts/docs/check_agent_supervisor_docs.py`
+2. `python scripts/docs/check_current_docs_links.py`
+3. Packaging version pin alignment (`pyproject.toml` / `setup.py` /
+   `_PACKAGING_VERSION`)
+4. Closeout navigation marker presence
+
+No package install is required. To **block merges** on failure, repository
+admins must mark the **documentation-gates** check required under branch
+protection for `main`. The workflow file alone does not enable required status.
+
+## Weekly documentation maintenance
 
 The `documentation-maintenance.yml` workflow runs automatically every Monday at 9:00 AM UTC to help maintain high-quality documentation for both users and programming agents.
 
@@ -112,7 +129,7 @@ Use [crontab.guru](https://crontab.guru/) to generate different schedules.
 Modify the filter in `analyze_codebase.py` to include/exclude directories:
 ```python
 py_files = [
-    f for f in py_files 
+    f for f in py_files
     if 'venv' not in str(f)  # Add more filters here
 ]
 ```

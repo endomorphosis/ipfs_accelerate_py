@@ -143,9 +143,10 @@ capability-gated suites. Prefer `-rs` so skips remain visible.
 
 | Mechanism | What it actually does | What it does **not** do |
 | --- | --- | --- |
-| `.github/workflows/documentation-maintenance.yml` | Scheduled / manual workflow described in [`.github/workflows/README_DOCUMENTATION_MAINTENANCE.md`](../../.github/workflows/README_DOCUMENTATION_MAINTENANCE.md): codebase docstring analysis, example syntax sampling, pdoc-oriented generation, report artifacts / optional maintenance PRs | Not a required PR merge gate for every documentation change; not a full-tree link checker; not a version-drift enforcer across packaging files |
+| `.github/workflows/documentation-maintenance.yml` | Scheduled / manual workflow described in [`.github/workflows/README_DOCUMENTATION_MAINTENANCE.md`](../../.github/workflows/README_DOCUMENTATION_MAINTENANCE.md): codebase docstring analysis, example syntax sampling, pdoc-oriented generation, report artifacts / optional maintenance PRs | Not a required PR merge gate for every documentation change; not a full-tree link checker |
+| `.github/workflows/documentation-gates.yml` | Path-filtered PR/push job: supervisor vocabulary gate, allowlisted link checker, packaging version pins, closeout navigation markers | Not automatically a **required** status check until branch protection lists it; not a full-tree crawl; does not execute doc examples |
 | `scripts/docs/check_agent_supervisor_docs.py` | Fails if board-prefix ticket IDs appear in listed primary supervisor docs | Does not validate all of `docs/`; does not check links, versions, or examples |
-| `scripts/docs/check_current_docs_links.py` | Fail-closed relative-link + heading-anchor check over an explicit allowlist of Current/Reference surfaces | Not a full-tree crawl; not yet a required GitHub PR status check; skips fenced/inline code and absolute URLs |
+| `scripts/docs/check_current_docs_links.py` | Fail-closed relative-link + heading-anchor check over an explicit allowlist of Current/Reference surfaces | Not a full-tree crawl; skips fenced/inline code and absolute URLs |
 | Default pytest `testpaths` | Runs configured API / distributed / MCP tests when CI invokes pytest that way | Does not run every `test/test_*.py` module unless named; does not validate markdown |
 
 Do **not** document the weekly maintenance workflow as proof that every PR
@@ -162,13 +163,14 @@ authorized CI/code task. **They are not all enforced today.**
 | Diff hygiene | Reject conflict markers and bad whitespace | `git diff --check` |
 | Focused tests for touched surfaces | Behavioral smoke for CLI/API/doc-adjacent code | Named pytest paths from [testing.md](testing.md) |
 | Supervisor primary-doc vocabulary | Keep product docs free of board ticket leakage | `python scripts/docs/check_agent_supervisor_docs.py` |
-| Link integrity (maintained surfaces) | Fail on broken relative links in Current pages | `python scripts/docs/check_current_docs_links.py` (local / allowlisted; wire as required PR job separately) |
+| Link integrity (maintained surfaces) | Fail on broken relative links in Current pages | `python scripts/docs/check_current_docs_links.py` (also run by `documentation-gates.yml`) |
 | Export freshness labels | Generated HTML/PDF/export trees marked Generated/Historical | Manifest or path policy (see lifecycle); no full tree enforcer yet |
-| Version / metadata consistency | Surface disagreement among packaging and documented versions | Explicit multi-source compare; packaging pin and `__version__` are aligned at `0.0.45` as of 2026-08-04 |
+| Version / metadata consistency | Packaging and runtime pins stay aligned | `documentation-gates.yml` packaging pin step; local version alignment tests |
 | Capability honesty | Optional stacks not claimed universal | Review checklist §C; optional lint for “always available” language (not implemented) |
 
-Until the remaining gates land in CI, authors must run the applicable **local**
-commands and reviewers must apply this checklist manually.
+Local commands remain required for authors when the path filter does not fire.
+To block merges on red gates, mark **Documentation Gates /
+documentation-gates** required under repository branch protection.
 
 ## Automation gaps (explicit follow-up)
 
@@ -178,10 +180,10 @@ edit that pretends the automation already exists.
 
 | Gap | Symptom today | Follow-up direction (separate authorization) |
 | --- | --- | --- |
-| **Workflow coverage vs PR gating** | Weekly `documentation-maintenance` analysis is not the same as blocking PR checks | Add or wire required jobs for doc PRs; keep schedule job for inventory only |
-| **Link checking as required PR CI** | Local allowlisted checker exists; it is not yet a required GitHub status check | Wire `scripts/docs/check_current_docs_links.py` into a docs PR job; grow allowlist deliberately |
+| **Required branch-protection status** | `documentation-gates.yml` runs on path-filtered PRs but is not forced by this repo file | Repository admins: require status check **documentation-gates** on `main` |
+| **Allowlist growth** | Link checker covers maintained surfaces only | Expand `ALLOWLIST` in `scripts/docs/check_current_docs_links.py` deliberately when promoting pages |
 | **Export / generated artifact drift** | Generated or export trees can go stale while still looking official | Enforce status labels and regeneration instructions; exclude Generated from Current navigation |
-| **Version drift automation** | Runtime and packaging pins are aligned; no permanent multi-source CI enforcer | Optional checker that fails if `pyproject.toml` / `setup.py` / `_PACKAGING_VERSION` diverge |
+| **Weekly maintenance vs gates** | Scheduled `documentation-maintenance` still invents inventory/reports | Keep it non-blocking; do not treat its green run as link or version proof |
 | **Path vocabulary drift** | Historical and secondary guides still cite flat supervisor modules or `test/api/test_unified_cli_integration.py` | Continue refresh tasks; see [DOCUMENTATION_DRIFT_AUDIT_2026_08.md](DOCUMENTATION_DRIFT_AUDIT_2026_08.md) for inventory |
 | **Broad example execution** | Workflow may syntax-check samples; it does not prove every fenced block runs against optional extras | Keep examples honest about extras; expand executable smoke only where deterministic |
 

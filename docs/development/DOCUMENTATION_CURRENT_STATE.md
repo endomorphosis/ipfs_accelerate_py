@@ -135,7 +135,7 @@ pages must **name both sides** until a code/test task reconciles them.
 | --- | --- | --- |
 | Optional capability stacks | CUDA, IPFS, P2P, external LLMs, provers may be absent after a successful import | subsystem maintainers; docs use capability language |
 | Nested product gitlinks | Submodule / gitlink trees may be empty offline | integration maintainers; [NESTED_PACKAGES.md](../NESTED_PACKAGES.md) |
-| Link checking not a required PR job | Local allowlisted checker exists (`scripts/docs/check_current_docs_links.py`); weekly documentation-maintenance workflow is still not a required PR merge gate | documentation governance / CI |
+| Link/doc gates not branch-protection required | Workflow `.github/workflows/documentation-gates.yml` runs on path-filtered PRs; requiring the **documentation-gates** status on `main` is a repository settings step | documentation governance / CI |
 
 **Resolved (2026-08-03 / 2026-08-04 revalidation):**
 
@@ -147,6 +147,9 @@ pages must **name both sides** until a code/test task reconciles them.
   `ipfs_accelerate_py.__version__` uses the same `_PACKAGING_VERSION` pin.
 - Allowlisted offline relative-link checker for maintained surfaces:
   `python scripts/docs/check_current_docs_links.py`
+- Path-filtered GitHub Actions workflow
+  [documentation-gates.yml](../../.github/workflows/documentation-gates.yml)
+  runs vocabulary, link, version-pin, and closeout-marker gates on docs PRs
 
 The second console script, `ipfs_accelerate`, intentionally uses the separate
 `ai_inference_cli:main` parser. That split is a documented interface boundary.
@@ -184,6 +187,9 @@ python scripts/docs/check_agent_supervisor_docs.py
 
 # Maintained-surface relative links (allowlisted; not full-tree)
 python scripts/docs/check_current_docs_links.py
+
+# Same offline gates as .github/workflows/documentation-gates.yml (local)
+# (vocabulary + links above; version pin via test_package_version_alignment)
 
 # Navigation baseline markers (closeout contract)
 rg -q 'Documentation baseline' docs/INDEX.md
@@ -237,8 +243,8 @@ the following occur:
    list changes.
 4. The packaging version pin changes in `pyproject.toml` / `setup.py` (keep
    `_PACKAGING_VERSION` and Current install pages aligned).
-5. The allowlisted link checker path set grows, or a required PR CI job is
-   wired to `scripts/docs/check_current_docs_links.py`.
+5. The allowlisted link checker path set grows, or branch protection marks
+   **documentation-gates** required on `main`.
 6. Nested product submodules become required for a Current journey.
 
 ---
