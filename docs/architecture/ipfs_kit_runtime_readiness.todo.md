@@ -1421,7 +1421,7 @@ or write authority.
 
 ## KITA-045 Run soak, chaos, crash, leak, security, and resource-exhaustion qualification
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
