@@ -11623,6 +11623,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             # worktree exists so peer lanes cannot classify a branch-at-merge-
             # target checkout as already-merged while the owner is still mid
             # setup (ASI-171 / AICAT-025 prerequisite).
+            #
+            # Proactively fence dead-owner claims for this task first so a
+            # recycled daemon is not stuck in worktree_lifecycle_claim_exists
+            # thrash for the full dead-owner grace window.
+            preclaimed = self._reclaim_dead_lifecycle_claims_for_task(task)
+            if preclaimed:
+                self._record_event(
+                    "worktree_lifecycle_preclaim_reclaimed_dead_owners",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": attempt,
+                        "reclaimed": preclaimed,
+                    },
+                )
             try:
                 lifecycle_record = self.worktree_lifecycle.begin_preparing(
                     task_id=task.task_id,
