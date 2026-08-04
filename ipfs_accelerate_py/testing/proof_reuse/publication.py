@@ -1,14 +1,18 @@
-"""Controller-owned atomic issuance and certificate publication (PTR-147).
+"""Controller-owned atomic issuance and certificate publication (PTR-147/155).
 
 Cold publication writes and rehashes candidate components and the pass receipt.
-Positive v4 issuance and verification remain closed until PTR-155 supplies an
-unforgeable exact authority path; no asserted binding or injected verifier can
-reach a native provider or ``put_candidate`` in the interim.
+Positive v4 publication (PTR-155) reconstructs controller-owned V2 context and
+issued public material, invokes the exact datasets
+``verify_test_execution_certificate_v2`` path, and performs the sole atomic
+``put_candidate`` only after ``CertificateVerificationStatus.VERIFIED``.
 
-Workers serialize no witness/private material.  A crash or failure may leave an
-immutable non-authoritative candidate/receipt for retry but never a partial
-skip candidate.  Cache, issuer, Groth16, transport, lock, permission, or
-controller absence preserves the pass and returns RUN/DEFERRED.
+No structural boolean, injected verifier, certificate self-claim, alternate
+module/provider, stale or swapped binary/key artifact, changed context, or
+missing proof can reach ``put_candidate``.  Workers serialize no witness or
+private material.  A crash or failure may leave an immutable non-authoritative
+candidate/receipt for retry but never a partial skip candidate.  Import,
+collection, ordinary setup, and verification never perform trusted setup, key
+generation, build, download, or network calls.
 """
 
 from __future__ import annotations
@@ -66,6 +70,12 @@ ISSUED_CERTIFICATE_PUBLICATION_RESULT_INTERFACE: Final = (
 GROTH16_ARTIFACT_IDENTITY_BINDINGS_INTERFACE: Final = (
     "Groth16ArtifactIdentityBindings@1"
 )
+CONTROLLER_V2_VERIFICATION_CONTEXT_INTERFACE: Final = (
+    "ControllerV2VerificationContext@1"
+)
+# Disposable test-only fixture reason prefix — never reviewed production authority.
+_TEST_ONLY_DISPOSABLE_REASON_PREFIX: Final = "test_only"
+_PRODUCTION_READY_REASON: Final = "ready"
 
 # Test-pass circuit version introduced by PTR-144.
 _TEST_PASS_CIRCUIT_VERSION: Final = TEST_PASS_GROTH16_CIRCUIT_VERSION
@@ -74,7 +84,7 @@ _GROTH16_RECEIPT_MAX_BYTES: Final = 64 * 1024
 _GROTH16_KEY_MAX_BYTES: Final = 64 * 1024 * 1024
 _GROTH16_BINARY_MAX_BYTES: Final = 128 * 1024 * 1024
 _SHA256_RE: Final = re.compile(r"[0-9a-f]{64}")
-_POSITIVE_V4_AUTHORITY_ENABLED: Final = False
+_TEST_PASS_CID_PROFILE: Final = "cidv1-base32-dag-json-sha2-256"
 
 
 def _sha256_hex(data: bytes) -> str:
@@ -801,6 +811,636 @@ def _issue_deferred(issue_result: Any) -> bool:
     }
 
 
+def _is_test_only_disposable_bindings(
+    bindings: "Groth16ArtifactIdentityBindings | None",
+) -> bool:
+    if bindings is None:
+        return False
+    reason = _bounded_text(getattr(bindings, "reason_code", ""), max_chars=96).lower()
+    return reason.startswith(_TEST_ONLY_DISPOSABLE_REASON_PREFIX)
+
+
+def _bindings_production_ready(
+    bindings: "Groth16ArtifactIdentityBindings | None",
+) -> bool:
+    """True only for reviewed production-ready artifact pins (not test fixtures)."""
+
+    if not isinstance(bindings, Groth16ArtifactIdentityBindings):
+        return False
+    if not (
+        bindings.provenance_ready
+        and bindings.circuit_cid
+        and bindings.verifying_key_cid
+        and bindings.artifacts_root
+        and bindings.verifying_key_sha256
+        and bindings.proving_key_sha256
+        and bindings.backend_circuit_version == _TEST_PASS_CIRCUIT_VERSION
+        and bindings.reviewed_revision == DATASETS_VERIFIER_REVISION
+        and bindings.reason_code == _PRODUCTION_READY_REASON
+    ):
+        return False
+    diagnostics = dict(bindings.diagnostics or {})
+    approved = DATASETS_GROTH16_APPROVED_V4_KEY_MANIFESTS_SHA256
+    if not approved:
+        # No hardcoded-reviewed key-manifest allowlist is configured.
+        return False
+    manifest_sha = _bounded_text(diagnostics.get("manifest_sha256"), max_chars=64)
+    if not manifest_sha or manifest_sha not in approved:
+        return False
+    if not diagnostics.get("native_v4_capability_validated"):
+        return False
+    return True
+
+
+def _bindings_usable_for_publication(
+    bindings: "Groth16ArtifactIdentityBindings | None",
+) -> bool:
+    """Accept production-ready pins or an explicitly disposable test-only fixture."""
+
+    if _bindings_production_ready(bindings):
+        return True
+    if not isinstance(bindings, Groth16ArtifactIdentityBindings):
+        return False
+    if not (
+        bindings.provenance_ready
+        and bindings.circuit_cid
+        and bindings.verifying_key_cid
+        and bindings.backend_circuit_version == _TEST_PASS_CIRCUIT_VERSION
+        and bindings.reviewed_revision == DATASETS_VERIFIER_REVISION
+        and _is_test_only_disposable_bindings(bindings)
+    ):
+        return False
+    return True
+
+
+@dataclass(frozen=True, slots=True)
+class ControllerV2VerificationContext:
+    """Publication-side reconstruction of exact V2 expected inputs (PTR-155).
+
+    Built exclusively from controller-owned PTR-154 pins and public statement
+    inputs.  Certificate fields never fill missing pins.  Context alone never
+    grants publication or skip authority.
+    """
+
+    interface: str = CONTROLLER_V2_VERIFICATION_CONTEXT_INTERFACE
+    receipt_cid: str = ""
+    execution_key_cid: str = ""
+    candidate_context_cid: str = ""
+    expected_candidate_context_cid: str = ""
+    policy_cid: str = ""
+    statement_cid: str = ""
+    circuit_cid: str = ""
+    verifying_key_cid: str = ""
+    issuer_id: str = ""
+    epoch: str = ""
+    backend_id: str = "groth16"
+    proof_system_id: str = "groth16"
+    locator_cid: str = ""
+    content_profile: str = _TEST_PASS_CID_PROFILE
+    public_inputs: Mapping[str, Any] = field(default_factory=dict)
+    statement: Any = None
+    verifying_key_path: str = ""
+    is_test_only_disposable: bool = False
+    reason_code: str = "ok"
+    diagnostics: Mapping[str, Any] = field(default_factory=dict)
+
+    @property
+    def may_authorize_skip(self) -> bool:
+        return False
+
+    @property
+    def may_publish_candidate(self) -> bool:
+        return False
+
+    @property
+    def is_complete(self) -> bool:
+        required = (
+            self.receipt_cid,
+            self.execution_key_cid,
+            self.expected_candidate_context_cid or self.candidate_context_cid,
+            self.policy_cid,
+            self.statement_cid,
+            self.circuit_cid,
+            self.verifying_key_cid,
+            self.issuer_id,
+            self.epoch,
+            self.backend_id,
+        )
+        return all(bool(value) for value in required)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "interface": self.interface,
+            "receipt_cid": self.receipt_cid,
+            "execution_key_cid": self.execution_key_cid,
+            "candidate_context_cid": self.candidate_context_cid,
+            "expected_candidate_context_cid": (
+                self.expected_candidate_context_cid or self.candidate_context_cid
+            ),
+            "policy_cid": self.policy_cid,
+            "statement_cid": self.statement_cid,
+            "circuit_cid": self.circuit_cid,
+            "verifying_key_cid": self.verifying_key_cid,
+            "issuer_id": self.issuer_id,
+            "epoch": self.epoch,
+            "backend_id": self.backend_id,
+            "proof_system_id": self.proof_system_id,
+            "locator_cid": self.locator_cid,
+            "content_profile": self.content_profile,
+            "verifying_key_path": self.verifying_key_path,
+            "is_test_only_disposable": self.is_test_only_disposable,
+            "is_complete": self.is_complete,
+            "may_authorize_skip": False,
+            "may_publish_candidate": False,
+            "reason_code": self.reason_code,
+            "diagnostics": dict(self.diagnostics),
+        }
+
+    @classmethod
+    def from_sources(
+        cls,
+        *,
+        deferred_request: Any = None,
+        receipt: Any = None,
+        bindings: "Groth16ArtifactIdentityBindings | None" = None,
+        verifying_key_path: str = "",
+        is_test_only_disposable: bool = False,
+    ) -> "ControllerV2VerificationContext | None":
+        """Build from controller-owned request/receipt pins; never certificate fill-in."""
+
+        try:
+            request_map: dict[str, Any] = {}
+            public_inputs: dict[str, Any] = {}
+            statement_obj: Any = None
+            if deferred_request is not None:
+                mapped = _mapping_of(deferred_request)
+                if mapped is not None:
+                    request_map = dict(mapped)
+                # Typed DeferredTestCertificateRequest / ControllerOwned context.
+                for attr in (
+                    "receipt_cid",
+                    "execution_key_cid",
+                    "candidate_context_cid",
+                    "policy_cid",
+                    "statement_cid",
+                    "circuit_cid",
+                    "verifying_key_cid",
+                    "issuer_id",
+                    "epoch",
+                    "backend_id",
+                    "proof_system_id",
+                    "locator_cid",
+                ):
+                    if not request_map.get(attr):
+                        value = getattr(deferred_request, attr, None)
+                        if value not in (None, ""):
+                            request_map[attr] = value
+                statement_obj = getattr(deferred_request, "statement", None)
+                if statement_obj is not None:
+                    to_public = getattr(statement_obj, "to_public_inputs", None)
+                    if callable(to_public):
+                        try:
+                            pi = to_public()
+                            if isinstance(pi, Mapping):
+                                public_inputs = dict(pi)
+                        except Exception:
+                            public_inputs = {}
+                nested_pi = request_map.get("public_inputs")
+                if not public_inputs and isinstance(nested_pi, Mapping):
+                    public_inputs = dict(nested_pi)
+                nested_statement = request_map.get("statement")
+                if statement_obj is None and nested_statement is not None:
+                    statement_obj = nested_statement
+                # Flat deferred envelopes may already be public-input shaped.
+                if not public_inputs and request_map.get("candidate_context_cid"):
+                    public_inputs = {
+                        key: request_map[key]
+                        for key in (
+                            "receipt_cid",
+                            "execution_key_cid",
+                            "candidate_context_cid",
+                            "policy_cid",
+                            "statement_cid",
+                            "circuit_cid",
+                            "verifying_key_cid",
+                            "issuer_id",
+                            "epoch",
+                            "locator_cid",
+                            "content_profile",
+                            "completeness_policy_cid",
+                            "statement_version",
+                        )
+                        if key in request_map
+                    }
+
+            receipt_map = _mapping_of(receipt) or {}
+            if not isinstance(receipt_map, Mapping):
+                receipt_map = {}
+
+            def _pin(*names: str) -> str:
+                for name in names:
+                    for source in (public_inputs, request_map, receipt_map):
+                        if isinstance(source, Mapping):
+                            text = _bounded_text(source.get(name), max_chars=256)
+                            if text:
+                                return text
+                    if name == "receipt_cid":
+                        text = _bounded_text(
+                            getattr(receipt, "receipt_id", None)
+                            or getattr(receipt, "receipt_cid", None),
+                            max_chars=256,
+                        )
+                        if text:
+                            return text
+                    if name == "execution_key_cid":
+                        text = _bounded_text(
+                            getattr(receipt, "execution_key_cid", None),
+                            max_chars=256,
+                        )
+                        if text:
+                            return text
+                    if name == "locator_cid":
+                        text = _bounded_text(
+                            getattr(receipt, "locator_cid", None),
+                            max_chars=256,
+                        )
+                        if text:
+                            return text
+                return ""
+
+            circuit_cid = _pin("circuit_cid")
+            verifying_key_cid = _pin("verifying_key_cid")
+            if bindings is not None and getattr(bindings, "provenance_ready", False):
+                # Controller pins must match activated artifact pins when both set.
+                if circuit_cid and bindings.circuit_cid and circuit_cid != bindings.circuit_cid:
+                    return None
+                if (
+                    verifying_key_cid
+                    and bindings.verifying_key_cid
+                    and verifying_key_cid != bindings.verifying_key_cid
+                ):
+                    return None
+                if not circuit_cid:
+                    circuit_cid = bindings.circuit_cid
+                if not verifying_key_cid:
+                    verifying_key_cid = bindings.verifying_key_cid
+
+            candidate_cid = _pin("candidate_context_cid")
+            vk_path = _bounded_text(verifying_key_path, max_chars=4096)
+            if not vk_path and bindings is not None and bindings.artifacts_root:
+                vk_path = str(Path(bindings.artifacts_root) / "v4" / "verifying_key.bin")
+
+            if not public_inputs and candidate_cid:
+                public_inputs = {
+                    "receipt_cid": _pin("receipt_cid"),
+                    "execution_key_cid": _pin("execution_key_cid"),
+                    "candidate_context_cid": candidate_cid,
+                    "policy_cid": _pin("policy_cid"),
+                    "statement_cid": _pin("statement_cid"),
+                    "circuit_cid": circuit_cid,
+                    "verifying_key_cid": verifying_key_cid,
+                    "issuer_id": _pin("issuer_id"),
+                    "epoch": _pin("epoch"),
+                    "locator_cid": _pin("locator_cid"),
+                    "content_profile": _pin("content_profile") or _TEST_PASS_CID_PROFILE,
+                }
+
+            return cls(
+                receipt_cid=_pin("receipt_cid"),
+                execution_key_cid=_pin("execution_key_cid"),
+                candidate_context_cid=candidate_cid,
+                expected_candidate_context_cid=candidate_cid,
+                policy_cid=_pin("policy_cid"),
+                statement_cid=_pin("statement_cid"),
+                circuit_cid=circuit_cid,
+                verifying_key_cid=verifying_key_cid,
+                issuer_id=_pin("issuer_id"),
+                epoch=_pin("epoch"),
+                backend_id=_pin("backend_id") or "groth16",
+                proof_system_id=_pin("proof_system_id") or "groth16",
+                locator_cid=_pin("locator_cid"),
+                content_profile=_pin("content_profile") or _TEST_PASS_CID_PROFILE,
+                public_inputs=MappingProxyType(dict(public_inputs)),
+                statement=statement_obj,
+                verifying_key_path=vk_path,
+                is_test_only_disposable=is_test_only_disposable
+                or _is_test_only_disposable_bindings(bindings),
+                reason_code="ok" if candidate_cid else "incomplete",
+                diagnostics=MappingProxyType(
+                    {
+                        "source": "controller_reconstruction",
+                        "has_public_inputs": bool(public_inputs),
+                        "has_statement": statement_obj is not None,
+                    }
+                ),
+            )
+        except Exception:
+            return None
+
+
+def _import_datasets_v2_surface(
+    *,
+    module_provenance_validator: Any = None,
+) -> tuple[Any, Any, Any, str] | None:
+    """Import exact datasets V2 verifier/binding modules without network or build.
+
+    Returns ``(verifier_module, binding_module, zkp_module, reason)`` or None.
+    """
+
+    try:
+        verifier_module = importlib.import_module(
+            "ipfs_datasets_py.logic.zkp.test_execution_certificate"
+        )
+        binding_module = importlib.import_module(
+            "ipfs_datasets_py.logic.zkp.provekit.test_pass_circuit"
+        )
+        zkp_module = importlib.import_module("ipfs_datasets_py.logic.zkp")
+    except Exception:
+        return None
+    modules = (verifier_module, binding_module, zkp_module)
+    if callable(module_provenance_validator):
+        try:
+            if not all(module_provenance_validator(module) for module in modules):
+                return None
+        except Exception:
+            return None
+    return verifier_module, binding_module, zkp_module, "ready"
+
+
+def _resolve_publication_backend(
+    *,
+    bindings: "Groth16ArtifactIdentityBindings",
+    test_only_backend: Any = None,
+    is_test_only: bool = False,
+) -> tuple[Any | None, str]:
+    """Resolve the sole verifier backend for publication.
+
+    Disposable test-only backends are accepted only for explicitly labeled
+    test fixtures.  Production uses the FD-bound verifying key under the
+    provenance-ready artifacts root via the reviewed provider when available.
+    """
+
+    if is_test_only and test_only_backend is not None:
+        backend_id = _status_text(getattr(test_only_backend, "backend_id", "groth16"))
+        if backend_id and backend_id not in {"", "groth16"}:
+            return None, "test_only_backend_id_rejected"
+        if not callable(getattr(test_only_backend, "verify_proof", None)):
+            return None, "test_only_backend_missing_verify_proof"
+        return test_only_backend, "test_only_disposable_backend"
+
+    if not _bindings_production_ready(bindings):
+        return None, "production_backend_unavailable"
+
+    try:
+        provider_module = importlib.import_module(
+            "ipfs_datasets_py.logic.zkp.test_pass_groth16_provider"
+        )
+        provider_cls = getattr(provider_module, "LazyGroth16TestCertificateProvider", None)
+        if provider_cls is None:
+            return None, "provider_unavailable"
+        provider = provider_cls(
+            artifacts_root=bindings.artifacts_root,
+            require_enable_env=False,
+        )
+        provider_root = Path(provider.artifacts_root()).resolve(strict=True)
+        expected_root = Path(bindings.artifacts_root).resolve(strict=True)
+        if provider_root != expected_root:
+            return None, "provider_artifact_root_mismatch"
+        if not callable(getattr(provider, "verify_proof_json", None)):
+            return None, "provider_verify_unavailable"
+
+        class _PinnedGroth16NativeVerifier:
+            backend_id = "groth16"
+
+            def verify_proof(self, proof: Any) -> bool:
+                try:
+                    proof_json = json.loads(bytes(proof.proof_data).decode("utf-8"))
+                except Exception:
+                    return False
+                return bool(
+                    isinstance(proof_json, Mapping)
+                    and provider.verify_proof_json(proof_json) is True
+                )
+
+        return _PinnedGroth16NativeVerifier(), "pinned_native_backend"
+    except Exception:
+        return None, "production_backend_resolution_failed"
+
+
+def verify_test_execution_certificate_v2_for_publication(
+    certificate: Mapping[str, Any] | Any,
+    *,
+    bindings: "Groth16ArtifactIdentityBindings",
+    controller_context: ControllerV2VerificationContext,
+    test_only_backend: Any = None,
+    module_provenance_validator: Any = None,
+) -> tuple[bool, str, Any]:
+    """Sole publication authority adapter around exact local V2 verification.
+
+    Requires ``CertificateVerificationStatus.VERIFIED`` from
+    ``verify_test_execution_certificate_v2`` with the controller's expected
+    candidate-context CID.  Structural completeness, certificate self-claims,
+    and arbitrary injected verifier callbacks are never authority.
+    """
+
+    try:
+        if not _bindings_usable_for_publication(bindings):
+            return False, "artifact_provenance_unready", None
+        if controller_context is None or not controller_context.is_complete:
+            return False, "controller_v2_context_incomplete", None
+        expected_cid = (
+            controller_context.expected_candidate_context_cid
+            or controller_context.candidate_context_cid
+        )
+        if not expected_cid:
+            return False, "expected_candidate_context_missing", None
+
+        # Pin agreement: certificate identity must match controller + bindings.
+        cert_map = _mapping_of(certificate) or {}
+        cert_circuit = _bounded_text(
+            cert_map.get("circuit_cid") or getattr(certificate, "circuit_cid", "")
+        )
+        cert_vk = _bounded_text(
+            cert_map.get("verifying_key_cid")
+            or getattr(certificate, "verifying_key_cid", "")
+        )
+        if cert_circuit and cert_circuit != bindings.circuit_cid:
+            return False, "circuit_cid_mismatch", None
+        if cert_vk and cert_vk != bindings.verifying_key_cid:
+            return False, "verifying_key_cid_mismatch", None
+        if controller_context.circuit_cid != bindings.circuit_cid:
+            return False, "controller_circuit_pin_mismatch", None
+        if controller_context.verifying_key_cid != bindings.verifying_key_cid:
+            return False, "controller_verifying_key_pin_mismatch", None
+
+        surface = _import_datasets_v2_surface(
+            module_provenance_validator=module_provenance_validator,
+        )
+        if surface is None:
+            return False, "datasets_v2_surface_unavailable", None
+        verifier_module, binding_module, zkp_module, _ready = surface
+
+        status_enum = getattr(verifier_module, "CertificateVerificationStatus", None)
+        verify_v2 = getattr(verifier_module, "verify_test_execution_certificate_v2", None)
+        binding_cls = getattr(binding_module, "TestPassCircuitBinding", None)
+        if status_enum is None or not callable(verify_v2) or binding_cls is None:
+            return False, "datasets_v2_symbols_unavailable", None
+
+        public_inputs = dict(controller_context.public_inputs or {})
+        statement_obj = getattr(controller_context, "statement", None)
+        if not public_inputs and statement_obj is not None:
+            to_public = getattr(statement_obj, "to_public_inputs", None)
+            if callable(to_public):
+                try:
+                    pi = to_public()
+                    if isinstance(pi, Mapping):
+                        public_inputs = dict(pi)
+                except Exception:
+                    public_inputs = {}
+        if not public_inputs and statement_obj is None:
+            return False, "controller_public_inputs_missing", None
+        # Force controller-owned pins over any certificate-supplied inputs.
+        if public_inputs:
+            public_inputs.update(
+                {
+                    "receipt_cid": controller_context.receipt_cid,
+                    "execution_key_cid": controller_context.execution_key_cid,
+                    "candidate_context_cid": expected_cid,
+                    "policy_cid": controller_context.policy_cid,
+                    "statement_cid": controller_context.statement_cid,
+                    "circuit_cid": controller_context.circuit_cid,
+                    "verifying_key_cid": controller_context.verifying_key_cid,
+                    "issuer_id": controller_context.issuer_id,
+                    "epoch": controller_context.epoch,
+                }
+            )
+            if controller_context.locator_cid:
+                public_inputs.setdefault(
+                    "locator_cid", controller_context.locator_cid
+                )
+            public_inputs.setdefault("content_profile", _TEST_PASS_CID_PROFILE)
+
+        verifier_artifacts: dict[str, str] = {}
+        # Only pin a verifying-key path when the FD-bound file actually exists.
+        # Missing paths make the datasets verifier return backend_unavailable
+        # even for disposable test-only backends that do not need disk keys.
+        candidate_vk_paths: list[str] = []
+        if controller_context.verifying_key_path:
+            candidate_vk_paths.append(controller_context.verifying_key_path)
+        if bindings.artifacts_root:
+            candidate_vk_paths.append(
+                str(Path(bindings.artifacts_root) / "v4" / "verifying_key.bin")
+            )
+        for vk_path_text in candidate_vk_paths:
+            try:
+                vk_path = Path(vk_path_text)
+                if vk_path.is_file() and not vk_path.is_symlink():
+                    verifier_artifacts["verifying_key_path"] = str(vk_path)
+                    break
+            except OSError:
+                continue
+
+        binding_kwargs: dict[str, Any] = {
+            "backend_id": controller_context.backend_id or "groth16",
+            "proof_system_id": controller_context.proof_system_id or "groth16",
+            "circuit_cid": bindings.circuit_cid,
+            "verifying_key_cid": bindings.verifying_key_cid,
+            "statement_cid": controller_context.statement_cid,
+            "issuer_id": controller_context.issuer_id,
+            "policy_cid": controller_context.policy_cid,
+            "epoch": controller_context.epoch,
+            "candidate_context_cid": expected_cid,
+            "verifier_artifacts": verifier_artifacts or None,
+        }
+        try:
+            if statement_obj is not None and not isinstance(statement_obj, Mapping):
+                # Prefer the live statement object (to_public_inputs may include
+                # statement-level fields that cannot round-trip through from_dict).
+                binding = binding_cls(statement_obj, **binding_kwargs)
+            else:
+                # Rebuild a V2 statement envelope so circuit_version/ruleset_id
+                # are not treated as unknown public-input fields.
+                statement_level = {
+                    key: public_inputs.pop(key)
+                    for key in ("circuit_version", "ruleset_id", "interface")
+                    if key in public_inputs
+                }
+                envelope: dict[str, Any] = {
+                    "interface": statement_level.get(
+                        "interface", "TestPassStatementV2"
+                    ),
+                    "public_inputs": public_inputs,
+                }
+                if "circuit_version" in statement_level:
+                    envelope["circuit_version"] = statement_level["circuit_version"]
+                if "ruleset_id" in statement_level:
+                    envelope["ruleset_id"] = statement_level["ruleset_id"]
+                binding = binding_cls(envelope, **binding_kwargs)
+        except Exception:
+            return False, "test_pass_circuit_binding_failed", None
+
+        is_test_only = (
+            controller_context.is_test_only_disposable
+            or _is_test_only_disposable_bindings(bindings)
+        )
+        backend, backend_reason = _resolve_publication_backend(
+            bindings=bindings,
+            test_only_backend=test_only_backend,
+            is_test_only=is_test_only,
+        )
+        if backend is None:
+            return False, backend_reason or "verification_backend_unavailable", None
+
+        # Prefer include_proof certificate mapping when available.
+        cert_payload: Any = certificate
+        if isinstance(certificate, Mapping):
+            cert_payload = dict(certificate)
+        else:
+            to_dict = getattr(certificate, "to_dict", None)
+            if callable(to_dict):
+                try:
+                    with_proof = to_dict(include_proof=True, include_ids=True)
+                    if isinstance(with_proof, Mapping):
+                        cert_payload = with_proof
+                except TypeError:
+                    mapped = _mapping_of(certificate)
+                    if mapped is not None:
+                        cert_payload = dict(mapped)
+                except Exception:
+                    mapped = _mapping_of(certificate)
+                    if mapped is not None:
+                        cert_payload = dict(mapped)
+
+        try:
+            result = verify_v2(
+                cert_payload,
+                binding,
+                backend,
+                expected_candidate_context_cid=expected_cid,
+            )
+        except Exception:
+            return False, "exact_v2_verify_exception", None
+
+        # Only the exhaustive VERIFIED status is authority.  Booleans, self
+        # claims, and alternate result shapes are rejected.
+        verified_status = getattr(status_enum, "VERIFIED", None)
+        status = getattr(result, "status", None)
+        if verified_status is not None and status is verified_status:
+            if getattr(result, "verified", None) is True:
+                reason = "verified"
+                if is_test_only or backend_reason == "test_only_disposable_backend":
+                    reason = "verified_test_only_disposable"
+                return True, reason, result
+        status_text = _status_text(getattr(status, "value", status))
+        detail = _bounded_text(
+            getattr(result, "reason", None) or getattr(result, "detail", None) or "",
+            max_chars=96,
+        )
+        return False, detail or status_text or "exact_v2_not_verified", result
+    except Exception:
+        return False, "exact_v2_verification_exception", None
+
+
 def _local_verify_certificate(
     certificate: Mapping[str, Any] | Any,
     *,
@@ -809,101 +1449,43 @@ def _local_verify_certificate(
     cryptographic_verifier: Any = None,
     module_provenance_validator: Any = None,
     verification_context: Mapping[str, Any] | None = None,
+    controller_context: ControllerV2VerificationContext | None = None,
+    test_only_backend: Any = None,
 ) -> tuple[bool, str]:
-    """Locally verify one returned certificate; never raise.
+    """Locally verify one returned certificate via exact V2; never raise.
 
-    When *bindings* are provenance-ready, the certificate circuit/VK CIDs must
-    match pins derived from exact activated bytes, and the backend artifact
-    root (when present) must match those pins.  Missing/mismatched provenance
-    returns failure so callers surface RUN/DEFERRED.
-
-    Controller publication passes ``require_cryptographic_verify=True``.  In
-    that mode missing artifact provenance, verifier-module provenance, or a
-    real verification result is a hard DEFERRED outcome; structural shape is
-    never certificate authority.
+    Injected ``cryptographic_verifier`` callbacks and certificate self-claims
+    are intentionally ignored for publication authority.  Only
+    :func:`verify_test_execution_certificate_v2_for_publication` can authorize.
     """
 
+    del cryptographic_verifier  # never authority
     try:
-        cert_map = _mapping_of(certificate) or {}
-        enforce_pins = (
-            bindings is not None and getattr(bindings, "provenance_ready", False)
-        )
-        if not enforce_pins:
+        if not isinstance(bindings, Groth16ArtifactIdentityBindings):
             return False, "artifact_provenance_unready"
-        if enforce_pins:
-            assert bindings is not None
-            cert_circuit = _bounded_text(
-                cert_map.get("circuit_cid")
-                or getattr(certificate, "circuit_cid", "")
+        if not _bindings_usable_for_publication(bindings):
+            return False, "artifact_provenance_unready"
+        context = controller_context
+        if context is None and isinstance(verification_context, Mapping):
+            context = ControllerV2VerificationContext.from_sources(
+                deferred_request=verification_context.get("deferred_request"),
+                receipt=verification_context.get("receipt"),
+                bindings=bindings,
+                is_test_only_disposable=_is_test_only_disposable_bindings(bindings),
             )
-            cert_vk = _bounded_text(
-                cert_map.get("verifying_key_cid")
-                or getattr(certificate, "verifying_key_cid", "")
-            )
-            if cert_circuit and bindings.circuit_cid and cert_circuit != bindings.circuit_cid:
-                return False, "circuit_cid_mismatch"
-            if cert_vk and bindings.verifying_key_cid and cert_vk != bindings.verifying_key_cid:
-                return False, "verifying_key_cid_mismatch"
-            # Prove the backend used the artifact root matching those pins.
-            claimed_root = _bounded_text(
-                cert_map.get("artifacts_root")
-                or cert_map.get("artifact_root")
-                or (
-                    (cert_map.get("extra") or {}).get("artifacts_root")
-                    if isinstance(cert_map.get("extra"), Mapping)
-                    else ""
-                )
-            )
-            if (
-                claimed_root
-                and bindings.artifacts_root
-                and Path(claimed_root).resolve()
-                != Path(bindings.artifacts_root).resolve()
-            ):
-                return False, "artifact_root_mismatch"
-
-        # Structural completeness: required public identity fields.
-        required = (
-            "receipt_cid",
-            "execution_key_cid",
-            "circuit_cid",
-            "verifying_key_cid",
+        if context is None:
+            return False, "controller_v2_context_unavailable"
+        if require_cryptographic_verify is False:
+            # Structural-only path is never publication authority.
+            return False, "structural_verification_rejected"
+        ok, reason, _result = verify_test_execution_certificate_v2_for_publication(
+            certificate,
+            bindings=bindings,
+            controller_context=context,
+            test_only_backend=test_only_backend,
+            module_provenance_validator=module_provenance_validator,
         )
-        structural_ok = all(
-            _bounded_text(cert_map.get(name) or getattr(certificate, name, ""))
-            for name in required
-        )
-        if not structural_ok:
-            return False, "certificate_structurally_incomplete"
-
-        if callable(cryptographic_verifier):
-            try:
-                result = cryptographic_verifier(
-                    certificate,
-                    bindings,
-                    verification_context or MappingProxyType({}),
-                )
-            except Exception:
-                result = None
-            if result is True and not require_cryptographic_verify:
-                return True, "verified"
-            if result is not None:
-                status = _status_text(getattr(result, "status", result))
-                authority = _status_text(getattr(result, "authority", ""))
-                if (
-                    getattr(result, "verified", None) is True
-                    and getattr(result, "authoritative", None) is True
-                    and getattr(result, "can_authorize_skip", None) is True
-                    and status == "verified"
-                    and authority == "authoritative"
-                ):
-                    return True, "verified"
-            return False, "local_verification_failed"
-
-        # There is intentionally no ambient import or structural fallback.
-        # PTR-153/154/155 will preserve proof-bearing material and construct the
-        # controller-owned V2 context needed by the callback above.
-        return False, "local_verification_unavailable"
+        return ok, reason
     except Exception:
         return False, "local_verification_exception"
 
@@ -1222,18 +1804,23 @@ class IssuedCertificatePublicationResult:
 
 
 class ProofReuseControllerPublicationTransaction:
-    """Atomic controller-owned issue → verify → put_candidate sequence.
+    """Atomic controller-owned issue → exact-V2-verify → put_candidate sequence.
 
     Implements ``ProofReuseControllerPublicationTransaction@1``.
 
-    Authority-enabled order (currently fenced after step 1):
+    Authority order (PTR-155):
 
     1. Cold-write non-authoritative candidate components + receipt (rehash).
-    2. Reconstruct public deferred request (no worker private material).
-    3. Call issuer (immediate or deferred result).
-    4. Locally verify every success against artifact pins.
-    5. Atomically ``put_candidate`` exactly once for complete authority.
-    6. On failure/deferral, retain immutable non-authoritative candidate/receipt
+    2. Reconstruct public deferred request / controller V2 context (no private
+       worker material; certificate fields never fill missing pins).
+    3. Call issuer when no certificate is attached (immediate or deferred).
+    4. Require provenance-ready PTR-151 bindings (or an explicit disposable
+       test-only fixture that is never production authority).
+    5. Invoke ``verify_test_execution_certificate_v2`` with the pinned backend
+       and expected candidate-context CID; require
+       ``CertificateVerificationStatus.VERIFIED``.
+    6. Atomically ``put_candidate`` exactly once after VERIFIED only.
+    7. On failure/deferral, retain immutable non-authoritative candidate/receipt
        for retry; never publish a partial skip candidate.
     """
 
@@ -1248,6 +1835,7 @@ class ProofReuseControllerPublicationTransaction:
         owner_id: str = "",
         artifact_bindings: Groth16ArtifactIdentityBindings | None = None,
         metrics: Any = None,
+        test_only_verification_backend: Any = None,
     ) -> None:
         self.store = store
         self.candidate_store = candidate_store
@@ -1255,6 +1843,8 @@ class ProofReuseControllerPublicationTransaction:
         self.owner_id = _bounded_text(owner_id, max_chars=128)
         self.artifact_bindings = artifact_bindings
         self.metrics = metrics
+        # Disposable test-only backend; only consulted for test_only bindings.
+        self.test_only_verification_backend = test_only_verification_backend
         self._lock = threading.RLock()
         self._completed_intents: set[str] = set()
 
@@ -1446,82 +2036,45 @@ class ProofReuseControllerPublicationTransaction:
             else _mapping_of(existing_certificate)
         )
 
-        # PTR-152 is a denial boundary.  The current datasets provider proves
-        # and verifies through mutable executable/key paths and inherits an
-        # ambient child environment.  Do not invoke the issuer or local
-        # verifier until PTR-155 supplies FD-bound inputs, a strict child
-        # environment, and exact authority-module provenance.  An attached
-        # public certificate may be retained in the candidate CAS, but it is
-        # never indexed or treated as authority.
-        if not _POSITIVE_V4_AUTHORITY_ENABLED:
-            certificate_cid = ""
-            if certificate_payload is not None:
-                certificate_cid = _bounded_text(
-                    certificate_payload.get("certificate_id")
-                    or certificate_payload.get("certificate_cid")
-                    or getattr(intent, "certificate_cid", "")
+        # Retain any attached public certificate bytes without index authority.
+        if certificate_payload is not None:
+            try:
+                certificate_bytes = json.dumps(
+                    dict(certificate_payload),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    allow_nan=False,
+                ).encode("utf-8")
+            except (TypeError, ValueError, UnicodeError):
+                certificate_bytes = b""
+            if certificate_bytes and len(certificate_bytes) <= 4 * 1024 * 1024:
+                cert_retained, cert_candidate_cid = self._retain_non_authoritative(
+                    receipt=None,
+                    locator_cid=locator_cid,
+                    candidate_components={"certificate": certificate_bytes},
                 )
-                try:
-                    certificate_bytes = json.dumps(
-                        dict(certificate_payload),
-                        sort_keys=True,
-                        separators=(",", ":"),
-                        ensure_ascii=False,
-                        allow_nan=False,
-                    ).encode("utf-8")
-                except (TypeError, ValueError, UnicodeError):
-                    certificate_bytes = b""
-                if (
-                    certificate_bytes
-                    and len(certificate_bytes) <= 4 * 1024 * 1024
-                ):
-                    cert_retained, cert_candidate_cid = (
-                        self._retain_non_authoritative(
-                            receipt=None,
-                            locator_cid=locator_cid,
-                            candidate_components={
-                                "certificate": certificate_bytes,
-                            },
-                        )
-                    )
-                    retained = retained or cert_retained
-                    candidate_cid = candidate_cid or cert_candidate_cid
-            reason = "positive_v4_publication_pending_ptr155"
-            if self.metrics is not None:
-                try:
-                    self.metrics.deferred(reason_code=reason)
-                except Exception:
-                    pass
-            return IssuedCertificatePublicationResult(
-                published=False,
-                status="certificate_deferred",
-                reason_code=reason,
-                receipt_cid=receipt_cid,
-                certificate_cid=certificate_cid,
-                candidate_context_cid=candidate_cid,
-                indexed=False,
-                put_candidate_called=False,
-                non_authoritative_retained=retained,
-                action="DEFERRED",
-                diagnostics=MappingProxyType(
-                    {"stage": "positive_publication_gate"}
-                ),
-            )
+                retained = retained or cert_retained
+                candidate_cid = candidate_cid or cert_candidate_cid
 
         # 2–3. Issue when no certificate is already attached.
         issue_result = None
+        request = deferred_request
+        if request is None:
+            request = getattr(intent, "deferred_request", None)
+        if request is None:
+            request = {
+                "receipt_cid": receipt_cid,
+                "locator_cid": locator_cid,
+            }
         if certificate_payload is None and self.issuer is not None:
-            request = deferred_request
-            if request is None:
-                request = getattr(intent, "deferred_request", None)
-            if request is None:
-                request = {
-                    "receipt_cid": receipt_cid,
-                    "locator_cid": locator_cid,
-                }
             try:
+                # Prefer issue_material when available (PTR-153 public material).
+                issue_material = getattr(self.issuer, "issue_material", None)
                 issue = getattr(self.issuer, "issue", None)
-                if callable(issue):
+                if callable(issue_material):
+                    issue_result = issue_material(request)
+                elif callable(issue):
                     issue_result = issue(request)
                 elif callable(self.issuer):
                     issue_result = self.issuer(request)
@@ -1537,7 +2090,9 @@ class ProofReuseControllerPublicationTransaction:
                 )
                 if self.metrics is not None:
                     try:
-                        self.metrics.deferred(reason_code=reason or "certificate_deferred")
+                        self.metrics.deferred(
+                            reason_code=reason or "certificate_deferred"
+                        )
                     except Exception:
                         pass
                 return IssuedCertificatePublicationResult(
@@ -1576,21 +2131,67 @@ class ProofReuseControllerPublicationTransaction:
                 action="DEFERRED",
             )
 
-        # 4. Local verification of every success.
+        # 4. Artifact provenance pins (production ready or explicit test-only).
         bindings = self.artifact_bindings
         if bindings is None:
             bindings = getattr(self.issuer, "last_artifact_bindings", None)
-        if not isinstance(bindings, Groth16ArtifactIdentityBindings) or not (
-            bindings.provenance_ready
-            and bindings.circuit_cid
-            and bindings.verifying_key_cid
-            and bindings.artifacts_root
-            and bindings.verifying_key_sha256
-            and bindings.proving_key_sha256
-            and bindings.backend_circuit_version == _TEST_PASS_CIRCUIT_VERSION
-            and bindings.reviewed_revision == DATASETS_VERIFIER_REVISION
-        ):
+        if not _bindings_usable_for_publication(bindings):
             reason = "artifact_provenance_unready"
+            # Self-asserted provenance_ready without production/test-only path.
+            if (
+                isinstance(bindings, Groth16ArtifactIdentityBindings)
+                and bindings.provenance_ready
+                and not _is_test_only_disposable_bindings(bindings)
+                and bindings.reason_code != _PRODUCTION_READY_REASON
+            ):
+                reason = "artifact_provenance_unready"
+            elif (
+                isinstance(bindings, Groth16ArtifactIdentityBindings)
+                and bindings.provenance_ready
+                and bindings.reason_code == _PRODUCTION_READY_REASON
+                and not _bindings_production_ready(bindings)
+            ):
+                reason = "production_key_manifest_unapproved"
+            if self.metrics is not None:
+                try:
+                    self.metrics.deferred(reason_code=reason)
+                except Exception:
+                    pass
+            certificate_cid = ""
+            if certificate_payload is not None:
+                certificate_cid = _bounded_text(
+                    certificate_payload.get("certificate_id")
+                    or certificate_payload.get("certificate_cid")
+                    or getattr(intent, "certificate_cid", "")
+                    or ""
+                )
+            else:
+                certificate_cid = _bounded_text(
+                    getattr(intent, "certificate_cid", "") or ""
+                )
+            return IssuedCertificatePublicationResult(
+                published=False,
+                status="certificate_deferred",
+                reason_code=reason,
+                receipt_cid=receipt_cid,
+                certificate_cid=certificate_cid,
+                candidate_context_cid=candidate_cid,
+                non_authoritative_retained=retained,
+                action="DEFERRED",
+                diagnostics=MappingProxyType({"stage": "artifact_provenance"}),
+            )
+        assert isinstance(bindings, Groth16ArtifactIdentityBindings)
+
+        # 5. Reconstruct controller-owned V2 expected context (PTR-154 join).
+        is_test_only = _is_test_only_disposable_bindings(bindings)
+        controller_context = ControllerV2VerificationContext.from_sources(
+            deferred_request=request,
+            receipt=receipt,
+            bindings=bindings,
+            is_test_only_disposable=is_test_only,
+        )
+        if controller_context is None or not controller_context.is_complete:
+            reason = "controller_v2_context_incomplete"
             if self.metrics is not None:
                 try:
                     self.metrics.deferred(reason_code=reason)
@@ -1604,35 +2205,36 @@ class ProofReuseControllerPublicationTransaction:
                 candidate_context_cid=candidate_cid,
                 non_authoritative_retained=retained,
                 action="DEFERRED",
-                diagnostics=MappingProxyType({"stage": "artifact_provenance"}),
+                diagnostics=MappingProxyType({"stage": "controller_v2_context"}),
             )
-        cryptographic_verifier = getattr(
-            self.issuer, "verify_certificate_locally", None
+
+        # Prefer controller candidate CID for the publication result envelope.
+        expected_candidate_cid = (
+            controller_context.expected_candidate_context_cid
+            or controller_context.candidate_context_cid
         )
+        if expected_candidate_cid:
+            candidate_cid = candidate_cid or expected_candidate_cid
+
         module_provenance_validator = getattr(
             self.issuer, "validate_authority_module_provenance", None
         )
-        verified, verify_reason = _local_verify_certificate(
-            certificate_payload,
-            bindings=bindings,
-            require_cryptographic_verify=True,
-            cryptographic_verifier=cryptographic_verifier,
-            module_provenance_validator=module_provenance_validator,
-            verification_context=MappingProxyType(
-                {
-                    "receipt": receipt,
-                    "deferred_request": (
-                        deferred_request
-                        or getattr(intent, "deferred_request", None)
-                        or MappingProxyType({})
-                    ),
-                }
-            ),
+        # Injected issuer.verify_certificate_locally is intentionally ignored.
+        verified, verify_reason, verify_result = (
+            verify_test_execution_certificate_v2_for_publication(
+                certificate_payload,
+                bindings=bindings,
+                controller_context=controller_context,
+                test_only_backend=self.test_only_verification_backend,
+                module_provenance_validator=module_provenance_validator,
+            )
         )
         if not verified:
             if self.metrics is not None:
                 try:
-                    self.metrics.deferred(reason_code=verify_reason or "local_verification_failed")
+                    self.metrics.deferred(
+                        reason_code=verify_reason or "local_verification_failed"
+                    )
                 except Exception:
                     pass
             return IssuedCertificatePublicationResult(
@@ -1643,10 +2245,22 @@ class ProofReuseControllerPublicationTransaction:
                 candidate_context_cid=candidate_cid,
                 non_authoritative_retained=retained,
                 action="DEFERRED",
-                diagnostics=MappingProxyType({"stage": "local_verification"}),
+                diagnostics=MappingProxyType(
+                    {
+                        "stage": "exact_v2_verification",
+                        "verify_status": _status_text(
+                            getattr(
+                                getattr(verify_result, "status", None),
+                                "value",
+                                getattr(verify_result, "status", None),
+                            )
+                        ),
+                        "test_only_disposable": is_test_only,
+                    }
+                ),
             )
 
-        # 5. Atomic put_candidate exactly once — never discard a returned cert.
+        # 6. Atomic put_candidate exactly once — never discard a returned cert.
         certificate_cid = _bounded_text(
             certificate_payload.get("certificate_id")
             or certificate_payload.get("certificate_cid")
@@ -1660,7 +2274,9 @@ class ProofReuseControllerPublicationTransaction:
         if not ok:
             if self.metrics is not None:
                 try:
-                    self.metrics.degraded(reason_code=pub_reason or "publication_failed")
+                    self.metrics.degraded(
+                        reason_code=pub_reason or "publication_failed"
+                    )
                 except Exception:
                     pass
             return IssuedCertificatePublicationResult(
@@ -1680,10 +2296,13 @@ class ProofReuseControllerPublicationTransaction:
             if intent_id:
                 self._completed_intents.add(intent_id)
 
+        published_reason = "published"
+        if is_test_only or str(verify_reason).startswith("verified_test_only"):
+            published_reason = "published_test_only_disposable"
         return IssuedCertificatePublicationResult(
             published=True,
             status="certificate_issued",
-            reason_code="published",
+            reason_code=published_reason,
             receipt_cid=receipt_cid,
             certificate_cid=certificate_cid,
             candidate_context_cid=candidate_cid,
@@ -1695,16 +2314,27 @@ class ProofReuseControllerPublicationTransaction:
                 {
                     "stage": "complete",
                     "verify_reason": verify_reason,
+                    "expected_candidate_context_cid": expected_candidate_cid,
+                    "test_only_disposable": is_test_only
+                    or str(verify_reason).startswith("verified_test_only"),
+                    "production_authority": (
+                        not is_test_only
+                        and _bindings_production_ready(bindings)
+                        and not str(verify_reason).startswith("verified_test_only")
+                    ),
                 }
             ),
         )
 
 
 __all__ = [
+    "CONTROLLER_V2_VERIFICATION_CONTEXT_INTERFACE",
+    "ControllerV2VerificationContext",
     "GROTH16_ARTIFACT_IDENTITY_BINDINGS_INTERFACE",
     "Groth16ArtifactIdentityBindings",
     "ISSUED_CERTIFICATE_PUBLICATION_RESULT_INTERFACE",
     "IssuedCertificatePublicationResult",
     "PROOF_REUSE_CONTROLLER_PUBLICATION_INTERFACE",
     "ProofReuseControllerPublicationTransaction",
+    "verify_test_execution_certificate_v2_for_publication",
 ]

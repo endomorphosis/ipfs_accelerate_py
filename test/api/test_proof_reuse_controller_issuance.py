@@ -1,4 +1,4 @@
-"""Controller atomic issuance and publication transaction tests (PTR-147)."""
+"""Controller atomic issuance and publication transaction tests (PTR-147/155)."""
 
 from __future__ import annotations
 
@@ -17,12 +17,15 @@ from ipfs_accelerate_py.agent_supervisor.proof.test_execution_contracts import (
     TestProofCertificate,
 )
 from ipfs_accelerate_py.testing.proof_reuse.publication import (
+    CONTROLLER_V2_VERIFICATION_CONTEXT_INTERFACE,
+    ControllerV2VerificationContext,
     GROTH16_ARTIFACT_IDENTITY_BINDINGS_INTERFACE,
     Groth16ArtifactIdentityBindings,
     ISSUED_CERTIFICATE_PUBLICATION_RESULT_INTERFACE,
     IssuedCertificatePublicationResult,
     PROOF_REUSE_CONTROLLER_PUBLICATION_INTERFACE,
     ProofReuseControllerPublicationTransaction,
+    verify_test_execution_certificate_v2_for_publication,
 )
 from ipfs_accelerate_py.testing.proof_reuse.services import (
     DATASETS_GROTH16_LOCKED_SOURCE_IDENTITY,
@@ -80,18 +83,43 @@ def _test_ready_bindings(certificate: TestProofCertificate) -> Groth16ArtifactId
     )
 
 
-def _patch_test_only_cryptographic_verifier(
+def _patch_exact_v2_verified(
     monkeypatch: pytest.MonkeyPatch,
 ) -> list[dict[str, Any]]:
+    """Test double for sequencing only — not production authority."""
+
     calls: list[dict[str, Any]] = []
 
-    def verified(_certificate: Any, **kwargs: Any) -> tuple[bool, str]:
-        calls.append(dict(kwargs))
-        assert kwargs.get("require_cryptographic_verify") is True
-        assert kwargs["bindings"].provenance_ready is True
-        return True, "verified_test_double"
+    def verified(
+        _certificate: Any,
+        *,
+        bindings: Any,
+        controller_context: Any,
+        test_only_backend: Any = None,
+        module_provenance_validator: Any = None,
+    ) -> tuple[bool, str, Any]:
+        del test_only_backend, module_provenance_validator
+        calls.append(
+            {
+                "bindings_ready": bool(getattr(bindings, "provenance_ready", False)),
+                "context_complete": bool(
+                    getattr(controller_context, "is_complete", False)
+                ),
+                "expected_cid": getattr(
+                    controller_context, "expected_candidate_context_cid", ""
+                ),
+            }
+        )
+        return True, "verified_test_only_disposable", SimpleNamespace(
+            status="verified",
+            verified=True,
+        )
 
-    monkeypatch.setattr(publication_module, "_local_verify_certificate", verified)
+    monkeypatch.setattr(
+        publication_module,
+        "verify_test_execution_certificate_v2_for_publication",
+        verified,
+    )
     return calls
 
 
@@ -283,7 +311,7 @@ def test_controller_transaction_retains_then_defers_positive_v4_publication(
     receipt = _admitted_receipt()
     certificate = _certificate(receipt)
     bindings = _test_ready_bindings(certificate)
-    verification_calls = _patch_test_only_cryptographic_verifier(monkeypatch)
+    verification_calls = _patch_exact_v2_verified(monkeypatch)
     issued: list[Any] = []
 
     class _Issuer:
@@ -322,10 +350,11 @@ def test_controller_transaction_retains_then_defers_positive_v4_publication(
     assert result.published is False
     assert result.put_candidate_called is False
     assert result.indexed is False
-    assert result.reason_code == "positive_v4_publication_pending_ptr155"
+    assert result.reason_code == "controller_v2_context_incomplete"
     assert result.action == "DEFERRED"
     assert result.non_authoritative_retained is True
-    assert issued == []
+    # Issuer may run, but incomplete controller context never reaches put_candidate
+    # and exact V2 is not invoked without a complete context.
     assert verification_calls == []
     assert store.calls == []
     # Cold retention wrote at least the receipt bytes to the candidate store.
@@ -379,7 +408,7 @@ def test_self_asserted_bindings_and_fake_verifier_never_reach_candidate_store() 
     assert result.published is False
     assert result.indexed is False
     assert result.put_candidate_called is False
-    assert result.reason_code == "positive_v4_publication_pending_ptr155"
+    assert result.reason_code == "artifact_provenance_unready"
     assert result.certificate_cid == certificate.certificate_id
     assert calls == []
     assert any(
@@ -394,7 +423,7 @@ def test_flush_retains_receipt_without_positive_v4_authority(
     receipt = _admitted_receipt()
     certificate = _certificate(receipt)
     bindings = _test_ready_bindings(certificate)
-    _patch_test_only_cryptographic_verifier(monkeypatch)
+    _patch_exact_v2_verified(monkeypatch)
 
     class _Issuer:
         last_artifact_bindings = bindings
@@ -457,7 +486,7 @@ def test_structural_certificate_without_artifact_provenance_never_indexes() -> N
     result = tx.publish_intent(intent)
 
     assert result.published is False
-    assert result.reason_code == "positive_v4_publication_pending_ptr155"
+    assert result.reason_code == "artifact_provenance_unready"
     assert result.action == "DEFERRED"
     assert [name for name, _payload in store.calls] == []
 
@@ -468,7 +497,7 @@ def test_pending_positive_v4_never_probes_candidate_store_or_fences_controller(
     receipt = _admitted_receipt()
     certificate = _certificate(receipt)
     bindings = _test_ready_bindings(certificate)
-    _patch_test_only_cryptographic_verifier(monkeypatch)
+    _patch_exact_v2_verified(monkeypatch)
 
     class _Issuer:
         last_artifact_bindings = bindings
@@ -535,8 +564,7 @@ def test_put_candidate_once_rejects_untyped_truthy_result() -> None:
 def test_mismatched_artifact_provenance_returns_deferred(tmp_path: Path) -> None:
     receipt = _admitted_receipt()
     certificate = _certificate(receipt)
-    # This test isolates the controller's pin comparison.  Production-ready
-    # bindings can only be constructed through the reviewed manifest path.
+    # Self-asserted provenance without the test-only or production-ready path.
     bindings = Groth16ArtifactIdentityBindings(
         circuit_cid="cid:different-circuit",
         verifying_key_cid="cid:different-verifying-key",
@@ -567,11 +595,157 @@ def test_mismatched_artifact_provenance_returns_deferred(tmp_path: Path) -> None
     )
     intent = ProofReusePublicationIntent.from_receipt(receipt)
     result = tx.publish_intent(intent)
-    # The PTR-155 authority gate runs before any mutable provider verification.
     assert result.published is False
     assert result.action == "DEFERRED"
-    assert result.reason_code == "positive_v4_publication_pending_ptr155"
+    assert result.reason_code == "artifact_provenance_unready"
     assert result.authorizes_skip is False
+    assert result.put_candidate_called is False
+
+
+def test_controller_v2_context_interface_never_grants_authority() -> None:
+    context = ControllerV2VerificationContext(
+        receipt_cid="cid:r",
+        execution_key_cid="cid:e",
+        candidate_context_cid="cid:c",
+        expected_candidate_context_cid="cid:c",
+        policy_cid="cid:p",
+        statement_cid="cid:s",
+        circuit_cid="cid:circuit",
+        verifying_key_cid="cid:vk",
+        issuer_id="issuer:t",
+        epoch="epoch:1",
+        backend_id="groth16",
+    )
+    assert context.interface == CONTROLLER_V2_VERIFICATION_CONTEXT_INTERFACE
+    assert context.is_complete is True
+    assert context.may_authorize_skip is False
+    assert context.may_publish_candidate is False
+    payload = context.to_dict()
+    assert payload["may_authorize_skip"] is False
+    assert payload["may_publish_candidate"] is False
+
+
+def test_injected_verifier_and_self_claim_cannot_authorize_put_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even with complete pins, only exact V2 VERIFIED can put_candidate."""
+
+    receipt = _admitted_receipt()
+    certificate = _certificate(receipt)
+    bindings = _test_ready_bindings(certificate)
+    put_calls: list[Any] = []
+
+    class _Store:
+        def put_candidate(self, *args: Any, **kwargs: Any) -> Any:
+            put_calls.append((args, kwargs))
+            return SimpleNamespace(stored=True, indexed=True)
+
+        def put_receipt(self, receipt: Any) -> Any:
+            return SimpleNamespace(stored=True)
+
+    class _Issuer:
+        def verify_certificate_locally(self, *_args: Any) -> Any:
+            return SimpleNamespace(
+                verified=True,
+                authoritative=True,
+                can_authorize_skip=True,
+                status="verified",
+                authority="authoritative",
+            )
+
+    # Exact V2 always rejects this structural V1 certificate.
+    def reject(*_args: Any, **_kwargs: Any) -> tuple[bool, str, Any]:
+        return False, "exact_v2_not_verified", SimpleNamespace(status="rejected")
+
+    monkeypatch.setattr(
+        publication_module,
+        "verify_test_execution_certificate_v2_for_publication",
+        reject,
+    )
+
+    complete_request = {
+        "receipt_cid": receipt.receipt_id,
+        "execution_key_cid": receipt.execution_key_cid,
+        "candidate_context_cid": "cid:candidate",
+        "policy_cid": "cid:policy",
+        "statement_cid": "cid:statement",
+        "circuit_cid": certificate.circuit_cid,
+        "verifying_key_cid": certificate.verifying_key_cid,
+        "issuer_id": "issuer:test",
+        "epoch": "epoch:1",
+        "backend_id": "groth16",
+        "proof_system_id": "groth16",
+        "locator_cid": receipt.locator_cid,
+    }
+    intent = ProofReusePublicationIntent.from_receipt(
+        receipt,
+        certificate=certificate.to_dict(),
+        certificate_cid=certificate.certificate_id,
+        deferred_request=complete_request,
+    )
+    result = ProofReuseControllerPublicationTransaction(
+        store=_Store(),
+        issuer=_Issuer(),
+        artifact_bindings=bindings,
+    ).publish_intent(intent)
+
+    assert result.published is False
+    assert result.put_candidate_called is False
+    assert result.reason_code == "exact_v2_not_verified"
+    assert put_calls == []
+    assert result.authorizes_skip is False
+
+
+def test_put_candidate_exactly_once_after_verified(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    receipt = _admitted_receipt()
+    certificate = _certificate(receipt)
+    bindings = _test_ready_bindings(certificate)
+    _patch_exact_v2_verified(monkeypatch)
+    put_calls: list[int] = []
+
+    class _Store:
+        def put_candidate(self, *_args: Any, **_kwargs: Any) -> Any:
+            put_calls.append(1)
+            return SimpleNamespace(stored=True, indexed=True)
+
+    complete_request = {
+        "receipt_cid": receipt.receipt_id,
+        "execution_key_cid": receipt.execution_key_cid,
+        "candidate_context_cid": "cid:candidate",
+        "policy_cid": "cid:policy",
+        "statement_cid": "cid:statement",
+        "circuit_cid": certificate.circuit_cid,
+        "verifying_key_cid": certificate.verifying_key_cid,
+        "issuer_id": "issuer:test",
+        "epoch": "epoch:1",
+        "backend_id": "groth16",
+        "proof_system_id": "groth16",
+        "locator_cid": receipt.locator_cid,
+    }
+    intent = ProofReusePublicationIntent.from_receipt(
+        receipt,
+        certificate=certificate.to_dict(),
+        certificate_cid=certificate.certificate_id,
+        deferred_request=complete_request,
+    )
+    tx = ProofReuseControllerPublicationTransaction(
+        store=_Store(),
+        artifact_bindings=bindings,
+    )
+    result = tx.publish_intent(intent)
+    assert result.published is True
+    assert result.put_candidate_called is True
+    assert result.indexed is True
+    assert result.reason_code == "published_test_only_disposable"
+    assert result.authorizes_skip is False
+    assert result.diagnostics.get("production_authority") is False
+    assert put_calls == [1]
+    # Idempotent second call does not put_candidate again.
+    again = tx.publish_intent(intent)
+    assert again.reason_code == "idempotent_skip"
+    assert put_calls == [1]
 
 
 def test_workers_serialize_no_witness_or_private_material() -> None:
