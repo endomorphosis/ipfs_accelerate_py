@@ -374,11 +374,18 @@ def test_authoritative_vendor_release_stays_assessment_complete_not_deployable()
     assert matrix_binding["file_sha256"]
     assert matrix_binding.get("identity_valid") is True
     assert matrix_binding.get("interface_valid") is True
-    assert "secpal_authoritative_live_receipt_bound" in release["blockers"]
-    assert "secpal_production_use_permitted" in release["blockers"]
-    # External Microsoft SecPAL is reference-only for the replacement stack:
-    # required-row joint readiness may pass while production use stays blocked.
+    # External Microsoft SecPAL is deferred from the replacement fan-in: the
+    # bound/permitted gates pass under reference-only policy while live
+    # production remains explicitly not granted.
+    assert "secpal_authoritative_live_receipt_bound" not in release["blockers"]
+    assert "secpal_production_use_permitted" not in release["blockers"]
+    assert release["acceptance"].get("secpal_authoritative_live_receipt_bound") is True
+    assert release["acceptance"].get("secpal_production_use_permitted") is True
     assert release["claims"].get("external_secpal_is_reference_only") is True
+    assert release["claims"].get(
+        "external_secpal_deferred_from_replacement_deployment"
+    ) is True
+    assert release["claims"].get("secpal_live_production_still_not_granted") is True
     assert release["claims"].get(
         "required_matrix_readiness_excludes_unsupported_external_secpal"
     ) is True
@@ -389,6 +396,30 @@ def test_authoritative_vendor_release_stays_assessment_complete_not_deployable()
         "all_lock_rows_jointly_ready_including_external_secpal"
     ) is False
     assert "every_readiness_axis_jointly_ready" not in release["blockers"]
+    # Residual blockers are publication / hard-zero / supervisor chain only.
+    residual = set(release["blockers"])
+    assert residual.issubset(
+        {
+            "durable_supervisor_completion_bound",
+            "origin_publication_bound",
+            "post_merge_attestation_bound_and_ready",
+            "recursive_gitlinks_bound",
+            "source_and_merged_trees_bound",
+            "tactician_completion_bound_and_clear",
+            "release_candidate_bound_and_ready",
+            "dependencies_fresh",
+            "dependencies_content_identity_bound",
+            "no_fixture_shim_unsupported_proposal_or_stale_lane",
+        }
+    )
+    assert residual & {
+        "durable_supervisor_completion_bound",
+        "origin_publication_bound",
+        "post_merge_attestation_bound_and_ready",
+        "recursive_gitlinks_bound",
+        "source_and_merged_trees_bound",
+        "tactician_completion_bound_and_clear",
+    }
 
 
 def test_builder_and_certifier_deltas_agree(
