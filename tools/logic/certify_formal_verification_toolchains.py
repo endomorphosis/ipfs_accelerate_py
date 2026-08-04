@@ -241,8 +241,9 @@ AUTHORITATIVE_VENDOR_RELEASE_OBJECTIVE_EVIDENCE_TERMS: Final[tuple[str, ...]] = 
 
 # Post-remediation re-audit (FVT-G233 / FVT-100).  Owns only the delta between
 # the known 5-of-28 ready baseline and the rebuilt matrix/release assessment
-# after locally actionable remediations (G225-G231).  External approval (G232)
-# and legacy SecPAL live authority (G219) remain blocked.
+# after locally actionable remediations (G225-G231).  G232 disposition may be
+# satisfied by project-owner software disposition when Microsoft SecPAL is
+# unused; legacy SecPAL live authority (G219) remains blocked.
 POST_REMEDIATION_INTERFACE: Final = (
     "FormalVerificationPostRemediationAssurance@1"
 )
@@ -11330,22 +11331,22 @@ def _production_authorization_replacement_receipt_valid(
     return True
 
 
-def _external_authorization_replacement_approval_complete(
-    repo_root: Path,
-) -> bool:
-    """Observe FVT-G232 only; never synthesize external approval."""
+def _load_g232_disposition_module():
+    """Load the FVT-G232 disposition module (external or project-owner)."""
 
     try:
-        from tools.logic.certify_authorization_replacement_external_approval import (
-            observe_external_approval,
+        from tools.logic import (
+            certify_authorization_replacement_external_approval as module,
         )
+
+        return module
     except ImportError:
         approval_path = (
             Path(__file__).resolve().parent
             / "certify_authorization_replacement_external_approval.py"
         )
         if not approval_path.is_file():
-            return False
+            return None
         import importlib.util
 
         spec = importlib.util.spec_from_file_location(
@@ -11353,12 +11354,33 @@ def _external_authorization_replacement_approval_complete(
             approval_path,
         )
         if spec is None or spec.loader is None:
-            return False
+            return None
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        observe_external_approval = module.observe_external_approval
+        return module
+
+
+def _external_authorization_replacement_approval_complete(
+    repo_root: Path,
+) -> bool:
+    """Observe FVT-G232 disposition: external envelope OR project-owner.
+
+    Never forges external counsel signatures.  Project-owner software
+    disposition is an explicit alternate path when the stack does not use
+    Microsoft SecPAL and is own product software (not client work product).
+    """
+
+    module = _load_g232_disposition_module()
+    if module is None:
+        return False
     try:
-        result = observe_external_approval(repo_root.resolve())
+        if hasattr(module, "observe_g232_deployment_disposition"):
+            result = module.observe_g232_deployment_disposition(
+                repo_root.resolve()
+            )
+            return result.get("satisfied") is True
+        # Backward-compatible fallback: external envelope only.
+        result = module.observe_external_approval(repo_root.resolve())
     except Exception:  # noqa: BLE001 - approval observation fails closed
         return False
     return result.get("approval_complete") is True and result.get("valid") is True
@@ -11518,15 +11540,17 @@ def _build_production_authorization_replacement_row(
         role="authority",
         stable_operations_ready=public_surface.get("ready") is True,
     )
-    # FVT-G232 is external-only: agents may observe a signed envelope, never
-    # treat a self-authored production-replacement receipt boolean as approval.
+    # FVT-G232 disposition: external counsel envelope (optional) OR explicit
+    # project-owner software/IP disposition for own product code that does not
+    # use Microsoft SecPAL.  Never forges counsel signatures; never treats a
+    # production-replacement receipt boolean alone as approval.
     legal_complete = _external_authorization_replacement_approval_complete(
         repo_root
     )
     certified = receipt_valid and payload.get("certified") is True
     semantic_ready = certified
-    # Authorization-ceiling authority is technical; legal approval is external
-    # (FVT-G232) and never synthesizes deployment readiness.
+    # Authorization-ceiling authority is technical; G232 disposition is
+    # separate and never grants Microsoft SecPAL / FVT-G219 authority.
     authority_ready = bool(certified)
     freshness_ready = bool(
         certificate_lock_fresh and receipt_ref.get("present") is True
@@ -11654,10 +11678,10 @@ def _build_production_authorization_replacement_row(
         joint_reasons = sorted(
             set(joint_reasons)
             | {
-                "external_approval:fvt_g232_legal_ip_security_approval_pending",
+                "g232_disposition:external_envelope_or_project_owner_pending",
             }
         )
-        # External approval cannot be synthesized into joint readiness.
+        # G232 disposition cannot be synthesized from empty evidence.
         joint_ready = False
     return {
         "row_id": (
@@ -11685,6 +11709,10 @@ def _build_production_authorization_replacement_row(
             "cannot_claim_microsoft_secpal_authority": True,
             "legal_approval_complete": legal_complete,
             "legal_approval_goal_id": "FVT-G232",
+            "g232_disposition_modes_accepted": [
+                "external_approval_envelope",
+                "project_owner_software_disposition",
+            ],
         },
         "axes": axes,
         "joint_ready": joint_ready,
@@ -11875,8 +11903,8 @@ def build_post_remediation_assurance_delta(
         is True
     )
     # Honest deployment readiness is derived, never synthesized:
-    # - FVT-G232 legal/IP/security approval must already be bound on the
-    #   production-authorization-replacement receipt (external, not authored here)
+    # - FVT-G232 disposition must be satisfied via external envelope OR
+    #   project-owner software/IP disposition (no forged counsel signatures)
     # - every required lock provider/host row must be jointly ready
     # - external Microsoft SecPAL may remain the disclosed non-required
     #   unsupported exception without blocking the replacement path
@@ -11952,12 +11980,13 @@ def build_post_remediation_assurance_delta(
         ),
         (
             "production-authorization-replacement is a new non-lock row with a "
-            "separately named identity; legal/IP/security approval is FVT-G232 "
-            f"(legal_approval_complete={legal_complete})."
+            "separately named identity; FVT-G232 disposition "
+            f"(legal_approval_complete={legal_complete}) accepts external "
+            "counsel envelope or project-owner software disposition."
         ),
         (
             "Local audit/assessment completion is independent from deployment "
-            "readiness; deployment_ready becomes true only when FVT-G232 legal "
+            "readiness; deployment_ready becomes true only when FVT-G232 "
             "approval is already bound, every required lock row (excluding "
             "non-required unsupported external SecPAL) is jointly ready, the "
             "replacement row is jointly ready, and the delta is independently "
@@ -12077,13 +12106,15 @@ def build_post_remediation_assurance_delta(
             "FVT-G232": {
                 "status": "complete" if legal_complete else "blocked",
                 "reason": (
-                    "legal/IP/security/deployment approval envelope is bound on "
-                    "the production-authorization-replacement receipt"
+                    "G232 disposition satisfied via external counsel envelope "
+                    "or project-owner software/IP disposition (Microsoft "
+                    "SecPAL unused; not client work product; no forged "
+                    "counsel signatures)"
                     if legal_complete
                     else (
-                        "legal/IP/security/deployment approval envelope for the "
-                        "authorization replacement is external and not "
-                        "agent-authored"
+                        "G232 disposition pending: need external counsel "
+                        "envelope or project-owner software/IP disposition "
+                        "for the non-SecPAL replacement provider"
                     )
                 ),
             },
@@ -12131,13 +12162,16 @@ def build_post_remediation_assurance_delta(
         },
         "disclosures": {
             "does_not_rewrite_historical_receipts": True,
-            "does_not_mark_external_approval_complete": not legal_complete,
+            # External counsel envelope remains separate from project-owner
+            # software disposition; this tool never forges counsel signatures.
+            "does_not_mark_external_approval_complete": True,
             "does_not_weaken_upstream_gates": True,
             "does_not_complete_fvt_g219": True,
-            # This tool never authors FVT-G232; it may only observe a bound
-            # external approval already present on the replacement receipt.
+            # This tool never authors FVT-G232 envelopes; it only observes a
+            # bound external envelope or project-owner software disposition.
             "does_not_complete_fvt_g232": True,
             "observes_bound_fvt_g232_without_authoring": True,
+            "accepts_project_owner_software_disposition_for_g232": True,
             "external_secpal_reference_semantics_only": True,
             "external_secpal_not_required_for_replacement_stack": True,
             "do_not_port_or_depend_on_microsoft_secpal": True,
