@@ -1032,6 +1032,26 @@ def build_validation_environment(
         source,
         VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
     )
+    if playwright_browsers is None:
+        # Private validation homes wipe XDG_CACHE_HOME. Reuse an approved host
+        # browser cache so UI validation does not thrash into retry-budget blocks
+        # solely because the temp profile has no browser bundles.
+        for candidate in (
+            str(source.get(VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV) or "").strip(),
+            str(source.get("PLAYWRIGHT_BROWSERS_PATH") or "").strip(),
+            str(os.environ.get(VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV) or "").strip(),
+            str(os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or "").strip(),
+            str(Path(os.environ.get("HOME") or "").expanduser() / ".cache" / "ms-playwright"),
+        ):
+            if not candidate:
+                continue
+            try:
+                path = Path(candidate).expanduser().resolve(strict=True)
+            except OSError:
+                continue
+            if path.is_dir():
+                playwright_browsers = str(path)
+                break
     if playwright_browsers is not None:
         result["PLAYWRIGHT_BROWSERS_PATH"] = playwright_browsers
     supervisor_state_root = _approved_directory(
