@@ -2076,6 +2076,22 @@ def classify_provider_capacity_failure(text: str) -> dict[str, Any]:
             "providers": ["codex"],
             "reason": "provider_capacity_exhausted",
         }
+    # Production-route dispositions embed the capacity token (or ChatGPT's
+    # usage-limit sentence) inside a larger reason_code / message.  Match the
+    # fixed marker and the public usage-limit phrasing without requiring the
+    # whole log body to equal the internal token.
+    lowered_full = str(text or "").casefold()
+    if (
+        LEGACY_CODEX_USAGE_LIMIT_CAPACITY_MARKER in lowered_full
+        or "you've hit your usage limit" in lowered_full
+        or "you\u2019ve hit your usage limit" in lowered_full
+        or "codex_quota_exhausted" in lowered_full
+    ):
+        return {
+            "exhausted": True,
+            "providers": ["codex"],
+            "reason": "provider_capacity_exhausted",
+        }
 
     # Worktree pool races can dispose the workspace between setup and provider
     # launch. That is infrastructure, not an implementation attempt to charge.

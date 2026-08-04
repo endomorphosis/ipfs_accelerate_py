@@ -1689,8 +1689,30 @@ class ImplementationProviderRouter:
             raise
         except Exception as exc:
             message = str(exc or "").strip()
-            reason = ProviderReason.PROVIDER_FAILURE
             lowered = message.casefold()
+            # Native Codex adapters emit a fixed capacity token (and some
+            # transports still surface the ChatGPT usage-limit sentence).
+            # Promote those to a typed quota error so independent-review
+            # exhaustion degrades to admitted Grok instead of a bare
+            # provider_failure that burns task attempts.
+            capacity_markers = (
+                "legacy_codex_usage_capacity_exhausted",
+                "you've hit your usage limit",
+                "you\u2019ve hit your usage limit",
+                "usage limit",
+            )
+            if any(token in lowered for token in capacity_markers):
+                quota_reason = (
+                    ProviderReason.CODEX_QUOTA_EXHAUSTED.value
+                    if request.role is ProviderRole.CODEX_REVIEW
+                    else ProviderReason.PROVIDER_QUOTA_EXHAUSTED.value
+                )
+                latch.latch(quota_reason)
+                raise ProviderQuotaError(
+                    message or quota_reason,
+                    reason_code=quota_reason,
+                ) from exc
+            reason = ProviderReason.PROVIDER_FAILURE
             if "timed out" in lowered or "timeout" in lowered:
                 reason = ProviderReason.PROVIDER_TIMEOUT
             detail = message or type(exc).__name__
@@ -1818,10 +1840,20 @@ class ImplementationProviderRouter:
         code = str(reason_code or ProviderReason.PROVIDER_FAILURE.value)
         note = str(detail or "").strip()
         if note and note.casefold() not in code.casefold():
-            # Keep reason_code itself stable for classifiers; attach detail only
-            # when it is short and non-sensitive (already allowlisted upstream).
-            if len(note) <= 160 and all(ord(ch) < 128 for ch in note):
-                code = f"{code}:{note}"[:200]
+            # Keep the stable classifier prefix, but retain enough secret-free
+            # transport detail that operators can distinguish schema/timeout/
+            # binary failures from a bare provider_failure label.
+            if all(ord(ch) < 128 for ch in note):
+                # Drop common wrappers so the note is the useful tail.
+                for prefix in (
+                    "codex-independent-review failed: ",
+                    "grok-implement failed: ",
+                    "deterministic-local failed: ",
+                ):
+                    if note.casefold().startswith(prefix):
+                        note = note[len(prefix) :]
+                        break
+                code = f"{code}:{note}"[:400]
         return ProviderAttempt(
             role=role,
             status="failed",
@@ -2169,7 +2201,10 @@ class ImplementationProviderRouter:
         except ProviderQuotaError as exc:
             attempts.append(
                 self._error_attempt(
-                    ProviderRole.CODEX_REVIEW, exc.reason_code, codex_request
+                    ProviderRole.CODEX_REVIEW,
+                    exc.reason_code,
+                    codex_request,
+                    detail=str(exc or ""),
                 )
             )
             return self._finish_with_grok(
@@ -2183,7 +2218,10 @@ class ImplementationProviderRouter:
         except ProviderRoutingError as exc:
             attempts.append(
                 self._error_attempt(
-                    ProviderRole.CODEX_REVIEW, exc.reason_code, codex_request
+                    ProviderRole.CODEX_REVIEW,
+                    exc.reason_code,
+                    codex_request,
+                    detail=str(exc or ""),
                 )
             )
             # Grok has already passed the supervisor gate.  Review degradation
