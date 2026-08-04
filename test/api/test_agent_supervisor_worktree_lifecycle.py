@@ -290,6 +290,176 @@ def test_controlled_restart_reclaims_only_dead_same_lane_owner(
     assert store.load_workspace(live_workspace).is_nonterminal
 
 
+def test_reclaim_dead_owner_bypasses_lease_after_preparing_grace(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=600.0,
+        startup_grace_seconds=5.0,
+        clock=clock,
+    )
+    workspace = tmp_path / "dead-active"
+    dead_owner = ProcessBirthIdentity(
+        pid=2**30 - 11,
+        start_time_ticks=1,
+        boot_id="dead-boot",
+    )
+    record = store.begin_preparing(
+        task_id="DEAD-ACTIVE",
+        canonical_task_cid="cid:dead-active",
+        attempt=1,
+        lane_id="lane",
+        workspace_path=workspace,
+        branch="implementation/dead-active",
+        merge_target="main",
+        owner=dead_owner,
+    )
+    record = store.mark_active(
+        workspace,
+        lease_id=record.lease_id,
+        expected_fence=record.fence,
+    )
+    # Peer cleanup still waits for full lease expiry.
+    assert store.evaluate_cleanup(workspace_path=workspace).reason == (
+        "owner_dead_lease_unexpired"
+    )
+    # Auto-unblock / same-attempt recovery fences immediately for active dead
+    # owners (preparing grace does not apply once active).
+    reclaimed = store.reclaim_dead_owner(
+        workspace,
+        reason="auto_unblock_dead_owner",
+    )
+    assert reclaimed is not None
+    assert reclaimed.state is WorkspaceLifecycleState.TERMINAL
+    assert reclaimed.fence == record.fence + 1
+    assert reclaimed.terminal_reason == "auto_unblock_dead_owner"
+    indexed = store.load_task_attempt(
+        canonical_task_cid="cid:dead-active",
+        task_id="DEAD-ACTIVE",
+        attempt=1,
+    )
+    assert indexed is not None
+    assert indexed.is_terminal
+
+
+def test_begin_preparing_reclaims_dead_same_attempt_without_lease_wait(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=600.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    dead_owner = ProcessBirthIdentity(
+        pid=2**30 - 13,
+        start_time_ticks=1,
+        boot_id="dead-boot",
+    )
+    orphan = tmp_path / "orphan-ws"
+    orphan_record = store.begin_preparing(
+        task_id="RETRY-DEAD",
+        canonical_task_cid="cid:retry-dead",
+        attempt=2,
+        lane_id="dead-lane",
+        workspace_path=orphan,
+        branch="implementation/retry-dead-orphan",
+        merge_target="main",
+        owner=dead_owner,
+    )
+    store.mark_active(
+        orphan,
+        lease_id=orphan_record.lease_id,
+        expected_fence=orphan_record.fence,
+    )
+    retry_ws = tmp_path / "retry-ws"
+    retry = store.begin_preparing(
+        task_id="RETRY-DEAD",
+        canonical_task_cid="cid:retry-dead",
+        attempt=2,
+        lane_id="live-lane",
+        workspace_path=retry_ws,
+        branch="implementation/retry-dead-retry",
+        merge_target="main",
+    )
+    assert retry.state is WorkspaceLifecycleState.PREPARING
+    assert retry.workspace_path == str(retry_ws.resolve())
+    orphaned = store.load_workspace(orphan)
+    assert orphaned is not None
+    assert orphaned.is_terminal
+    assert orphaned.terminal_reason == "dead_owner_task_attempt_superseded"
+
+
+def test_reclaim_all_dead_owners_skips_live_and_preparing_grace(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=600.0,
+        startup_grace_seconds=30.0,
+        clock=clock,
+    )
+    dead_owner = ProcessBirthIdentity(
+        pid=2**30 - 15,
+        start_time_ticks=1,
+        boot_id="dead-boot",
+    )
+    preparing = tmp_path / "preparing-grace"
+    store.begin_preparing(
+        task_id="GRACE",
+        canonical_task_cid="cid:grace",
+        attempt=1,
+        lane_id="lane",
+        workspace_path=preparing,
+        branch="implementation/grace",
+        merge_target="main",
+        owner=dead_owner,
+    )
+    active = tmp_path / "active-dead"
+    active_record = store.begin_preparing(
+        task_id="ACTIVE-DEAD",
+        canonical_task_cid="cid:active-dead",
+        attempt=1,
+        lane_id="lane",
+        workspace_path=active,
+        branch="implementation/active-dead",
+        merge_target="main",
+        owner=dead_owner,
+    )
+    store.mark_active(
+        active,
+        lease_id=active_record.lease_id,
+        expected_fence=active_record.fence,
+    )
+    live = tmp_path / "live"
+    store.begin_preparing(
+        task_id="LIVE",
+        canonical_task_cid="cid:live",
+        attempt=1,
+        lane_id="lane",
+        workspace_path=live,
+        branch="implementation/live",
+        merge_target="main",
+    )
+
+    recovered = store.reclaim_all_dead_owners(reason="auto_unblock_dead_owner")
+    assert [record.task_id for record in recovered] == ["ACTIVE-DEAD"]
+    assert store.load_workspace(preparing).is_nonterminal
+    assert store.load_workspace(active).is_terminal
+    assert store.load_workspace(live).is_nonterminal
+
+    clock.advance(31.0)
+    recovered_later = store.reclaim_all_dead_owners(
+        reason="auto_unblock_dead_owner",
+    )
+    assert [record.task_id for record in recovered_later] == ["GRACE"]
+    assert store.load_workspace(preparing).is_terminal
+
+
 def test_branch_fallback_reclaims_authoritative_provisional_workspace(
     tmp_path: Path,
 ) -> None:
@@ -464,6 +634,13 @@ def test_duplicate_attempt_rejected_while_owner_alive(tmp_path: Path) -> None:
 def test_duplicate_attempts_do_not_leak_candidate_workspace_guards(
     tmp_path: Path,
 ) -> None:
+    """Live same-attempt contention must reject without leaving workspace guards.
+
+    Dead-owner same-attempt claims are reclaimable (see
+    ``test_begin_preparing_reclaims_dead_same_attempt_without_lease_wait``);
+    this test exercises the still-fail-closed live-owner path.
+    """
+
     clock = FakeClock(1_000.0)
     store = _store(
         tmp_path,
@@ -472,11 +649,6 @@ def test_duplicate_attempts_do_not_leak_candidate_workspace_guards(
         clock=clock,
     )
     original_workspace = tmp_path / "worktrees" / "original"
-    dead_owner = ProcessBirthIdentity(
-        pid=2**30 - 9,
-        start_time_ticks=1,
-        boot_id="dead-boot",
-    )
     original = store.begin_preparing(
         task_id="DUP-GUARD",
         canonical_task_cid="cid:dup-guard",
@@ -485,7 +657,6 @@ def test_duplicate_attempts_do_not_leak_candidate_workspace_guards(
         workspace_path=original_workspace,
         branch="implementation/dup-guard",
         merge_target="main",
-        owner=dead_owner,
     )
     assert store.store_dir is not None
     initial_guards = {
@@ -498,7 +669,7 @@ def test_duplicate_attempts_do_not_leak_candidate_workspace_guards(
         candidate = tmp_path / "worktrees" / f"retry-{index}"
         with pytest.raises(
             DuplicateAttemptError,
-            match="task/attempt claim lease has not expired",
+            match="task/attempt already has a nonterminal workspace claim",
         ):
             store.begin_preparing(
                 task_id="DUP-GUARD",

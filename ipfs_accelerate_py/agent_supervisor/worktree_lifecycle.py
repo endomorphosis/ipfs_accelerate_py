@@ -667,6 +667,17 @@ class WorktreeLifecycleStore:
                 raise DuplicateAttemptError(
                     "task/attempt already has a nonterminal workspace claim"
                 )
+            # Dead owner: reclaim past startup grace without waiting the full
+            # lease. Lifecycle races do not consume attempts, so same-attempt
+            # retries otherwise thrash for hours on orphan claims.
+            if self.dead_owner_is_reclaimable(other, now=now):
+                reclaimed = self.reclaim_dead_owner(
+                    other.workspace_path,
+                    reason="dead_owner_task_attempt_superseded",
+                    now=now,
+                )
+                if reclaimed is not None and reclaimed.is_terminal:
+                    return
             if now < float(other.expires_at):
                 raise DuplicateAttemptError(
                     "task/attempt claim lease has not expired"
@@ -698,14 +709,17 @@ class WorktreeLifecycleStore:
                         raise DuplicateAttemptError(
                             "workspace claim exists and lease has not expired"
                         )
-                    if not expired:
-                        # Owner is dead but lease still valid: only reclaim
-                        # after expiry.
+                    if not expired and not self.dead_owner_is_reclaimable(
+                        existing, now=now
+                    ):
+                        # Owner is dead but still inside preparing startup
+                        # grace: fail closed so mid-publication claims settle.
                         raise DuplicateAttemptError(
                             "workspace claim lease has not expired for stale "
                             "owner"
                         )
-                    # Dead + expired → reclaim with fence advancement below.
+                    # Dead + (expired or past grace) → reclaim with fence
+                    # advancement below.
                     next_fence = int(existing.fence) + 1
                 else:
                     next_fence = (
@@ -1122,6 +1136,34 @@ class WorktreeLifecycleStore:
             attempt_consumed=False,
         )
 
+    def dead_owner_is_reclaimable(
+        self,
+        record: WorkspaceLifecycleRecord,
+        *,
+        now: float | None = None,
+    ) -> bool:
+        """Whether a nonterminal record may be fenced for a provably dead owner.
+
+        Peer cleanup and pool reuse still prefer full lease expiry via
+        :meth:`reclaim_stale`.  Same-attempt retries and auto-unblock use this
+        faster path: process-birth DEAD is authoritative, and only the
+        preparing startup grace remains to protect mid-publication claims.
+        """
+
+        if record.is_terminal:
+            return False
+        clock_now = float(self.clock() if now is None else now)
+        if (
+            owner_liveness(record.owner, proc_root=self.proc_root)
+            is not OwnerLiveness.DEAD
+        ):
+            return False
+        if record.state is WorkspaceLifecycleState.PREPARING:
+            age = clock_now - float(record.created_at)
+            if age < self.startup_grace_seconds:
+                return False
+        return True
+
     def reclaim_stale(
         self,
         workspace: str | Path,
@@ -1158,7 +1200,92 @@ class WorktreeLifecycleStore:
                 lease_id=reclaimer_lease_id or current.lease_id,
             )
             _atomic_write_json(record_path, updated.to_dict())
+            self._publish_task_index(updated)
             return updated
+
+    def reclaim_dead_owner(
+        self,
+        workspace: str | Path,
+        *,
+        reclaimer_lease_id: str = "",
+        reason: str = "dead_owner_reclamation",
+        now: float | None = None,
+    ) -> WorkspaceLifecycleRecord | None:
+        """Fence a nonterminal claim when process-birth proves the owner is dead.
+
+        Unlike :meth:`reclaim_stale`, this does not wait for full lease expiry.
+        Preparing claims still honor :attr:`startup_grace_seconds` so a peer
+        cannot reclaim mid-publication. Live and UNKNOWN owners fail closed.
+        """
+
+        clock_now = float(self.clock() if now is None else now)
+        record_path = self.workspace_path_for(workspace)
+        with serialized_lock_update(record_path):
+            current = self.load_workspace(workspace)
+            if current is None:
+                return None
+            if current.is_terminal:
+                return current
+            if not self.dead_owner_is_reclaimable(current, now=clock_now):
+                return None
+            updated = replace(
+                current,
+                state=WorkspaceLifecycleState.TERMINAL,
+                fence=int(current.fence) + 1,
+                updated_at=clock_now,
+                expires_at=min(float(current.expires_at), clock_now),
+                terminal_reason=str(reason or "dead_owner_reclamation"),
+                lease_id=reclaimer_lease_id or current.lease_id,
+            )
+            _atomic_write_json(record_path, updated.to_dict())
+            self._publish_task_index(updated)
+            return updated
+
+    def reclaim_all_dead_owners(
+        self,
+        *,
+        reclaimer_lease_id: str = "",
+        reason: str = "dead_owner_reclamation",
+        now: float | None = None,
+    ) -> list[WorkspaceLifecycleRecord]:
+        """Fence every reclaimable dead-owner nonterminal lifecycle claim."""
+
+        recovered: list[WorkspaceLifecycleRecord] = []
+        for record in list(self.iter_records()):
+            if record.is_terminal:
+                continue
+            updated = self.reclaim_dead_owner(
+                record.workspace_path,
+                reclaimer_lease_id=reclaimer_lease_id,
+                reason=reason,
+                now=now,
+            )
+            if updated is not None and updated.is_terminal:
+                recovered.append(updated)
+        return recovered
+
+    def _publish_task_index(self, record: WorkspaceLifecycleRecord) -> None:
+        """Refresh the stable task/attempt index to match a workspace record."""
+
+        index_path = self.task_index_path_for(
+            canonical_task_cid=record.canonical_task_cid,
+            task_id=record.task_id,
+            attempt=record.attempt,
+        )
+        _atomic_write_json(
+            index_path,
+            {
+                "schema": WORKTREE_LIFECYCLE_SCHEMA,
+                "workspace_path": record.workspace_path,
+                "record_id": record.record_id,
+                "task_id": record.task_id,
+                "canonical_task_cid": record.canonical_task_cid,
+                "attempt": record.attempt,
+                "fence": record.fence,
+                "lease_id": record.lease_id,
+                "state": record.state.value,
+            },
+        )
 
     def reclaim_dead_owner_for_controlled_restart(
         self,

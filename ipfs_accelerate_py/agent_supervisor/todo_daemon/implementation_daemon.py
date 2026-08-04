@@ -9400,6 +9400,46 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         return resets
 
+    def _auto_reclaim_dead_worktree_lifecycle_claims(self) -> list[dict[str, str]]:
+        """Fence nonterminal lifecycle claims whose process-birth owner is dead.
+
+        Lifecycle races do not consume attempts, so a crashed daemon leaves a
+        same-attempt claim that blocks retries for the full 6h lease. Process
+        birth DEAD is authoritative; reclaim past preparing startup grace so
+        the board can finish without an operator wait.
+        """
+
+        reclaimed: list[dict[str, str]] = []
+        try:
+            recovered = self.worktree_lifecycle.reclaim_all_dead_owners(
+                reason="auto_unblock_dead_owner",
+            )
+        except Exception as exc:
+            logger.warning(
+                "Auto-reclaim of dead worktree lifecycle owners failed: %s",
+                exc,
+            )
+            return reclaimed
+        for record in recovered:
+            reclaimed.append(
+                {
+                    "task_id": str(record.task_id or ""),
+                    "attempt": str(int(record.attempt or 0)),
+                    "workspace_path": str(record.workspace_path or ""),
+                    "terminal_reason": str(record.terminal_reason or ""),
+                    "fence": str(int(record.fence or 0)),
+                }
+            )
+        if reclaimed:
+            self._record_event(
+                "auto_unblock_dead_lifecycle_owners_reclaimed",
+                {
+                    "reclaimed_count": len(reclaimed),
+                    "reclaimed": reclaimed[:40],
+                },
+            )
+        return reclaimed
+
     def _auto_unblock_stalled_work(
         self,
         strategy: dict[str, Any],
@@ -9410,9 +9450,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         Clears infrastructure thrash, completed/orphan strategy blocks,
         reimplementable merge quarantines, stale reconciliation guardrails for
-        already-landed tasks, and attempt-limit parks with no open repair.
-        Unknown operator dirty checkouts that still cite open work remain
-        blocked.
+        already-landed tasks, dead worktree lifecycle owners, and attempt-limit
+        parks with no open repair. Unknown operator dirty checkouts that still
+        cite open work remain blocked.
         """
 
         result: dict[str, Any] = {
@@ -9424,8 +9464,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "completed_task_worktrees_cleaned": [],
             "host_dirt_restored": [],
             "stale_reconciliation_retired": [],
+            "dead_lifecycle_owners_reclaimed": [],
             "attempt_limit_resets": [],
         }
+        try:
+            # Reclaim abandoned lifecycle claims first so later selection can
+            # acquire same-attempt claims without thrashing for the full lease.
+            result["dead_lifecycle_owners_reclaimed"] = (
+                self._auto_reclaim_dead_worktree_lifecycle_claims()
+            )
+        except Exception as exc:
+            result["dead_lifecycle_error"] = (
+                f"{type(exc).__name__}: {exc}"[-300:]
+            )
         try:
             result["playwright_infra_releases"] = (
                 self._auto_unblock_playwright_infra_repairs(strategy, tasks)
@@ -9517,6 +9568,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "completed_task_worktrees_cleaned",
                 "host_dirt_restored",
                 "stale_reconciliation_retired",
+                "dead_lifecycle_owners_reclaimed",
                 "attempt_limit_resets",
             )
         )
