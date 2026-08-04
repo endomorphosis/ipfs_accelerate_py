@@ -163,6 +163,8 @@ from .runner import TodoDaemonHooks, TodoDaemonRunner
 from .supervisor_runtime import run_process_group_stream
 from .contract_packet_provider_router import (
     IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
+    MAX_PROVIDER_JSON_DEPTH,
+    MAX_PROVIDER_JSON_ITEMS,
     PRODUCTION_PROVIDER_ROUTE_INTERFACE,
     PRODUCTION_PROVIDER_ROUTE_SCHEMA,
     PROVIDER_EXECUTION_RECEIPT_INTERFACE,
@@ -282,14 +284,85 @@ POST_MERGE_CORRECTION_LANDED_ROUTE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "post-merge-correction-landed-route@1"
 )
-_LIVE_POST_MERGE_CORRECTION_ROUTE_SEAL = object()
+
+_POST_MERGE_CORRECTION_PACKET_INPUT_FIELDS = frozenset(
+    {
+        "correction_feedback",
+        "correction_authority",
+        "correction_capability",
+        "correction_route_capability",
+        "post_merge_correction_authority",
+        "post_merge_correction_capability",
+        "post_merge_correction_route_capability",
+        "_correction_route_capability",
+    }
+)
+
+
+def _detached_json_containers(
+    value: Any,
+    *,
+    _active: set[int] | None = None,
+    _depth: int = 0,
+    _item_counter: list[int] | None = None,
+) -> Any:
+    """Detach generic JSON mappings/sequences without redacting values."""
+
+    if _depth > MAX_PROVIDER_JSON_DEPTH:
+        raise ValueError("provider data exceeds its depth bound")
+    counter = _item_counter if _item_counter is not None else [0]
+    counter[0] += 1
+    if counter[0] > MAX_PROVIDER_JSON_ITEMS:
+        raise ValueError("provider data exceeds its item bound")
+    active = _active if _active is not None else set()
+    if isinstance(value, Mapping):
+        object_id = id(value)
+        if object_id in active:
+            raise ValueError("cyclic mapping is not canonical JSON")
+        active.add(object_id)
+        try:
+            detached: dict[str, Any] = {}
+            for key, child in value.items():
+                if not isinstance(key, str):
+                    raise TypeError("provider data mapping keys must be strings")
+                detached[key] = _detached_json_containers(
+                    child,
+                    _active=active,
+                    _depth=_depth + 1,
+                    _item_counter=counter,
+                )
+            return detached
+        finally:
+            active.remove(object_id)
+    if isinstance(value, Sequence) and not isinstance(
+        value,
+        (str, bytes, bytearray, memoryview),
+    ):
+        object_id = id(value)
+        if object_id in active:
+            raise ValueError("cyclic sequence is not canonical JSON")
+        active.add(object_id)
+        try:
+            return [
+                _detached_json_containers(
+                    child,
+                    _active=active,
+                    _depth=_depth + 1,
+                    _item_counter=counter,
+                )
+                for child in value
+            ]
+        finally:
+            active.remove(object_id)
+    return value
 
 
 def _freeze_correction_capability_json(value: Any) -> Any:
     """Return one canonical, recursively immutable JSON projection."""
 
+    detached = _detached_json_containers(value)
     canonical = json.dumps(
-        value,
+        detached,
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
@@ -320,41 +393,22 @@ def _thaw_correction_capability_json(value: Any) -> Any:
     return value
 
 
-class _LivePostMergeCorrectionRouteCapability(Mapping[str, Any]):
-    """Private, immutable, process-local, one-shot provider authority."""
+class _LivePostMergeCorrectionRouteCapability:
+    """Opaque process-local identity; registry membership grants authority."""
 
-    __slots__ = (
-        "_canonical",
-        "_consumed",
-        "_lock",
-        "_material",
-        "_producer_seal",
-    )
+    __slots__ = ("_burned",)
 
-    def __init__(self, material: Mapping[str, Any]) -> None:
-        frozen, canonical = _freeze_correction_capability_json(dict(material))
-        if not isinstance(frozen, Mapping):  # pragma: no cover - defensive
-            raise TypeError("correction route capability must be a mapping")
-        self._material = frozen
-        self._canonical = canonical
-        self._producer_seal = _LIVE_POST_MERGE_CORRECTION_ROUTE_SEAL
-        self._consumed = False
-        self._lock = threading.Lock()
+    def __init__(self) -> None:
+        # Construction alone is deliberately powerless.  Only exact object
+        # identity in one daemon instance's claimed registry can authorize a
+        # correction packet.
+        self._burned = False
 
-    def __getitem__(self, key: str) -> Any:
-        return self._material[key]
+    def __copy__(self):
+        raise TypeError("live correction route capabilities cannot be copied")
 
-    def __iter__(self):
-        return iter(self._material)
-
-    def __len__(self) -> int:
-        return len(self._material)
-
-    def __copy__(self) -> dict[str, Any]:
-        return _thaw_correction_capability_json(self._material)
-
-    def __deepcopy__(self, _memo: dict[int, Any]) -> dict[str, Any]:
-        return _thaw_correction_capability_json(self._material)
+    def __deepcopy__(self, _memo: dict[int, Any]):
+        raise TypeError("live correction route capabilities cannot be copied")
 
     def __reduce__(self):
         raise TypeError("live correction route capabilities cannot be serialized")
@@ -363,27 +417,22 @@ class _LivePostMergeCorrectionRouteCapability(Mapping[str, Any]):
         raise TypeError("live correction route capabilities cannot be serialized")
 
 
-def _correction_route_capability_snapshot(
-    candidate: Any,
-    *,
-    consume: bool,
-) -> dict[str, Any] | None:
-    """Inspect or atomically burn one genuine module-sealed capability."""
+@dataclass(frozen=True)
+class _PostMergeCorrectionRouteRegistryEntry:
+    """Daemon-owned immutable material paired with one opaque identity."""
 
-    if (
-        type(candidate) is not _LivePostMergeCorrectionRouteCapability
-        or candidate._producer_seal
-        is not _LIVE_POST_MERGE_CORRECTION_ROUTE_SEAL
-    ):
-        return None
-    if consume:
-        with candidate._lock:
-            if candidate._consumed:
-                return None
-            # Burn before interpreting any caller-controlled task/packet data.
-            candidate._consumed = True
+    capability: _LivePostMergeCorrectionRouteCapability
+    material: Mapping[str, Any]
+    canonical: bytes
+
+
+def _correction_route_material_snapshot(
+    entry: _PostMergeCorrectionRouteRegistryEntry,
+) -> dict[str, Any] | None:
+    """Validate and copy daemon-owned immutable route material."""
+
     try:
-        material = _thaw_correction_capability_json(candidate._material)
+        material = _thaw_correction_capability_json(entry.material)
         canonical = json.dumps(
             material,
             sort_keys=True,
@@ -393,13 +442,167 @@ def _correction_route_capability_snapshot(
         ).encode("utf-8")
     except (TypeError, UnicodeEncodeError, ValueError):
         return None
-    if not isinstance(material, dict) or canonical != candidate._canonical:
+    if not isinstance(material, dict) or canonical != entry.canonical:
         return None
     identity_material = dict(material)
     capability_id = str(identity_material.pop("capability_id", "") or "")
     if not capability_id or content_identity(identity_material) != capability_id:
         return None
     return material
+
+
+def _correction_route_registry_key(
+    material: Mapping[str, Any],
+) -> tuple[str, int, str, int, str, str, str] | None:
+    """Return the complete exact key for daemon-owned correction material."""
+
+    canonical_task_cid = str(material.get("canonical_task_cid") or "")
+    raw_attempt = material.get("attempt")
+    started_event_id = str(
+        material.get("implementation_started_event_id") or ""
+    )
+    raw_started_sequence = material.get(
+        "implementation_started_event_sequence"
+    )
+    consumption_record_id = str(
+        material.get("consumption_record_id") or ""
+    )
+    authority_binding_id = str(material.get("authority_binding_id") or "")
+    capability_id = str(material.get("capability_id") or "")
+    if (
+        not canonical_task_cid
+        or type(raw_attempt) is not int
+        or raw_attempt < 1
+        or not started_event_id
+        or type(raw_started_sequence) is not int
+        or raw_started_sequence < 1
+        or not consumption_record_id
+        or not authority_binding_id
+        or not capability_id
+    ):
+        return None
+    return (
+        canonical_task_cid,
+        raw_attempt,
+        started_event_id,
+        raw_started_sequence,
+        consumption_record_id,
+        authority_binding_id,
+        capability_id,
+    )
+
+
+def _correction_input_fields(
+    raw_provider_input: Mapping[str, Any],
+) -> frozenset[str]:
+    """Find correction-only keys in one already materialized payload."""
+
+    found: set[str] = set()
+    for raw_key in raw_provider_input:
+        key = re.sub(
+            r"[\s-]+",
+            "_",
+            str(raw_key or "").strip().casefold(),
+        )
+        if key in _POST_MERGE_CORRECTION_PACKET_INPUT_FIELDS:
+            found.add(key)
+    return frozenset(found)
+
+
+@dataclass(frozen=True, slots=True)
+class _MaterializedModelAssistedContractPacket:
+    """One immutable snapshot of every field visible to the provider router."""
+
+    packet_id: str
+    snapshot_id: str
+    task_id: str
+    implementable: bool
+    payload: Mapping[str, Any]
+    assertion_current: bool
+    correction_input_fields: frozenset[str]
+
+    def assert_current(self, current_snapshot_id: str) -> None:
+        if not self.assertion_current or current_snapshot_id != self.snapshot_id:
+            raise ValueError("materialized contract packet is stale")
+
+    @property
+    def provider_input_payload(self) -> Mapping[str, Any]:
+        return self.payload
+
+
+def _materialize_model_assisted_contract_packet(
+    packet: Any,
+    *,
+    current_snapshot_id: str,
+) -> _MaterializedModelAssistedContractPacket:
+    """Read an untrusted duck packet once and deep-freeze the routed view."""
+
+    implementable = getattr(packet, "implementable", True)
+    raw_snapshot_id = getattr(packet, "snapshot_id", "")
+    raw_repository_tree_id = getattr(packet, "repository_tree_id", "")
+    raw_packet_id = getattr(packet, "packet_id", "")
+    raw_content_id = getattr(packet, "content_id", "")
+    raw_task_id = getattr(packet, "task_id", "")
+    assertion = getattr(packet, "assert_current", None)
+    raw_provider_input = getattr(packet, "provider_input_payload", None)
+    if callable(raw_provider_input):
+        raw_provider_input = raw_provider_input()
+    if not isinstance(raw_provider_input, Mapping):
+        raise ProviderRoutingError(
+            "packet_id, task_id, and provider_input_payload are required",
+            reason_code=ProviderReason.PACKET_MALFORMED,
+        )
+    # Materialize custom Mapping implementations before inspecting keys or
+    # values again. The immutable projection below is the exact object routed.
+    try:
+        provider_input = _detached_json_containers(raw_provider_input)
+    except (RecursionError, TypeError, ValueError) as exc:
+        raise ProviderRoutingError(
+            "provider_input_payload must be bounded canonical JSON",
+            reason_code=ProviderReason.PACKET_MALFORMED,
+        ) from exc
+    if not isinstance(provider_input, dict):  # pragma: no cover - root is Mapping
+        raise ProviderRoutingError(
+            "provider_input_payload must be a mapping",
+            reason_code=ProviderReason.PACKET_MALFORMED,
+        )
+    correction_fields = _correction_input_fields(provider_input)
+    try:
+        frozen_payload, _canonical = _freeze_correction_capability_json(
+            provider_input
+        )
+    except (RecursionError, TypeError, UnicodeEncodeError, ValueError) as exc:
+        if correction_fields:
+            # Preserve only field presence for a fail-closed correction
+            # rejection; unencodable caller objects never reach the router.
+            frozen_payload = MappingProxyType(
+                {field_name: None for field_name in correction_fields}
+            )
+        else:
+            raise ProviderRoutingError(
+                "provider_input_payload must be canonical JSON",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            ) from exc
+    if not isinstance(frozen_payload, Mapping):  # pragma: no cover
+        raise ProviderRoutingError(
+            "provider_input_payload must be a mapping",
+            reason_code=ProviderReason.PACKET_MALFORMED,
+        )
+    assertion_current = True
+    if callable(assertion):
+        try:
+            assertion(current_snapshot_id)
+        except Exception:
+            assertion_current = False
+    return _MaterializedModelAssistedContractPacket(
+        packet_id=str(raw_packet_id or raw_content_id).strip(),
+        snapshot_id=str(raw_snapshot_id or raw_repository_tree_id),
+        task_id=str(raw_task_id).strip(),
+        implementable=implementable is not False,
+        payload=frozen_payload,
+        assertion_current=assertion_current,
+        correction_input_fields=correction_fields,
+    )
 
 
 class PostMergeReviewDenialPersistenceError(RuntimeError):
@@ -3477,8 +3680,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self._merge_lock_ownership = threading.local()
         self._post_merge_correction_route_registry_lock = threading.Lock()
         self._sealed_post_merge_correction_routes: dict[
-            tuple[str, int, str],
-            _LivePostMergeCorrectionRouteCapability,
+            tuple[str, int, str, int, str, str, str],
+            _PostMergeCorrectionRouteRegistryEntry,
+        ] = {}
+        self._claimed_post_merge_correction_routes: dict[
+            tuple[str, int, str, int, str, str, str],
+            _PostMergeCorrectionRouteRegistryEntry,
         ] = {}
         self.task_source: CanonicalTaskSource | None = None
         if configured_task_source is not None:
@@ -33226,25 +33433,70 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         codex_quota: Any = None,
         codex_implementation_fallback_quota: Any = None,
         enforce_provider_identity: bool = False,
-        _correction_route_capability: Any = None,
     ) -> tuple[ImplementationRoutingResult, dict[str, Any], Path]:
         """Route a bounded packet through Grok then independent Codex review.
 
         Records a ``model_assisted_provider_route`` event with nonempty
         provider, packet, review-chain, and provider-receipt fields.  Grok
         cannot self-review; absent or degraded review remains explicit and
-        never sets completion authority.
+        never sets completion authority.  This public boundary never accepts
+        post-merge correction authority, feedback, or capabilities.
         """
 
-        raw_provider_input = getattr(packet, "provider_input_payload", None)
-        if callable(raw_provider_input):
-            raw_provider_input = raw_provider_input()
-        packet_feedback = (
-            raw_provider_input.get("correction_feedback")
-            if isinstance(raw_provider_input, Mapping)
-            else None
+        return self._route_model_assisted_contract_packet_core(
+            packet,
+            current_snapshot_id=current_snapshot_id,
+            task=task,
+            attempt=attempt,
+            grok_provider=grok_provider,
+            codex_provider=codex_provider,
+            codex_implementation_fallback_provider=(
+                codex_implementation_fallback_provider
+            ),
+            deterministic_provider=deterministic_provider,
+            admission_gate=admission_gate,
+            writer=writer,
+            apply=apply,
+            writer_lease_id=writer_lease_id,
+            local_only=local_only,
+            bounds=bounds,
+            grok_quota=grok_quota,
+            codex_quota=codex_quota,
+            codex_implementation_fallback_quota=(
+                codex_implementation_fallback_quota
+            ),
+            enforce_provider_identity=enforce_provider_identity,
         )
-        if packet_feedback is not None:
+
+    def _route_model_assisted_contract_packet_core(
+        self,
+        packet: Any,
+        *,
+        current_snapshot_id: str,
+        task: PortalTask,
+        attempt: int = 0,
+        grok_provider: ProviderCallable | None = None,
+        codex_provider: ProviderCallable | None = None,
+        codex_implementation_fallback_provider: ProviderCallable | None = None,
+        deterministic_provider: ProviderCallable | None = None,
+        admission_gate: AdmissionCallable | None = None,
+        writer: WriterCallable | None = None,
+        apply: bool = False,
+        writer_lease_id: str = "",
+        local_only: bool = False,
+        bounds: Any = None,
+        grok_quota: Any = None,
+        codex_quota: Any = None,
+        codex_implementation_fallback_quota: Any = None,
+        enforce_provider_identity: bool = False,
+        _correction_route_capability: Any = None,
+    ) -> tuple[ImplementationRoutingResult, dict[str, Any], Path]:
+        """Route ordinary bytes or one atomically claimed correction packet."""
+
+        fresh_bindings = None
+        if _correction_route_capability is not None:
+            # Compare-delete and burn the exact claimed identity before
+            # interpreting any caller-visible packet material.
             fresh_bindings = (
                 self._fresh_post_merge_correction_capability_bindings(
                     task,
@@ -33253,23 +33505,36 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     consume=True,
                 )
             )
+            if fresh_bindings is None:
+                raise RuntimeError(
+                    "claimed correction provider-boundary capability is stale"
+                )
+
+        materialized_packet = _materialize_model_assisted_contract_packet(
+            packet,
+            current_snapshot_id=current_snapshot_id,
+        )
+        raw_provider_input = materialized_packet.provider_input_payload
+        correction_fields = materialized_packet.correction_input_fields
+        packet_feedback = (
+            raw_provider_input.get("correction_feedback")
+            if isinstance(raw_provider_input, Mapping)
+            else None
+        )
+        if fresh_bindings is not None:
             if (
-                fresh_bindings is None
-                or dict(packet_feedback) != fresh_bindings[2]
+                correction_fields != frozenset({"correction_feedback"})
+                or not isinstance(packet_feedback, Mapping)
+                or _thaw_correction_capability_json(packet_feedback)
+                != _thaw_correction_capability_json(fresh_bindings[2])
             ):
                 raise RuntimeError(
-                    "sealed correction provider-boundary capability is stale"
+                    "claimed correction packet does not match durable feedback"
                 )
-        elif _correction_route_capability is not None:
-            # Burn a genuine capability even when paired with the wrong
-            # packet. A plain/copy mapping has no authority either way.
-            _correction_route_capability_snapshot(
-                _correction_route_capability,
-                consume=True,
-            )
+        elif correction_fields:
             raise RuntimeError(
-                "sealed correction capability cannot authorize an ordinary "
-                "packet"
+                "public model-assisted route rejects correction authority, "
+                "feedback, and capabilities"
             )
 
         router_kwargs: dict[str, Any] = {
@@ -33295,7 +33560,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         router = ImplementationProviderRouter(**router_kwargs)
         route_result = router.route(
-            packet,
+            materialized_packet,
             current_snapshot_id=current_snapshot_id,
             local_only=local_only,
             apply=apply,
@@ -34372,22 +34637,35 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "authority": dict(authority),
         }
         capability_id = content_identity(capability_material)
-        capability_key = (
-            identity.canonical_task_cid,
-            int(attempt),
-            started_event_id,
+        registered_material = {
+            **capability_material,
+            "capability_id": capability_id,
+        }
+        capability_key = _correction_route_registry_key(
+            registered_material
         )
-        capability = _LivePostMergeCorrectionRouteCapability(
-            {
-                **capability_material,
-                "capability_id": capability_id,
-            }
+        if capability_key is None:  # pragma: no cover - producer invariant
+            return {}
+        capability = _LivePostMergeCorrectionRouteCapability()
+        frozen_material, canonical_material = (
+            _freeze_correction_capability_json(registered_material)
+        )
+        if not isinstance(frozen_material, Mapping):  # pragma: no cover
+            return {}
+        registry_entry = _PostMergeCorrectionRouteRegistryEntry(
+            capability=capability,
+            material=frozen_material,
+            canonical=canonical_material,
         )
         with self._post_merge_correction_route_registry_lock:
-            if capability_key in self._sealed_post_merge_correction_routes:
+            if (
+                capability_key in self._sealed_post_merge_correction_routes
+                or capability_key
+                in self._claimed_post_merge_correction_routes
+            ):
                 return {}
             self._sealed_post_merge_correction_routes[capability_key] = (
-                capability
+                registry_entry
             )
         return {
             **dict(landed_guard),
@@ -34538,6 +34816,44 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             ),
         }
 
+    def _claimed_post_merge_correction_material_snapshot(
+        self,
+        capability: Any,
+        *,
+        consume: bool,
+    ) -> dict[str, Any] | None:
+        """Peek or burn one exact identity from this daemon's claim registry."""
+
+        if type(capability) is not _LivePostMergeCorrectionRouteCapability:
+            return None
+        with self._post_merge_correction_route_registry_lock:
+            matching = [
+                (key, entry)
+                for key, entry in self._claimed_post_merge_correction_routes.items()
+                if entry.capability is capability
+            ]
+            if len(matching) != 1 or capability._burned:
+                return None
+            capability_key, entry = matching[0]
+            if (
+                self._claimed_post_merge_correction_routes.get(capability_key)
+                is not entry
+                or entry.capability is not capability
+            ):
+                return None
+            if consume:
+                # The exact identity is compare-deleted and burned before any
+                # packet bytes or daemon-owned capability material are read.
+                del self._claimed_post_merge_correction_routes[capability_key]
+                capability._burned = True
+        snapshot = _correction_route_material_snapshot(entry)
+        if (
+            snapshot is None
+            or _correction_route_registry_key(snapshot) != capability_key
+        ):
+            return None
+        return snapshot
+
     def _fresh_post_merge_correction_capability_bindings(
         self,
         task: PortalTask,
@@ -34551,9 +34867,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         dict[str, Any],
         dict[str, Any],
     ] | None:
-        """Validate a live seal and freshly re-read its durable bindings."""
+        """Validate one claimed identity and freshly re-read durable bindings."""
 
-        snapshot = _correction_route_capability_snapshot(
+        snapshot = self._claimed_post_merge_correction_material_snapshot(
             capability,
             consume=consume,
         )
@@ -34756,10 +35072,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             feedback_tokens = max(1, (len(feedback_frame) + 3) // 4)
             reserved_prompt_tokens += feedback_tokens + 32
         try:
+            nested_roots = tuple(self.worktree_submodule_paths)
             context_read_paths = derive_production_context_read_paths(
                 repo_root=workspace,
                 baseline_ref=context_baseline,
                 effect_paths=write_paths,
+                allowed_nested_repository_roots=nested_roots,
             )
             context_manifest = build_production_context_slice(
                 repo_root=workspace,
@@ -34771,6 +35089,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 symbol_hints=raw_symbol_hints,
                 max_provider_prompt_tokens=configured_prompt_tokens,
                 reserved_prompt_tokens=reserved_prompt_tokens,
+                allowed_nested_repository_roots=nested_roots,
             )
         except ProductionContextSliceError as exc:
             raise ProviderRoutingError(
@@ -34847,6 +35166,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 repo_root=workspace_path,
                 baseline_ref=context_baseline,
                 effect_paths=effect_paths,
+                allowed_nested_repository_roots=tuple(
+                    self.worktree_submodule_paths
+                ),
             )
         except ProductionContextSliceError as exc:
             raise ProviderRoutingError(
@@ -35512,33 +35834,74 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         attempt: int,
         **route_kwargs: Any,
     ) -> dict[str, Any]:
-        """Remove one minted seal and carry it to the provider boundary."""
+        """Atomically claim one exact minted identity for the private route."""
 
         identity = self._identity_for_task(task)
         with self._post_merge_correction_route_registry_lock:
             matching = [
-                (key, value)
-                for key, value in (
+                (key, entry)
+                for key, entry in (
                     self._sealed_post_merge_correction_routes.items()
                 )
                 if key[0] == identity.canonical_task_cid
                 and int(key[1]) == int(attempt)
             ]
-            # Registry removal is atomic, but is not capability consumption.
-            # The lowest provider boundary alone burns the private object.
-            for key, _value in matching:
-                self._sealed_post_merge_correction_routes.pop(key, None)
-        if len(matching) != 1:
-            raise RuntimeError(
-                "post-merge correction route lacks one sealed capability"
+            claimed_matching = [
+                (key, entry)
+                for key, entry in (
+                    self._claimed_post_merge_correction_routes.items()
+                )
+                if key[0] == identity.canonical_task_cid
+                and int(key[1]) == int(attempt)
+            ]
+            if len(matching) != 1 or claimed_matching:
+                # Ambiguity and concurrent claims fail without deleting any
+                # valid ready or in-flight authority.
+                raise RuntimeError(
+                    "post-merge correction route lacks one unambiguous "
+                    "sealed capability"
+                )
+            capability_key, registry_entry = matching[0]
+            capability = registry_entry.capability
+            material = _correction_route_material_snapshot(registry_entry)
+            if (
+                capability._burned
+                or material is None
+                or _correction_route_registry_key(material) != capability_key
+                or self._sealed_post_merge_correction_routes.get(
+                    capability_key
+                )
+                is not registry_entry
+            ):
+                raise RuntimeError(
+                    "post-merge correction route registry entry is invalid"
+                )
+            del self._sealed_post_merge_correction_routes[capability_key]
+            self._claimed_post_merge_correction_routes[capability_key] = (
+                registry_entry
             )
-        _capability_key, capability = matching[0]
-        return self._run_production_model_assisted_route_core(
-            task,
-            attempt=attempt,
-            _correction_route_capability=capability,
-            **route_kwargs,
-        )
+        try:
+            return self._run_production_model_assisted_route_core(
+                task,
+                attempt=attempt,
+                _correction_route_capability=capability,
+                **route_kwargs,
+            )
+        finally:
+            # Any failure before the lowest packet boundary still makes this
+            # process-local claim one-shot. Durable lifecycle reconciliation
+            # decides whether a later authorized attempt may be created.
+            with self._post_merge_correction_route_registry_lock:
+                if (
+                    self._claimed_post_merge_correction_routes.get(
+                        capability_key
+                    )
+                    is registry_entry
+                ):
+                    del self._claimed_post_merge_correction_routes[
+                        capability_key
+                    ]
+                    capability._burned = True
 
     def _run_production_model_assisted_route_core(
         self,
@@ -35772,6 +36135,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
             effective_writer = context_guarded_writer
         effective_admission = admission_gate or self._production_admission_gate
+        packet_route = self.route_model_assisted_contract_packet
+        correction_boundary_kwargs: dict[str, Any] = {}
+        if _correction_route_capability is not None:
+            packet_route = self._route_model_assisted_contract_packet_core
+            correction_boundary_kwargs["_correction_route_capability"] = (
+                _correction_route_capability
+            )
 
         # Independence: never pass the same callable as both providers.
         if (
@@ -35779,7 +36149,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             and codex_provider is not None
             and grok_provider is codex_provider
         ):
-            route_result, event, receipt_path = self.route_model_assisted_contract_packet(
+            route_result, event, receipt_path = packet_route(
                 route_packet,
                 current_snapshot_id=current_snapshot,
                 task=task,
@@ -35805,12 +36175,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     operator_policy,
                     ProductionCLIProviderPolicy,
                 ),
-                _correction_route_capability=(
-                    _correction_route_capability
-                ),
+                **correction_boundary_kwargs,
             )
         else:
-            route_result, event, receipt_path = self.route_model_assisted_contract_packet(
+            route_result, event, receipt_path = packet_route(
                 route_packet,
                 current_snapshot_id=current_snapshot,
                 task=task,
@@ -35836,9 +36204,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     operator_policy,
                     ProductionCLIProviderPolicy,
                 ),
-                _correction_route_capability=(
-                    _correction_route_capability
-                ),
+                **correction_boundary_kwargs,
             )
 
         receipt = route_result.provider_receipt

@@ -87,6 +87,74 @@ def _fail(reason_code: str, message: str) -> NoReturn:
     raise ProductionContextSliceError(message, reason_code=reason_code)
 
 
+def _canonical_nested_repository_roots(
+    roots: Sequence[str] | None,
+) -> frozenset[str]:
+    """Normalize operator-declared nested repository roots (submodule paths)."""
+
+    if not roots:
+        return frozenset()
+    normalized = _canonical_paths(
+        roots,
+        field_name="allowed_nested_repository_roots",
+        maximum=DEFAULT_MAX_SCOPE_PATHS,
+        allow_empty=True,
+    )
+    return frozenset(normalized)
+
+
+def _path_under_nested_root(relative: str, nested_root: str) -> str | None:
+    """Return the path inside ``nested_root``, or None if not under it."""
+
+    if relative == nested_root:
+        return ""
+    prefix = nested_root + "/"
+    if relative.startswith(prefix):
+        return relative[len(prefix) :]
+    return None
+
+
+def _gitlink_commit(
+    root: Path,
+    commit: str,
+    nested_root: str,
+) -> str | None:
+    """Return the monorepo gitlink commit for an allowed nested root."""
+
+    raw = _git_bytes(
+        root,
+        "ls-tree",
+        "-z",
+        "--full-tree",
+        commit,
+        "--",
+        nested_root,
+    )
+    entries = [entry for entry in raw.split(b"\x00") if entry]
+    if not entries:
+        return None
+    if len(entries) != 1:
+        _fail("repository_malformed", "nested repository gitlink is ambiguous")
+    try:
+        header, encoded_path = entries[0].split(b"\t", 1)
+        mode, object_type, oid = header.decode("ascii").split(" ", 2)
+        entry_path = encoded_path.decode("utf-8", errors="strict")
+    except (ValueError, UnicodeError) as exc:
+        raise ProductionContextSliceError(
+            "nested repository gitlink is malformed",
+            reason_code="repository_malformed",
+        ) from exc
+    if entry_path != nested_root or object_type != "commit" or mode != "160000":
+        _fail(
+            "nested_repository_escape",
+            "allowed nested root is not an exact gitlink commit",
+        )
+    if not _GIT_OID_RE.fullmatch(oid):
+        _fail("repository_malformed", "nested repository commit is malformed")
+    return oid
+
+
+
 def _raw_cid(value: bytes) -> str:
     """Return CIDv1 raw/sha2-256 for exact bytes."""
 
@@ -255,7 +323,12 @@ def _canonical_symbol_hints(
     return {path: result[path] for path in sorted(result)}
 
 
-def _assert_safe_worktree_path(root: Path, relative: str) -> Path:
+def _assert_safe_worktree_path(
+    root: Path,
+    relative: str,
+    *,
+    allowed_nested_repository_roots: frozenset[str] = frozenset(),
+) -> Path:
     """Reject links and nested repository boundaries before reading a file."""
 
     current = root
@@ -287,10 +360,12 @@ def _assert_safe_worktree_path(root: Path, relative: str) -> Path:
                     reason_code="nested_repository_escape",
                 ) from exc
             else:
-                _fail(
-                    "nested_repository_escape",
-                    "nested Git repositories are forbidden in source scope",
-                )
+                nested_root = "/".join(parts[: index + 1])
+                if nested_root not in allowed_nested_repository_roots:
+                    _fail(
+                        "nested_repository_escape",
+                        "nested Git repositories are forbidden in source scope",
+                    )
     if not current.is_file():
         _fail("path_invalid", "declared source path must be a regular file")
     try:
@@ -329,7 +404,12 @@ def _read_regular_nofollow(path: Path) -> bytes:
     return b"".join(chunks)
 
 
-def _assert_safe_effect_path(root: Path, relative: str) -> tuple[Path, bool]:
+def _assert_safe_effect_path(
+    root: Path,
+    relative: str,
+    *,
+    allowed_nested_repository_roots: frozenset[str] = frozenset(),
+) -> tuple[Path, bool]:
     """Resolve an existing or prospective effect without crossing boundaries."""
 
     current = root
@@ -365,10 +445,12 @@ def _assert_safe_effect_path(root: Path, relative: str) -> tuple[Path, bool]:
                     reason_code="nested_repository_escape",
                 ) from exc
             else:
-                _fail(
-                    "nested_repository_escape",
-                    "nested Git repositories are forbidden in effect scope",
-                )
+                nested_root = "/".join(parts[: index + 1])
+                if nested_root not in allowed_nested_repository_roots:
+                    _fail(
+                        "nested_repository_escape",
+                        "nested Git repositories are forbidden in effect scope",
+                    )
     if not missing:
         try:
             info = current.lstat()
@@ -386,6 +468,8 @@ def _tree_entry_optional(
     root: Path,
     commit: str,
     relative: str,
+    *,
+    allowed_nested_repository_roots: frozenset[str] = frozenset(),
 ) -> tuple[str, str, bytes] | None:
     raw = _git_bytes(
         root,
@@ -397,31 +481,100 @@ def _tree_entry_optional(
         relative,
     )
     entries = [entry for entry in raw.split(b"\x00") if entry]
-    if not entries:
-        return None
-    if len(entries) != 1:
-        _fail("source_untracked", "declared source must be one tracked blob")
-    try:
-        header, encoded_path = entries[0].split(b"\t", 1)
-        mode, object_type, oid = header.decode("ascii").split(" ", 2)
-        entry_path = encoded_path.decode("utf-8", errors="strict")
-    except (ValueError, UnicodeError) as exc:
-        raise ProductionContextSliceError(
-            "Git tree entry is malformed",
-            reason_code="repository_malformed",
-        ) from exc
-    if entry_path != relative or object_type != "blob":
-        _fail("source_untracked", "declared source is not an exact tracked blob")
-    if mode not in {"100644", "100755"}:
-        reason = "symlink_escape" if mode == "120000" else "nested_repository_escape"
-        _fail(reason, "non-regular Git tree entries are forbidden")
-    if not _GIT_OID_RE.fullmatch(oid):
-        _fail("repository_malformed", "Git blob identity is malformed")
-    return mode, oid, _git_bytes(root, "cat-file", "blob", oid)
+    if entries:
+        if len(entries) != 1:
+            _fail("source_untracked", "declared source must be one tracked blob")
+        try:
+            header, encoded_path = entries[0].split(b"\t", 1)
+            mode, object_type, oid = header.decode("ascii").split(" ", 2)
+            entry_path = encoded_path.decode("utf-8", errors="strict")
+        except (ValueError, UnicodeError) as exc:
+            raise ProductionContextSliceError(
+                "Git tree entry is malformed",
+                reason_code="repository_malformed",
+            ) from exc
+        if entry_path != relative or object_type != "blob":
+            _fail("source_untracked", "declared source is not an exact tracked blob")
+        if mode not in {"100644", "100755"}:
+            reason = (
+                "symlink_escape" if mode == "120000" else "nested_repository_escape"
+            )
+            _fail(reason, "non-regular Git tree entries are forbidden")
+        if not _GIT_OID_RE.fullmatch(oid):
+            _fail("repository_malformed", "Git blob identity is malformed")
+        return mode, oid, _git_bytes(root, "cat-file", "blob", oid)
+
+    # Fall back through operator-declared nested repositories (submodules).
+    for nested_root in sorted(
+        allowed_nested_repository_roots, key=len, reverse=True
+    ):
+        inner = _path_under_nested_root(relative, nested_root)
+        if inner is None or inner == "":
+            continue
+        nested_commit = _gitlink_commit(root, commit, nested_root)
+        if nested_commit is None:
+            continue
+        nested_root_path = root / nested_root
+        if not nested_root_path.is_dir():
+            _fail(
+                "source_unavailable",
+                "allowed nested repository worktree is unavailable",
+            )
+        nested_raw = _git_bytes(
+            nested_root_path,
+            "ls-tree",
+            "-z",
+            "--full-tree",
+            nested_commit,
+            "--",
+            inner,
+        )
+        nested_entries = [entry for entry in nested_raw.split(b"\x00") if entry]
+        if not nested_entries:
+            return None
+        if len(nested_entries) != 1:
+            _fail(
+                "source_untracked",
+                "declared nested source must be one tracked blob",
+            )
+        try:
+            header, encoded_path = nested_entries[0].split(b"\t", 1)
+            mode, object_type, oid = header.decode("ascii").split(" ", 2)
+            entry_path = encoded_path.decode("utf-8", errors="strict")
+        except (ValueError, UnicodeError) as exc:
+            raise ProductionContextSliceError(
+                "nested Git tree entry is malformed",
+                reason_code="repository_malformed",
+            ) from exc
+        if entry_path != inner or object_type != "blob":
+            _fail(
+                "source_untracked",
+                "declared nested source is not an exact tracked blob",
+            )
+        if mode not in {"100644", "100755"}:
+            reason = (
+                "symlink_escape" if mode == "120000" else "nested_repository_escape"
+            )
+            _fail(reason, "non-regular nested Git tree entries are forbidden")
+        if not _GIT_OID_RE.fullmatch(oid):
+            _fail("repository_malformed", "nested Git blob identity is malformed")
+        return mode, oid, _git_bytes(nested_root_path, "cat-file", "blob", oid)
+    return None
 
 
-def _tree_entry(root: Path, commit: str, relative: str) -> tuple[str, str, bytes]:
-    entry = _tree_entry_optional(root, commit, relative)
+def _tree_entry(
+    root: Path,
+    commit: str,
+    relative: str,
+    *,
+    allowed_nested_repository_roots: frozenset[str] = frozenset(),
+) -> tuple[str, str, bytes]:
+    entry = _tree_entry_optional(
+        root,
+        commit,
+        relative,
+        allowed_nested_repository_roots=allowed_nested_repository_roots,
+    )
     if entry is None:
         _fail("source_untracked", "declared source must be one tracked blob")
     return entry
@@ -849,11 +1002,15 @@ def derive_production_context_read_paths(
     repo_root: str | Path,
     baseline_ref: str,
     effect_paths: Sequence[str],
+    allowed_nested_repository_roots: Sequence[str] = (),
 ) -> tuple[str, ...]:
     """Derive the only implicit read scope: existing tracked effect blobs."""
 
     root = _repository_root(repo_root)
     repository = _repository_binding(root, baseline_ref)
+    nested_roots = _canonical_nested_repository_roots(
+        allowed_nested_repository_roots
+    )
     effects = _canonical_paths(
         effect_paths,
         field_name="effect_paths",
@@ -861,8 +1018,17 @@ def derive_production_context_read_paths(
     )
     reads: list[str] = []
     for path in effects:
-        _target, exists = _assert_safe_effect_path(root, path)
-        entry = _tree_entry_optional(root, repository["baseline_commit"], path)
+        _target, exists = _assert_safe_effect_path(
+            root,
+            path,
+            allowed_nested_repository_roots=nested_roots,
+        )
+        entry = _tree_entry_optional(
+            root,
+            repository["baseline_commit"],
+            path,
+            allowed_nested_repository_roots=nested_roots,
+        )
         if entry is not None:
             if not exists:
                 _fail("blob_stale", "tracked effect path is missing")
@@ -890,6 +1056,7 @@ def build_production_context_slice(
     max_scope_paths: int = DEFAULT_MAX_SCOPE_PATHS,
     max_source_bytes: int = DEFAULT_MAX_SOURCE_BYTES,
     whole_file_bytes: int = DEFAULT_WHOLE_FILE_BYTES,
+    allowed_nested_repository_roots: Sequence[str] = (),
 ) -> ProductionContextSliceManifest:
     """Build a deterministic source manifest for one exact current task.
 
@@ -930,6 +1097,9 @@ def build_production_context_slice(
         _fail("budget_invalid", "source byte bound may not exceed the protocol maximum")
 
     root = _repository_root(repo_root)
+    nested_roots = _canonical_nested_repository_roots(
+        allowed_nested_repository_roots
+    )
     task_binding = _task_binding(task_id, task_payload)
     repository_binding = _repository_binding(root, baseline_ref)
     effects = _canonical_paths(
@@ -942,6 +1112,7 @@ def build_production_context_slice(
             repo_root=root,
             baseline_ref=repository_binding["baseline_commit"],
             effect_paths=effects,
+            allowed_nested_repository_roots=tuple(sorted(nested_roots)),
         )
     else:
         reads = _canonical_paths(
@@ -954,11 +1125,16 @@ def build_production_context_slice(
 
     absence_proofs: list[dict[str, str]] = []
     for path in effects:
-        _target, exists = _assert_safe_effect_path(root, path)
+        _target, exists = _assert_safe_effect_path(
+            root,
+            path,
+            allowed_nested_repository_roots=nested_roots,
+        )
         entry = _tree_entry_optional(
             root,
             repository_binding["baseline_commit"],
             path,
+            allowed_nested_repository_roots=nested_roots,
         )
         if entry is not None:
             if path not in reads:
@@ -983,11 +1159,16 @@ def build_production_context_slice(
     sources: list[dict[str, Any]] = []
     total_source_bytes = 0
     for path in reads:
-        target = _assert_safe_worktree_path(root, path)
+        target = _assert_safe_worktree_path(
+            root,
+            path,
+            allowed_nested_repository_roots=nested_roots,
+        )
         mode, oid, baseline_bytes = _tree_entry(
             root,
             repository_binding["baseline_commit"],
             path,
+            allowed_nested_repository_roots=nested_roots,
         )
         try:
             current_bytes = _read_regular_nofollow(target)

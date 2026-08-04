@@ -661,3 +661,58 @@ def test_sliced_context_allows_only_visible_patch_preimages(tmp_path) -> None:
             ),
         ),
     )
+
+def test_allowed_nested_repository_roots_can_read_submodule_effects(tmp_path) -> None:
+    """Registered submodule roots may host effect blobs via gitlink commits."""
+
+    root = tmp_path / "super"
+    root.mkdir()
+    _git(root, "init")
+    _git(root, "config", "user.name", "Context Slice Test")
+    _git(root, "config", "user.email", "context-slice@example.invalid")
+    child = root / "vendor" / "lib"
+    child.mkdir(parents=True)
+    _git(child, "init")
+    _git(child, "config", "user.name", "Context Slice Test")
+    _git(child, "config", "user.email", "context-slice@example.invalid")
+    module = child / "module.py"
+    module.write_text("VALUE = 1\n", encoding="utf-8")
+    _git(child, "add", ".")
+    _git(child, "commit", "-m", "child baseline")
+    child_commit = _git(child, "rev-parse", "HEAD")
+    # register as gitlink
+    _git(root, "update-index", "--add", "--cacheinfo", f"160000,{child_commit},vendor/lib")
+    # also keep a regular monorepo file for mixed scopes
+    (root / "README.md").write_text("root\n", encoding="utf-8")
+    _git(root, "add", "README.md")
+    _git(root, "commit", "-m", "super with gitlink")
+    # worktree must contain nested checkout contents
+    assert module.exists()
+    task = {
+        "task_id": "ASE-NESTED-001",
+        "title": "edit nested",
+        "acceptance": "module changes",
+        "outputs": ["vendor/lib/module.py", "README.md"],
+    }
+    # Without allowlist, nested still fails closed.
+    _assert_reason(
+        "nested_repository_escape",
+        lambda: build_production_context_slice(
+            repo_root=root,
+            task_id=task["task_id"],
+            task_payload=task,
+            read_paths=["vendor/lib/module.py"],
+            effect_paths=["vendor/lib/module.py"],
+        ),
+    )
+    manifest = build_production_context_slice(
+        repo_root=root,
+        task_id=task["task_id"],
+        task_payload=task,
+        read_paths=["vendor/lib/module.py", "README.md"],
+        effect_paths=["vendor/lib/module.py", "README.md"],
+        allowed_nested_repository_roots=["vendor/lib"],
+    )
+    paths = {item["path"] for item in manifest.to_dict()["sources"]}
+    assert paths == {"vendor/lib/module.py", "README.md"}
+
