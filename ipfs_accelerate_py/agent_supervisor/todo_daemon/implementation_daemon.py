@@ -18209,11 +18209,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         missing_changed_submodule_paths = sorted(
             set(changed_submodule_paths or ()) - reported_submodule_paths
         )
-        failed_submodules = [
-            item
-            for item in submodule_merge_results
-            if isinstance(item, dict) and not item.get("merged", False)
-        ]
+        failed_submodules = self._blocking_submodule_merge_failures(
+            submodule_merge_results,
+            baseline_ref=str(result.get("baseline_ref") or metadata.get("baseline_ref") or ""),
+            landed_commit=str(
+                result.get("merge_commit")
+                or implementation_commit
+                or ""
+            ),
+            changed_submodule_paths=set(changed_submodule_paths or ())
+            if changed_submodule_paths is not None
+            else None,
+        )
         raw_gitlink_recording = result.get("merged_gitlink_recording")
         gitlink_recording_failed = bool(
             isinstance(raw_gitlink_recording, dict)
@@ -33598,6 +33605,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     ),
                     target_parent_ref=pre_merge_commit,
                     target_scope=target_branch,
+                    implementation_commit=str(candidate_commit or ""),
                 )
                 merged_gitlink_recording = self._record_merged_submodule_gitlinks(
                     merge_workspace,
@@ -33610,7 +33618,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     merge_returncode = 2
             elif removed_untracked:
                 self._restore_removed_untracked_paths(removed_untracked, cwd=merge_workspace)
-            failed_submodules = [item for item in submodule_merge_results if not item.get("merged", False)]
+            failed_submodules = self._blocking_submodule_merge_failures(
+                submodule_merge_results,
+                baseline_ref=str(baseline_ref or ""),
+                landed_commit=str(merge_commit or candidate_commit or ""),
+                changed_submodule_paths=(
+                    set(changed_submodule_paths or ())
+                    if changed_submodule_paths is not None
+                    else None
+                ),
+            )
             reported_submodule_paths = {
                 str(item.get("path") or "").strip("/")
                 for item in submodule_merge_results
@@ -35790,6 +35807,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         ) = None,
         target_parent_ref: str = "",
         target_scope: str = "",
+        implementation_commit: str = "",
     ) -> list[dict[str, Any]]:
         return self._merge_submodule_branches_to_main_in_repo(
             repo_path=self.repo_root,
@@ -35804,13 +35822,52 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             ),
             target_parent_ref=target_parent_ref,
             target_scope=target_scope,
+            implementation_commit=implementation_commit,
         )
+
+    def _resolve_task_tip_ref(
+        self,
+        branch_name: str = "",
+        *,
+        tip_ref: str = "",
+        implementation_commit: str = "",
+    ) -> str:
+        """Pick a still-resolvable tip for post-merge gitlink comparisons.
+
+        After a successful train merge the daemon-owned implementation branch is
+        often cleaned up.  Reconciliation must still be able to prove whether a
+        gitlink changed by comparing the task baseline to the landed commit.
+        """
+
+        for candidate in (
+            str(branch_name or "").strip(),
+            str(tip_ref or "").strip(),
+            str(implementation_commit or "").strip(),
+        ):
+            if not candidate:
+                continue
+            if self._git_ref_exists(candidate):
+                return candidate
+            # Bare commit ids remain addressable even when branch refs are gone.
+            verify = subprocess.run(
+                ["git", "rev-parse", "--verify", f"{candidate}^{{commit}}"],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if verify.returncode == 0 and verify.stdout.strip():
+                return verify.stdout.strip()
+        return ""
 
     def _root_submodule_changed_in_task(
         self,
         branch_name: str,
         baseline_ref: str,
         relative: str,
+        *,
+        tip_ref: str = "",
+        implementation_commit: str = "",
     ) -> bool:
         """Return whether a task changed a configured top-level gitlink.
 
@@ -35820,6 +35877,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         failure. When the task baseline is available, reconcile only gitlinks
         changed by that task. An inconclusive diff preserves the existing
         conservative behavior.
+
+        After the implementation branch is deleted, compare the baseline against
+        the landed implementation commit tip instead of treating the missing
+        branch as "changed".
         """
 
         if not baseline_ref:
@@ -35842,11 +35903,21 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         # so it must be reconciled conservatively instead of being skipped.
         if not exact_gitlink:
             return True
+        tip = self._resolve_task_tip_ref(
+            branch_name,
+            tip_ref=tip_ref,
+            implementation_commit=implementation_commit,
+        )
+        if not tip:
+            # Without a resolvable tip we cannot prove the gitlink is unchanged.
+            # Fail closed for merge selection; ambient non-blocking is handled
+            # later by ``_blocking_submodule_merge_failures``.
+            return True
         # ``git diff --quiet`` returns 1 for a normal, positive finding. Do
         # not route it through ``_run_git``, which correctly treats any
         # non-zero status as an operational failure for mutating commands.
         diff = subprocess.run(
-            ["git", "diff", "--quiet", baseline_ref, branch_name, "--", relative],
+            ["git", "diff", "--quiet", baseline_ref, tip, "--", relative],
             cwd=self.repo_root,
             text=True,
             capture_output=True,
@@ -35855,6 +35926,119 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if diff.returncode in (0, 1):
             return diff.returncode == 1
         return True
+
+    def _changed_root_gitlink_paths_between(
+        self,
+        baseline_ref: str,
+        tip_ref: str,
+        *,
+        candidates: Sequence[str] | None = None,
+    ) -> set[str]:
+        """Return configured root gitlinks that differ between two commits."""
+
+        paths = {
+            str(path).strip("/")
+            for path in (candidates if candidates is not None else self.worktree_submodule_paths)
+            if str(path).strip("/")
+        }
+        changed: set[str] = set()
+        resolved_tip = self._resolve_task_tip_ref(
+            "",
+            tip_ref=tip_ref,
+            implementation_commit=tip_ref,
+        )
+        if not baseline_ref or not resolved_tip or not paths:
+            return changed
+        for relative in sorted(paths):
+            if self._root_submodule_changed_in_task(
+                "",
+                baseline_ref,
+                relative,
+                tip_ref=resolved_tip,
+                implementation_commit=resolved_tip,
+            ):
+                changed.add(relative)
+        return changed
+
+    def _blocking_submodule_merge_failures(
+        self,
+        submodule_merge_results: Sequence[Mapping[str, Any]] | None,
+        *,
+        baseline_ref: str = "",
+        landed_commit: str = "",
+        changed_submodule_paths: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return only submodule failures that should block task completion.
+
+        Ambient nested dirt, missing optional nested gitlinks, and failed
+        merges for gitlinks the parent task never changed must not keep a
+        successfully landed parent implementation pending forever.
+        """
+
+        results = [
+            dict(item)
+            for item in (submodule_merge_results or ())
+            if isinstance(item, Mapping) and not item.get("merged", False)
+        ]
+        if not results:
+            return []
+        changed_known = changed_submodule_paths is not None
+        changed = {
+            str(path).strip("/")
+            for path in (changed_submodule_paths or set())
+            if str(path).strip("/")
+        }
+        if not changed and baseline_ref and landed_commit:
+            changed = self._changed_root_gitlink_paths_between(
+                baseline_ref,
+                landed_commit,
+            )
+            changed_known = True
+        ambient_reasons = {
+            "submodule_checkout_dirty",
+            "submodule_target_gitlink_unavailable",
+            "isolated_submodule_checkout_dirty",
+            "unchanged_gitlink_in_task",
+            "submodule_branch_missing",
+            "submodule_worktree_missing",
+        }
+        blocking: list[dict[str, Any]] = []
+        for item in results:
+            path = str(item.get("path") or "").strip("/")
+            reason = str(item.get("reason") or "")
+            root = path.split("/", 1)[0] if path else ""
+            path_was_changed = bool(
+                path
+                and (
+                    path in changed
+                    or root in changed
+                    or any(
+                        path == candidate or path.startswith(f"{candidate}/")
+                        for candidate in changed
+                    )
+                )
+            )
+            if path_was_changed:
+                blocking.append(item)
+                continue
+            if changed_known and not changed:
+                # Parent-only landing: no root gitlink moved. Ambient or nested
+                # failures must not block authoritative completion.
+                continue
+            if reason in ambient_reasons:
+                # Unchanged-path ambient dirt/missing nested gitlinks.
+                continue
+            if reason and not changed_known:
+                # Unknown failure with no change set still fails closed.
+                blocking.append(item)
+                continue
+            if reason:
+                # Non-ambient failure on an unchanged path still fails closed
+                # when a non-empty change set was computed for other paths.
+                blocking.append(item)
+                continue
+            # Empty reason on unchanged path: non-blocking.
+        return blocking
 
     @staticmethod
     def _submodule_transaction_status(repo: Path) -> subprocess.CompletedProcess[bytes]:
@@ -36515,12 +36699,57 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         checkpoint: MergeCheckpoint | None = None,
         target_parent_ref: str = "",
         target_scope: str = "",
+        implementation_commit: str = "",
     ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         stale_config_repair = self._repair_stale_submodule_worktree_configs(repo_path)
         relatives = self.worktree_submodule_paths if not parent_relative else tuple(self._declared_submodule_paths(repo_path))
         # Sort submodules by dependency order: leaf submodules merge first
         relatives = self._topological_sort_submodules(relatives, repo_path)
+        tip_ref = self._resolve_task_tip_ref(
+            branch_name,
+            implementation_commit=implementation_commit,
+        )
+        # Parent-only landings: when every configured root gitlink is unchanged
+        # between baseline and the landed tip, skip submodule work entirely.
+        # An explicit empty ``changed_submodule_paths`` set is the same signal.
+        parent_only_unchanged = False
+        if not parent_relative and baseline_ref and tip_ref:
+            if changed_submodule_paths is not None:
+                effective_changed = {
+                    str(path).strip("/")
+                    for path in changed_submodule_paths
+                    if str(path).strip("/")
+                }
+            else:
+                effective_changed = self._changed_root_gitlink_paths_between(
+                    baseline_ref,
+                    tip_ref,
+                )
+            parent_only_unchanged = not effective_changed
+        if parent_only_unchanged:
+            # Drop any stale failed checkpoint left by earlier ambient retries
+            # so reconciliation no longer resumes nested dirt forever.
+            if checkpoint is None:
+                checkpoint_dir = self.state_path.parent / "merge_checkpoints"
+                stale = MergeCheckpoint.resume(checkpoint_dir, branch_name)
+                if stale is not None:
+                    stale.complete()
+            return [
+                {
+                    "path": relative,
+                    "branch": self._submodule_worktree_branch_name(
+                        branch_name,
+                        relative,
+                    ),
+                    "default_branch": "",
+                    "merged": True,
+                    "reason": "unchanged_gitlink_in_task",
+                    "tip_ref": tip_ref,
+                    "baseline_ref": baseline_ref,
+                }
+                for relative in relatives
+            ]
         # Resume from checkpoint if one exists (crash recovery)
         owns_checkpoint = checkpoint is None
         if checkpoint is None:
@@ -36576,6 +36805,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             checkpoint=checkpoint,
                             target_parent_ref=target_parent_ref,
                             target_scope=target_scope,
+                            implementation_commit=implementation_commit,
                         )
                     )
                 continue
@@ -36598,6 +36828,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         checkpoint=checkpoint,
                         target_parent_ref=target_parent_ref,
                         target_scope=target_scope,
+                        implementation_commit=implementation_commit,
                     )
                 )
                 continue
@@ -36656,6 +36887,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     branch_name,
                     baseline_ref,
                     relative,
+                    tip_ref=tip_ref,
+                    implementation_commit=implementation_commit,
                 )
             ):
                 result = {
@@ -36664,6 +36897,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "default_branch": self._submodule_default_branch(relative, source),
                     "merged": True,
                     "reason": "unchanged_gitlink_in_task",
+                    "tip_ref": tip_ref,
+                    "baseline_ref": baseline_ref,
                 }
                 results.append(result)
                 checkpoint.record_submodule(full_relative, result)
@@ -36686,6 +36921,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         checkpoint=checkpoint,
                         target_parent_ref=target_parent_ref,
                         target_scope=target_scope,
+                        implementation_commit=implementation_commit,
                     )
                 )
                 continue
@@ -36795,6 +37031,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         checkpoint=checkpoint,
                         target_parent_ref=target_parent_ref,
                         target_scope=target_scope,
+                        implementation_commit=implementation_commit,
                     )
                 )
                 continue
@@ -36889,6 +37126,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         checkpoint=checkpoint,
                         target_parent_ref=target_parent_ref,
                         target_scope=target_scope,
+                        implementation_commit=implementation_commit,
                     )
                 )
         # Keep failed checkpoints durable.  A later reconciliation pass resumes
@@ -39639,23 +39877,55 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     self.repo_root,
                     target_branch,
                 )
+                baseline_ref = str(event.get("baseline_ref") or "")
+                landed_tip = str(
+                    landed_commit
+                    or implementation_commit
+                    or event.get("implementation_commit")
+                    or ""
+                )
+                changed_gitlinks = (
+                    self._changed_root_gitlink_paths_between(
+                        baseline_ref,
+                        landed_tip,
+                    )
+                    if baseline_ref and landed_tip
+                    else None
+                )
                 submodule_merge_results = self._merge_submodule_branches_to_main(
                     branch,
                     task=task,
                     attempt=attempt,
-                    baseline_ref=str(event.get("baseline_ref") or ""),
+                    baseline_ref=baseline_ref,
+                    changed_submodule_paths=changed_gitlinks,
                     target_parent_ref=(
                         target_before_reconciliation or target_branch
                     ),
                     target_scope=target_branch,
-                ) if branch else []
-                failed_submodules = [
-                    item for item in submodule_merge_results if not item.get("merged", False)
-                ]
+                    implementation_commit=landed_tip,
+                ) if branch or landed_tip else []
+                failed_submodules = self._blocking_submodule_merge_failures(
+                    submodule_merge_results,
+                    baseline_ref=baseline_ref,
+                    landed_commit=landed_tip,
+                    changed_submodule_paths=changed_gitlinks,
+                )
                 submodule_gitlink_recording: dict[str, Any] = {}
                 publication_workspace: Path | None = None
                 publication_workspace_ephemeral = False
-                if submodule_merge_results and not failed_submodules:
+                # Only record gitlinks for merges that produced a commit.
+                # Parent-only / unchanged markers must not open a merge
+                # workspace or invent a recording failure.
+                actionable_submodule_merges = [
+                    item
+                    for item in submodule_merge_results
+                    if isinstance(item, Mapping)
+                    and item.get("merged", False)
+                    and str(item.get("commit") or "").strip()
+                    and str(item.get("reason") or "")
+                    != "unchanged_gitlink_in_task"
+                ]
+                if actionable_submodule_merges and not failed_submodules:
                     publication_workspace_result = (
                         self._prepare_main_merge_workspace(
                             target_branch,
@@ -39696,7 +39966,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         failed_submodules.append(
                             {
                                 "path": str(
-                                    submodule_merge_results[0].get("path")
+                                    actionable_submodule_merges[0].get("path")
                                     or ""
                                 ),
                                 "merged": False,
@@ -39723,6 +39993,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 "main_merge_worktree_cleanup_failed",
                                 publication_cleanup,
                             )
+                elif not failed_submodules:
+                    submodule_gitlink_recording = {
+                        "attempted": False,
+                        "ok": True,
+                        "committed": False,
+                        "reason": "no_actionable_submodule_merges",
+                    }
                 target_commit = self._resolved_commit_ref(
                     self.repo_root,
                     target_branch,

@@ -10458,15 +10458,14 @@ def test_implementation_daemon_skips_unrelated_submodule_branch_when_gitlink_is_
     )
 
     assert result["merged"] is True
-    assert result["submodule_merge_results"] == [
-        {
-            "path": "libs/child",
-            "branch": submodule_branch,
-            "default_branch": "main",
-            "merged": True,
-            "reason": "unchanged_gitlink_in_task",
-        }
-    ]
+    assert len(result["submodule_merge_results"]) == 1
+    submodule_result = result["submodule_merge_results"][0]
+    assert submodule_result["path"] == "libs/child"
+    assert submodule_result["branch"] == submodule_branch
+    assert submodule_result["merged"] is True
+    assert submodule_result["reason"] == "unchanged_gitlink_in_task"
+    assert submodule_result.get("baseline_ref") == baseline_ref
+    assert submodule_result.get("tip_ref")
     assert _git(submodule, "rev-parse", "main") != unrelated_commit
 
 
@@ -10496,6 +10495,152 @@ def test_implementation_daemon_detects_changed_submodule_gitlink_without_error(t
         baseline_ref,
         "libs/child",
     ) is True
+
+
+def test_implementation_daemon_tip_ref_survives_deleted_branch(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline_ref = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-b", "implementation/auto-tip")
+    (repo / "README.md").write_text("parent-only tip survival\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "AUTO-TIP: parent only")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(repo, "branch", "-D", "implementation/auto-tip")
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    tip = daemon._resolve_task_tip_ref(
+        "implementation/auto-tip",
+        implementation_commit=implementation_commit,
+    )
+    assert tip == implementation_commit
+    assert daemon._root_submodule_changed_in_task(
+        "implementation/auto-tip",
+        baseline_ref,
+        "libs/child",
+        implementation_commit=implementation_commit,
+    ) is False
+    assert daemon._changed_root_gitlink_paths_between(
+        baseline_ref,
+        implementation_commit,
+    ) == set()
+
+
+def test_implementation_daemon_filters_ambient_submodule_failures_for_parent_only(
+    tmp_path,
+):
+    repo, _submodule = _seed_parent_with_submodule(tmp_path)
+    baseline_ref = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-b", "implementation/auto-ambient")
+    (repo / "README.md").write_text("parent-only ambient filter\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "AUTO-AMBIENT: parent only")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    ambient_failures = [
+        {
+            "path": "libs/child",
+            "merged": False,
+            "reason": "submodule_checkout_dirty",
+            "dirty_paths": ["nested/dirt.txt"],
+        },
+        {
+            "path": "libs/child/nested/missing",
+            "merged": False,
+            "reason": "submodule_target_gitlink_unavailable",
+        },
+        {
+            "path": "libs/other",
+            "merged": False,
+            "reason": "unexpected_merge_conflict",
+        },
+    ]
+
+    blocking = daemon._blocking_submodule_merge_failures(
+        ambient_failures,
+        baseline_ref=baseline_ref,
+        landed_commit=implementation_commit,
+        changed_submodule_paths=set(),
+    )
+    assert blocking == []
+
+    blocking_unknown = daemon._blocking_submodule_merge_failures(
+        ambient_failures,
+        baseline_ref="",
+        landed_commit="",
+        changed_submodule_paths=None,
+    )
+    # Without a known change set, non-ambient failures remain blocking.
+    assert [item["path"] for item in blocking_unknown] == ["libs/other"]
+
+
+def test_implementation_daemon_parent_only_merge_skips_ambient_dirty_submodule(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline_ref = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-b", "implementation/auto-parent-dirty")
+    (repo / "README.md").write_text("parent-only with ambient dirt\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "AUTO-PARENT-DIRTY: parent only")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    # Ambient dirt in the child checkout must not block parent-only completion.
+    (submodule / "ambient-dirt.txt").write_text("dirty\n", encoding="utf-8")
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    results = daemon._merge_submodule_branches_to_main(
+        "implementation/auto-parent-dirty",
+        task=PortalTask(
+            task_id="AUTO-PARENT-DIRTY",
+            title="Parent-only merge ignores ambient dirt",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=1,
+        baseline_ref=baseline_ref,
+        changed_submodule_paths=set(),
+        implementation_commit=implementation_commit,
+    )
+    assert results
+    assert all(item.get("merged") is True for item in results)
+    assert all(item.get("reason") == "unchanged_gitlink_in_task" for item in results)
+    blocking = daemon._blocking_submodule_merge_failures(
+        results,
+        baseline_ref=baseline_ref,
+        landed_commit=implementation_commit,
+        changed_submodule_paths=set(),
+    )
+    assert blocking == []
 
 
 def test_merge_anchors_submodule_to_target_gitlink_without_advancing_ambient_main(
