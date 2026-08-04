@@ -6,15 +6,15 @@
   "completion_goal_id": "FVT-G090",
   "task_id": "FVT-036",
   "program": "formal-verification-tactician/readiness",
-  "observed_at": "2026-08-04T22:54:29Z",
+  "observed_at": "2026-08-04T22:56:16Z",
   "binding_mode": "current_tree_content_identity",
   "source": {
-    "parent_commit": "64d194809bd450e1c2dba9b1a6e7e5c058e395e7",
-    "parent_tree": "582f5a7c42f61eeccd32a0f50205f42215b6c676",
+    "parent_commit": "ff4dcf9e9f3a03396036a45b21c449ab81316683",
+    "parent_tree": "7ce69aa281e73a98659348a3f5de48afbd2f0575",
     "datasets_gitlink": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
     "datasets_embedded_head": "6fecc4b4bb58e41170518cc0624c69e5629d6577",
     "datasets_origin_main": "354631938920f89b9af62f02c904f41e70832ed0",
-    "parent_origin_main": "64d194809bd450e1c2dba9b1a6e7e5c058e395e7",
+    "parent_origin_main": "ff4dcf9e9f3a03396036a45b21c449ab81316683",
     "binding_mode": "current_tree_content_identity"
   },
   "acceptance": {
@@ -304,9 +304,9 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "64d194809bd450e1c2dba9b1a6e7e5c058e395e7",
-        "tree": "582f5a7c42f61eeccd32a0f50205f42215b6c676",
-        "origin_main": "64d194809bd450e1c2dba9b1a6e7e5c058e395e7",
+        "commit": "ff4dcf9e9f3a03396036a45b21c449ab81316683",
+        "tree": "7ce69aa281e73a98659348a3f5de48afbd2f0575",
+        "origin_main": "ff4dcf9e9f3a03396036a45b21c449ab81316683",
         "clean": false,
         "matches_origin_main": true
       },
@@ -4599,5 +4599,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:ee1487751125758ab679aad38e9d11ae800fb9188873afb36d9835cbb6a7134f"
+  "receipt_identity": "sha256:379a32bd94a48e3e6d38a42939a2800fdcb35baf36fe785f514a1cedc50a1380"
 }
