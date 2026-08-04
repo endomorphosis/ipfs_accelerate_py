@@ -521,6 +521,71 @@ def test_duplicate_attempts_do_not_leak_candidate_workspace_guards(
     assert len(list(store.store_dir.glob(".task-*.json.update.lock"))) == 1
 
 
+def test_same_lane_dead_owner_reclaimed_before_lease_expiry(tmp_path: Path) -> None:
+    """Restarted lane must not wait the full lease after a dead owner claim."""
+
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=21_600.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    lane_state = tmp_path / "state" / "lane-1"
+    dead_owner = ProcessBirthIdentity(
+        pid=2**30 - 11,
+        start_time_ticks=1,
+        boot_id="dead-boot",
+    )
+    original_workspace = tmp_path / "worktrees" / "original"
+    original = store.begin_preparing(
+        task_id="SAME-LANE",
+        canonical_task_cid="cid:same-lane",
+        attempt=3,
+        lane_id="lane-1",
+        workspace_path=original_workspace,
+        branch="implementation/same-lane",
+        merge_target="main",
+        state_dir=str(lane_state),
+        owner=dead_owner,
+    )
+    assert original.is_nonterminal
+    assert owner_liveness(dead_owner, proc_root=store.proc_root) is OwnerLiveness.DEAD
+
+    # Peer lane (different state_dir) still fails closed while lease is live.
+    peer_workspace = tmp_path / "worktrees" / "peer"
+    with pytest.raises(DuplicateAttemptError, match="lease has not expired"):
+        store.begin_preparing(
+            task_id="SAME-LANE",
+            canonical_task_cid="cid:same-lane",
+            attempt=3,
+            lane_id="lane-2",
+            workspace_path=peer_workspace,
+            branch="implementation/same-lane-peer",
+            merge_target="main",
+            state_dir=str(tmp_path / "state" / "lane-2"),
+        )
+
+    # Same lane reclaims immediately and publishes a fresh preparing claim.
+    replacement_workspace = tmp_path / "worktrees" / "replacement"
+    replacement = store.begin_preparing(
+        task_id="SAME-LANE",
+        canonical_task_cid="cid:same-lane",
+        attempt=3,
+        lane_id="lane-1",
+        workspace_path=replacement_workspace,
+        branch="implementation/same-lane-retry",
+        merge_target="main",
+        state_dir=str(lane_state),
+    )
+    terminal = store.load_workspace(original_workspace)
+    assert terminal is not None
+    assert terminal.state is WorkspaceLifecycleState.TERMINAL
+    assert replacement.state is WorkspaceLifecycleState.PREPARING
+    assert replacement.fence >= 1
+    assert store.load_workspace(replacement_workspace) == replacement
+
+
 def test_compare_and_delete_requires_matching_fence(tmp_path: Path) -> None:
     store = _store(tmp_path)
     workspace = tmp_path / "cad"

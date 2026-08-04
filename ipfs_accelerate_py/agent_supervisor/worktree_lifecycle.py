@@ -667,9 +667,42 @@ class WorktreeLifecycleStore:
                 raise DuplicateAttemptError(
                     "task/attempt already has a nonterminal workspace claim"
                 )
-            if now < float(other.expires_at):
+            # Owner is provably dead. Same-lane restarts must reclaim without
+            # waiting the full lease window (default 6h), otherwise daemon
+            # restarts thrash on implementation_retry_deferred forever.
+            same_lane = bool(
+                state_dir
+                and other.state_dir
+                and normalize_workspace_path(state_dir)
+                == normalize_workspace_path(other.state_dir)
+            )
+            if now < float(other.expires_at) and not same_lane:
                 raise DuplicateAttemptError(
                     "task/attempt claim lease has not expired"
+                )
+            reclaimed = None
+            if other.state_dir and (
+                same_lane or now >= float(other.expires_at)
+            ):
+                reclaimed = self.reclaim_dead_owner_for_controlled_restart(
+                    other.workspace_path,
+                    expected_state_dir=other.state_dir,
+                    reason=(
+                        "dead_owner_same_lane_attempt_reclaim"
+                        if same_lane
+                        else "dead_owner_expired_attempt_reclaim"
+                    ),
+                )
+            if reclaimed is None and now >= float(other.expires_at):
+                reclaimed = self.reclaim_stale(
+                    other.workspace_path,
+                    reason="dead_owner_expired_attempt_reclaim",
+                )
+            if reclaimed is None:
+                raise DuplicateAttemptError(
+                    "task/attempt claim lease has not expired"
+                    if now < float(other.expires_at)
+                    else "task/attempt dead-owner reclaim refused"
                 )
 
         # Serialize first on the stable task/attempt identity.  A losing lane
@@ -698,14 +731,21 @@ class WorktreeLifecycleStore:
                         raise DuplicateAttemptError(
                             "workspace claim exists and lease has not expired"
                         )
-                    if not expired:
-                        # Owner is dead but lease still valid: only reclaim
-                        # after expiry.
+                    same_lane = bool(
+                        state_dir
+                        and existing.state_dir
+                        and normalize_workspace_path(state_dir)
+                        == normalize_workspace_path(existing.state_dir)
+                    )
+                    if not expired and not same_lane:
+                        # Dead peer-lane owner: keep lease-gated reclaim so
+                        # concurrent lanes cannot race while the record is
+                        # still within its advertised exclusivity window.
                         raise DuplicateAttemptError(
                             "workspace claim lease has not expired for stale "
                             "owner"
                         )
-                    # Dead + expired → reclaim with fence advancement below.
+                    # Dead + (expired or same-lane restart) → reclaim.
                     next_fence = int(existing.fence) + 1
                 else:
                     next_fence = (
