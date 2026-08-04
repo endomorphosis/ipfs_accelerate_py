@@ -33044,25 +33044,216 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return False
         return True
 
-    def _prepare_main_merge_workspace(self, target_branch: str, branch_name: str) -> dict[str, Any]:
-        if self._git_current_branch(self.repo_root) == target_branch:
+    def _configured_submodule_root_names(self) -> set[str]:
+        return {
+            str(path).strip("/")
+            for path in self.worktree_submodule_paths
+            if str(path).strip("/")
+        }
+
+    def _host_path_is_configured_submodule_dirt(self, relative: str) -> bool:
+        """True when dirt is only a configured monorepo submodule checkout."""
+
+        relative = str(relative or "").strip("/")
+        if not relative:
+            return False
+        configured = self._configured_submodule_root_names()
+        root = relative.split("/", 1)[0]
+        return relative in configured or root in configured
+
+    def _create_detached_main_merge_workspace(
+        self,
+        target_branch: str,
+        branch_name: str,
+        *,
+        reason: str,
+        dirty_paths: Sequence[str] | None = None,
+    ) -> dict[str, Any]:
+        """Open a detached ephemeral worktree so host dirt cannot freeze merges.
+
+        Shared agent checkouts often sit on the merge target with ambient
+        submodule or mid-land dirt.  Git refuses a second checkout of the same
+        branch, so this path detaches at the target tip and later advances the
+        branch ref after a successful merge.
+        """
+
+        target_tip = self._resolved_commit_ref(self.repo_root, target_branch)
+        if not target_tip:
             return {
-                "available": True,
-                "path": str(self.repo_root),
-                "ephemeral": False,
+                "available": False,
+                "reason": "main_merge_target_tip_unavailable",
                 "target_branch": target_branch,
             }
-
         merge_root = self._main_merge_worktree_root()
-        checked_out_paths = self._branch_checked_out_worktree_paths(target_branch)
-        for checked_out_path in checked_out_paths:
-            if checked_out_path.resolve() == self.repo_root.resolve():
+        merge_root.mkdir(parents=True, exist_ok=True)
+        safe_target = self._safe_ref_path_fragment(target_branch)
+        safe_branch = self._safe_ref_path_fragment(branch_name)
+        workspace = merge_root / (
+            f"{safe_target}-{safe_branch}-detach-"
+            f"{os.getpid()}-{int(time.time())}"
+        )
+        add = subprocess.run(
+            [
+                "git",
+                "worktree",
+                "add",
+                "--detach",
+                str(workspace),
+                target_tip,
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if add.returncode != 0:
+            return {
+                "available": False,
+                "reason": "main_merge_detached_worktree_add_failed",
+                "target_branch": target_branch,
+                "error": (add.stderr or add.stdout or "")[-1000:],
+                "dirty_paths": list(dirty_paths or ()),
+            }
+        return {
+            "available": True,
+            "path": str(workspace),
+            "ephemeral": True,
+            "detached": True,
+            "advances_target_ref": True,
+            "pre_merge_target_tip": target_tip,
+            "target_branch": target_branch,
+            "host_dirty_bypass_reason": reason,
+            "dirty_paths": list(dirty_paths or ()),
+        }
+
+    def _advance_target_branch_after_detached_merge(
+        self,
+        *,
+        target_branch: str,
+        merge_commit: str,
+        expected_old: str,
+    ) -> dict[str, Any]:
+        """Move the merge-target branch to a detached merge tip when safe."""
+
+        merge_commit = str(merge_commit or "").strip()
+        expected_old = str(expected_old or "").strip()
+        if not merge_commit or not expected_old or not target_branch:
+            return {
+                "advanced": False,
+                "reason": "advance_target_ref_inputs_missing",
+            }
+        if not self._git_ref_exists(merge_commit):
+            return {
+                "advanced": False,
+                "reason": "merge_commit_unavailable",
+                "merge_commit": merge_commit,
+            }
+        current = self._resolved_commit_ref(self.repo_root, target_branch)
+        if current != expected_old:
+            # Another lane advanced the target; fail closed rather than rewind.
+            if current == merge_commit or (
+                current
+                and self._git_ref_is_ancestor(merge_commit, current)
+            ):
+                return {
+                    "advanced": True,
+                    "reason": "target_already_contains_merge",
+                    "target_branch": target_branch,
+                    "merge_commit": merge_commit,
+                    "current_tip": current,
+                }
+            return {
+                "advanced": False,
+                "reason": "target_tip_moved_during_merge",
+                "target_branch": target_branch,
+                "expected_old": expected_old,
+                "current_tip": current,
+                "merge_commit": merge_commit,
+            }
+        ref_name = (
+            target_branch
+            if target_branch.startswith("refs/")
+            else f"refs/heads/{target_branch}"
+        )
+        update = subprocess.run(
+            [
+                "git",
+                "update-ref",
+                ref_name,
+                merge_commit,
+                expected_old,
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if update.returncode != 0:
+            return {
+                "advanced": False,
+                "reason": "update_ref_failed",
+                "target_branch": target_branch,
+                "merge_commit": merge_commit,
+                "expected_old": expected_old,
+                "stderr": (update.stderr or "")[-1000:],
+            }
+        return {
+            "advanced": True,
+            "reason": "target_ref_advanced",
+            "target_branch": target_branch,
+            "merge_commit": merge_commit,
+            "previous_tip": expected_old,
+        }
+
+    def _prepare_main_merge_workspace(self, target_branch: str, branch_name: str) -> dict[str, Any]:
+        if self._git_current_branch(self.repo_root) == target_branch:
+            host_dirty = sorted(self._dirty_worktree_paths(self.repo_root))
+            blocking_host_dirty = [
+                path
+                for path in host_dirty
+                if not self._host_path_is_configured_submodule_dirt(path)
+            ]
+            if not blocking_host_dirty:
                 return {
                     "available": True,
                     "path": str(self.repo_root),
                     "ephemeral": False,
                     "target_branch": target_branch,
+                    "nonblocking_dirty_paths": host_dirty,
                 }
+            # Host sits on the merge target with real dirt (mid-land files,
+            # operator edits). Isolated detached worktree keeps progress moving.
+            return self._create_detached_main_merge_workspace(
+                target_branch,
+                branch_name,
+                reason="host_target_checkout_dirty",
+                dirty_paths=blocking_host_dirty,
+            )
+
+        merge_root = self._main_merge_worktree_root()
+        checked_out_paths = self._branch_checked_out_worktree_paths(target_branch)
+        for checked_out_path in checked_out_paths:
+            if checked_out_path.resolve() == self.repo_root.resolve():
+                host_dirty = sorted(self._dirty_worktree_paths(self.repo_root))
+                blocking_host_dirty = [
+                    path
+                    for path in host_dirty
+                    if not self._host_path_is_configured_submodule_dirt(path)
+                ]
+                if not blocking_host_dirty:
+                    return {
+                        "available": True,
+                        "path": str(self.repo_root),
+                        "ephemeral": False,
+                        "target_branch": target_branch,
+                        "nonblocking_dirty_paths": host_dirty,
+                    }
+                return self._create_detached_main_merge_workspace(
+                    target_branch,
+                    branch_name,
+                    reason="host_target_checkout_dirty",
+                    dirty_paths=blocking_host_dirty,
+                )
             if self._path_is_under(checked_out_path, merge_root):
                 dirty_paths = sorted(self._dirty_worktree_paths(checked_out_path))
                 generated_restore = self._restore_generated_dirty_paths(
@@ -33098,6 +33289,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if generated_restore:
                 dirty_paths = sorted(self._dirty_worktree_paths(checked_out_path))
             if dirty_paths:
+                # Prefer a detached merge worktree over deadlocking on an
+                # external dirty agent checkout of the merge target.
+                detached = self._create_detached_main_merge_workspace(
+                    target_branch,
+                    branch_name,
+                    reason="external_target_checkout_dirty",
+                    dirty_paths=dirty_paths,
+                )
+                if detached.get("available", False):
+                    if generated_restore:
+                        detached["generated_dirty_restore"] = generated_restore
+                    detached["external_worktree_path"] = str(checked_out_path)
+                    return detached
                 result = {
                     "available": False,
                     "reason": "main_branch_checked_out_elsewhere",
@@ -33856,6 +34060,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
             merge_workspace = Path(str(workspace_result["path"]))
             merge_workspace_ephemeral = bool(workspace_result.get("ephemeral", False))
+            advances_target_ref = bool(workspace_result.get("advances_target_ref", False))
+            pre_merge_target_tip = str(
+                workspace_result.get("pre_merge_target_tip") or ""
+            )
             resolved_add_add_conflicts = self._resolve_generated_add_add_conflicts(cwd=merge_workspace)
             identical_untracked_paths = self._identical_untracked_merge_paths(branch_name, cwd=merge_workspace)
             restored_generated_dirty_overlap = self._restore_generated_dirty_merge_overlap(
@@ -34040,6 +34248,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             merge_abort_result = self._abort_failed_merge(merge_workspace)
                     else:
                         merge_abort_result = self._abort_failed_merge(merge_workspace)
+            target_ref_advance: dict[str, Any] = {}
             if merge_returncode == 0:
                 merge_commit = self._run_git(["rev-parse", "HEAD"], cwd=merge_workspace).stdout.strip()
                 shared_worktree_path_scrub = self._scrub_tracked_shared_worktree_paths(
@@ -34072,6 +34281,21 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     merge_commit = str(merged_gitlink_recording["commit"])
                 if not merged_gitlink_recording.get("ok", True):
                     merge_returncode = 2
+                if (
+                    merge_returncode == 0
+                    and advances_target_ref
+                    and merge_commit
+                    and pre_merge_target_tip
+                ):
+                    target_ref_advance = (
+                        self._advance_target_branch_after_detached_merge(
+                            target_branch=target_branch,
+                            merge_commit=merge_commit,
+                            expected_old=pre_merge_target_tip,
+                        )
+                    )
+                    if not target_ref_advance.get("advanced", False):
+                        merge_returncode = 2
             elif removed_untracked:
                 self._restore_removed_untracked_paths(removed_untracked, cwd=merge_workspace)
             failed_submodules = self._blocking_submodule_merge_failures(
@@ -34137,6 +34361,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "stderr": merge.stderr[-4000:],
                 "main_worktree_path": str(merge_workspace),
                     "used_ephemeral_main_worktree": merge_workspace_ephemeral,
+                    "advances_target_ref": advances_target_ref,
                     "identical_untracked_paths": identical_untracked_paths,
                     "resolved_generated_conflicts": resolved_add_add_conflicts,
                     "restored_generated_dirty_overlap": restored_generated_dirty_overlap,
@@ -34147,6 +34372,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "submodule_failure_rollback": submodule_failure_rollback,
                     "submodule_merge_results": submodule_merge_results,
             }
+            if target_ref_advance:
+                result["target_ref_advance"] = target_ref_advance
             if missing_changed_submodule_paths:
                 result["missing_changed_submodule_paths"] = (
                     missing_changed_submodule_paths
@@ -34177,6 +34404,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 result["reason"] = "changed_submodule_merge_unverified"
             elif not merged_gitlink_recording.get("ok", True):
                 result["reason"] = "submodule_gitlink_recording_failed"
+            elif target_ref_advance and not target_ref_advance.get("advanced", False):
+                result["reason"] = "detached_merge_target_ref_advance_failed"
             self._record_event("merge_finished", result)
             return result
         finally:
@@ -40074,21 +40303,23 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 target_branch=target_branch,
             )
             if main_checkout_dirty_paths:
-                result = {
-                    "resolved": False,
-                    "reason": "main_checkout_dirty",
-                    "candidate_count": len(candidates),
-                    "processed_count": 0,
-                    "dirty_paths": main_checkout_dirty_paths,
-                }
-                if nested_artifact_preservation:
-                    result["nested_artifact_preservation"] = nested_artifact_preservation
-                if nonblocking_dirty_paths:
-                    result["nonblocking_dirty_paths"] = nonblocking_dirty_paths
-                self._record_event("merge_reconciliation_deferred", result)
-                results.append(result)
-                return results
-            if nonblocking_dirty_paths or nested_artifact_preservation:
+                # Host dirt used to freeze every landed candidate forever.
+                # Merges now open a detached ephemeral worktree when the shared
+                # checkout is dirty, so reconciliation must keep progressing.
+                self._record_event(
+                    "merge_reconciliation_nonblocking_checkout_state",
+                    {
+                        "reason": "host_dirt_bypassed_via_detached_merge",
+                        "candidate_count": len(candidates),
+                        "dirty_paths": main_checkout_dirty_paths,
+                        "nonblocking_dirty_paths": nonblocking_dirty_paths,
+                        "nested_artifact_preservation": (
+                            nested_artifact_preservation
+                        ),
+                        "unlock_mode": "detached_merge_despite_host_dirt",
+                    },
+                )
+            elif nonblocking_dirty_paths or nested_artifact_preservation:
                 self._record_event(
                     "merge_reconciliation_nonblocking_checkout_state",
                     {

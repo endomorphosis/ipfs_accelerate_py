@@ -10620,6 +10620,126 @@ def test_implementation_daemon_filters_ambient_submodule_failures_for_parent_onl
     assert [item["path"] for item in blocking_real_conflict] == ["libs/child"]
 
 
+def test_prepare_main_merge_workspace_detaches_when_host_target_is_dirty(tmp_path):
+    repo = tmp_path / "repo"
+    worktrees = tmp_path / "worktrees"
+    repo.mkdir()
+    worktrees.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "implementation/auto-unlock")
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "AUTO-UNLOCK: feature")
+    _git(repo, "checkout", "main")
+    # Host dirt on the merge target previously forced main_checkout_dirty
+    # forever and froze dependency unlock.
+    (repo / "operator-dirt.txt").write_text("do not block merges\n", encoding="utf-8")
+    _git(repo, "add", "operator-dirt.txt")
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_root=worktrees,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    workspace = daemon._prepare_main_merge_workspace(
+        "main",
+        "implementation/auto-unlock",
+    )
+    assert workspace["available"] is True
+    assert workspace["ephemeral"] is True
+    assert workspace["advances_target_ref"] is True
+    assert workspace["host_dirty_bypass_reason"] == "host_target_checkout_dirty"
+    assert Path(workspace["path"]).resolve() != repo.resolve()
+    # Drop the probe workspace so the merge path opens its own clean detach.
+    _git(repo, "worktree", "remove", "--force", str(workspace["path"]))
+
+    merge = daemon._merge_branch_to_main(
+        "implementation/auto-unlock",
+        PortalTask(
+            task_id="AUTO-UNLOCK",
+            title="Merge despite host dirt",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        1,
+    )
+    assert merge["merged"] is True, merge
+    assert merge.get("advances_target_ref") is True
+    assert merge.get("target_ref_advance", {}).get("advanced") is True
+    assert _git(repo, "merge-base", "--is-ancestor", "implementation/auto-unlock", "main") == ""
+    # Operator dirt on the shared checkout is preserved.
+    assert (repo / "operator-dirt.txt").read_text(encoding="utf-8") == (
+        "do not block merges\n"
+    )
+
+
+def test_reconciliation_does_not_freeze_on_host_dirt_when_configured_submodule_dirty(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    worktrees = tmp_path / "worktrees"
+    worktrees.mkdir()
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "parent readme")
+    _git(repo, "checkout", "-b", "implementation/auto-host-dirt")
+    (repo / "README.md").write_text("landed\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "AUTO-HOST-DIRT: parent only")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", "implementation/auto-host-dirt")
+    # Shared monorepo submodule dirt + staged host file.
+    (submodule / "ambient.txt").write_text("dirty child\n", encoding="utf-8")
+    (repo / "mid-land.md").write_text("partial land\n", encoding="utf-8")
+    _git(repo, "add", "mid-land.md")
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_root=worktrees,
+        worktree_submodule_paths=["libs/child"],
+    )
+    candidates = [
+        {
+            "task_id": "AUTO-HOST-DIRT",
+            "branch": "implementation/auto-host-dirt",
+            "implementation_commit": implementation_commit,
+        }
+    ]
+    blocking, nonblocking = daemon._reconciliation_blocking_dirty_paths(
+        candidates,
+        target_branch="main",
+    )
+    assert "libs/child" in nonblocking
+    assert "libs/child" not in blocking
+    # Staged mid-land file may still be reported, but merge workspace must
+    # detach instead of freezing reconciliation.
+    workspace = daemon._prepare_main_merge_workspace(
+        "main",
+        "implementation/auto-host-dirt",
+    )
+    assert workspace["available"] is True
+    assert workspace.get("ephemeral") is True or blocking == []
+
+
 def test_implementation_daemon_parent_only_merge_skips_ambient_dirty_submodule(
     tmp_path,
 ):
