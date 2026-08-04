@@ -67,7 +67,7 @@ def _route(
         fallback_provider="codex",
         selected_provider=selected,
         fallback_reason=(
-            ProviderFallbackReason.PREFERRED_UNAVAILABLE
+            ProviderFallbackReason.PREFERRED_QUOTA_EXHAUSTED
             if fallback
             else ProviderFallbackReason.NONE
         ),

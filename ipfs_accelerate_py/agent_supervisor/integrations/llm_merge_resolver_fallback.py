@@ -26,6 +26,11 @@ from pathlib import Path
 
 # Recursion depth guard: prevents infinite loops when a provider invokes this
 # resolver which in turn re-invokes a provider.
+from ..todo_daemon.llm_defaults import DEFAULT_CODEX_MODEL
+
+
+# Recursion depth guard: prevents infinite loops when Codex/Copilot
+# invokes this resolver which in turn re-invokes Codex/Copilot.
 _INVOCATION_DEPTH_ENV = "_AGENT_RESOLVER_INVOCATION_DEPTH"
 _MAX_INVOCATION_DEPTH = int(os.environ.get("AGENT_RESOLVER_MAX_DEPTH", "3"))
 
@@ -357,6 +362,15 @@ def _run_grok(prompt: str, workspace: Path) -> tuple[int | None, bool]:
     if not grok_bin:
         print("grok merge resolver is unavailable; Codex fallback is forbidden", file=sys.stderr)
         return None, False
+def _run_codex(prompt: str, workspace: Path) -> int | None:
+    codex_bin = os.environ.get("CODEX_BIN", "").strip() or shutil.which("codex")
+    if not codex_bin or os.environ.get("PREFER_COPILOT_MERGE_RESOLVER", "0") == "1":
+        return None
+    codex_model = (
+        os.environ.get("IPFS_ACCELERATE_AGENT_CODEX_MODEL", "").strip()
+        or DEFAULT_CODEX_MODEL
+    )
+    codex_reasoning = os.environ.get("IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT", "high").strip()
     command = [
         sys.executable,
         "-m",

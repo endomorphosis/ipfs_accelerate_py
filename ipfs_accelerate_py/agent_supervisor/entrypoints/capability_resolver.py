@@ -9,8 +9,8 @@ Design rules enforced here:
 
 - selection is deterministic under identical frozen evidence;
 - healthy, policy-allowed Grok is preferred over Codex;
-- Codex fallback records one of the closed pre-effect reason codes and always
-  requires an independent reviewer (the implementer cannot self-attest);
+- Codex fallback is authorized only by confirmed Grok quota exhaustion and
+  always requires an independent reviewer (the implementer cannot self-attest);
 - prompt text and untrusted provider/lane labels cannot choose a provider or
   raise lane width;
 - optional degradation is explicit rather than silent.
@@ -133,6 +133,7 @@ class CapabilityDegradationCode(str, Enum):
     NONE = "none"
     PREFERRED_PROVIDER_DEGRADED = "preferred_provider_degraded"
     FALLBACK_PROVIDER_ONLY = "fallback_provider_only"
+    FALLBACK_NOT_AUTHORIZED = "fallback_not_authorized"
     PROVIDERS_UNAVAILABLE = "providers_unavailable"
     IPFS_PUBLICATION_UNAVAILABLE = "ipfs_publication_unavailable"
     DISTRIBUTED_TOPOLOGY_UNAVAILABLE = "distributed_topology_unavailable"
@@ -688,6 +689,10 @@ class ProviderFallbackReceipt:
             raise CapabilityResolverError(
                 "fallback receipt requires a typed non-none reason"
             )
+        if reason is not ProviderFallbackReason.PREFERRED_QUOTA_EXHAUSTED:
+            raise CapabilityResolverError(
+                "Codex fallback receipt requires confirmed Grok quota exhaustion"
+            )
         for name in (
             "observed_capability_cid",
             "task_revision_cid",
@@ -1084,6 +1089,10 @@ class CapabilityResolution:
                 raise CapabilityResolverError(
                     "fallback receipt cannot self-satisfy independent review"
                 )
+        elif self.fallback_receipt is not None:
+            raise CapabilityResolverError(
+                "only an authorized Codex quota fallback may carry a fallback receipt"
+            )
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -1399,7 +1408,9 @@ class CapabilityResolver:
             )
             return route, None, decision, tuple(degradations)
 
-        # Preferred Grok is not ready: typed Codex fallback when possible.
+        # Preferred Grok is not ready. Codex is a fallback only for confirmed
+        # quota exhaustion; authentication, availability, capacity, and
+        # pre-effect failures fail closed even when Codex itself is ready.
         if grok.capability is PreferredProviderCapability.AVAILABLE:
             # Capability says available but readiness failed (auth, health,
             # policy, concurrency, or headroom). Treat as unavailable.
@@ -1411,7 +1422,11 @@ class CapabilityResolver:
             CapabilityDegradationCode.PREFERRED_PROVIDER_DEGRADED.value
         )
 
-        if codex is not None and codex.ready:
+        if (
+            reason is ProviderFallbackReason.PREFERRED_QUOTA_EXHAUSTED
+            and codex is not None
+            and codex.ready
+        ):
             degradations.append(
                 CapabilityDegradationCode.FALLBACK_PROVIDER_ONLY.value
             )
@@ -1488,35 +1503,21 @@ class CapabilityResolver:
             )
             return route, receipt, decision, tuple(sorted(set(degradations)))
 
-        degradations.append(CapabilityDegradationCode.PROVIDERS_UNAVAILABLE.value)
+        codex_ready_but_forbidden = codex is not None and codex.ready
+        degradations.append(
+            (
+                CapabilityDegradationCode.FALLBACK_NOT_AUTHORIZED.value
+                if codex_ready_but_forbidden
+                else CapabilityDegradationCode.PROVIDERS_UNAVAILABLE.value
+            )
+        )
         unavailable_reason = reason
-        review_authorization = _cid(
-            "unavailable-review-authorization",
-            {"task_revision_cid": evidence.task_revision_cid},
-        )
-        implementer_process_identity = _cid(
-            "unavailable-implementer",
-            {"task_revision_cid": evidence.task_revision_cid},
-        )
-        receipt = ProviderFallbackReceipt(
-            preferred_provider=PREFERRED_PROVIDER,
-            fallback_provider=FALLBACK_PROVIDER,
-            reason_code=unavailable_reason,
-            observed_capability_cid=grok.observed_capability_cid,
-            task_revision_cid=evidence.task_revision_cid,
-            budget_cid=grok.budget_cid,
-            attempt_id=evidence.attempt_cid,
-            usage_evidence_cid=grok.usage_evidence_cid,
-            worktree_cid=evidence.worktree_cid,
-            implementer_process_identity=implementer_process_identity,
-            review_authorization=review_authorization,
-        )
         route = ProviderRouteProvenance(
             preferred_provider=PREFERRED_PROVIDER,
             fallback_provider=FALLBACK_PROVIDER,
             selected_provider=ProviderSelection.UNAVAILABLE,
             fallback_reason=unavailable_reason,
-            fallback_receipt_cid=receipt.content_id,
+            fallback_receipt_cid="",
             observed_capability_cid=grok.observed_capability_cid,
             usage_evidence_cid=grok.usage_evidence_cid,
             budget_cid=grok.budget_cid,
@@ -1533,23 +1534,45 @@ class CapabilityResolver:
             selected_source=ResolutionSource.DISCOVERY,
             source_precedence=91,
             evidence_cid=evidence_cid,
-            candidates=(
-                _candidate(
-                    field_name="provider",
-                    value=ProviderSelection.GROK.value,
-                    source=ResolutionSource.BUILTIN_DEFAULT,
-                    precedence=90,
-                    evidence_cid=grok.observed_capability_cid,
-                    rejection_reason=unavailable_reason.value,
-                ),
+            candidates=tuple(
+                [
+                    _candidate(
+                        field_name="provider",
+                        value=ProviderSelection.GROK.value,
+                        source=ResolutionSource.BUILTIN_DEFAULT,
+                        precedence=90,
+                        evidence_cid=grok.observed_capability_cid,
+                        rejection_reason=unavailable_reason.value,
+                    )
+                ]
+                + (
+                    [
+                        _candidate(
+                            field_name="provider",
+                            value=ProviderSelection.CODEX.value,
+                            source=ResolutionSource.DISCOVERY,
+                            precedence=91,
+                            evidence_cid=codex.observed_capability_cid,
+                            rejection_reason=(
+                                "codex_fallback_requires_confirmed_grok_quota_exhaustion"
+                            ),
+                        )
+                    ]
+                    if codex_ready_but_forbidden and codex is not None
+                    else []
+                )
             ),
             reason_codes=(
                 unavailable_reason.value,
-                "implementation_providers_unavailable",
+                (
+                    "codex_fallback_not_authorized"
+                    if codex_ready_but_forbidden
+                    else "implementation_providers_unavailable"
+                ),
             ),
             effect=DecisionEffect.CONFIGURATION,
         )
-        return route, receipt, decision, tuple(sorted(set(degradations)))
+        return route, None, decision, tuple(sorted(set(degradations)))
 
     def _resolve_resources(
         self,

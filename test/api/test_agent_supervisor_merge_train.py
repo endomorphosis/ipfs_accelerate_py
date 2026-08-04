@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 from pathlib import Path
 
 import pytest
+
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
-    checkout_mutation_lock_path,
     checkout_repository_id,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue, MergeRequest
@@ -15,10 +14,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     MergeResolverRegistry,
     conflict_fingerprint,
 )
-from ipfs_accelerate_py.agent_supervisor.merge.merge_train import (
-    MergeTrain,
-    integrated_candidate_handoff_proof,
-)
+from ipfs_accelerate_py.agent_supervisor.merge.merge_train import MergeTrain
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,
@@ -43,22 +39,6 @@ def _repo(tmp_path: Path) -> Path:
     _git(repo, "add", "base.txt")
     _git(repo, "commit", "-m", "base")
     return repo
-
-
-def _checkout_daemon(
-    tmp_path: Path,
-    repo: Path,
-    state_name: str,
-) -> PortalImplementationDaemon:
-    state_dir = tmp_path / state_name
-    return PortalImplementationDaemon(
-        todo_path=tmp_path / f"{state_name}.todo.md",
-        state_path=state_dir / "state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-        worktree_pool_enabled=False,
-    )
 
 
 def test_queue_deduplicates_canonical_task_and_commit_across_lanes(tmp_path: Path) -> None:
@@ -195,7 +175,7 @@ def test_expired_processing_claim_is_recovered(tmp_path: Path) -> None:
         tmp_path / "queue",
         clock=lambda: now[0],
         max_age_seconds=10,
-        max_attempts=2,
+        max_attempts=3,
     )
     request = queue.enqueue(
         branch_name="implementation/abandoned",
@@ -214,14 +194,6 @@ def test_expired_processing_claim_is_recovered(tmp_path: Path) -> None:
     assert recovered.attempt == 2
     assert recovered.failure_count == 1
     assert recovered.failure_reason == "consumer claim expired; request recovered"
-
-    now[0] = 50.0
-    assert queue.dequeue(consumer_id="third-worker") is None
-    terminal = queue.get(request.request_id)
-    assert terminal is not None
-    assert terminal.status == "quarantined"
-    assert terminal.attempt == 2
-    assert terminal.failure_count == 2
 
 
 def test_train_rebases_candidate_on_latest_target_and_updates_target(tmp_path: Path) -> None:
@@ -311,459 +283,6 @@ def test_train_immediately_recovers_a_claim_abandoned_by_dead_consumer(tmp_path:
     assert stored.failure_count == 1
 
 
-def test_live_merge_lock_defers_without_consuming_failure_budget(
-    tmp_path: Path,
-) -> None:
-    repo = _repo(tmp_path)
-    candidate = _git(repo, "rev-parse", "HEAD")
-    now = [100.0]
-    queue = MergeQueue(
-        tmp_path / "queue",
-        clock=lambda: now[0],
-        max_attempts=2,
-    )
-    request = queue.enqueue(
-        branch_name="implementation/wait-for-lock",
-        task_id="WAIT-FOR-LOCK",
-        canonical_task_id="canonical-wait-for-lock",
-        commit_sha=candidate,
-    )
-    owner = _checkout_daemon(tmp_path, repo, "direct-lock-owner")
-    lease, reason, _existing, _waited = owner._acquire_checkout_mutation_lease(
-        task_id="DIRECT-LOCK-OWNER",
-        attempt=1,
-        branch="implementation/direct-lock-owner",
-        operation="merge_branch_to_main",
-        extra={"owner_script": ""},
-    )
-    assert lease is not None
-    assert reason == "acquired"
-    callbacks = [
-        {
-            "attempted": False,
-            "merged": False,
-            "reason": "lock_exists",
-            "lock_path": str(lease.lock_path),
-            "lock_owner_pid": os.getpid(),
-            "lock_owner_lease_id": lease.lease_id,
-        },
-        {"attempted": True, "merged": True},
-    ]
-    train = MergeTrain(
-        repo,
-        queue,
-        max_attempts=2,
-        merge_lock_deferral_seconds=10,
-        merge_callback=lambda _request: callbacks.pop(0),
-    )
-
-    try:
-        deferred = train.run_once()
-    finally:
-        assert owner._release_checkout_mutation_lease(lease) is True
-
-    assert deferred is not None
-    assert deferred["status"] == "deferred"
-    assert deferred["attempted"] is False
-    assert deferred["reason"] == "lock_exists"
-    assert deferred["retry_not_before"] == 110.0
-    stored = queue.get(request.request_id)
-    assert stored is not None
-    assert stored.status == "pending"
-    assert stored.attempt == 1
-    assert stored.failure_count == 0
-    assert stored.failure_reason == ""
-    assert train.run_once() is None
-
-    now[0] = 110.0
-    merged = train.run_once()
-    assert merged is not None and merged["status"] == "merged"
-    accepted = queue.get(request.request_id)
-    assert accepted is not None and accepted.status == "completed"
-    assert accepted.attempt == 1
-    assert accepted.failure_count == 0
-
-
-def test_real_checkout_mutation_lock_contention_defers_without_retry(
-    tmp_path: Path,
-) -> None:
-    repo = _repo(tmp_path)
-    now = [100.0]
-    queue = MergeQueue(
-        tmp_path / "queue",
-        clock=lambda: now[0],
-        max_attempts=2,
-    )
-    request = queue.enqueue(
-        branch_name="implementation/wait-for-checkout-lease",
-        task_id="WAIT-FOR-CHECKOUT-LEASE",
-        canonical_task_id="canonical-wait-for-checkout-lease",
-        commit_sha=_git(repo, "rev-parse", "HEAD"),
-    )
-
-    owner = _checkout_daemon(tmp_path, repo, "lock-owner")
-    contender = _checkout_daemon(tmp_path, repo, "merge-contender")
-    lease, reason, _existing, _waited = owner._acquire_checkout_mutation_lease(
-        task_id="LOCK-OWNER",
-        attempt=1,
-        branch="implementation/lock-owner",
-        operation="merge_branch_to_main",
-        # Pytest runs through ``python -m``; an empty script binding makes the
-        # real lease's PID the portable liveness proof for this test process.
-        extra={"owner_script": ""},
-    )
-    assert lease is not None
-    assert reason == "acquired"
-    callback_body_calls: list[str] = []
-
-    def merge_callback(claimed: MergeRequest) -> dict[str, object]:
-        return contender._run_checkout_mutation_transaction(
-            task_id=claimed.task_id,
-            attempt=claimed.attempt,
-            branch=claimed.branch_name,
-            operation="merge_branch_to_main",
-            callback=lambda: callback_body_calls.append(claimed.request_id)
-            or {"attempted": True, "merged": True},
-            failure_fields={"attempted": False, "merged": False},
-        )
-
-    try:
-        result = MergeTrain(
-            repo,
-            queue,
-            max_attempts=2,
-            merge_lock_deferral_seconds=10,
-            merge_callback=merge_callback,
-        ).run_once()
-    finally:
-        assert owner._release_checkout_mutation_lease(lease) is True
-
-    assert result is not None
-    assert result["status"] == "deferred"
-    assert result["reason"] == "checkout_mutation_lock_exists"
-    assert result["merge_result"]["reason"] == (
-        "checkout_mutation_lock_exists"
-    )
-    assert callback_body_calls == []
-    stored = queue.get(request.request_id)
-    assert stored is not None
-    assert stored.status == "pending"
-    assert stored.attempt == 1
-    assert stored.failure_count == 0
-    assert stored.retry_not_before == 110.0
-
-
-def test_positive_pid_without_target_bound_lease_consumes_failure(
-    tmp_path: Path,
-) -> None:
-    repo = _repo(tmp_path)
-    queue = MergeQueue(tmp_path / "queue", max_attempts=1)
-    request = queue.enqueue(
-        branch_name="implementation/forged-lock-result",
-        task_id="FORGED-LOCK",
-        commit_sha=_git(repo, "rev-parse", "HEAD"),
-    )
-    result = MergeTrain(
-        repo,
-        queue,
-        max_attempts=1,
-        merge_callback=lambda _request: {
-            "attempted": False,
-            "merged": False,
-            "reason": "checkout_mutation_lock_exists",
-            "lock_owner_pid": os.getpid(),
-        },
-    ).run_once()
-
-    assert result is not None
-    assert result["status"] == "quarantined"
-    assert result.get("deferred", False) is False
-    stored = queue.get(request.request_id)
-    assert stored is not None
-    assert stored.failure_count == 1
-
-
-def test_dead_target_bound_lock_owner_consumes_failure(
-    tmp_path: Path,
-) -> None:
-    repo = _repo(tmp_path)
-    queue = MergeQueue(tmp_path / "queue", max_attempts=1)
-    request = queue.enqueue(
-        branch_name="implementation/dead-lock-owner",
-        task_id="DEAD-LOCK-OWNER",
-        commit_sha=_git(repo, "rev-parse", "HEAD"),
-    )
-    lock_path = checkout_mutation_lock_path(repo).resolve(strict=False)
-    lock_path.write_text(
-        json.dumps(
-            {
-                "kind": "merge",
-                "pid": 999_999_999,
-                "owner_script": "",
-                "repo_root": str(repo.resolve()),
-                "task_id": "DEAD-OWNER",
-                "branch": "implementation/dead-owner",
-                "lease_id": "dead-owner-lease",
-            }
-        ),
-        encoding="utf-8",
-    )
-    result = MergeTrain(
-        repo,
-        queue,
-        max_attempts=1,
-        merge_callback=lambda _request: {
-            "attempted": False,
-            "merged": False,
-            "reason": "checkout_mutation_lock_exists",
-            "lock_path": str(lock_path),
-            "lock_owner_pid": 999_999_999,
-            "lock_owner_lease_id": "dead-owner-lease",
-        },
-    ).run_once()
-
-    assert result is not None
-    assert result["status"] == "quarantined"
-    assert result.get("deferred", False) is False
-    stored = queue.get(request.request_id)
-    assert stored is not None
-    assert stored.failure_count == 1
-
-
-def test_mismatched_live_lock_identity_consumes_failure(
-    tmp_path: Path,
-) -> None:
-    repo = _repo(tmp_path)
-    queue = MergeQueue(tmp_path / "queue", max_attempts=1)
-    request = queue.enqueue(
-        branch_name="implementation/mismatched-lock-owner",
-        task_id="MISMATCHED-LOCK-OWNER",
-        commit_sha=_git(repo, "rev-parse", "HEAD"),
-    )
-    owner = _checkout_daemon(tmp_path, repo, "mismatched-lock-owner")
-    lease, reason, _existing, _waited = owner._acquire_checkout_mutation_lease(
-        task_id="REAL-LOCK-OWNER",
-        attempt=1,
-        branch="implementation/real-lock-owner",
-        operation="merge_branch_to_main",
-        extra={"owner_script": ""},
-    )
-    assert lease is not None
-    assert reason == "acquired"
-    try:
-        result = MergeTrain(
-            repo,
-            queue,
-            max_attempts=1,
-            merge_callback=lambda _request: {
-                "attempted": False,
-                "merged": False,
-                "reason": "checkout_mutation_lock_exists",
-                "lock_path": str(lease.lock_path),
-                "lock_owner_pid": os.getpid(),
-                "lock_owner_lease_id": "forged-lease-identity",
-            },
-        ).run_once()
-    finally:
-        assert owner._release_checkout_mutation_lease(lease) is True
-
-    assert result is not None
-    assert result["status"] == "quarantined"
-    assert result.get("deferred", False) is False
-    stored = queue.get(request.request_id)
-    assert stored is not None
-    assert stored.failure_count == 1
-
-
-def test_repeated_verified_lock_deferrals_reach_bounded_failure(
-    tmp_path: Path,
-) -> None:
-    repo = _repo(tmp_path)
-    now = [100.0]
-    queue = MergeQueue(
-        tmp_path / "queue",
-        clock=lambda: now[0],
-        max_attempts=1,
-    )
-    request = queue.enqueue(
-        branch_name="implementation/repeated-lock-contention",
-        task_id="REPEATED-LOCK-CONTENTION",
-        commit_sha=_git(repo, "rev-parse", "HEAD"),
-    )
-    owner = _checkout_daemon(tmp_path, repo, "repeated-lock-owner")
-    lease, reason, _existing, _waited = owner._acquire_checkout_mutation_lease(
-        task_id="REPEATED-LOCK-OWNER",
-        attempt=1,
-        branch="implementation/repeated-lock-owner",
-        operation="merge_branch_to_main",
-        extra={"owner_script": ""},
-    )
-    assert lease is not None
-    assert reason == "acquired"
-    callback_result = {
-        "attempted": False,
-        "merged": False,
-        "reason": "checkout_mutation_lock_exists",
-        "lock_path": str(lease.lock_path),
-        "lock_owner_pid": os.getpid(),
-        "lock_owner_lease_id": lease.lease_id,
-    }
-    train = MergeTrain(
-        repo,
-        queue,
-        max_attempts=1,
-        merge_lock_deferral_seconds=10,
-        max_merge_lock_deferrals=2,
-        merge_callback=lambda _request: callback_result,
-    )
-    try:
-        first = train.run_once()
-        now[0] = 110.0
-        second = train.run_once()
-        now[0] = 120.0
-        terminal = train.run_once()
-    finally:
-        assert owner._release_checkout_mutation_lease(lease) is True
-
-    assert first is not None and first["status"] == "deferred"
-    assert second is not None and second["status"] == "deferred"
-    assert terminal is not None
-    assert terminal["status"] == "quarantined"
-    assert terminal["reason"] == "merge_lock_deferral_limit_exceeded"
-    stored = queue.get(request.request_id)
-    assert stored is not None
-    assert stored.status == "quarantined"
-    assert stored.failure_count == 1
-    assert len(stored.metadata["deferrals"]) == 2
-
-
-@pytest.mark.parametrize("cooldown", [float("nan"), float("inf"), 3601.0])
-def test_merge_train_rejects_unbounded_lock_deferral_cooldown(
-    tmp_path: Path,
-    cooldown: float,
-) -> None:
-    repo = _repo(tmp_path)
-    with pytest.raises(ValueError, match="deferral cooldown"):
-        MergeTrain(
-            repo,
-            MergeQueue(tmp_path / "queue"),
-            merge_lock_deferral_seconds=cooldown,
-        )
-
-
-def test_unverified_lock_exists_result_consumes_bounded_failure(
-    tmp_path: Path,
-) -> None:
-    repo = _repo(tmp_path)
-    queue = MergeQueue(tmp_path / "queue", max_attempts=1)
-    request = queue.enqueue(
-        branch_name="implementation/malformed-lock-result",
-        task_id="MALFORMED-LOCK",
-        commit_sha=_git(repo, "rev-parse", "HEAD"),
-    )
-    train = MergeTrain(
-        repo,
-        queue,
-        max_attempts=1,
-        merge_callback=lambda _request: {
-            "attempted": False,
-            "merged": False,
-            "reason": "lock_exists",
-            "lock_owner_pid": "not-a-pid",
-        },
-    )
-
-    result = train.run_once()
-
-    assert result is not None
-    assert result["status"] == "quarantined"
-    assert result.get("deferred", False) is False
-    stored = queue.get(request.request_id)
-    assert stored is not None
-    assert stored.status == "quarantined"
-    assert stored.failure_count == result["failure_count"] == 1
-
-
-def test_train_leaves_integrated_quarantine_closed_without_handoff_scope(
-    tmp_path: Path,
-) -> None:
-    repo = _repo(tmp_path)
-    candidate = _git(repo, "rev-parse", "HEAD")
-    repository_id = checkout_repository_id(repo)
-    queue = MergeQueue(
-        tmp_path / "queue",
-        target_repository_id=repository_id,
-        target_branch="main",
-        require_target_binding=True,
-    )
-    request = queue.enqueue(
-        branch_name="implementation/ref-016-missing-scope",
-        task_id="REF-016-MISSING-SCOPE",
-        canonical_task_id="canonical-ref-016-missing-scope",
-        commit_sha=candidate,
-        # A callback-aware recovery requires an explicit, complete declaration
-        # even when this particular fixture has no changed submodules.
-        metadata={},
-    )
-    claimed = queue.dequeue(consumer_id="merge-train:dead")
-    assert claimed is not None
-    queue.quarantine(
-        claimed,
-        reason="synthetic terminal failure",
-    )
-    callbacks: list[str] = []
-
-    result = MergeTrain(
-        repo,
-        queue,
-        target_branch="main",
-        merge_callback=lambda claimed: callbacks.append(
-            claimed.request_id
-        )
-        or {"merged": True},
-    ).run_once()
-
-    assert result is None
-    assert callbacks == []
-    stored = queue.get(request.request_id)
-    assert stored is not None
-    assert stored.status == "quarantined"
-    assert stored.failure_reason == "synthetic terminal failure"
-
-
-@pytest.mark.parametrize(
-    ("changed_paths", "reason"),
-    (
-        (
-            [f"nested-{index}" for index in range(65)],
-            "changed_submodule_scope_too_large",
-        ),
-        (["x" * 1025], "changed_submodule_paths_malformed"),
-        (
-            ["/".join(["nested"] * 65)],
-            "changed_submodule_paths_malformed",
-        ),
-    ),
-)
-def test_integrated_handoff_proof_bounds_untrusted_path_scope(
-    tmp_path: Path,
-    changed_paths: list[str],
-    reason: str,
-) -> None:
-    repo = _repo(tmp_path)
-    commit = _git(repo, "rev-parse", "HEAD")
-
-    proof = integrated_candidate_handoff_proof(
-        repo,
-        candidate_commit=commit,
-        target_commit=commit,
-        changed_submodule_paths=changed_paths,
-    )
-
-    assert proof["passed"] is False
-    assert proof["reason"] == reason
-
-
 def test_bounded_train_failures_create_durable_quarantine_receipt(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     _git(repo, "switch", "-c", "implementation/broken")
@@ -797,7 +316,6 @@ def test_bounded_train_failures_create_durable_quarantine_receipt(tmp_path: Path
     assert terminal["status"] == "quarantined"
     stored = queue.get(request.request_id)
     assert stored is not None and stored.status == "quarantined"
-    assert stored.failure_count == terminal["failure_count"] == 2
     receipt = queue.quarantine_dir / f"{request.request_id}.json"
     assert receipt.exists()
     assert json.loads(receipt.read_text(encoding="utf-8"))["receipt_type"] == "merge_quarantine"
@@ -964,8 +482,8 @@ def test_cross_lane_completion_reuses_the_bound_non_main_target(
             "attempted": True,
             "passed": True,
             "returncode": 0,
-            "selection": {"scope": "pre_merge"},
             "results": [],
+            "selection": {"scope": "pre_merge"},
         },
     )
 

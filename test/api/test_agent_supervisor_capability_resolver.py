@@ -155,41 +155,23 @@ def test_healthy_policy_allowed_grok_wins_by_default() -> None:
     assert resolution.prompt_provider_ignored is True
 
 
-@pytest.mark.parametrize(
-    ("capability", "reason"),
-    [
-        (
-            PreferredProviderCapability.UNAVAILABLE,
-            ProviderFallbackReason.PREFERRED_UNAVAILABLE,
-        ),
-        (
-            PreferredProviderCapability.QUOTA_EXHAUSTED,
-            ProviderFallbackReason.PREFERRED_QUOTA_EXHAUSTED,
-        ),
-        (
-            PreferredProviderCapability.CAPACITY_UNAVAILABLE,
-            ProviderFallbackReason.PREFERRED_CAPACITY_UNAVAILABLE,
-        ),
-        (
-            PreferredProviderCapability.PRE_EFFECT_FAILURE,
-            ProviderFallbackReason.PREFERRED_PRE_EFFECT_FAILURE,
-        ),
-    ],
-)
-def test_codex_fallback_records_typed_pre_effect_reasons(
-    capability: PreferredProviderCapability,
-    reason: ProviderFallbackReason,
-) -> None:
+def test_codex_fallback_records_confirmed_quota_exhaustion() -> None:
     evidence = _evidence(
-        grok=_provider(PREFERRED_PROVIDER, capability=capability, healthy=False),
+        grok=_provider(
+            PREFERRED_PROVIDER,
+            capability=PreferredProviderCapability.QUOTA_EXHAUSTED,
+            healthy=False,
+        ),
     )
     resolution = CapabilityResolver().resolve(evidence)
 
     assert resolution.selected_provider is ProviderSelection.CODEX
-    assert resolution.provider_route.fallback_reason is reason
+    assert resolution.provider_route.fallback_reason is (
+        ProviderFallbackReason.PREFERRED_QUOTA_EXHAUSTED
+    )
     assert resolution.fallback_receipt is not None
     receipt = resolution.fallback_receipt
-    assert receipt.reason_code is reason
+    assert receipt.reason_code is ProviderFallbackReason.PREFERRED_QUOTA_EXHAUSTED
     assert receipt.preferred_provider == PREFERRED_PROVIDER
     assert receipt.fallback_provider == FALLBACK_PROVIDER
     assert receipt.committed_before_dispatch is True
@@ -203,6 +185,46 @@ def test_codex_fallback_records_typed_pre_effect_reasons(
         resolution.provider_route.fallback_receipt_cid == receipt.content_id
     )
     assert CapabilityDegradationCode.FALLBACK_PROVIDER_ONLY.value in (
+        resolution.degradations
+    )
+
+
+@pytest.mark.parametrize(
+    ("capability", "reason"),
+    [
+        (
+            PreferredProviderCapability.UNAVAILABLE,
+            ProviderFallbackReason.PREFERRED_UNAVAILABLE,
+        ),
+        (
+            PreferredProviderCapability.CAPACITY_UNAVAILABLE,
+            ProviderFallbackReason.PREFERRED_CAPACITY_UNAVAILABLE,
+        ),
+        (
+            PreferredProviderCapability.PRE_EFFECT_FAILURE,
+            ProviderFallbackReason.PREFERRED_PRE_EFFECT_FAILURE,
+        ),
+    ],
+)
+def test_non_quota_grok_failure_does_not_authorize_codex_or_receipt(
+    capability: PreferredProviderCapability,
+    reason: ProviderFallbackReason,
+) -> None:
+    resolution = CapabilityResolver().resolve(
+        _evidence(
+            grok=_provider(
+                PREFERRED_PROVIDER,
+                capability=capability,
+                healthy=False,
+            )
+        )
+    )
+
+    assert resolution.selected_provider is ProviderSelection.UNAVAILABLE
+    assert resolution.provider_route.fallback_reason is reason
+    assert resolution.provider_route.fallback_receipt_cid == ""
+    assert resolution.fallback_receipt is None
+    assert CapabilityDegradationCode.FALLBACK_NOT_AUTHORIZED.value in (
         resolution.degradations
     )
 
@@ -223,7 +245,7 @@ def test_codex_fallback_cannot_self_satisfy_independent_review() -> None:
         ProviderFallbackReceipt(
             preferred_provider=PREFERRED_PROVIDER,
             fallback_provider=FALLBACK_PROVIDER,
-            reason_code=ProviderFallbackReason.PREFERRED_UNAVAILABLE,
+            reason_code=ProviderFallbackReason.PREFERRED_QUOTA_EXHAUSTED,
             observed_capability_cid=_cid("cap"),
             task_revision_cid=_cid("task"),
             budget_cid=_cid("budget"),
@@ -414,7 +436,8 @@ def test_both_providers_unavailable_is_typed() -> None:
     assert resolution.provider_route.fallback_reason is (
         ProviderFallbackReason.PREFERRED_UNAVAILABLE
     )
-    assert resolution.fallback_receipt is not None
+    assert resolution.fallback_receipt is None
+    assert resolution.provider_route.fallback_receipt_cid == ""
     assert resolution.provider_route.attempt_cid == ""
     assert resolution.provider_route.worktree_cid == ""
     provider_decision = next(
@@ -461,7 +484,7 @@ def test_capability_resolution_emits_required_field_decisions() -> None:
     assert ALLOWED_IMPLEMENTATION_PROVIDERS == {"grok", "codex"}
 
 
-def test_unhealthy_but_available_grok_falls_back_as_unavailable() -> None:
+def test_unhealthy_but_available_grok_does_not_authorize_codex() -> None:
     resolution = resolve_capabilities(
         _evidence(
             grok=_provider(
@@ -471,10 +494,11 @@ def test_unhealthy_but_available_grok_falls_back_as_unavailable() -> None:
             )
         )
     )
-    assert resolution.selected_provider is ProviderSelection.CODEX
+    assert resolution.selected_provider is ProviderSelection.UNAVAILABLE
     assert resolution.provider_route.fallback_reason is (
         ProviderFallbackReason.PREFERRED_UNAVAILABLE
     )
+    assert resolution.fallback_receipt is None
 
 
 def test_evidence_rejects_prompt_driven_override_without_signed_cid() -> None:

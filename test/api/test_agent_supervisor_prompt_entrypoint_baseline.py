@@ -297,10 +297,10 @@ def test_low_level_entrypoint_flag_counts_are_measured_from_parsers() -> None:
         _capture_parser(implementation_daemon.parse_args)
     )
 
-    assert len(supervisor_options) == 134
-    assert len(supervisor_options - {"--help"}) == 133
-    assert len(daemon_options) == 51
-    assert len(daemon_options - {"--help"}) == 50
+    assert len(supervisor_options) == 140
+    assert len(supervisor_options - {"--help"}) == 139
+    assert len(daemon_options) == 57
+    assert len(daemon_options - {"--help"}) == 56
 
 
 def test_state_root_defaults_diverge_across_launch_surfaces(
