@@ -70,7 +70,9 @@ PRODUCTION_CLI_POLICY_NAME: Final = (
 DEFAULT_GROK_MODEL: Final = "grok-4.5"
 DEFAULT_CODEX_MODEL: Final = "gpt-5.6-terra"
 DEFAULT_CODEX_REVIEW_REASONING_EFFORT: Final = "medium"
-DEFAULT_CONTEXT_BUDGET_TOKENS: Final = MAX_PROVIDER_PROMPT_TOKENS
+# Operator default for implement context remains compact; independent review
+# uses the full protocol prompt maximum so admitted proposals always fit.
+DEFAULT_CONTEXT_BUDGET_TOKENS: Final = 4_096
 DEFAULT_PROVIDER_TIMEOUT_SECONDS: Final = 300.0
 DEFAULT_MAX_NEW_TOKENS: Final = 4_096
 

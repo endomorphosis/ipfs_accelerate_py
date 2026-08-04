@@ -70,9 +70,16 @@ SCAEV615ROUTE_COVERAGE: Final = (
 
 # These are protocol limits, not provider suggestions.  Size checks are over
 # UTF-8 bytes and are inclusive at the boundary.
-MAX_PROVIDER_PROMPT_TOKENS: Final = 4_096
-MAX_PROVIDER_PROMPT_BYTES: Final = 64 * 1_024
+#
+# Independent Codex review embeds the admitted Grok proposal (which may be up
+# to MAX_PROVIDER_RESPONSE_BYTES).  The review prompt bound must therefore be
+# large enough to carry a max-size admitted proposal plus the bounded evidence
+# slice; otherwise every large implement admission fails closed as
+# ``provider_prompt_too_large`` before any independent review can run.
 MAX_PROVIDER_RESPONSE_BYTES: Final = 256 * 1_024
+MAX_PROVIDER_PROMPT_BYTES: Final = MAX_PROVIDER_RESPONSE_BYTES + 64 * 1_024
+# utf8-bytes-ceil-div-4@1 for the prompt byte bound, rounded up for envelope.
+MAX_PROVIDER_PROMPT_TOKENS: Final = (MAX_PROVIDER_PROMPT_BYTES + 3) // 4
 MAX_PROVIDER_TIMEOUT_SECONDS: Final = 600.0
 MAX_PROVIDER_JSON_DEPTH: Final = 24
 MAX_PROVIDER_JSON_ITEMS: Final = 8_192
@@ -871,8 +878,8 @@ def _bounded_evidence_slice(
     # A reviewer cannot independently assess a patch against source it never
     # saw.  Production packets may attach the supervisor-built, CID-addressed
     # bounded context manifest; Codex receives that same exact manifest.  The
-    # completed Codex envelope is still measured against the hard 4096-token
-    # provider bound in ``_request``.
+    # completed Codex envelope is measured against the review prompt bound in
+    # ``_request`` (at least large enough for a max-size admitted proposal).
     if isinstance(context_slice, Mapping):
         evidence["context_slice"] = dict(context_slice)
     return evidence
@@ -1607,6 +1614,26 @@ class ImplementationProviderRouter:
             },
         }
         prompt = _canonical_bytes(envelope)
+        # Independent review must be able to see the admitted proposal even
+        # when that proposal approaches MAX_PROVIDER_RESPONSE_BYTES.  Operator
+        # context budgets still bound the implement step; review uses at least
+        # the protocol maximum so admission is not followed by an automatic
+        # prompt-too-large degradation.
+        if role is ProviderRole.CODEX_REVIEW:
+            effective_bounds = ProviderBounds(
+                max_prompt_tokens=max(
+                    int(self.bounds.max_prompt_tokens),
+                    MAX_PROVIDER_PROMPT_TOKENS,
+                ),
+                max_prompt_bytes=max(
+                    int(self.bounds.max_prompt_bytes),
+                    MAX_PROVIDER_PROMPT_BYTES,
+                ),
+                max_response_bytes=int(self.bounds.max_response_bytes),
+                timeout_seconds=float(self.bounds.timeout_seconds),
+            )
+        else:
+            effective_bounds = self.bounds
         try:
             prompt_tokens = self.token_counter(prompt)
         except Exception as exc:
@@ -1623,12 +1650,12 @@ class ImplementationProviderRouter:
                 "token counter returned an invalid value",
                 reason_code=ProviderReason.PACKET_MALFORMED,
             )
-        if len(prompt) > self.bounds.max_prompt_bytes:
+        if len(prompt) > effective_bounds.max_prompt_bytes:
             raise ProviderRoutingError(
                 "provider prompt exceeds its exact UTF-8 byte bound",
                 reason_code=ProviderReason.PROMPT_TOO_LARGE,
             )
-        if prompt_tokens > self.bounds.max_prompt_tokens:
+        if prompt_tokens > effective_bounds.max_prompt_tokens:
             raise ProviderRoutingError(
                 "provider prompt exceeds its token bound",
                 reason_code=ProviderReason.PROMPT_TOKEN_BUDGET,
@@ -1639,7 +1666,7 @@ class ImplementationProviderRouter:
             snapshot_id=snapshot_id,
             task_id=task_id,
             payload=MappingProxyType(payload),
-            bounds=self.bounds,
+            bounds=effective_bounds,
             prompt=prompt,
             prompt_tokens=prompt_tokens,
             response_contract=MappingProxyType(response_contract),
