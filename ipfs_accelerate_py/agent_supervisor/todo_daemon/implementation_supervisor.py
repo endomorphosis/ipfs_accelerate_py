@@ -7227,19 +7227,28 @@ class PortalImplementationSupervisor:
                 "_retryable_reconciliation_event_failure",
                 None,
             )
+            retryable_validation_failure = getattr(
+                daemon,
+                "_retryable_reconciliation_validation_failure",
+                None,
+            )
             if callable(retryable_event_failure):
                 retryable_environment_failure = bool(
                     retryable_event_failure(event)
                 )
-            else:
+            elif callable(retryable_validation_failure):
                 retryable_environment_failure = bool(
-                    PortalImplementationDaemon
-                    ._retryable_reconciliation_validation_failure(
+                    retryable_validation_failure(
                         validation_result
                         if isinstance(validation_result, Mapping)
                         else {}
                     )
                 )
+            else:
+                # Older daemons may lack both helpers; fail closed to a
+                # non-retryable classification rather than AttributeError the
+                # supervisor preflight loop.
+                retryable_environment_failure = False
             terminal_semantic_rejection = bool(
                 event_type
                 == "worktree_reconciliation_validation_finished"
