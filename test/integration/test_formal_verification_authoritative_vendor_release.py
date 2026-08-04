@@ -25,6 +25,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 BUILDER_PATH = (
     REPO_ROOT / "tools" / "logic" / "build_formal_verification_tactician_receipt.py"
 )
+CERTIFIER_PATH = (
+    REPO_ROOT / "tools" / "logic" / "certify_formal_verification_toolchains.py"
+)
 RELEASE_PATH = (
     REPO_ROOT
     / "docs"
@@ -306,8 +309,15 @@ def _inputs(builder, observed_at: str) -> dict[str, dict[str, Any]]:
 
 
 def test_expected_outputs_and_builder_constants(builder) -> None:
-    for path in (BUILDER_PATH, RELEASE_PATH, VENDOR_TEST_PATH, Path(__file__)):
+    for path in (
+        BUILDER_PATH,
+        CERTIFIER_PATH,
+        RELEASE_PATH,
+        VENDOR_TEST_PATH,
+        Path(__file__),
+    ):
         assert path.is_file(), path
+    certifier = _load(CERTIFIER_PATH, "fvt_authoritative_vendor_release_certifier")
     assert builder.AUTHORITATIVE_VENDOR_RELEASE_INTERFACE == INTERFACE
     assert builder.AUTHORITATIVE_VENDOR_RELEASE_SCHEMA_VERSION == SCHEMA
     assert builder.AUTHORITATIVE_VENDOR_RELEASE_GOAL_ID == GOAL_ID
@@ -321,6 +331,22 @@ def test_expected_outputs_and_builder_constants(builder) -> None:
     assert builder.DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_TEST_RELATIVE.as_posix() == (
         "test/integration/test_formal_verification_authoritative_vendor_release.py"
     )
+    # Certifier path inventory stays aligned with the receipt builder.
+    assert certifier.AUTHORITATIVE_VENDOR_RELEASE_INTERFACE == INTERFACE
+    assert certifier.AUTHORITATIVE_VENDOR_RELEASE_SCHEMA == SCHEMA
+    assert certifier.AUTHORITATIVE_VENDOR_RELEASE_GOAL_ID == GOAL_ID
+    assert certifier.AUTHORITATIVE_VENDOR_RELEASE_TASK_ID == TASK_ID
+    assert certifier.AUTHORITATIVE_VENDOR_RELEASE_VALIDATION_COMMAND == (
+        VALIDATION_COMMAND
+    )
+    assert (
+        certifier.DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_RELATIVE.as_posix()
+        == builder.DEFAULT_AUTHORITATIVE_VENDOR_RELEASE_RELATIVE.as_posix()
+    )
+    assert list(certifier.AUTHORITATIVE_VENDOR_RELEASE_OBJECTIVE_EVIDENCE_TERMS) == [
+        "docs/architecture/formal_verification_authoritative_vendor_release.json",
+        "test/integration/test_formal_verification_authoritative_vendor_release.py",
+    ]
     assert set(builder.AUTHORITATIVE_VENDOR_RELEASE_DEPENDENCY_KEYS) == {
         "end_to_end_assurance_matrix",
         "secpal_authoritative_live",
@@ -652,6 +678,40 @@ def test_fixture_shim_unsupported_proposal_stale_and_missing_authority_fail_clos
         )
     if mutation == "stale":
         assert release["acceptance"]["dependencies_fresh"] is False
+
+
+def test_unbound_post_merge_envelope_cannot_claim_origin_or_trees(
+    builder,
+    monkeypatch,
+) -> None:
+    """Synthetic post-merge fields must not satisfy supervisor fan-in gates."""
+
+    observed_at = _now()
+    monkeypatch.setattr(
+        builder,
+        "_observe_recursive_gitlinks",
+        lambda _root: {
+            "valid": True,
+            "gitlink_count": 1,
+            "rows": [{"path": "ipfs_datasets_py", "bound": True}],
+            "network_used": False,
+            "fetch_attempted": False,
+        },
+    )
+    release = builder.build_authoritative_vendor_release(
+        repo_root=REPO_ROOT,
+        observed_at=observed_at,
+        **_inputs(builder, observed_at),
+    )
+    binding = release["dependency_bindings"]["post_merge_deployment_attestation"]
+    assert binding["present"] is True
+    assert binding["binding_valid"] is False
+    assert release["acceptance"]["durable_supervisor_completion_bound"] is False
+    assert release["acceptance"]["source_and_merged_trees_bound"] is False
+    assert release["acceptance"]["origin_publication_bound"] is False
+    assert release["claims"]["post_merge_ancestor_evidence_bound"] is False
+    assert release["assessment_complete"] is True
+    assert release["deployment_ready"] is False
 
 
 def test_resealing_a_modified_checked_receipt_cannot_restore_authority(
