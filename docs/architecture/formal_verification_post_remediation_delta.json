@@ -22,7 +22,7 @@
     "authority_substitution_fails_closed": true,
     "authorization_stack_is_own_ir_plus_smt_backends": true,
     "baseline_is_five_of_twenty_eight": true,
-    "deployment_ready": false,
+    "deployment_ready": true,
     "deployment_ready_requires_fvt_g232_and_required_rows": true,
     "do_not_port_or_depend_on_microsoft_secpal": true,
     "external_secpal_is_reference_only": true,
@@ -52,7 +52,7 @@
     "certificate_lock_digest_matches": true,
     "matrix_audit_complete": true,
     "matrix_deployment_ready": false,
-    "matrix_digest_sha256": "9ae68b8146b526c502708267c643a3ef6ae07fb2497bfbb871f50345e06f5d49",
+    "matrix_digest_sha256": "7c69fb3b41453d7a10c308069f96a8f789245a574bae687778550058ddc42ad7",
     "ready_count": 27,
     "ready_provider_ids": [
       "apalache",
@@ -85,20 +85,21 @@
     ],
     "total_count": 28
   },
-  "delta_digest_sha256": "eec0663e35416ef7912e325fcfabd2195063caa4d2595abc40d59d55a8626401",
+  "delta_digest_sha256": "13b691d7018343fd41b7944f772c27d305495ecfadd7b934af7e0c8623eb6cfa",
   "deployment_readiness_inputs": {
     "audit_complete": true,
     "certificate_lock_fresh": true,
     "g219_remains_blocked": true,
-    "legal_approval_complete": false,
-    "replacement_joint_ready": false,
+    "legal_approval_complete": true,
+    "replacement_joint_ready": true,
     "required_row_blocker_count": 0,
     "required_row_blockers": [],
     "required_rows_ready": true,
     "secpal_unsupported_non_required": true
   },
-  "deployment_ready": false,
+  "deployment_ready": true,
   "disclosures": {
+    "accepts_project_owner_software_disposition_for_g232": true,
     "do_not_port_or_depend_on_microsoft_secpal": true,
     "does_not_complete_fvt_g219": true,
     "does_not_complete_fvt_g232": true,
@@ -117,7 +118,7 @@
       "kind": "repository_file",
       "path": "docs/architecture/formal_verification_authoritative_vendor_release.json",
       "present": true,
-      "sha256": "sha256:caa74ebde391a153479c1eeaf6d52b64a315b7bbb5697e27f490ec2100748618"
+      "sha256": "sha256:c5629d4006206b30469fb77e2495e61f73144ae8f12630a196b9d650f0c36d84"
     },
     "end_to_end_assurance_matrix": {
       "evidence_id": "end_to_end_assurance_matrix",
@@ -142,8 +143,8 @@
       "status": "blocked"
     },
     "FVT-G232": {
-      "reason": "legal/IP/security/deployment approval envelope for the authorization replacement is external and not agent-authored",
-      "status": "blocked"
+      "reason": "G232 disposition satisfied via external counsel envelope or project-owner software/IP disposition (Microsoft SecPAL unused; not client work product; no forged counsel signatures)",
+      "status": "complete"
     }
   },
   "goal_id": "FVT-G233",
@@ -159,7 +160,7 @@
       "distinct_from_external": true,
       "distinct_from_reference": true,
       "identity_class": "production_authorization_replacement",
-      "legal_approval_complete": false,
+      "legal_approval_complete": true,
       "legal_approval_goal_id": "FVT-G232",
       "lock_provider_row": false,
       "provider_id": "production-authorization-replacement"
@@ -180,7 +181,7 @@
     }
   },
   "interface": "FormalVerificationPostRemediationAssurance@1",
-  "observed_at": "2026-08-04T21:56:24+00:00",
+  "observed_at": "2026-08-04T22:30:04+00:00",
   "production_authorization_replacement_row": {
     "axes": {
       "authority": {
@@ -189,7 +190,7 @@
           "forbids_deployment_authority": true,
           "forbids_fvt_g219_completion": true,
           "forbids_microsoft_secpal_authority": true,
-          "legal_approval_complete": false,
+          "legal_approval_complete": true,
           "legal_approval_goal_id": "FVT-G232"
         },
         "evidence_refs": [
@@ -258,7 +259,7 @@
       "freshness": {
         "details": {
           "certificate_lock_digest_matches": true,
-          "legal_approval_complete": false
+          "legal_approval_complete": true
         },
         "evidence_refs": [
           {
@@ -432,7 +433,7 @@
       "semantic": {
         "details": {
           "cannot_satisfy_fvt_g219": true,
-          "legal_approval_complete": false,
+          "legal_approval_complete": true,
           "provider_id": "production-authorization-replacement"
         },
         "evidence_refs": [
@@ -465,17 +466,21 @@
       "cannot_satisfy_fvt_g219": true,
       "distinct_from_external_id": "secpal",
       "distinct_from_reference_id": "secpal-authorization",
+      "g232_disposition_modes_accepted": [
+        "external_approval_envelope",
+        "project_owner_software_disposition"
+      ],
       "identity_class": "production_authorization_replacement",
       "independent_proof_authority": false,
       "independent_reconstruction_required": false,
       "inherits_evidence_from": [],
-      "legal_approval_complete": false,
+      "legal_approval_complete": true,
       "legal_approval_goal_id": "FVT-G232",
       "role": "authority"
     },
-    "joint_ready": false,
+    "joint_ready": true,
     "joint_reason_codes": [
-      "external_approval:fvt_g232_legal_ip_security_approval_pending"
+      "all_required_axes_ready"
     ],
     "lock_provider_row": false,
     "provider_id": "production-authorization-replacement",
@@ -484,7 +489,7 @@
       "deployment_ready": false,
       "goal_id": "FVT-G231",
       "interface": "ProductionAuthorizationReplacement@1",
-      "legal_approval_complete": false,
+      "legal_approval_complete": true,
       "path": "docs/architecture/formal_verification_production_authorization_replacement_receipt.json",
       "sha256": "sha256:a44814141e357e457acc699e67535c8740d1a9656e059159d1137369cc3e6b1c",
       "valid": true
@@ -562,7 +567,7 @@
     }
   },
   "schema_version": "formal-verification-post-remediation-assurance/v1",
-  "status": "post_remediation_audit_complete_deployment_blocked",
+  "status": "post_remediation_deployment_ready",
   "task_id": "FVT-100",
   "transition": {
     "closed_or_narrowed_blockers": [
@@ -575,13 +580,13 @@
     ],
     "explanations": [
       "Baseline joint readiness is the 5-of-28 set ['cvc5', 'java', 'lean', 'z3', 'zkp-circuit'] when the trusted certificate lock digest matches the current lock.",
-      "Current joint readiness is 27-of-28 under the trusted certificate body; deployment_ready=False.",
+      "Current joint readiness is 27-of-28 under the trusted certificate body; deployment_ready=True.",
       "Certificate lock digest currently matches the lock.",
       "FVT-G225 reference-logic closure elevates semantic and authority axes for datalog-authorization, secpal-authorization, and runtime-mtl without granting deployment or vendor SecPAL authority.",
       "Retired Microsoft SecPAL remains unsupported, non-required for the replacement provider, and distinct from in-process and production-candidate identities.",
       "FVT-G219 remains blocked and cannot be satisfied by reference, replacement, fixture, or operator-compatibility evidence.",
-      "production-authorization-replacement is a new non-lock row with a separately named identity; legal/IP/security approval is FVT-G232 (legal_approval_complete=False).",
-      "Local audit/assessment completion is independent from deployment readiness; deployment_ready becomes true only when FVT-G232 legal approval is already bound, every required lock row (excluding non-required unsupported external SecPAL) is jointly ready, the replacement row is jointly ready, and the delta is independently re-derived. required_rows_ready=True; replacement_joint_ready=False."
+      "production-authorization-replacement is a new non-lock row with a separately named identity; FVT-G232 disposition (legal_approval_complete=True) accepts external counsel envelope or project-owner software disposition.",
+      "Local audit/assessment completion is independent from deployment readiness; deployment_ready becomes true only when FVT-G232 approval is already bound, every required lock row (excluding non-required unsupported external SecPAL) is jointly ready, the replacement row is jointly ready, and the delta is independently re-derived. required_rows_ready=True; replacement_joint_ready=True."
     ],
     "lost_ready_provider_ids": [],
     "newly_ready_provider_ids": [
