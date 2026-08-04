@@ -1053,12 +1053,27 @@ def produce_closeout_activation_probe(
 
     live_out = dict(live)
     live_out["measurements"] = measurement_report
+    if gap_present:
+        notes = (
+            "This probe never invents production ceremony authority.",
+            "activation_gap remains true until reviewed v4 keys/manifest (or "
+            "development-branch local e2e allowlist + pin envs) are ready.",
+        )
+    else:
+        notes = (
+            "Activation gap is closed for this materializer identity.",
+            "Development-branch local nonproduction keys/manifest may satisfy "
+            "certificate authority here; do not treat this as a production ceremony.",
+            "Full monorepo closeout still requires a clean checkout and report-only "
+            "supervisor closeout when those policies apply.",
+        )
     return CloseoutActivationProbeReport(
         activation_gap_present=gap_present,
         live_report=live_out,
         claims=claims,
         repair_evidence=repair,
         remaining_operator_actions=tuple(ordered),
+        notes=notes,
     )
 
 
