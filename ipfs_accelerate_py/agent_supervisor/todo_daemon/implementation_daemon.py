@@ -3633,7 +3633,7 @@ class PortalImplementationDaemon:
         self.worktree_lifecycle_restart_recovery = []
         if _env_bool(
             WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV,
-            False,
+            True,
         ):
             self.worktree_lifecycle_restart_recovery = (
                 self.worktree_lifecycle.reclaim_dead_owners_for_controlled_restart(
