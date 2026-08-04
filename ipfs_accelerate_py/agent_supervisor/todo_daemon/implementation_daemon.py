@@ -14452,25 +14452,257 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         task: PortalTask,
         completion_tasks: Sequence[PortalTask],
         completion_task_cids: Mapping[str, str],
+        *,
+        implementation_commit: str = "",
+        merge_commit: str = "",
+        repository_tree_id: str = "",
+        pre_merge_validation: Mapping[str, Any] | None = None,
+        model_invocation_observed: bool | None = None,
     ) -> dict[str, Any]:
-        """Persist reconciliation completion under exact task-revision CIDs."""
+        """Persist reconciliation completion under exact task-revision CIDs.
+
+        Reconciliation used to call the board mutator without an authoritative
+        completion packet, so landed parent-only tasks stayed ``todo`` forever.
+        Build post-merge acceptance evidence, then mutate only when admitted.
+        """
 
         work_order = self._bundle_work_order_for_task(task)
-        return self._mark_tasks_completed_in_todo(
-            [completion_task.task_id for completion_task in completion_tasks],
-            primary_task_id=task.task_id,
-            completion_reason=(
-                "merge_reconciliation_bundle"
-                if work_order is not None
-                else "merge_reconciliation"
-            ),
-            bundle_work_order=(
-                work_order.to_dict()
-                if work_order is not None
-                else None
-            ),
-            expected_task_cids=completion_task_cids,
+        if len(completion_tasks) != 1 or completion_tasks[0].task_id != task.task_id:
+            # Bundle multi-task completion still requires explicit authority
+            # packets per member; fail closed rather than half-mark.
+            return {
+                "updated": False,
+                "task_id": task.task_id,
+                "updated_task_ids": [],
+                "reason": "bundle_member_authority_missing",
+                "completion_authoritative": False,
+            }
+
+        resolved_merge = str(merge_commit or implementation_commit or "").strip()
+        resolved_impl = str(implementation_commit or merge_commit or "").strip()
+        tree_id = str(repository_tree_id or "").strip()
+        if resolved_merge and not tree_id:
+            tree = self._candidate_repository_tree(resolved_merge)
+            tree_id = f"git-tree:{tree}" if tree else ""
+
+        post_merge_validation = self._build_post_merge_validation_evidence(
+            task,
+            merge_commit=resolved_merge,
+            repository_tree_id=tree_id,
+            pre_merge_validation=pre_merge_validation,
         )
+        observed = model_invocation_observed
+        if observed is None:
+            # Only tasks that declare model-assisted provider roles (or an
+            # independent review obligation) carry the provider-review gate.
+            # Ambient auto-provider use on symbolic-first boards without a
+            # Provider role is bound by post-merge validation instead.
+            observed = bool(
+                self._task_model_assisted_provider_roles(task)
+                or self._task_declares_independent_codex_review(task)
+            )
+        acceptance = self.apply_post_merge_authoritative_acceptance(
+            task,
+            implementation_commit=resolved_impl,
+            merge_commit=resolved_merge,
+            repository_tree_id=tree_id,
+            validation_result=post_merge_validation,
+            model_invocation_observed=bool(observed),
+        )
+        todo_update = dict(acceptance.get("todo_update_result") or {})
+        if not todo_update:
+            todo_update = {
+                "updated": bool(acceptance.get("updated")),
+                "task_id": task.task_id,
+                "updated_task_ids": (
+                    [task.task_id]
+                    if acceptance.get("authoritatively_completed")
+                    else []
+                ),
+                "reason": str(
+                    acceptance.get("reason")
+                    or "authoritative_completion_not_admitted"
+                ),
+                "completion_authoritative": bool(
+                    acceptance.get("completion_authoritative")
+                ),
+                "acceptance_result": acceptance,
+            }
+        else:
+            todo_update.setdefault("acceptance_result", acceptance)
+        if work_order is not None:
+            todo_update.setdefault(
+                "bundle_work_order",
+                work_order.to_dict(),
+            )
+        if completion_task_cids and not todo_update.get("completion_receipts"):
+            # Persistence checker requires exact CID receipts when the
+            # mutation path admitted without serializing them.
+            if todo_update.get("updated") or task.task_id in set(
+                todo_update.get("already_completed_task_ids") or ()
+            ):
+                todo_update["completion_receipts"] = [
+                    {
+                        "task_id": task_id,
+                        "canonical_task_cid": task_cid,
+                        "status": "succeeded",
+                    }
+                    for task_id, task_cid in completion_task_cids.items()
+                ]
+        return todo_update
+
+    def _build_post_merge_validation_evidence(
+        self,
+        task: PortalTask,
+        *,
+        merge_commit: str,
+        repository_tree_id: str = "",
+        pre_merge_validation: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Run declared validation against the landed merge commit.
+
+        Authoritative completion requires post-merge evidence bound to the
+        exact merge commit and repository tree. Pre-merge proofs alone are
+        never sufficient.
+        """
+
+        merge_commit = str(merge_commit or "").strip()
+        tree_id = str(repository_tree_id or "").strip()
+        if merge_commit and not tree_id:
+            tree = self._candidate_repository_tree(merge_commit)
+            tree_id = f"git-tree:{tree}" if tree else ""
+        if not merge_commit or not tree_id:
+            return {
+                "schema": POST_MERGE_VALIDATION_EVIDENCE_SCHEMA,
+                "task_id": task.task_id,
+                "target_commit": merge_commit,
+                "repository_tree_id": tree_id,
+                "validation_scope": "post_merge",
+                "passed": False,
+                "reason": "post_merge_commit_or_tree_unavailable",
+            }
+
+        # Fresh declared validation at the landed commit. Pre-merge proofs are
+        # only retained as advisory context in the receipt seed.
+        worktree_root = self.worktree_root or (self.state_path.parent / "worktrees")
+        worktree_root.mkdir(parents=True, exist_ok=True)
+        workspace = worktree_root / (
+            f"post-merge-validation-{re.sub(r'[^a-z0-9._-]+', '-', task.task_id.lower())}-"
+            f"{merge_commit[:12]}"
+        )
+        try:
+            if workspace.exists():
+                shutil.rmtree(workspace, ignore_errors=True)
+                subprocess.run(
+                    ["git", "worktree", "prune"],
+                    cwd=self.repo_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            add = subprocess.run(
+                [
+                    "git",
+                    "worktree",
+                    "add",
+                    "--detach",
+                    "--force",
+                    str(workspace),
+                    merge_commit,
+                ],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if add.returncode != 0:
+                return {
+                    "schema": POST_MERGE_VALIDATION_EVIDENCE_SCHEMA,
+                    "task_id": task.task_id,
+                    "target_commit": merge_commit,
+                    "repository_tree_id": tree_id,
+                    "validation_scope": "post_merge",
+                    "passed": False,
+                    "reason": "post_merge_validation_worktree_unavailable",
+                    "stderr": (add.stderr or "")[-1000:],
+                }
+
+            log_path = self.state_path.parent / "implementation_logs" / (
+                f"{re.sub(r'[^a-z0-9._-]+', '-', task.task_id.lower())}"
+                f"-post-merge-validation.log"
+            )
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            validation = self._run_validation_commands(
+                workspace,
+                task,
+                log_path,
+                force_uncached=True,
+            )
+            passed = bool(validation.get("passed"))
+            receipt_seed = {
+                "task_id": task.task_id,
+                "target_commit": merge_commit,
+                "repository_tree_id": tree_id,
+                "validation_scope": "post_merge",
+                "passed": passed,
+                "returncode": int(
+                    validation.get("returncode") or (0 if passed else 1)
+                ),
+                "results": list(validation.get("results") or [])[:32],
+                "pre_merge_validation_passed": bool(
+                    isinstance(pre_merge_validation, Mapping)
+                    and pre_merge_validation.get("passed") is True
+                ),
+            }
+            receipt_id = hashlib.sha256(
+                json.dumps(receipt_seed, sort_keys=True, default=str).encode(
+                    "utf-8"
+                )
+            ).hexdigest()
+            return {
+                "schema": POST_MERGE_VALIDATION_EVIDENCE_SCHEMA,
+                "task_id": task.task_id,
+                "target_commit": merge_commit,
+                "repository_tree_id": tree_id,
+                "validation_scope": "post_merge",
+                "passed": passed,
+                "stale": False,
+                "validation_stale": False,
+                "freshness_authoritative": True,
+                "validation_receipt_id": receipt_id,
+                "returncode": receipt_seed["returncode"],
+                "results": receipt_seed["results"],
+                "attempted": True,
+            }
+        except Exception as exc:  # noqa: BLE001 - fail closed into receipt
+            return {
+                "schema": POST_MERGE_VALIDATION_EVIDENCE_SCHEMA,
+                "task_id": task.task_id,
+                "target_commit": merge_commit,
+                "repository_tree_id": tree_id,
+                "validation_scope": "post_merge",
+                "passed": False,
+                "reason": "post_merge_validation_execution_failed",
+                "error": str(exc)[-1000:],
+            }
+        finally:
+            if workspace.exists():
+                remove = subprocess.run(
+                    ["git", "worktree", "remove", "--force", str(workspace)],
+                    cwd=self.repo_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if remove.returncode != 0:
+                    shutil.rmtree(workspace, ignore_errors=True)
+                    subprocess.run(
+                        ["git", "worktree", "prune"],
+                        cwd=self.repo_root,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
 
     def _fsynced_runtime_taskboard_completion_snapshot(
         self,
@@ -16210,7 +16442,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "repo_root": str(self.repo_root),
             "task_header_prefix": self.task_header_prefix,
             "task": asdict(task),
-            "model_invocation_observed": not self._task_uses_typed_local_execution(task),
+            # Provider-review is only obligatory when the task declares
+            # model-assisted roles (or independent review). Ambient auto
+            # providers on symbolic-first boards are bound by post-merge
+            # validation instead of a synthetic model-invocation flag.
+            "model_invocation_observed": bool(
+                self._task_model_assisted_provider_roles(task)
+                or self._task_declares_independent_codex_review(task)
+            ),
             "completion_task_cids": completion_task_cids,
             # An explicit empty declaration is authoritative.  Omitting this
             # field would make a callback restart unable to distinguish a
@@ -32475,7 +32714,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         command: str,
         workspace_path: Path,
     ) -> tuple[str, str]:
-        """Bind Python validation to configured package roots in the worktree."""
+        """Bind Python validation to configured package roots in the worktree.
+
+        Ephemeral post-merge validation worktrees often omit populated
+        submodule checkouts. Fall back to the live monorepo package roots so
+        declared validation can import ``ipfs_accelerate_py`` while still
+        executing against the landed tree as cwd.
+        """
 
         if "PYTHONPATH=" in command or not re.search(
             r"(?:^|[\s;&|])(?:[^\s;&|]*/)?(?:python(?:3(?:\.\d+)*)?|pytest)"
@@ -32488,6 +32733,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         except OSError:
             return command, ""
         roots: list[str] = []
+        notes: list[str] = []
         for relative in self.worktree_submodule_paths:
             candidate = workspace_root / relative
             try:
@@ -32495,14 +32741,73 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 resolved.relative_to(workspace_root)
             except (OSError, ValueError):
                 continue
-            if resolved.is_dir():
+            # Require an importable package marker so empty gitlink directories
+            # do not poison PYTHONPATH ahead of the host monorepo roots.
+            if resolved.is_dir() and (
+                (resolved / "ipfs_accelerate_py").is_dir()
+                or (resolved / "ipfs_datasets_py").is_dir()
+                or (resolved / "ipfs_kit_py").is_dir()
+                or (resolved / "__init__.py").is_file()
+                or any(resolved.glob("**/pyproject.toml"))
+            ):
                 roots.append(Path(relative).as_posix())
+        if roots:
+            notes.append("added configured worktree package roots to PYTHONPATH")
+        else:
+            try:
+                host_root = self.repo_root.resolve(strict=True)
+            except OSError:
+                host_root = None
+            if host_root is not None:
+                for relative in (
+                    *self.worktree_submodule_paths,
+                    ".",
+                ):
+                    candidate = (
+                        host_root
+                        if relative in {"", "."}
+                        else host_root / relative
+                    )
+                    try:
+                        resolved = candidate.resolve(strict=True)
+                    except OSError:
+                        continue
+                    if resolved.is_dir():
+                        roots.append(str(resolved))
+                if roots:
+                    notes.append(
+                        "added host monorepo package roots to PYTHONPATH "
+                        "for unpopulated validation worktree"
+                    )
         if not roots:
             return command, ""
-        pythonpath = shlex.quote(os.pathsep.join(dict.fromkeys(roots)))
+        pythonpath = os.pathsep.join(dict.fromkeys(roots))
+        # Inject PYTHONPATH into every python/pytest segment so compound
+        # commands (``a && b``) keep the package roots without a nested shell.
+        assignment = f"PYTHONPATH={shlex.quote(pythonpath)}"
+        parts = re.split(r"(\s*(?:&&|\|\||;)\s*)", command)
+        rewritten: list[str] = []
+        for part in parts:
+            if re.fullmatch(r"\s*(?:&&|\|\||;)\s*", part or ""):
+                rewritten.append(part)
+                continue
+            if not part.strip():
+                rewritten.append(part)
+                continue
+            if "PYTHONPATH=" in part:
+                rewritten.append(part)
+                continue
+            if re.search(
+                r"(?:^|[\s])(?:[^\s]*/)?(?:python(?:3(?:\.\d+)*)?|pytest)"
+                r"(?=$|[\s])",
+                part,
+            ):
+                rewritten.append(f"{assignment} {part.lstrip()}")
+            else:
+                rewritten.append(part)
         return (
-            f"PYTHONPATH={pythonpath} {command}",
-            "added configured worktree package roots to PYTHONPATH",
+            "".join(rewritten),
+            "; ".join(notes),
         )
 
     def _main_branch_name(self) -> str:
@@ -39766,6 +40071,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         task,
                         completion_tasks,
                         completion_task_cids,
+                        implementation_commit=str(
+                            implementation_commit
+                            or recovery_evidence.get("landed_commit")
+                            or ""
+                        ),
+                        merge_commit=str(target_commit or ""),
+                        pre_merge_validation=(
+                            event.get("validation_proof")
+                            if isinstance(event.get("validation_proof"), Mapping)
+                            else None
+                        ),
                     )
                     if integration_ready
                     else {}
@@ -40140,6 +40456,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         task,
                         completion_tasks,
                         completion_task_cids,
+                        implementation_commit=str(
+                            implementation_commit or landed_commit or ""
+                        ),
+                        merge_commit=str(target_commit or ""),
+                        pre_merge_validation=(
+                            event.get("validation_proof")
+                            if isinstance(event.get("validation_proof"), Mapping)
+                            else None
+                        ),
                     )
                     if integration_ready
                     else {}
@@ -40367,6 +40692,21 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     task,
                     completion_tasks,
                     completion_task_cids,
+                    implementation_commit=str(
+                        implementation_commit
+                        or merge_result.get("implementation_commit")
+                        or ""
+                    ),
+                    merge_commit=str(
+                        target_commit
+                        or merge_result.get("merge_commit")
+                        or ""
+                    ),
+                    pre_merge_validation=(
+                        event.get("validation_proof")
+                        if isinstance(event.get("validation_proof"), Mapping)
+                        else None
+                    ),
                 )
                 if integration_ready
                 else {}
