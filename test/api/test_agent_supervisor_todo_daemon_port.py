@@ -24213,6 +24213,125 @@ def test_auto_unblock_retires_stale_reconciliation_guardrail_for_completed_work(
     assert by_id["ACCEL-002"].status == "completed"
 
 
+def test_auto_unblock_releases_stale_task_claims_after_idle_owner(
+    tmp_path,
+    monkeypatch,
+):
+    """Leaked task claims from finished attempts must not freeze selection."""
+
+    import os
+    from datetime import datetime, timedelta, timezone
+
+    from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+        checkout_lock_metadata,
+        checkout_mutation_lock_path,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME,
+        IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+        IMPLEMENTATION_TASK_CLAIM_SETUP_GRACE_SECONDS,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Service adapter
+
+- Status: todo
+- Priority: P0
+- Track: adapters
+- Outputs: src/adapter.py
+- Validation: test -f src/adapter.py
+- Acceptance: Implement the adapter.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    state_path = state_dir / "task_state.json"
+    # Idle projection: no active task, claim still present from a prior attempt.
+    state_path.write_text(
+        json.dumps(
+            {
+                "active_task_id": "",
+                "active_task_cid": "",
+                "implementation_in_progress": False,
+                "active_phase": "",
+                "last_implementation_task_id": "ACCEL-001",
+                "last_implementation_finished_at": "2026-08-04T22:14:56+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
+    daemon._register_task_identities(tasks)
+    task = tasks[0]
+    identity = daemon._identity_for_task(task)
+    claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=identity.canonical_task_cid,
+    )
+    claim_path.parent.mkdir(parents=True, exist_ok=True)
+    started = (
+        datetime.now(timezone.utc)
+        - timedelta(seconds=IMPLEMENTATION_TASK_CLAIM_SETUP_GRACE_SECONDS + 30)
+    ).isoformat()
+    claim_path.write_text(
+        json.dumps(
+            checkout_lock_metadata(
+                kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+                repo_root=repo,
+                task_id=task.task_id,
+                attempt=3,
+                owner_script="implementation_daemon.py",
+                extra={
+                    "state_dir": str(state_dir.resolve()),
+                    "state_path": str(state_path.resolve()),
+                    "started_at": started,
+                    "canonical_task_key": identity.canonical_task_key,
+                    "canonical_task_cid": identity.canonical_task_cid,
+                    "board_namespace": identity.board_namespace,
+                    "lease_id": "stale-lease-for-test",
+                    "pid": os.getpid(),
+                },
+            )
+        ),
+        encoding="utf-8",
+    )
+    # Force pid to this process so process_is_running is true; owner_script may
+    # not match pytest argv — patch process check path via metadata rewrite.
+    payload = json.loads(claim_path.read_text(encoding="utf-8"))
+    payload["pid"] = os.getpid()
+    payload["owner_script"] = ""  # skip argv stem check
+    payload["started_at"] = started
+    payload["lease_id"] = "stale-lease-for-test"
+    claim_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert daemon._implementation_task_claim_owner_is_active(payload) is False
+    active = daemon._active_implementation_task_claims(tasks)
+    assert task.task_id not in active
+
+    result = daemon._auto_unblock_stalled_work(
+        daemon.load_strategy(),
+        tasks,
+        TodoTaskState.load(state_path),
+    )
+    assert result["stale_task_claims_released"]
+    assert not claim_path.exists()
+
+
 def test_auto_unblock_completes_playwright_infra_repair_and_releases_source(
     tmp_path,
     monkeypatch,

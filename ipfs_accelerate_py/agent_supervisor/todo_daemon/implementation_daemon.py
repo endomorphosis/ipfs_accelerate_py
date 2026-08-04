@@ -359,6 +359,10 @@ TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 TRANSIENT_MERGE_RECONCILIATION_BACKOFF_SECONDS = 30.0
 IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
 IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME = "implementation-task-claims"
+# Window after claim publish where lane state may not yet show the active task
+# (selection → acquire → first state save). Peers treat the claim as live for
+# this long even if active_task_id is still empty.
+IMPLEMENTATION_TASK_CLAIM_SETUP_GRACE_SECONDS = 180.0
 WORKTREE_LIFECYCLE_LEASE_SECONDS_ENV = (
     "IPFS_ACCELERATE_AGENT_WORKTREE_LIFECYCLE_LEASE_SECONDS"
 )
@@ -9440,6 +9444,107 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         return reclaimed
 
+    def _force_release_stale_implementation_task_claim(
+        self,
+        lock_path: Path,
+        metadata: Mapping[str, Any],
+        *,
+        reason: str,
+    ) -> bool:
+        """Unlink a task claim that is no longer an in-flight ownership fence.
+
+        Unlike the owner-only release path, this does not require matching the
+        caller's lease_id — only that the claim is still the same lease and is
+        no longer active (dead PID, idle lane projection past setup grace, or
+        missing fence).
+        """
+
+        expected_lease = str(metadata.get("lease_id") or "")
+        if not expected_lease:
+            return False
+        with serialized_lock_update(lock_path):
+            current = load_json_dict(lock_path)
+            if current is None:
+                return True
+            if str(current.get("lease_id") or "") != expected_lease:
+                return False
+            if self._implementation_task_claim_owner_is_active(dict(current)):
+                return False
+            # Drop the claim even when a protected-path fence file remains: the
+            # fence itself is lane-local state, while the claim only blocks
+            # peer selection. CrashFenceReconciler still owns fence clearance.
+            try:
+                lock_path.unlink()
+            except FileNotFoundError:
+                return True
+            logger.info(
+                "Released stale implementation task claim for %s (%s)",
+                current.get("task_id") or lock_path.name,
+                reason,
+            )
+            return True
+
+    def _auto_release_stale_implementation_task_claims(
+        self,
+        tasks: Sequence[PortalTask],
+    ) -> list[dict[str, str]]:
+        """Drop orphaned task claims so ready work becomes selectable again."""
+
+        released: list[dict[str, str]] = []
+        seen_paths: set[Path] = set()
+        for task in tasks:
+            if normalize_status(task.status) == "completed":
+                # Still scan completed tasks: a leaked claim on a completed
+                # card is harmless for selection but free disk and avoids
+                # confusing active_task_claims projections.
+                pass
+            canonical = self._canonical_ref(task)
+            paths = [
+                self._implementation_task_claim_path(
+                    task.task_id,
+                    canonical_task_cid=canonical,
+                ),
+                self._implementation_task_claim_path(task.task_id),
+            ]
+            for claim_path in paths:
+                try:
+                    resolved = claim_path.resolve()
+                except OSError:
+                    resolved = claim_path
+                if resolved in seen_paths:
+                    continue
+                seen_paths.add(resolved)
+                if not claim_path.exists():
+                    continue
+                metadata = load_json_dict(claim_path)
+                if metadata is None:
+                    continue
+                if self._implementation_task_claim_owner_is_active(metadata):
+                    continue
+                if self._force_release_stale_implementation_task_claim(
+                    claim_path,
+                    metadata,
+                    reason="auto_unblock_stale_task_claim",
+                ):
+                    released.append(
+                        {
+                            "task_id": str(metadata.get("task_id") or task.task_id),
+                            "path": str(claim_path),
+                            "owner_pid": str(int(metadata.get("pid") or 0)),
+                            "started_at": str(metadata.get("started_at") or ""),
+                            "reason": "stale_task_claim_not_in_progress",
+                        }
+                    )
+        if released:
+            self._record_event(
+                "auto_unblock_stale_task_claims_released",
+                {
+                    "released_count": len(released),
+                    "released": released[:40],
+                },
+            )
+        return released
+
     def _auto_unblock_stalled_work(
         self,
         strategy: dict[str, Any],
@@ -9450,9 +9555,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         Clears infrastructure thrash, completed/orphan strategy blocks,
         reimplementable merge quarantines, stale reconciliation guardrails for
-        already-landed tasks, dead worktree lifecycle owners, and attempt-limit
-        parks with no open repair. Unknown operator dirty checkouts that still
-        cite open work remain blocked.
+        already-landed tasks, dead worktree lifecycle owners, leaked task
+        claims, and attempt-limit parks with no open repair. Unknown operator
+        dirty checkouts that still cite open work remain blocked.
         """
 
         result: dict[str, Any] = {
@@ -9465,6 +9570,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "host_dirt_restored": [],
             "stale_reconciliation_retired": [],
             "dead_lifecycle_owners_reclaimed": [],
+            "stale_task_claims_released": [],
             "attempt_limit_resets": [],
         }
         try:
@@ -9475,6 +9581,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         except Exception as exc:
             result["dead_lifecycle_error"] = (
+                f"{type(exc).__name__}: {exc}"[-300:]
+            )
+        try:
+            result["stale_task_claims_released"] = (
+                self._auto_release_stale_implementation_task_claims(tasks)
+            )
+        except Exception as exc:
+            result["stale_task_claim_error"] = (
                 f"{type(exc).__name__}: {exc}"[-300:]
             )
         try:
@@ -9569,6 +9683,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "host_dirt_restored",
                 "stale_reconciliation_retired",
                 "dead_lifecycle_owners_reclaimed",
+                "stale_task_claims_released",
                 "attempt_limit_resets",
             )
         )
@@ -43771,6 +43886,60 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return False
         return self._lock_owner_is_active(metadata, expected_kind="implementation")
 
+    def _implementation_task_claim_still_in_progress(
+        self,
+        metadata: Mapping[str, Any],
+        *,
+        now: datetime | None = None,
+    ) -> bool:
+        """Return whether a live PID still represents an in-flight attempt.
+
+        Task claims used to stay live for the whole daemon process lifetime
+        after implementation finished (release skipped while a protected-path
+        fence existed, or release lost the lease race). Peers then saw
+        ``active_task_claims`` forever and reported
+        ``no_shard_selectable_ready_tasks`` even though ready work existed.
+
+        A claim is in progress when the owning lane's durable state still
+        points at this task, or the claim is younger than the setup grace
+        window (acquire before the first state write).
+        """
+
+        clock = now or datetime.now(timezone.utc)
+        started = parse_timestamp(str(metadata.get("started_at") or ""))
+        if started is not None:
+            age = (clock - started).total_seconds()
+            if age < IMPLEMENTATION_TASK_CLAIM_SETUP_GRACE_SECONDS:
+                return True
+        state_path_text = str(metadata.get("state_path") or "").strip()
+        if not state_path_text:
+            # No durable projection: fail closed while the process is alive.
+            return True
+        try:
+            state_path = Path(state_path_text)
+            if not state_path.exists():
+                return True
+            state = PortalTaskState.load(state_path)
+        except (OSError, TypeError, ValueError, RuntimeError):
+            return True
+        claim_task_id = str(metadata.get("task_id") or "").strip()
+        claim_cid = str(metadata.get("canonical_task_cid") or "").strip()
+        active_id = str(state.active_task_id or "").strip()
+        active_cid = str(state.active_task_cid or "").strip()
+        matches_task = bool(
+            (claim_task_id and active_id == claim_task_id)
+            or (claim_cid and active_cid == claim_cid)
+        )
+        if not matches_task:
+            return False
+        if state.implementation_in_progress:
+            return True
+        # Selected but not yet dispatched: still exclusive.
+        if str(state.active_phase or "").strip():
+            return True
+        # Idle projection that still names the task is a post-finish leak.
+        return False
+
     def _implementation_task_claim_owner_is_active(self, metadata: dict[str, Any]) -> bool:
         repo_root = str(metadata.get("repo_root") or "")
         if repo_root:
@@ -43779,7 +43948,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     return False
             except OSError:
                 return False
-        return self._lock_owner_is_active(metadata, expected_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND)
+        if not self._lock_owner_is_active(
+            metadata, expected_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND
+        ):
+            return False
+        return self._implementation_task_claim_still_in_progress(metadata)
 
     def _implementation_resource_claim_owner_is_active(
         self,
