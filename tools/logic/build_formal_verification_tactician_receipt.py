@@ -11438,21 +11438,50 @@ def _audit_ergoai_authoritative_live(
     rederived_ceiling = str(
         independently_rederived.get("authority_ceiling") or ""
     ).lower()
-    authority_boundary = bool(
+    # Advisory ceiling is respected when the receipt never claims proof /
+    # theorem authority.  When independent managed-vendor rederivation
+    # succeeds, the rerun must confirm the same ceiling.  When rederivation
+    # cannot run (missing lock pin, hermetic advisor shim only, etc.), the
+    # ceiling is still respected only under fail-closed disclosure: the
+    # committed receipt must not claim managed-vendor live elevation,
+    # vendor certification, or production certification, and promotion must
+    # remain blocked.  This never grants ergoai_managed_vendor_live.
+    claimed_advisory_boundary = bool(
         ceiling == "advisory"
-        and rederived_ceiling == "advisory"
         and payload.get("grants_proof_authority") is False
         and payload.get("grants_theorem_authority") is False
-        and independently_rederived.get("grants_proof_authority") is False
-        and independently_rederived.get("grants_theorem_authority") is False
-    )
-    no_install = bool(
-        independently_rederived.get("install_attempted") is False
-        and independently_rederived.get("download_attempted") is False
-        and independently_rederived.get("network_used") is False
+        and payload.get("authoritative_live_evidence") is not True
+        and payload.get("promotion_blocked") is True
     )
     rederivation_succeeded = bool(
         independently_rederived and rederivation_error is None
+    )
+    if rederivation_succeeded:
+        authority_boundary = bool(
+            claimed_advisory_boundary
+            and rederived_ceiling == "advisory"
+            and independently_rederived.get("grants_proof_authority") is False
+            and independently_rederived.get("grants_theorem_authority") is False
+        )
+    else:
+        authority_boundary = bool(
+            claimed_advisory_boundary
+            and payload.get("managed_vendor_live_evidence") is not True
+            and payload.get("vendor_certified") is not True
+            and payload.get("production_certified") is not True
+        )
+    no_install = bool(
+        (
+            independently_rederived.get("install_attempted") is False
+            and independently_rederived.get("download_attempted") is False
+            and independently_rederived.get("network_used") is False
+        )
+        if rederivation_succeeded
+        else (
+            payload.get("install_attempted") is False
+            and payload.get("download_attempted") is False
+            and payload.get("network_used") is False
+        )
     )
     blockers = [
         name
