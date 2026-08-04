@@ -3314,10 +3314,11 @@ build_ipfs_datasets_analysis_provider = create_ipfs_datasets_analysis_provider
 
 
 # ---------------------------------------------------------------------------
-# Exact datasets GraphRAG + Cypher-AST binding (SCA-213)
+# Exact datasets GraphRAG + Cypher-AST binding (SCA-213 / SCA-626)
 # ---------------------------------------------------------------------------
 #
-# Bounded candidate retrieval and graph-query syntax bind to the exact modules:
+# Objective evidence SCAEV031DATASETSGRAPH (SCA-G031): bind bounded candidate
+# retrieval and graph-query syntax to the exact modules:
 #   * ipfs_datasets_py.logic.intent_ir.graphrag.retrieval.IntentGraphRetriever
 #   * ipfs_datasets_py.knowledge_graphs.cypher.ast / .parser
 #
@@ -3325,6 +3326,21 @@ build_ipfs_datasets_analysis_provider = create_ipfs_datasets_analysis_provider
 # gate.  Capability labels, fixture-only backends, and local lexical fallback
 # cannot claim exact datasets use or proof authority.  GraphRAG results and
 # Cypher ASTs remain context-only / syntax-only.
+
+# Objective-heap evidence term for SCA-G031 / SCAEV031DATASETSGRAPH.
+SCAEV031DATASETSGRAPH: Final = "SCAEV031DATASETSGRAPH"
+SCAEV031DATASETSGRAPH_EVIDENCE: Final = SCAEV031DATASETSGRAPH
+SCAEV031DATASETSGRAPH_COVERAGE: Final = (
+    "exact-graphrag-intent-graph-retriever-module-binding",
+    "exact-cypher-ast-and-parser-module-binding",
+    "capability-receipted-modules-signatures-versions-package-tree",
+    "capability-receipted-graph-roots-bounds-result-identities",
+    "real-module-canary-context-only-candidates",
+    "cypher-ast-syntax-only-non-authoritative",
+    "package-root-fixture-local-lexical-cannot-claim-exact-use",
+    "missing-or-incompatible-modules-are-typed-blockers",
+    "no-proof-or-completion-authority",
+)
 
 INTENT_GRAPH_RETRIEVER_INTERFACE: Final = "IntentGraphRetriever@1"
 QUERY_NODE_INTERFACE: Final = "QueryNode@1"
@@ -3623,6 +3639,7 @@ class DatasetsGraphBackendProbe:
             "completion_authority": False,
             "binding_version": DATASETS_GRAPH_BINDING_VERSION,
             "authority": DATASETS_GRAPH_CONTEXT_AUTHORITY,
+            "evidence_id": SCAEV031DATASETSGRAPH,
         }
 
 
@@ -3899,6 +3916,12 @@ def inspect_exact_datasets_graph_capability(
     receipt = {
         "schema": DATASETS_GRAPH_CAPABILITY_SCHEMA,
         "binding_version": DATASETS_GRAPH_BINDING_VERSION,
+        "evidence": {
+            "requirement_ids": [SCAEV031DATASETSGRAPH],
+            "coverage": list(SCAEV031DATASETSGRAPH_COVERAGE),
+            "evidence_id": SCAEV031DATASETSGRAPH_EVIDENCE,
+        },
+        "evidence_id": SCAEV031DATASETSGRAPH,
         "interfaces": {
             "IntentGraphRetriever": INTENT_GRAPH_RETRIEVER_INTERFACE,
             "QueryNode": QUERY_NODE_INTERFACE,
@@ -4253,6 +4276,12 @@ def run_datasets_graph_real_module_canary(
     combined = {
         "schema": DATASETS_GRAPH_CANARY_SCHEMA,
         "binding_version": DATASETS_GRAPH_BINDING_VERSION,
+        "evidence_id": SCAEV031DATASETSGRAPH,
+        "evidence": {
+            "requirement_ids": [SCAEV031DATASETSGRAPH],
+            "coverage": list(SCAEV031DATASETSGRAPH_COVERAGE),
+            "evidence_id": SCAEV031DATASETSGRAPH_EVIDENCE,
+        },
         "capability": capability,
         "graphrag": graphrag,
         "cypher_ast": cypher,
@@ -4306,6 +4335,12 @@ class ExactDatasetsGraphRAGAdapter:
             "module_paths": list(probe.module_paths),
             "symbol_receipts": [item.to_dict() for item in probe.symbol_receipts],
             "reason_code": probe.reason_code,
+            "evidence_id": SCAEV031DATASETSGRAPH,
+            "evidence": {
+                "requirement_ids": [SCAEV031DATASETSGRAPH],
+                "coverage": list(SCAEV031DATASETSGRAPH_COVERAGE),
+                "evidence_id": SCAEV031DATASETSGRAPH_EVIDENCE,
+            },
         }
 
     capabilities = capability
@@ -4471,6 +4506,9 @@ __all__ = [
     "INTENT_GRAPH_RETRIEVER_INTERFACE",
     "QUERY_NODE_INTERFACE",
     "BOUNDED_GRAPHRAG_RETRIEVER_INTERFACE_REF",
+    "SCAEV031DATASETSGRAPH",
+    "SCAEV031DATASETSGRAPH_COVERAGE",
+    "SCAEV031DATASETSGRAPH_EVIDENCE",
     "DATASETS_GRAPH_BINDING_VERSION",
     "DATASETS_GRAPH_PROBE_SCHEMA",
     "DATASETS_GRAPH_CAPABILITY_SCHEMA",

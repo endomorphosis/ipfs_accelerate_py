@@ -616,17 +616,39 @@ class _LandedModuleAliasFinder:
             return None
         if fullname in _sys.modules:
             return _importlib.util.find_spec(fullname)
+        real_name = (
+            f"{__name__}."
+            f"{AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE[rest]}.{rest}"
+        )
         try:
-            module = _load_landed_module(rest)
+            canonical_module = _importlib.import_module(real_name)
         except Exception:
             return None
 
         class _AliasLoader:
             def create_module(self, spec):  # type: ignore[no-untyped-def]
-                return module
+                # Returning the canonical module object here lets importlib
+                # overwrite its import metadata with the historical alias.
+                # A later canonical import then executes a second module and
+                # breaks public symbol identity.  Let importlib allocate a
+                # lightweight alias module instead.
+                return None
 
             def exec_module(self, module_):  # type: ignore[no-untyped-def]
-                return None
+                # Re-export the canonical objects without copying import
+                # metadata.  Functions, classes, catalogs, and mutable state
+                # therefore retain one canonical identity, while the alias
+                # keeps its own stable __spec__/__name__.
+                for name, value in canonical_module.__dict__.items():
+                    if name in {
+                        "__name__",
+                        "__loader__",
+                        "__package__",
+                        "__spec__",
+                    }:
+                        continue
+                    module_.__dict__[name] = value
+                module_.__dict__["__canonical_module__"] = canonical_module
 
         return _importlib.util.spec_from_loader(fullname, _AliasLoader())
 
@@ -1496,66 +1518,15 @@ from .objectives.goal_completion import (
     reopen_goal_for_contradictions,
     validate_completion_evidence,
 )
-# Load self_improvement_completion without executing self_improvement/__init__.py.
-# That package __init__ still re-exports the heavy flat self_improvement.py, which
-# pulls todo_daemon.llm -> optional ipfs_datasets_py onto cold import (ASREF-G090
-# provider-free package import gate). Dual-copied ownership remains under
-# self_improvement/; this loader only avoids the temporary re-export side effect.
-def _load_self_improvement_completion_cold():
-    import importlib.util
-    from pathlib import Path
-
-    package_name = f"{__name__}.self_improvement"
-    canonical = f"{package_name}.self_improvement_completion"
-    # Prefer a fully imported package module when the package is already live.
-    existing = _sys.modules.get(canonical)
-    if existing is not None and getattr(existing, "__file__", None):
-        return existing
-    cold_name = f"{__name__}._self_improvement_completion_cold"
-    existing_cold = _sys.modules.get(cold_name)
-    if existing_cold is not None:
-        return existing_cold
-    path = (
-        Path(__file__).resolve().parent
-        / "self_improvement"
-        / "self_improvement_completion.py"
-    )
-    # Load under an isolated module name so we never leave a stub
-    # self_improvement package in sys.modules (that would block the real package
-    # __init__ later). Relative imports resolve via __package__ alone.
-    spec = importlib.util.spec_from_file_location(cold_name, path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"cannot load self_improvement_completion from {path}")
-    module = importlib.util.module_from_spec(spec)
-    module.__package__ = package_name
-    _sys.modules[cold_name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-_self_improvement_completion = _load_self_improvement_completion_cold()
-SELF_IMPROVEMENT_ROOT_ACCEPTANCE_CRITERIA = (
-    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_ACCEPTANCE_CRITERIA
+from .self_improvement.self_improvement_completion import (
+    SELF_IMPROVEMENT_ROOT_ACCEPTANCE_CRITERIA,
+    SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS,
+    SELF_IMPROVEMENT_ROOT_OBJECTIVE_ID,
+    SELF_IMPROVEMENT_ROOT_OBJECTIVE_REVISION,
+    SELF_IMPROVEMENT_ROOT_PRODUCING_TASK_IDS,
+    SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS,
+    evaluate_self_improvement_root_completion,
 )
-SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS = (
-    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_CHILD_GOAL_IDS
-)
-SELF_IMPROVEMENT_ROOT_OBJECTIVE_ID = (
-    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_OBJECTIVE_ID
-)
-SELF_IMPROVEMENT_ROOT_OBJECTIVE_REVISION = (
-    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_OBJECTIVE_REVISION
-)
-SELF_IMPROVEMENT_ROOT_PRODUCING_TASK_IDS = (
-    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_PRODUCING_TASK_IDS
-)
-SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS = (
-    _self_improvement_completion.SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS
-)
-evaluate_self_improvement_root_completion = (
-    _self_improvement_completion.evaluate_self_improvement_root_completion
-)
-del _self_improvement_completion
 from .objectives.goal_coverage import (
     AcceptanceCoverage,
     CoverageEdge,

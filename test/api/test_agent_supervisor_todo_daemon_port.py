@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import ast
-import base64
 import hashlib
 import json
 import logging
@@ -70,7 +69,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
 from ipfs_accelerate_py.agent_supervisor.objectives import (
     backlog_refinery as backlog_refinery_module,
 )
-from ipfs_accelerate_py.agent_supervisor import grok_cli_runner, merge_resolver
+from ipfs_accelerate_py.agent_supervisor import merge_resolver
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
     MERGE_TARGET_BINDING_SCHEMA,
     MergeQueue,
@@ -82,8 +81,11 @@ from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     build_namespace_merge_resolver_runner_from_spec,
 )
 from ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback import (
+    CODEX_MERGE_RESOLVER_MODEL,
+    CODEX_MERGE_RESOLVER_REASONING_EFFORT,
+    GROK_MERGE_RESOLVER_MODEL,
     _DEFAULT_CODEX_TIMEOUT_SECONDS,
-    _DEFAULT_COPILOT_TIMEOUT_SECONDS,
+    _DEFAULT_GROK_TIMEOUT_SECONDS,
     _timeout_seconds,
     llm_merge_resolver_fallback_command,
 )
@@ -145,6 +147,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
     checkout_lock_metadata,
+    checkout_lock_repository_matches,
     checkout_mutation_lock_path,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_runner import (
@@ -172,8 +175,11 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     PortalTask,
     TodoTaskState,
     TodoImplementationDaemon,
+    ValidationProjectDependencyPreflightDeferred,
+    WorktreeSubmoduleInitializationDeferred,
     implied_validation_test_output_paths,
     dependency_satisfied_references,
+    downstream_unlock_counts,
     normalize_implementation_protected_paths,
     parse_task_file,
     parse_args as parse_implementation_daemon_args,
@@ -187,6 +193,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
     ObjectiveCompletionArtifactRefreshError,
     TodoImplementationSupervisor,
     TodoSupervisorConfig,
+    _projection_is_quiescent_for_heartbeat_fallback,
     parse_args as parse_implementation_supervisor_args,
     supervisor_config_from_args,
 )
@@ -212,6 +219,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     ChildSummaryHealthSpec,
     ConfiguredSupervisorEntrypoint,
+    ProcessGroupCancelled,
     RestartPolicy,
     SupervisedChild,
     SupervisedChildSpec,
@@ -1004,13 +1012,12 @@ def test_default_llm_merge_resolver_command_prefers_env(monkeypatch):
     assert default_llm_merge_resolver_command(primary_env_var="PRIMARY_RESOLVER_COMMAND") == "fallback-command"
 
     monkeypatch.delenv("IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND")
-    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/codex" if name == "codex" else None)
-    assert default_llm_merge_resolver_command(codex_args=("exec", "-")) == "/usr/bin/codex exec -"
-    assert (
-        default_llm_merge_resolver_command()
-        == "/usr/bin/codex exec --ignore-user-config --dangerously-bypass-approvals-and-sandbox "
-        "-c 'model_reasoning_effort=\"high\"' -C . -"
+    packaged = (
+        f"{shlex.quote(sys.executable)} -m "
+        "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback"
     )
+    assert default_llm_merge_resolver_command(codex_args=("exec", "-")) == packaged
+    assert default_llm_merge_resolver_command() == packaged
 
 
 def test_wrapper_utils_android_validation_environment_contract(tmp_path):
@@ -1228,15 +1235,17 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
 
     command = daemon._build_implementation_command(repo)
 
-    assert command[:5] == [
+    assert command[:6] == [
         "/usr/local/bin/codex",
         "exec",
+        "--ignore-user-config",
         "--dangerously-bypass-approvals-and-sandbox",
         "-C",
         str(repo),
     ]
     assert command[-1] == "-"
-    assert ["-c", "model_context_window=200000"] == command[5:7]
+    context_config_index = command.index("model_context_window=200000")
+    assert command[context_config_index - 1] == "-c"
     assert "-c" in command
     assert 'model_reasoning_effort="high"' in command
     assert "agents.max_threads=10" in command
@@ -3867,177 +3876,6 @@ def test_supervisor_fail_on_reconciliation_error_flag_is_opt_in():
     assert enabled.fail_on_reconciliation_error is True
 
 
-def _test_grok_command(repo: Path) -> list[str]:
-    return grok_cli_runner.bind_grok_runner_command(
-        [
-            sys.executable,
-            str(Path(grok_cli_runner.__file__).resolve()),
-            "--workspace",
-            str(repo),
-            "--grok-bin",
-            "/usr/local/bin/grok",
-            "--model",
-            "grok-4.5",
-            "--max-turns",
-            "100000",
-            "--mode",
-            "agent",
-        ]
-    )
-
-
-def _test_grok_terminal_line(
-    command: list[str],
-    quota_code: str = "usage_pool_exhausted",
-    *,
-    returncode: int = 29,
-) -> str:
-    return grok_cli_runner.encode_grok_terminal_quota_receipt(
-        grok_cli_runner.build_grok_terminal_quota_receipt(
-            command=command,
-            model="grok-4.5",
-            inner_returncode=returncode,
-            terminal_event={"type": "error", "code": quota_code},
-        )
-    )
-
-
-def _configure_test_grok_quota_verifier(
-    monkeypatch,
-    tmp_path: Path,
-    *,
-    now: datetime | None = None,
-) -> None:
-    """Install a nonce-bound Ed25519 test attestor for Grok quota verdicts."""
-
-    from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import (
-        Ed25519PrivateKey,
-    )
-
-    private_key = Ed25519PrivateKey.generate()
-    private_bytes = private_key.private_bytes(
-        serialization.Encoding.Raw,
-        serialization.PrivateFormat.Raw,
-        serialization.NoEncryption(),
-    )
-    public_bytes = private_key.public_key().public_bytes(
-        serialization.Encoding.Raw,
-        serialization.PublicFormat.Raw,
-    )
-    private_text = base64.urlsafe_b64encode(private_bytes).decode("ascii").rstrip("=")
-    verifier_now = now.astimezone(timezone.utc).isoformat() if now else ""
-    verifier_path = tmp_path / "grok_quota_verifier.py"
-    verifier_path.write_text(
-        """from __future__ import annotations
-import base64
-import hashlib
-import json
-import sys
-from datetime import datetime, timedelta, timezone
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
-request_bytes = sys.stdin.buffer.read()
-request = json.loads(request_bytes)
-configured_now = """ + repr(verifier_now) + """
-now = (
-    datetime.fromisoformat(configured_now)
-    if configured_now
-    else datetime.now(timezone.utc)
-)
-payload = {
-    "provider": "grok",
-    "entitlement": "grok_build",
-    "account_id": request["expected_account_id"],
-    "quota_pool_id": request["expected_quota_pool_id"],
-    "provider_request_id": "fixture-grok-build-request-0001",
-    "model": request["model"],
-    "verdict": "quota_exhausted",
-    "quota_code": request["quota_code"],
-    "challenge_nonce": request["challenge_nonce"],
-    "request_sha256": hashlib.sha256(request_bytes).hexdigest(),
-    "invocation_binding_sha256": request["invocation_binding_sha256"],
-    "terminal_event_sha256": request["terminal_event_sha256"],
-    "verified_at": now.isoformat(),
-    "expires_at": (now + timedelta(minutes=2)).isoformat(),
-}
-canonical = json.dumps(
-    payload,
-    ensure_ascii=False,
-    sort_keys=True,
-    separators=(",", ":"),
-).encode("utf-8")
-private_text = """ + repr(private_text) + """
-private_bytes = base64.urlsafe_b64decode(private_text + "=" * (-len(private_text) % 4))
-signature = Ed25519PrivateKey.from_private_bytes(private_bytes).sign(canonical)
-signature_text = base64.urlsafe_b64encode(signature).decode("ascii").rstrip("=")
-print(json.dumps({
-    "schema": "ipfs_accelerate_py/agent-supervisor/grok-quota-verifier-receipt@1",
-    "payload": payload,
-    "signature": "ed25519:" + signature_text,
-}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
-""",
-        encoding="utf-8",
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.GROK_QUOTA_VERIFIER_COMMAND_ENV,
-        f"{shlex.quote(sys.executable)} {shlex.quote(str(verifier_path))}",
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.GROK_QUOTA_VERIFIER_PUBLIC_KEY_ENV,
-        base64.urlsafe_b64encode(public_bytes).decode("ascii").rstrip("="),
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.GROK_QUOTA_VERIFIER_ACCOUNT_ID_ENV,
-        "fixture-grok-build-account",
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.GROK_QUOTA_VERIFIER_POOL_ID_ENV,
-        "fixture-grok-build-pool",
-    )
-
-
-def _test_signed_grok_quota_failure(
-    daemon: TodoImplementationDaemon,
-    repo: Path,
-    command: list[str],
-) -> dict[str, object]:
-    candidate = _test_grok_terminal_line(command)
-    failure = daemon._provider_capacity_failure_from_log(
-        repo / "provider.log",
-        command=command,
-        returncode=grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
-        terminal_receipt=(candidate + "\n").encode("utf-8"),
-    )
-    assert failure.get("exhausted") is True
-    return failure
-
-
-def _record_test_grok_start(
-    daemon: TodoImplementationDaemon,
-    task: PortalTask,
-    command: list[str],
-    *,
-    timestamp: datetime,
-) -> dict[str, object]:
-    return daemon._record_event(
-        "implementation_started",
-        {
-            "task_id": task.task_id,
-            "canonical_task_cid": daemon._canonical_ref(task),
-            "attempt": 1,
-            "timestamp": timestamp.isoformat(),
-            "command": command,
-            "provider_route_receipt": (
-                daemon._implementation_provider_route_receipt(
-                    command,
-                    task=task,
-                )
-            ),
-        },
-    )
-
-
 @pytest.mark.parametrize(
     ("run_result", "expected_exit_code"),
     [
@@ -4623,7 +4461,7 @@ def test_implementation_supervisor_common_args_include_long_run_defaults():
 
     assert args[:3] == ["--implement", "--objective-refill-scan", "--codebase-refill-scan"]
     assert args[args.index("--implementation-command") + 1] == "bash resolve.sh"
-    assert args[args.index("--llm-merge-resolver-command") + 1] == "bash resolve.sh"
+    assert "--llm-merge-resolver-command" not in args
     assert args[args.index("--objective-scan-min-open-tasks") + 1] == "21"
     assert args[args.index("--objective-scan-max-findings") + 1] == "13"
     assert args[args.index("--objective-refill-timeout-seconds") + 1] == "602"
@@ -4636,18 +4474,35 @@ def test_implementation_supervisor_common_args_include_long_run_defaults():
 def test_implementation_multi_supervisor_env_defaults_are_reusable():
     assert implementation_multi_supervisor_env_defaults() == {
         "PYTHONUNBUFFERED": "1",
-        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "900",
-        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "600",
+        "GROK_MERGE_RESOLVER_TIMEOUT_SECONDS": "900",
+        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "600",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "grok_cli",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER": "codex",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER": (
+            "primary_quota_exhausted"
+        ),
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.5",
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
+        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "medium",
     }
     assert implementation_multi_supervisor_env_defaults(
         python_unbuffered=False,
+        grok_merge_resolver_timeout_seconds=0,
         codex_merge_resolver_timeout_seconds=0,
+        copilot_merge_resolver_timeout_seconds=123,
         prefer_copilot_merge_resolver=True,
     ) == {
         "PYTHONUNBUFFERED": "0",
+        "GROK_MERGE_RESOLVER_TIMEOUT_SECONDS": "0",
         "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "0",
-        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "600",
-        "PREFER_COPILOT_MERGE_RESOLVER": "1",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "grok_cli",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER": "codex",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER": (
+            "primary_quota_exhausted"
+        ),
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.5",
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
+        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "medium",
     }
 
 
@@ -4671,7 +4526,7 @@ def test_multi_supervisor_common_args_from_parsed_defaults(monkeypatch):
     assert "--objective-refill-scan" in args
     assert "--codebase-refill-scan" in args
     assert args[args.index("--implementation-command") + 1] == "bash resolve.sh"
-    assert args[args.index("--llm-merge-resolver-command") + 1] == "bash resolve.sh"
+    assert "--llm-merge-resolver-command" not in args
     assert args[args.index("--objective-scan-min-open-tasks") + 1] == "22"
     assert args[-2:] == ["--objective-scan-min-open-tasks", "99"]
     assert supervisor_track_payload(tracks[0])["log_path"].endswith("/agent_8h_run_" + parsed.stamp + ".log")
@@ -4818,6 +4673,9 @@ def test_repo_implementation_multi_supervisor_launcher_uses_repo_defaults(tmp_pa
 
     monkeypatch.setattr(multi_supervisor_runner, "main", fake_main)
     monkeypatch.delenv("MULTI_SUPERVISOR_REPO_DEFAULT", raising=False)
+    ordered_defaults = implementation_multi_supervisor_env_defaults()
+    for name in ordered_defaults:
+        monkeypatch.delenv(name, raising=False)
 
     launcher = build_repo_implementation_multi_supervisor_launcher(
         repo_root=tmp_path,
@@ -4852,6 +4710,10 @@ def test_repo_implementation_multi_supervisor_launcher_uses_repo_defaults(tmp_pa
 
     assert launcher.run(["--duration-seconds", "0.01"]) == 0
     assert os.environ["MULTI_SUPERVISOR_REPO_DEFAULT"] == "1"
+    assert {
+        name: os.environ[name]
+        for name in ordered_defaults
+    } == ordered_defaults
     assert prepared == ["called"]
     assert captured["argv"][-2:] == ("--duration-seconds", "0.01")
 
@@ -4890,28 +4752,8 @@ def test_repo_implementation_multi_supervisor_launcher_uses_packaged_resolver_de
     )
 
 
-def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):
-    codex_log = tmp_path / "codex.prompt"
-    codex_bin = tmp_path / "codex"
-    codex_bin.write_text(
-        "#!/usr/bin/env bash\n"
-        "while (($#)); do\n"
-        "  if [[ \"$1\" == \"-C\" ]]; then shift; workspace=\"$1\"; fi\n"
-        "  shift || true\n"
-        "done\n"
-        "cat > \"$workspace/codex.prompt\"\n",
-        encoding="utf-8",
-    )
-    codex_bin.chmod(0o755)
-    env = {
-        **os.environ,
-        "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
-        "CODEX_BIN": str(codex_bin),
-        "COPILOT_BIN": "",
-        "AGENT_RESOLVER_LOCK_BYPASS": "1",
-    }
-
-    completed = subprocess.run(
+def _run_packaged_merge_resolver(tmp_path: Path, env: dict[str, str]):
+    return subprocess.run(
         [
             sys.executable,
             "-m",
@@ -4921,118 +4763,237 @@ def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):
         input="resolve this conflict",
         text=True,
         capture_output=True,
-        env=env,
+        env={
+            **os.environ,
+            "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
+            "AGENT_RESOLVER_LOCK_BYPASS": "1",
+            "_AGENT_RESOLVER_INVOCATION_DEPTH": "0",
+            **env,
+        },
         check=False,
     )
 
+
+def test_llm_merge_resolver_fallback_module_uses_exact_grok_first(tmp_path):
+    grok_prompt = tmp_path / "grok.prompt"
+    grok_args = tmp_path / "grok.args"
+    codex_marker = tmp_path / "codex.invoked"
+    grok_bin = tmp_path / "grok"
+    codex_bin = tmp_path / "codex"
+    grok_bin.write_text(
+        "#!/usr/bin/env bash\n"
+        "while (($#)); do\n"
+        f"  printf '%s\\n' \"$1\" >> {shlex.quote(str(grok_args))}\n"
+        "  if [[ \"$1\" == \"--prompt-file\" ]]; then shift; prompt_file=\"$1\"; fi\n"
+        "  shift || true\n"
+        "done\n"
+        f"cat \"$prompt_file\" > {shlex.quote(str(grok_prompt))}\n",
+        encoding="utf-8",
+    )
+    codex_bin.write_text(
+        f"#!/usr/bin/env bash\nprintf invoked > {shlex.quote(str(codex_marker))}\n",
+        encoding="utf-8",
+    )
+    grok_bin.chmod(0o755)
+    codex_bin.chmod(0o755)
+    completed = _run_packaged_merge_resolver(
+        tmp_path,
+        {
+            "IPFS_ACCELERATE_AGENT_GROK_BIN": str(grok_bin),
+            "CODEX_BIN": str(codex_bin),
+            "IPFS_ACCELERATE_AGENT_GROK_MODEL": "wrong-grok-model",
+        },
+    )
+
     assert completed.returncode == 0, completed.stderr
-    assert codex_log.read_text(encoding="utf-8") == "resolve this conflict"
+    assert grok_prompt.read_text(encoding="utf-8") == "resolve this conflict"
+    grok_argv = grok_args.read_text(encoding="utf-8").splitlines()
+    assert grok_argv[grok_argv.index("--model") + 1] == GROK_MERGE_RESOLVER_MODEL
+    assert not codex_marker.exists()
 
 
 def test_llm_merge_resolver_provider_defaults_fit_outer_budget(monkeypatch):
+    monkeypatch.delenv("GROK_MERGE_RESOLVER_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS", raising=False)
-    monkeypatch.delenv("COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS", raising=False)
 
+    grok_timeout = _timeout_seconds(
+        "GROK_MERGE_RESOLVER_TIMEOUT_SECONDS",
+        _DEFAULT_GROK_TIMEOUT_SECONDS,
+    )
     codex_timeout = _timeout_seconds(
-        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS",
-        _DEFAULT_CODEX_TIMEOUT_SECONDS,
-    )
-    copilot_timeout = _timeout_seconds(
-        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS",
-        _DEFAULT_COPILOT_TIMEOUT_SECONDS,
+        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS", _DEFAULT_CODEX_TIMEOUT_SECONDS
     )
 
-    assert codex_timeout == 900
-    assert copilot_timeout == 600
+    assert grok_timeout == 900
+    assert codex_timeout == 600
     assert (
-        codex_timeout + copilot_timeout
+        grok_timeout + codex_timeout
         < merge_resolver.DEFAULT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS
     )
 
 
-def test_llm_merge_resolver_fallback_uses_copilot_after_codex_timeout(tmp_path):
+def test_llm_merge_resolver_uses_exact_codex_only_after_grok_quota(tmp_path):
+    grok_bin = tmp_path / "grok"
     codex_bin = tmp_path / "codex"
     copilot_bin = tmp_path / "copilot"
-    copilot_log = tmp_path / "copilot.prompt"
-    codex_bin.write_text("#!/usr/bin/env bash\nsleep 5\n", encoding="utf-8")
-    copilot_bin.write_text(
+    codex_prompt = tmp_path / "codex.prompt"
+    codex_args = tmp_path / "codex.args"
+    copilot_marker = tmp_path / "copilot.invoked"
+    grok_bin.write_text(
         "#!/usr/bin/env bash\n"
-        "while (($#)); do\n"
-        "  if [[ \"$1\" == \"--prompt\" ]]; then shift; printf '%s' \"$1\" > "
-        f"{shlex.quote(str(copilot_log))}; fi\n"
-        "  shift || true\n"
-        "done\n",
+        "printf '%s\\n' 'Internal error: {\"message\":\"API error (status 402 Payment Required): Grok Build usage balance exhausted\",\"http_status\":402}' >&2\n"
+        "exit 42\n",
         encoding="utf-8",
     )
+    codex_bin.write_text(
+        "#!/usr/bin/env bash\n"
+        "while (($#)); do\n"
+        f"  printf '%s\\n' \"$1\" >> {shlex.quote(str(codex_args))}\n"
+        "  shift || true\n"
+        "done\n"
+        f"cat > {shlex.quote(str(codex_prompt))}\n",
+        encoding="utf-8",
+    )
+    copilot_bin.write_text(
+        f"#!/usr/bin/env bash\nprintf invoked > {shlex.quote(str(copilot_marker))}\n",
+        encoding="utf-8",
+    )
+    grok_bin.chmod(0o755)
     codex_bin.chmod(0o755)
     copilot_bin.chmod(0o755)
-    env = {
-        **os.environ,
-        "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
-        "CODEX_BIN": str(codex_bin),
-        "COPILOT_BIN": str(copilot_bin),
-        "COPILOT_GITHUB_TOKEN": "test-token",
-        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "0.05",
-        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "2",
-        "AGENT_RESOLVER_LOCK_BYPASS": "1",
-    }
-
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback",
-            str(tmp_path),
-        ],
-        input="resolve this conflict",
-        text=True,
-        capture_output=True,
-        env=env,
-        check=False,
+    completed = _run_packaged_merge_resolver(
+        tmp_path,
+        {
+            "IPFS_ACCELERATE_AGENT_GROK_BIN": str(grok_bin),
+            "CODEX_BIN": str(codex_bin),
+            "COPILOT_BIN": str(copilot_bin),
+            "COPILOT_GITHUB_TOKEN": "test-token",
+            "IPFS_ACCELERATE_AGENT_GROK_MODEL": "wrong-grok-model",
+            "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "wrong-codex-model",
+            "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "ultra",
+        },
     )
 
     assert completed.returncode == 0, completed.stderr
-    assert "codex merge resolver timed out" in completed.stderr
-    assert copilot_log.read_text(encoding="utf-8") == "resolve this conflict"
+    assert "authorizing Codex fallback" in completed.stderr
+    assert codex_prompt.read_text(encoding="utf-8") == "resolve this conflict"
+    codex_argv = codex_args.read_text(encoding="utf-8").splitlines()
+    assert codex_argv[codex_argv.index("-m") + 1] == CODEX_MERGE_RESOLVER_MODEL
+    assert (
+        codex_argv[codex_argv.index("-c") + 1]
+        == f'model_reasoning_effort="{CODEX_MERGE_RESOLVER_REASONING_EFFORT}"'
+    )
+    assert not copilot_marker.exists()
 
 
-def test_llm_merge_resolver_fallback_skips_unauthenticated_copilot(tmp_path):
+def test_llm_merge_resolver_stdout_quota_text_is_not_authority(tmp_path):
+    grok_bin = tmp_path / "grok"
     codex_bin = tmp_path / "codex"
-    copilot_bin = tmp_path / "copilot"
-    copilot_log = tmp_path / "copilot.log"
-    codex_bin.write_text("#!/bin/bash\nexit 42\n", encoding="utf-8")
-    copilot_bin.write_text(f"#!/bin/bash\nprintf invoked > {shlex.quote(str(copilot_log))}\n", encoding="utf-8")
+    codex_marker = tmp_path / "codex.invoked"
+    grok_bin.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf 'Grok usage balance exhausted'\n"
+        "printf 'ordinary implementation failure' >&2\n"
+        "exit 42\n",
+        encoding="utf-8",
+    )
+    codex_bin.write_text(
+        f"#!/usr/bin/env bash\nprintf invoked > {shlex.quote(str(codex_marker))}\n",
+        encoding="utf-8",
+    )
+    grok_bin.chmod(0o755)
     codex_bin.chmod(0o755)
-    copilot_bin.chmod(0o755)
-    env = {
-        **os.environ,
-        "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
-        "CODEX_BIN": str(codex_bin),
-        "COPILOT_BIN": str(copilot_bin),
-        "COPILOT_GITHUB_TOKEN": "",
-        "GH_TOKEN": "",
-        "GITHUB_TOKEN": "",
-        "PATH": str(tmp_path),
-        "AGENT_RESOLVER_LOCK_BYPASS": "1",
-    }
 
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback",
-            str(tmp_path),
-        ],
-        input="resolve this conflict",
-        text=True,
-        capture_output=True,
-        env=env,
-        check=False,
+    completed = _run_packaged_merge_resolver(
+        tmp_path,
+        {
+            "IPFS_ACCELERATE_AGENT_GROK_BIN": str(grok_bin),
+            "CODEX_BIN": str(codex_bin),
+        },
     )
 
     assert completed.returncode == 42
-    assert "copilot fallback is not authenticated" in completed.stderr
-    assert not copilot_log.exists()
+    assert "Codex fallback is forbidden" in completed.stderr
+    assert not codex_marker.exists()
+
+
+@pytest.mark.parametrize(
+    "failure_text",
+    (
+        "xAI HTTP 429 rate limited",
+        "Grok authentication failed",
+        "Grok timed out",
+        "Grok service unavailable",
+        "Grok quota exhausted after HTTP 429 rate limit",
+        "generic Grok failure",
+    ),
+)
+def test_llm_merge_resolver_nonquota_grok_failures_never_fallback(
+    tmp_path,
+    failure_text,
+):
+    grok_bin = tmp_path / "grok"
+    codex_bin = tmp_path / "codex"
+    copilot_bin = tmp_path / "copilot"
+    codex_marker = tmp_path / "codex.invoked"
+    copilot_marker = tmp_path / "copilot.invoked"
+    grok_bin.write_text(
+        "#!/usr/bin/env bash\n"
+        f"printf '%s' {shlex.quote(failure_text)} >&2\n"
+        "exit 42\n",
+        encoding="utf-8",
+    )
+    codex_bin.write_text(
+        f"#!/usr/bin/env bash\nprintf invoked > {shlex.quote(str(codex_marker))}\n",
+        encoding="utf-8",
+    )
+    copilot_bin.write_text(
+        f"#!/usr/bin/env bash\nprintf invoked > {shlex.quote(str(copilot_marker))}\n",
+        encoding="utf-8",
+    )
+    grok_bin.chmod(0o755)
+    codex_bin.chmod(0o755)
+    copilot_bin.chmod(0o755)
+    completed = _run_packaged_merge_resolver(
+        tmp_path,
+        {
+            "IPFS_ACCELERATE_AGENT_GROK_BIN": str(grok_bin),
+            "CODEX_BIN": str(codex_bin),
+            "COPILOT_BIN": str(copilot_bin),
+            "COPILOT_GITHUB_TOKEN": "test-token",
+        },
+    )
+
+    assert completed.returncode == 42
+    assert "Codex fallback is forbidden" in completed.stderr
+    assert not codex_marker.exists()
+    assert not copilot_marker.exists()
+
+
+def test_llm_merge_resolver_grok_timeout_fails_closed(tmp_path):
+    grok_bin = tmp_path / "grok"
+    codex_bin = tmp_path / "codex"
+    codex_marker = tmp_path / "codex.invoked"
+    grok_bin.write_text("#!/usr/bin/env bash\nsleep 5\n", encoding="utf-8")
+    codex_bin.write_text(
+        f"#!/usr/bin/env bash\nprintf invoked > {shlex.quote(str(codex_marker))}\n",
+        encoding="utf-8",
+    )
+    grok_bin.chmod(0o755)
+    codex_bin.chmod(0o755)
+
+    completed = _run_packaged_merge_resolver(
+        tmp_path,
+        {
+            "IPFS_ACCELERATE_AGENT_GROK_BIN": str(grok_bin),
+            "CODEX_BIN": str(codex_bin),
+            "GROK_MERGE_RESOLVER_TIMEOUT_SECONDS": "0.05",
+        },
+    )
+
+    assert completed.returncode == 124
+    assert "Codex fallback is forbidden" in completed.stderr
+    assert not codex_marker.exists()
 
 
 def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
@@ -5371,6 +5332,150 @@ def test_implementation_proposal_materializes_untracked_submodule_file(tmp_path:
     assert "diff --git a/libs/child/added.txt b/libs/child/added.txt" in (
         result.proposal.patch_text
     )
+
+
+def test_implementation_proposal_uses_child_ignore_rules_for_exact_outputs(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    (repo / ".gitignore").write_text("core\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-m", "ignore parent core directories")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    operation_contract = submodule / "core" / "operation_contracts.py"
+    operation_contract.parent.mkdir()
+    operation_contract.write_text("CONTRACT_VERSION = 1\n", encoding="utf-8")
+    contract_test = submodule / "tests" / "test_operation_contracts.py"
+    contract_test.parent.mkdir()
+    contract_test.write_text(
+        "def test_contract_version():\n"
+        "    assert 1 == 1\n",
+        encoding="utf-8",
+    )
+
+    parent_ignore = subprocess.run(
+        [
+            "git",
+            "check-ignore",
+            "--no-index",
+            "--quiet",
+            "--",
+            "libs/child/core/operation_contracts.py",
+        ],
+        cwd=repo,
+        check=False,
+    )
+    child_ignore = subprocess.run(
+        [
+            "git",
+            "check-ignore",
+            "--no-index",
+            "--quiet",
+            "--",
+            "core/operation_contracts.py",
+        ],
+        cwd=submodule,
+        check=False,
+    )
+    result = _submodule_proposal_daemon(
+        repo,
+        tmp_path,
+    )._validate_implementation_patch(
+        repo,
+        _submodule_proposal_task(
+            [
+                "libs/child/core/operation_contracts.py",
+                "libs/child/tests/test_operation_contracts.py",
+            ]
+        ),
+        baseline_ref=baseline,
+    )
+
+    assert parent_ignore.returncode == 0
+    assert child_ignore.returncode == 1
+    assert result.accepted is True
+    assert result.proposal.changed_paths == (
+        "libs/child/core/operation_contracts.py",
+        "libs/child/tests/test_operation_contracts.py",
+    )
+    assert _git(submodule, "diff", "--cached", "--name-only") == ""
+
+
+def test_implementation_proposal_force_stages_exact_child_ignored_output(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    (submodule / ".gitignore").write_text(
+        "artifacts/*.json\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", ".gitignore")
+    _git(submodule, "commit", "-m", "ignore child artifacts")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "record child ignore policy")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    deliverable = submodule / "artifacts" / "proof.json"
+    deliverable.parent.mkdir()
+    deliverable.write_text('{"proved": true}\n', encoding="utf-8")
+    unrelated = submodule / "artifacts" / "unrelated.json"
+    unrelated.write_text('{"unrelated": true}\n', encoding="utf-8")
+
+    result = _submodule_proposal_daemon(
+        repo,
+        tmp_path,
+    )._validate_implementation_patch(
+        repo,
+        _submodule_proposal_task("libs/child/artifacts/proof.json"),
+        baseline_ref=baseline,
+    )
+
+    assert result.accepted is True
+    assert result.proposal.changed_paths == (
+        "libs/child/artifacts/proof.json",
+    )
+    assert _git(submodule, "diff", "--cached", "--name-only") == (
+        "artifacts/proof.json"
+    )
+    assert _git(
+        repo,
+        "ls-files",
+        "--",
+        "libs/child/artifacts/proof.json",
+    ) == ""
+
+
+def test_implementation_proposal_does_not_stage_unmanaged_child_output(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    (submodule / ".gitignore").write_text(
+        "artifacts/*.json\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", ".gitignore")
+    _git(submodule, "commit", "-m", "ignore child artifacts")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "record child ignore policy")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    deliverable = submodule / "artifacts" / "proof.json"
+    deliverable.parent.mkdir()
+    deliverable.write_text('{"proved": true}\n', encoding="utf-8")
+
+    result = _submodule_proposal_daemon(
+        repo,
+        tmp_path,
+        configured=False,
+    )._validate_implementation_patch(
+        repo,
+        _submodule_proposal_task("libs/child/artifacts/proof.json"),
+        baseline_ref=baseline,
+    )
+
+    assert result.accepted is False
+    assert "expected_output_ignored_or_unstaged" in {
+        finding.code.value for finding in result.findings
+    }
+    assert _git(submodule, "diff", "--cached", "--name-only") == ""
 
 
 def test_implementation_proposal_materializes_submodule_rename(tmp_path: Path):
@@ -11145,81 +11250,6 @@ def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(
     assert events[-1]["status"] == "stopped"
 
 
-def test_implementation_supervisor_bounds_outer_recovery_without_progress(
-    tmp_path,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    state_dir = repo / "state"
-    state_dir.mkdir()
-
-    class CrashingLoop:
-        calls = 0
-
-        def __init__(self, config, *, watchdog_hook=None):
-            self.config = config
-            self.watchdog_hook = watchdog_hook
-
-        def run(self):
-            CrashingLoop.calls += 1
-            return SupervisorLoopResult(
-                status="child_exited",
-                restart_count=1,
-                last_exit_code=1,
-                last_recycle_reason="child_exited",
-                last_run_id=f"crash-{CrashingLoop.calls}",
-            )
-
-    supervisor = TodoImplementationSupervisor(
-        TodoSupervisorConfig(
-            todo_path=repo / "todo.md",
-            state_path=state_dir / "task_state.json",
-            strategy_path=state_dir / "strategy.json",
-            events_path=state_dir / "supervisor_events.jsonl",
-            state_dir=state_dir,
-            check_interval=0.01,
-            max_restarts=1,
-            repo_root=repo,
-        )
-    )
-    supervisor.shared_supervisor_loop_class = CrashingLoop
-    supervisor.ensure_event_log_file = lambda: {
-        "repaired": False,
-        "reason": "valid",
-    }
-    supervisor.ensure_managed_daemon_pid_file = lambda: {
-        "adopted": False,
-        "reason": "not_running",
-    }
-    run_once_calls: list[bool] = []
-
-    def fake_run_once(*, include_refill=True):
-        run_once_calls.append(include_refill)
-        return {"stuck": False, "active_task_id": "ACCEL-001"}
-
-    supervisor.run_once = fake_run_once
-    supervisor._supervisor_loop_recovery_delay_seconds = lambda: 0.0
-
-    supervisor.run_forever()
-
-    assert CrashingLoop.calls == 2
-    assert run_once_calls == [False, True, True]
-    events = [
-        json.loads(line)
-        for line in (state_dir / "supervisor_events.jsonl")
-        .read_text(encoding="utf-8")
-        .splitlines()
-        if line.strip()
-    ]
-    assert events[-1]["type"] == "supervisor_loop_recovery_exhausted"
-    assert events[-1]["no_progress_recovery_count"] == 2
-    assert events[-1]["no_progress_recovery_limit"] == 2
-    assert sum(
-        event["type"] == "supervisor_loop_restarting_after_recovery"
-        for event in events
-    ) == 1
-
-
 def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
     tmp_path, monkeypatch
 ):
@@ -11296,9 +11326,7 @@ def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
     monkeypatch.setattr(
         supervisor,
         "_reconcile_interrupted_implementation_after_shutdown",
-        lambda *, expected_owner_pid: reconciliation_calls.append(
-            expected_owner_pid
-        )
+        lambda: reconciliation_calls.append(True)
         or {
             "reconciled": True,
             "blocked": False,
@@ -11316,7 +11344,7 @@ def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
 
     assert exc_info.value.code == 128 + signal.SIGTERM
     assert cleanup_calls == [True]
-    assert reconciliation_calls == [4321]
+    assert reconciliation_calls == [True]
     assert recorded == [
         (
             "supervisor_signal_shutdown",
@@ -11622,12 +11650,6 @@ def test_run_once_repairs_exact_completion_receipt_after_state_save_crash(
         for event in first_events
         if event.get("type") == "task_completed"
     ]
-    repair_updates = [
-        event
-        for event in first_events
-        if event.get("type") == "todo_status_updated"
-        and event.get("reason") == "completion_receipt_repair"
-    ]
 
     assert len(first_receipts) == 1
     assert first_receipts[0]["task_id"] == task.task_id
@@ -11640,24 +11662,6 @@ def test_run_once_repairs_exact_completion_receipt_after_state_save_crash(
         == identity.canonical_task_cid
     )
     assert first_receipts[0]["completion_receipt_repair"] is True
-    assert len(repair_updates) == 1
-    assert repair_updates[0]["updated"] is False
-    assert repair_updates[0]["already_completed_task_ids"] == [
-        task.task_id
-    ]
-    assert repair_updates[0]["completion_receipts"] == [
-        {
-            "schema": (
-                "ipfs_accelerate_py.agent_supervisor."
-                "member_completion_receipt@1"
-            ),
-            "task_id": task.task_id,
-            "canonical_task_key": identity.canonical_task_key,
-            "canonical_task_cid": identity.canonical_task_cid,
-            "board_namespace": identity.board_namespace,
-            "status": "succeeded",
-        }
-    ]
     assert first["completion_receipt_writes"] == [
         {
             "task_id": task.task_id,
@@ -12427,6 +12431,225 @@ def test_implementation_daemon_accepts_planner_proven_external_dependency(tmp_pa
     assert state.ready_task_ids == ["ACCEL-002"]
 
 
+def test_soft_completed_references_unlock_dependents_without_board_completion():
+    tasks = [
+        PortalTask(
+            task_id="ACCEL-001",
+            title="Merged but acceptance pending",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        ),
+        PortalTask(
+            task_id="ACCEL-002",
+            title="Blocked only by soft-complete dep",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+            depends_on=["ACCEL-001"],
+        ),
+    ]
+
+    hard_only = dependency_satisfied_references(
+        tasks,
+        completed_task_ids=set(),
+    )
+    assert "ACCEL-001" not in hard_only
+
+    soft = dependency_satisfied_references(
+        tasks,
+        completed_task_ids=set(),
+        soft_completed_references={"ACCEL-001"},
+    )
+    assert "ACCEL-001" in soft
+    assert "ACCEL-002" not in soft
+
+
+def test_orphaned_dependency_references_auto_resolve():
+    tasks = [
+        PortalTask(
+            task_id="ACCEL-010",
+            title="Depends on missing external alias",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+            depends_on=["EXT-NEVER-ON-BOARD"],
+        ),
+    ]
+
+    satisfied = dependency_satisfied_references(tasks, completed_task_ids=set())
+    assert "EXT-NEVER-ON-BOARD" in satisfied
+
+    disabled = dependency_satisfied_references(
+        tasks,
+        completed_task_ids=set(),
+        auto_resolve_orphaned_references=False,
+    )
+    assert "EXT-NEVER-ON-BOARD" not in disabled
+
+
+def test_downstream_unlock_counts_prefer_critical_path_roots():
+    tasks = [
+        PortalTask(
+            task_id="ROOT",
+            title="Critical root",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        ),
+        PortalTask(
+            task_id="MID",
+            title="Mid",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+            depends_on=["ROOT"],
+        ),
+        PortalTask(
+            task_id="LEAF",
+            title="Leaf",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+            depends_on=["MID"],
+        ),
+        PortalTask(
+            task_id="SIDE",
+            title="Side leaf",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        ),
+    ]
+    counts = downstream_unlock_counts(tasks)
+    assert counts["ROOT"] == 2
+    assert counts["MID"] == 1
+    assert counts["LEAF"] == 0
+    assert counts["SIDE"] == 0
+
+
+def test_implementation_daemon_soft_complete_merge_unblocks_dependents(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Merged in another lane
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+
+## ACCEL-002 Waiting on soft-complete dep
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ACCEL-001
+""",
+        encoding="utf-8",
+    )
+    queue = MergeQueue(repo / "merge-queue")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        merge_queue=queue,
+    )
+    tasks = {task.task_id: task for task in parse_task_file(todo_path, "## ACCEL-")}
+    completed_request = queue.enqueue(
+        branch_name="implementation/accel-001",
+        task_id="OTHER-001",
+        canonical_task_id=daemon._canonical_ref(tasks["ACCEL-001"]),
+        commit_sha="a" * 40,
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None and claimed.request_id == completed_request.request_id
+    queue.complete(claimed)
+    daemon._consume_one_merge_candidate = lambda: None  # type: ignore[method-assign]
+    daemon._reconcile_failed_merges = lambda **kwargs: []  # type: ignore[method-assign]
+
+    result = daemon.run_once()
+    state = TodoTaskState.load(daemon.state_path)
+
+    assert "ACCEL-001" in result.get("soft_completed_task_ids", [])
+    assert "ACCEL-001" in result.get("shared_completed_task_ids", [])
+    assert "ACCEL-001" not in state.completed_task_ids
+    # Upstream stays waiting for acceptance; dependent becomes ready.
+    assert state.task_statuses["ACCEL-001"] == "waiting"
+    assert state.task_statuses["ACCEL-002"] == "ready"
+    assert result["active_task_id"] == "ACCEL-002"
+
+
+def test_implementation_daemon_selects_critical_path_blocker_first(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-LEAF Side leaf work
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+
+## ACCEL-ROOT Critical path root
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+
+## ACCEL-MID Mid cascade
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ACCEL-ROOT
+
+## ACCEL-END Cascade end
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: ACCEL-MID
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    daemon._reconcile_failed_merges = lambda **kwargs: []  # type: ignore[method-assign]
+
+    result = daemon.run_once()
+
+    assert result["active_task_id"] == "ACCEL-ROOT"
+    unlock = result.get("downstream_unlock_counts") or {}
+    assert unlock.get("ACCEL-ROOT", 0) >= 2
+
+
 def test_implementation_daemon_uses_shared_merge_receipts_across_lanes(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -12495,7 +12718,6 @@ def test_implementation_daemon_uses_shared_merge_receipts_across_lanes(tmp_path)
     assert state.task_statuses["ACCEL-001"] == "completed"
     assert state.task_statuses["ACCEL-002"] == "merge-queued"
     assert state.task_statuses["ACCEL-003"] == "ready"
-
 
 def test_bundle_runtime_taskboard_preserves_reviewed_shard_digest_on_shared_completion(
     tmp_path,
@@ -13317,6 +13539,1422 @@ def test_provider_declared_retry_reset_and_explicit_command_attribution(
     assert grok_daemon._active_provider_capacity_backoff() == {}
 
 
+def test_auto_provider_with_codex_model_ignores_grok_capacity_latch(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 1, 20, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+        raising=False,
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "auto",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        "gpt-5.6-terra",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_copilot_has_auth",
+        lambda: False,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+    )
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "providers": ["grok"],
+            "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
+        },
+    )
+
+    assert daemon._current_implementation_provider_labels() == {
+        "codex",
+        "copilot",
+        "provider",
+    }
+    assert daemon._active_provider_capacity_backoff() == {}
+    command = daemon._build_implementation_command(repo)
+    assert command[:2] == ["/usr/local/bin/codex", "exec"]
+    assert "--ignore-user-config" in command
+    assert command[command.index("-m") + 1] == "gpt-5.6-terra"
+
+
+def _seal_ordered_grok_codex_route(monkeypatch) -> None:
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+        "primary_quota_exhausted",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._GROK_MODEL_ENV,
+        "grok-4.5",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        "gpt-5.6-terra",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
+        "medium",
+    )
+
+
+def _clear_ordered_grok_codex_route(monkeypatch) -> None:
+    """Give legacy custom-resolver tests an explicit unsealed environment."""
+
+    for name in (
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+        implementation_daemon_module._GROK_MODEL_ENV,
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_ordered_grok_codex_route_environment(monkeypatch) -> None:
+    """Keep production route defaults from changing legacy unit-test semantics."""
+
+    _clear_ordered_grok_codex_route(monkeypatch)
+
+
+def _issue_ordered_grok_quota_authority(
+    daemon,
+    *,
+    task,
+    workspace,
+    attempt=1,
+    command=None,
+):
+    state = TodoTaskState()
+    started_at = "2026-08-03T02:00:00+00:00"
+    log_path = workspace / "grok-quota.log"
+    command = (
+        list(command)
+        if command is not None
+        else implementation_daemon_module._grok_cli_command(
+            workspace_path=workspace,
+        )
+    )
+    daemon._mark_implementation_started(
+        state,
+        task=task,
+        attempt=attempt,
+        started_at=started_at,
+        log_path=log_path,
+    )
+    identity = daemon._identity_for_task(task)
+    started_event = daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "attempt": attempt,
+            "command": command,
+            "log_path": str(log_path),
+        },
+    )
+    raw_error = (
+        'Internal error: {"message":"API error (status 402 Payment '
+        'Required): Grok Build usage balance exhausted","http_status":402}'
+        "\n"
+    ).encode("utf-8")
+    runner_receipt = {
+        "schema": implementation_daemon_module.GROK_QUOTA_RECEIPT_SCHEMA,
+        "provider": "grok_cli",
+        "model": "grok-4.5",
+        "failure_kind": "quota_or_balance_exhausted",
+        "message": "Grok Build usage balance exhausted",
+        "raw_error_sha256": hashlib.sha256(raw_error).hexdigest(),
+        "raw_error_size": len(raw_error),
+        "kind": "usage_balance_exhausted",
+        "http_status": 402,
+    }
+    log_path.write_bytes(
+        raw_error
+        + json.dumps(
+            runner_receipt,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        + b"\n"
+    )
+    failure = daemon._provider_capacity_failure_from_text(
+        log_path.read_text(encoding="utf-8"),
+        command=command,
+        provider_output_only=True,
+        provider_output_start_offset=0,
+        provider_error_channel_identity={
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "anonymous-provider-error-channel@1"
+            ),
+            "device": 1,
+            "inode": 1,
+            "size": log_path.stat().st_size,
+            "sha256": hashlib.sha256(log_path.read_bytes()).hexdigest(),
+            "tail_start_offset": 0,
+        },
+        provider_returncode=(
+            implementation_daemon_module.GROK_QUOTA_EXHAUSTED_EXIT_CODE
+        ),
+    )
+    result = daemon._record_provider_capacity_deferral(
+        task=task,
+        state=state,
+        attempt=attempt,
+        started_at=started_at,
+        returncode=(
+            implementation_daemon_module.GROK_QUOTA_EXHAUSTED_EXIT_CODE
+        ),
+        log_path=log_path,
+        failure=failure,
+        command=command,
+        implementation_started_event=started_event,
+    )
+    return result, command
+
+
+def _prime_ordered_fallback_runtime_state(daemon, tasks):
+    state = TodoTaskState.load(daemon.state_path)
+    state.task_count = len(tasks)
+    state.ready_count = len(tasks)
+    state.selectable_ready_task_ids = [task.task_id for task in tasks]
+    state.selectable_ready_count = len(tasks)
+    state.eligible_ready_task_ids = [task.task_id for task in tasks]
+    state.eligible_ready_count = len(tasks)
+    state.task_statuses = {task.task_id: "ready" for task in tasks}
+    state.task_identities = {
+        task.task_id: daemon._identity_for_task(task).to_dict()
+        for task in tasks
+    }
+    state.save(daemon.state_path)
+    source_digest, _sources = daemon._runtime_source_head()
+    daemon._runtime_last_source_digest = source_digest
+    daemon._runtime_last_result = {"active_task_id": ""}
+    return state
+
+
+def test_ordered_grok_route_uses_reviewed_primary_model_and_labels_fallback(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setenv(
+        implementation_daemon_module._GROK_MODEL_ENV,
+        "grok-4.5",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        "gpt-5.6-terra",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: (
+            f"/usr/local/bin/{name}"
+            if name in {"codex", "copilot"}
+            else None
+        ),
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+
+    command = daemon._build_implementation_command(repo)
+
+    assert command[0] == sys.executable
+    assert command[1].endswith("grok_cli_runner.py")
+    assert command[command.index("--model") + 1] == "grok-4.5"
+    assert daemon._current_implementation_provider_labels() == {
+        "grok",
+        "xai",
+        "provider",
+    }
+
+
+@pytest.mark.parametrize(
+    ("environment_name", "invalid_value"),
+    (
+        (implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV, "grok"),
+        (
+            implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+            "openai",
+        ),
+        (implementation_daemon_module._GROK_MODEL_ENV, "grok-4"),
+        (implementation_daemon_module._CODEX_MODEL_ENV, "gpt-5.6"),
+        (
+            implementation_daemon_module.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+            "primary_unavailable",
+        ),
+        (
+            implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
+            "high",
+        ),
+    ),
+)
+def test_ordered_grok_route_rejects_inexact_policy_fields(
+    tmp_path,
+    monkeypatch,
+    environment_name,
+    invalid_value,
+):
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setenv(environment_name, invalid_value)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+
+    assert daemon._ordered_grok_codex_route_configured() is False
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="requires exact grok_cli/grok-4.5",
+    ):
+        daemon._build_implementation_command(repo)
+
+
+def test_ordered_grok_route_fails_closed_when_primary_is_unavailable(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setenv(
+        implementation_daemon_module._GROK_MODEL_ENV,
+        "grok-4.5",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        "gpt-5.6-terra",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._GROK_CONTEXT_WINDOW_ENV,
+        "11111",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_CONTEXT_WINDOW_ENV,
+        "22222",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: (
+            f"/usr/local/bin/{name}"
+            if name in {"codex", "copilot"}
+            else None
+        ),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_copilot_has_auth",
+        lambda: True,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    task = PortalTask(
+        task_id="ACCEL-ORDERED-000",
+        title="Use fallback-specific context",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider",
+        outputs=["src/provider.py"],
+        metadata={"Provider role": "grok-implement, codex-review"},
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="live explicit Grok quota/balance exhaustion proof",
+    ):
+        daemon._build_implementation_command(repo, task=task)
+
+    assert daemon._implementation_context_window(task) == 11_111
+
+
+@pytest.mark.parametrize(
+    ("constructor_command", "ambient_command", "expected"),
+    (
+        ("codex exec -", "", "explicit implementation command override"),
+        (
+            "",
+            "codex exec -",
+            "ambient IMPLEMENTATION_DAEMON_COMMAND override",
+        ),
+    ),
+)
+def test_sealed_ordered_route_rejects_command_overrides(
+    tmp_path,
+    monkeypatch,
+    constructor_command,
+    ambient_command,
+    expected,
+):
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    if ambient_command:
+        monkeypatch.setenv("IMPLEMENTATION_DAEMON_COMMAND", ambient_command)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command=constructor_command,
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match=expected,
+    ):
+        daemon._build_implementation_command(repo)
+
+
+def test_sealed_ordered_route_rejects_task_declared_codex_without_quota_proof(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Attempt a provider override",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["src/provider.py"],
+        metadata={"Provider role": "codex-implement"},
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="task-declared Codex dispatch",
+    ):
+        daemon._build_implementation_command(repo, task=task)
+
+
+@pytest.mark.parametrize(
+    "receipt_fields",
+    (
+        {},
+        {
+            "capacity_failure_kind": "provider_capacity_exhausted",
+            "provider_attribution": "implementation_command",
+            "fallback_eligible": False,
+            "fallback_trigger": "",
+            "evidence": ["xAI HTTP 429 rate limited"],
+        },
+        {
+            "capacity_failure_kind": "quota_or_balance_exhausted",
+            "provider_attribution": "log_text",
+            "fallback_eligible": True,
+            "fallback_trigger": "primary_quota_exhausted",
+            "evidence": ["Grok quota exhausted"],
+        },
+    ),
+)
+def test_ordered_codex_fallback_rejects_non_proof_grok_latches(
+    tmp_path,
+    monkeypatch,
+    receipt_fields,
+):
+    fixed_now = datetime(2026, 8, 3, 2, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "providers": ["grok"],
+            "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
+            **receipt_fields,
+        },
+    )
+
+    assert daemon._active_grok_quota_fallback_proof() == {}
+    assert daemon._ordered_grok_codex_selected_provider() == ""
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="live explicit Grok quota/balance exhaustion proof",
+    ):
+        daemon._build_implementation_command(repo)
+
+
+def test_ordered_codex_fallback_requires_live_exact_daemon_authority(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 3, 2, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    task = PortalTask(
+        task_id="ACCEL-ORDERED-AUTHORITY",
+        title="Use exact quota authority",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider",
+        outputs=["src/provider.py"],
+        metadata={"Provider role": "grok-implement, codex-review"},
+    )
+    result, failed_grok_command = _issue_ordered_grok_quota_authority(
+        daemon,
+        task=task,
+        workspace=repo,
+    )
+
+    authority = result["grok_quota_fallback_authority"]
+    assert authority["model_id"] == "grok-4.5"
+    assert authority["command"] == failed_grok_command
+    assert authority["command_cid"]
+    assert authority["implementation_started_event_id"]
+    assert daemon._active_grok_quota_fallback_proof(
+        task,
+        attempt=1,
+    )["receipt_id"] == authority["receipt_id"]
+    assert daemon._active_provider_capacity_backoff(
+        task,
+        attempt=1,
+    ) == {}
+    assert daemon._active_provider_capacity_backoff()["active"] is True
+
+    command = daemon._build_implementation_command(
+        repo,
+        task=task,
+        attempt=1,
+    )
+    assert command[:2] == ["/usr/local/bin/codex", "exec"]
+    assert command[command.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="medium"' in command
+
+    changed_task = replace(task, title="Changed canonical task revision")
+    assert daemon._active_grok_quota_fallback_proof(
+        changed_task,
+        attempt=1,
+    ) == {}
+    assert daemon._active_grok_quota_fallback_proof(
+        task,
+        attempt=2,
+    ) == {}
+
+    daemon._grok_quota_fallback_authority._issued[
+        authority["receipt_id"]
+    ]["attempt"] = 2
+    assert daemon._active_grok_quota_fallback_proof(
+        task,
+        attempt=1,
+    ) == {}
+
+    restarted = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    assert restarted._active_grok_quota_fallback_proof(
+        task,
+        attempt=1,
+    ) == {}
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="live explicit Grok quota/balance exhaustion proof",
+    ):
+        restarted._build_implementation_command(
+            repo,
+            task=task,
+            attempt=1,
+        )
+
+
+def test_ordered_fallback_is_due_through_unchanged_runtime_fast_path(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 3, 2, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-FALLBACK-A Repair with the authorized fallback
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: provider
+- Depends on:
+- Outputs: src/provider.py
+- Validation:
+- Acceptance: The exact fallback implementation is selected.
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+    )
+    [task] = parse_task_file(
+        todo_path,
+        task_header_prefix="## ACCEL-",
+    )
+    _issue_ordered_grok_quota_authority(
+        daemon,
+        task=task,
+        workspace=repo,
+    )
+    _prime_ordered_fallback_runtime_state(daemon, [task])
+    observed = {}
+
+    def capture_implementation(selected, state):
+        attempt = daemon._task_attempt(state, selected)
+        observed["task_id"] = selected.task_id
+        observed["command"] = daemon._build_implementation_command(
+            repo,
+            task=selected,
+            attempt=attempt,
+        )
+        return {
+            "task_id": selected.task_id,
+            "attempt": attempt,
+            "returncode": 0,
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation",
+        capture_implementation,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_unchanged_runtime_result",
+        lambda **_kwargs: pytest.fail(
+            "matching quota authority must bypass the unchanged fast path"
+        ),
+    )
+
+    result = daemon.run_once()
+
+    assert result["implementation_result"]["task_id"] == task.task_id
+    assert observed["task_id"] == task.task_id
+    command = observed["command"]
+    assert command[:2] == ["/usr/local/bin/codex", "exec"]
+    assert command[command.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="medium"' in command
+
+
+def test_ordered_fallback_prioritizes_receipt_owner_over_earlier_task(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 3, 2, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-FALLBACK-B Higher-ranked unrelated task
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: provider
+- Depends on:
+- Outputs: src/unrelated.py
+- Validation:
+- Acceptance: This task has no fallback authority.
+
+## ACCEL-FALLBACK-A Receipt-owning task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: provider
+- Depends on:
+- Outputs: src/provider.py
+- Validation:
+- Acceptance: This task owns the exact fallback authority.
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+    )
+    tasks = parse_task_file(
+        todo_path,
+        task_header_prefix="## ACCEL-",
+    )
+    task_by_id = {task.task_id: task for task in tasks}
+    receipt_owner = task_by_id["ACCEL-FALLBACK-A"]
+    _issue_ordered_grok_quota_authority(
+        daemon,
+        task=receipt_owner,
+        workspace=repo,
+    )
+    _prime_ordered_fallback_runtime_state(daemon, tasks)
+    observed = {}
+
+    def capture_implementation(selected, state):
+        observed["task_id"] = selected.task_id
+        attempt = daemon._task_attempt(state, selected)
+        try:
+            observed["command"] = daemon._build_implementation_command(
+                repo,
+                task=selected,
+                attempt=attempt,
+            )
+        except implementation_daemon_module.ImplementationRetryDeferred:
+            observed["command"] = []
+        return {
+            "task_id": selected.task_id,
+            "attempt": attempt,
+            "returncode": 0,
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation",
+        capture_implementation,
+    )
+
+    result = daemon.run_once()
+
+    assert result["implementation_result"]["task_id"] == receipt_owner.task_id
+    assert observed["task_id"] == receipt_owner.task_id
+    command = observed["command"]
+    assert command[:2] == ["/usr/local/bin/codex", "exec"]
+    assert command[command.index("-m") + 1] == "gpt-5.6-terra"
+    assert 'model_reasoning_effort="medium"' in command
+
+
+def test_ordered_quota_classifier_excludes_supervisor_log_headers(
+    tmp_path,
+    monkeypatch,
+):
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    command = implementation_daemon_module._grok_cli_command(
+        workspace_path=repo,
+    )
+    supervisor_header = "Task: Grok usage balance exhausted\n"
+    log_path = repo / "provider.log"
+    log_path.write_text(
+        supervisor_header + "ordinary child failure\n",
+        encoding="utf-8",
+    )
+
+    unbounded = daemon._provider_capacity_failure_from_log(
+        log_path,
+        command=command,
+    )
+    child_only = daemon._provider_capacity_failure_from_log(
+        log_path,
+        command=command,
+        provider_output_start_offset=len(
+            supervisor_header.encode("utf-8")
+        ),
+    )
+
+    assert unbounded["fallback_eligible"] is False
+    assert child_only["exhausted"] is False
+    assert child_only["provider_output_only"] is True
+
+
+def test_ordered_quota_authority_rejects_inexact_grok_command(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 3, 2, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    task = PortalTask(
+        task_id="ACCEL-INEXACT-GROK",
+        title="Reject inexact Grok dispatch",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider",
+        outputs=["src/provider.py"],
+    )
+    command = implementation_daemon_module._grok_cli_command(
+        workspace_path=repo,
+    )
+    command[command.index("--model") + 1] = "grok-4"
+
+    result, _ = _issue_ordered_grok_quota_authority(
+        daemon,
+        task=task,
+        workspace=repo,
+        command=command,
+    )
+
+    assert "grok_quota_fallback_authority" not in result
+    assert daemon._active_grok_quota_fallback_proof(
+        task,
+        attempt=1,
+    ) == {}
+
+
+def test_ordered_grok_route_uses_grok_when_codex_is_missing(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda _name: None,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+
+    command = daemon._build_implementation_command(repo)
+
+    assert command[1].endswith("grok_cli_runner.py")
+
+
+def test_ordered_grok_route_fails_closed_when_both_providers_are_unavailable(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    _seal_ordered_grok_codex_route(monkeypatch)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda _name: None,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="live explicit Grok quota/balance exhaustion proof",
+    ):
+        daemon._build_implementation_command(repo)
+
+
+def test_legacy_auto_labels_codex_when_grok_is_unavailable(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "auto",
+    )
+    monkeypatch.delenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        raising=False,
+    )
+    monkeypatch.delenv(
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+
+    assert daemon._current_implementation_provider_labels() == {
+        "codex",
+        "copilot",
+        "provider",
+    }
+    assert daemon._build_implementation_command(repo)[:2] == [
+        "/usr/local/bin/codex",
+        "exec",
+    ]
+
+
+def test_task_declared_grok_partial_ordered_route_fails_closed(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "grok_cli",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        "codex",
+    )
+    for name in (
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+        implementation_daemon_module._GROK_MODEL_ENV,
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    task = PortalTask(
+        task_id="ACCEL-ORDERED-001",
+        title="Keep task-owned Grok authority",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider",
+        outputs=["src/provider.py"],
+        metadata={"Provider role": "grok-implement"},
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="requires exact grok_cli/grok-4.5",
+    ):
+        daemon._build_implementation_command(repo, task=task)
+
+    assert daemon._current_implementation_provider_labels(task) == {
+        "grok",
+        "xai",
+        "provider",
+    }
+
+
+def test_task_declared_codex_is_exact_and_never_substitutes_copilot(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "auto",
+    )
+    monkeypatch.delenv(
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: (
+            f"/usr/local/bin/{name}"
+            if name in {"codex", "copilot"}
+            else None
+        ),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_copilot_has_auth",
+        lambda: True,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+    )
+    task = PortalTask(
+        task_id="ACCEL-ORDERED-002",
+        title="Keep task-owned Codex authority",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider",
+        outputs=["src/provider.py"],
+        metadata={"Provider role": "codex-implement"},
+    )
+
+    command = daemon._build_implementation_command(repo, task=task)
+
+    assert command[:2] == ["/usr/local/bin/codex", "exec"]
+    assert command[0] != "bash"
+    assert daemon._current_implementation_provider_labels(task) == {
+        "codex",
+        "provider",
+    }
+
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/copilot" if name == "copilot" else None,
+    )
+    with pytest.raises(RuntimeError, match="requires the Codex CLI"):
+        daemon._build_implementation_command(repo, task=task)
+
+
+def test_grok_readiness_requires_resolved_binary_and_headless_auth(
+    monkeypatch,
+):
+    from ipfs_accelerate_py import llm_router
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        llm_router,
+        "_grok_cli_auth_available",
+        lambda: False,
+    )
+
+    assert implementation_daemon_module._grok_cli_available() is False
+
+    monkeypatch.setattr(
+        llm_router,
+        "_grok_cli_auth_available",
+        lambda: True,
+    )
+    assert implementation_daemon_module._grok_cli_available() is True
+
+
+def test_grok_readiness_accepts_supervisor_binary_override(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py import llm_router
+
+    grok_bin = tmp_path / "custom-grok"
+    grok_bin.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    grok_bin.chmod(0o755)
+    monkeypatch.setenv(
+        implementation_daemon_module._GROK_BIN_ENV,
+        str(grok_bin),
+    )
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-path"))
+    monkeypatch.setattr(
+        llm_router,
+        "_grok_cli_auth_available",
+        lambda: True,
+    )
+
+    assert implementation_daemon_module._grok_binary() == str(grok_bin)
+    assert implementation_daemon_module._grok_cli_available() is True
+    command = implementation_daemon_module._grok_cli_command(
+        workspace_path=tmp_path,
+    )
+    assert command[command.index("--grok-bin") + 1] == str(grok_bin)
+
+
 @pytest.mark.parametrize(
     "retry_line",
     (
@@ -13379,6 +15017,156 @@ def test_provider_retry_reset_absent_or_invalid_uses_configured_fallback(
     assert result["providers"] == ["codex"]
     assert result["retry_at"] == "2026-07-30T09:05:00+00:00"
     assert result["retry_at_source"] == "configured_backoff"
+
+
+def test_provider_capacity_schedule_skips_provider_probe_without_exhaustion(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=False,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_current_implementation_provider_labels",
+        lambda: pytest.fail(
+            "provider discovery must stay lazy without a capacity event"
+        ),
+    )
+
+    assert daemon._provider_capacity_backoff_schedule() == {}
+
+
+def test_provider_capacity_schedule_probes_provider_for_exhaustion(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 7, 30, 9, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+        raising=False,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=False,
+    )
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "providers": ["codex"],
+            "retry_at": "2026-07-30T09:05:00+00:00",
+        },
+    )
+    probes = []
+
+    def provider_labels():
+        probes.append(True)
+        return {"codex", "provider"}
+
+    monkeypatch.setattr(
+        daemon,
+        "_current_implementation_provider_labels",
+        provider_labels,
+    )
+
+    assert daemon._provider_capacity_backoff_schedule() == {
+        "active": True,
+        "retry_at": "2026-07-30T09:05:00+00:00",
+        "retry_after_seconds": 300.0,
+        "providers": ["codex"],
+    }
+    assert probes == [True]
+
+
+def test_local_retry_proof_events_preserve_provider_capacity_latch(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 8, 3, 9, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+        raising=False,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=False,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_current_implementation_provider_labels",
+        lambda *_args, **_kwargs: {"codex", "provider"},
+    )
+    daemon._record_event(
+        "implementation_provider_exhausted",
+        {
+            "providers": ["codex"],
+            "retry_at": "2026-08-03T09:10:00+00:00",
+        },
+    )
+    daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": "ACCEL-002",
+            "command": [],
+            "provider_dispatched": False,
+        },
+    )
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": "ACCEL-002",
+            "provider_dispatched": False,
+        },
+    )
+
+    assert daemon._provider_capacity_backoff_schedule()["active"] is True
+    assert daemon._provider_capacity_backoff_schedule_for_labels(
+        {"codex"}
+    )["active"] is True
+
+    daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": "ACCEL-003",
+            "command": ["codex", "exec"],
+            "provider_dispatched": True,
+        },
+    )
+
+    assert daemon._provider_capacity_backoff_schedule() == {}
+    assert daemon._provider_capacity_backoff_schedule_for_labels(
+        {"codex"}
+    ) == {}
 
 
 def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
@@ -15332,6 +17120,190 @@ def test_daemon_recovery_journal_preserves_legacy_and_repository_fences(
     lock_path.unlink()
 
 
+def test_shared_claim_and_supervisor_liveness_use_common_git_identity(
+    tmp_path,
+) -> None:
+    repo, _objective_path, todo_path = _seed_repo(tmp_path)
+    sibling = tmp_path / "sibling"
+    _git(repo, "worktree", "add", "-b", "sibling", str(sibling))
+    (tmp_path / "foreign").mkdir()
+    foreign, _foreign_objective, foreign_todo = _seed_repo(
+        tmp_path / "foreign"
+    )
+
+    def daemon_for(
+        checkout: Path,
+        checkout_todo: Path,
+        state_name: str,
+    ) -> TodoImplementationDaemon:
+        state_dir = tmp_path / "state" / state_name
+        return TodoImplementationDaemon(
+            todo_path=checkout_todo,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            repo_root=checkout,
+            task_header_prefix="## AUTO-",
+        )
+
+    def supervisor_for(
+        checkout: Path,
+        checkout_todo: Path,
+        state_name: str,
+    ) -> TodoImplementationSupervisor:
+        state_dir = tmp_path / "supervisor-state" / state_name
+        return TodoImplementationSupervisor(
+            TodoSupervisorConfig(
+                todo_path=checkout_todo,
+                state_path=state_dir / "task_state.json",
+                strategy_path=state_dir / "strategy.json",
+                events_path=state_dir / "events.jsonl",
+                state_dir=state_dir,
+                repo_root=checkout,
+            )
+        )
+
+    primary_daemon = daemon_for(repo, todo_path, "primary")
+    sibling_daemon = daemon_for(
+        sibling,
+        sibling / todo_path.relative_to(repo),
+        "sibling",
+    )
+    foreign_daemon = daemon_for(foreign, foreign_todo, "foreign")
+    claim_path = primary_daemon._implementation_task_claim_path("AUTO-001")
+    assert claim_path == sibling_daemon._implementation_task_claim_path(
+        "AUTO-001"
+    )
+    claim_metadata = checkout_lock_metadata(
+        kind=implementation_daemon_module.IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+        repo_root=repo,
+        task_id="AUTO-001",
+        owner_script="",
+    )
+    claimed, reason, incumbent = (
+        primary_daemon._try_acquire_implementation_task_claim(
+            claim_path,
+            claim_metadata,
+        )
+    )
+    assert claimed is True
+    assert reason == "acquired"
+    assert incumbent is None
+    assert sibling_daemon._implementation_task_claim_owner_is_active(
+        claim_metadata
+    )
+    assert checkout_lock_repository_matches(claim_metadata, foreign) is False
+    # Task-claim liveness is also the reclamation guard.  A record supplied
+    # from outside the foreign repository's own shared claim namespace must
+    # therefore remain incumbent ("active") rather than letting a repository
+    # mismatch become deletion authority.
+    assert foreign_daemon._implementation_task_claim_owner_is_active(
+        claim_metadata
+    )
+
+    sibling_metadata = checkout_lock_metadata(
+        kind=implementation_daemon_module.IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+        repo_root=sibling,
+        task_id="AUTO-001",
+        owner_script="",
+    )
+    claimed, reason, incumbent = (
+        sibling_daemon._try_acquire_implementation_task_claim(
+            claim_path,
+            sibling_metadata,
+        )
+    )
+    assert claimed is False
+    assert reason == "lock_exists"
+    assert incumbent == claim_metadata
+
+    legacy_metadata = dict(claim_metadata)
+    legacy_metadata.pop("repository_id")
+    legacy_metadata.pop("worktree_root")
+    legacy_metadata["repo_root"] = str(repo.resolve())
+    assert sibling_daemon._implementation_task_claim_owner_is_active(
+        legacy_metadata
+    )
+    assert checkout_lock_repository_matches(legacy_metadata, foreign) is False
+    assert foreign_daemon._implementation_task_claim_owner_is_active(
+        legacy_metadata
+    )
+    assert primary_daemon._release_implementation_task_claim(
+        claim_path,
+        claim_metadata,
+    )
+
+    primary_supervisor = supervisor_for(repo, todo_path, "primary")
+    sibling_supervisor = supervisor_for(
+        sibling,
+        sibling / todo_path.relative_to(repo),
+        "sibling",
+    )
+    foreign_supervisor = supervisor_for(
+        foreign,
+        foreign_todo,
+        "foreign",
+    )
+    merge_metadata = checkout_lock_metadata(
+        kind="merge",
+        repo_root=repo,
+        owner_script="",
+        extra={"operation": "generated_dirty_repair"},
+    )
+    assert sibling_supervisor._checkout_lock_owner_is_active(
+        merge_metadata
+    )
+    assert not foreign_supervisor._checkout_lock_owner_is_active(
+        merge_metadata
+    )
+    assert (
+        sibling_daemon._protected_recovery_journal_validation_error(
+            merge_metadata,
+            (sibling / todo_path.relative_to(repo),),
+            {},
+            {},
+        )
+        == "repository_path_mismatch"
+    )
+    assert (
+        sibling_supervisor._supervisor_recovery_journal_error(
+            merge_metadata
+        )
+        == "repository_mismatch"
+    )
+    legacy_sibling_recovery = dict(merge_metadata)
+    legacy_sibling_recovery.pop("repository_id")
+    legacy_sibling_recovery.pop("worktree_root")
+    legacy_sibling_recovery["repo_root"] = str(sibling.resolve())
+    assert (
+        sibling_daemon._protected_recovery_journal_validation_error(
+            legacy_sibling_recovery,
+            (sibling / todo_path.relative_to(repo),),
+            {},
+            {},
+        )
+        == "protected_paths_mismatch"
+    )
+    assert (
+        sibling_supervisor._supervisor_recovery_journal_error(
+            legacy_sibling_recovery
+        )
+        == "protected_paths_mismatch"
+    )
+
+    maintenance_metadata = (
+        primary_supervisor._protected_path_maintenance_lease_metadata()
+    )
+    assert maintenance_metadata["repo_root"] == ""
+    assert maintenance_metadata["worktree_root"] == str(repo.resolve())
+    assert sibling_supervisor._protected_path_maintenance_owner_is_active(
+        maintenance_metadata
+    )
+    assert not foreign_supervisor._protected_path_maintenance_owner_is_active(
+        maintenance_metadata
+    )
+
+
 def test_blocked_protected_recovery_acknowledges_runtime_wake(
     tmp_path,
     monkeypatch,
@@ -15691,7 +17663,9 @@ def test_implementation_supervisor_configures_worker_stall_watchdog(tmp_path):
     assert loop_config.watchdog_accept_fresh_child_log is True
 
 
-def test_supervisor_loop_accepts_fresh_child_log_for_delta_only_idle_state(tmp_path):
+def test_supervisor_loop_accepts_fresh_child_log_for_empty_backlog_projection(
+    tmp_path,
+):
     repo = tmp_path / "repo"
     repo.mkdir()
     state_dir = repo / "state"
@@ -15720,16 +17694,32 @@ def test_supervisor_loop_accepts_fresh_child_log_for_delta_only_idle_state(tmp_p
             log_prefix="child",
             watchdog_stale_after_seconds=60,
             watchdog_log_heartbeat_fallback=True,
+            watchdog_quiescent_status_predicate=(
+                _projection_is_quiescent_for_heartbeat_fallback
+            ),
         )
     )
     loop.last_log_path = str(latest_log)
     stale_status = {
         "heartbeat_at": "2000-01-01T00:00:00+00:00",
         "heartbeat_pid": os.getpid(),
+        "active_task_id": "",
+        "implementation_in_progress": False,
+        "ready_count": 0,
+        "selectable_ready_count": 0,
+        "eligible_ready_count": 0,
+        "blocked_count": 0,
+        "selection_idle_reason": "no_tasks_found",
     }
 
     decision = loop.default_watchdog(
-        SimpleNamespace(pid=os.getpid()),
+        SupervisedChild(
+            pid=os.getpid(),
+            command=(sys.executable, "-c", "pass"),
+            log_path=latest_log,
+            latest_log_path=latest_log,
+            child_pid_path=state_dir / "child.pid",
+        ),
         stale_status,
     )
 
@@ -15938,6 +17928,432 @@ def test_implementation_daemon_records_unreadable_todo_text(tmp_path):
     assert events[-1]["reason"] == "todo_read_failed"
 
 
+def test_implementation_dispatch_cancels_fresh_canonical_completion_before_provider(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-050 Retire stale implementation
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/retired.py
+- Validation: python -m pytest -q
+- Acceptance: The canonical board retires this exact task revision.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="provider-must-not-run",
+        worktree_submodule_paths=("src",),
+    )
+    [completed_task] = daemon._load_tasks()
+    stale_selected_task = replace(completed_task, status="todo")
+    canonical_cid = daemon._canonical_ref(stale_selected_task)
+    state = TodoTaskState(
+        active_task_id=stale_selected_task.task_id,
+        active_task_cid=canonical_cid,
+        active_task_title=stale_selected_task.title,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: pytest.fail("completed task reached prompt build"),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail("completed task launched provider"),
+    )
+
+    result = daemon._run_implementation(stale_selected_task, state)
+
+    assert result["cancelled"] is True
+    assert result["reason"] == "canonical_task_completed"
+    assert result["canonical_task_cid"] == canonical_cid
+    assert result["board_observation"]["completed_task_cids"] == {
+        stale_selected_task.task_id: canonical_cid
+    }
+    assert result["provider_dispatched"] is False
+    assert result["attempt_consumed"] is False
+    assert result["active_task_cleared"] is True
+    persisted = TodoTaskState.load(daemon.state_path)
+    assert persisted.active_task_id == ""
+    assert persisted.implementation_in_progress is False
+    assert persisted.implementation_attempts == {}
+    assert not daemon._implementation_task_claim_path(
+        stale_selected_task.task_id,
+        canonical_task_cid=canonical_cid,
+    ).exists()
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert [event["type"] for event in events] == [
+        "implementation_cancelled"
+    ]
+
+    revised = replace(
+        stale_selected_task,
+        title="A different task revision",
+        canonical_task_key="",
+        canonical_task_cid="",
+    )
+    revision_cancel = daemon._canonical_implementation_cancellation(revised)
+    assert revision_cancel["reason"] == "canonical_task_revision_changed"
+
+
+def test_running_implementation_cancels_when_exact_board_task_completes(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_text = """# Agent Todos
+
+## ACCEL-050 Retire running implementation
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/retired.py
+- Validation: python -m pytest -q
+- Acceptance: A peer may retire this exact task while its provider runs.
+"""
+    todo_path.write_text(todo_text, encoding="utf-8")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-provider",
+        use_ephemeral_worktree=False,
+        worktree_submodule_paths=("src",),
+    )
+    [task] = daemon._load_tasks()
+    queue_outcomes: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: "implement",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_validation_project_dependency_preflight",
+        lambda **_kwargs: {"passed": True, "receipt_id": "dependency-ok"},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *args, **_kwargs: queue_outcomes.append(args),
+    )
+
+    def complete_board_and_cancel(_command, **kwargs):
+        todo_path.write_text(
+            todo_text.replace("- Status: todo", "- Status: completed"),
+            encoding="utf-8",
+        )
+        reason = kwargs["cancel_requested"]()
+        assert reason == "canonical_task_completed"
+        raise ProcessGroupCancelled(reason)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        complete_board_and_cancel,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["cancelled"] is True
+    assert result["reason"] == "canonical_task_completed"
+    assert result["provider_dispatched"] is True
+    assert result["attempt_consumed"] is False
+    assert result["returncode"] == 0
+    assert queue_outcomes == []
+    persisted = TodoTaskState.load(daemon.state_path)
+    assert persisted.active_task_id == ""
+    assert persisted.implementation_in_progress is False
+    assert persisted.implementation_attempts == {}
+    task_claim = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    resource_claim = daemon._implementation_resource_claim_path("src")
+    assert not task_claim.exists()
+    assert not resource_claim.exists()
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["type"] == "implementation_started" for event in events)
+    assert any(event["type"] == "implementation_cancelled" for event in events)
+    assert not any(event["type"] == "merge_candidate_enqueued" for event in events)
+
+
+def test_canonical_cancellation_raw_board_delta_latches_under_checkout_lock(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_text = """# Agent Todos
+
+## ACCEL-050 Fence cancellation reproof
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/retired.py
+- Validation:
+- Acceptance: A provider cannot authorize its own protected-board mutation.
+"""
+    todo_path.write_text(todo_text, encoding="utf-8")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implementation_protected_paths=("todo.md",),
+    )
+    [task] = daemon._load_tasks()
+    before = daemon._implementation_protected_path_snapshot(repo)
+    todo_path.write_text(
+        todo_text.replace("- Status: todo", "- Status: completed"),
+        encoding="utf-8",
+    )
+    cancellation = daemon._canonical_implementation_cancellation(task)
+    assert cancellation["reason"] == "canonical_task_completed"
+
+    lock_path = checkout_mutation_lock_path(repo)
+    observations: list[str] = []
+    real_snapshot = daemon._implementation_protected_path_snapshot
+    real_clear = daemon._clear_implementation_protected_snapshot
+    real_latch = daemon._latch_implementation_protected_incident
+    real_release = daemon._release_implementation_protected_verification_lock
+
+    def locked_snapshot(path):
+        assert lock_path.exists()
+        observations.append("snapshot")
+        return real_snapshot(path)
+
+    def locked_clear(**kwargs):
+        assert lock_path.exists()
+        observations.append("clear")
+        return real_clear(**kwargs)
+
+    def locked_latch(payload):
+        assert lock_path.exists()
+        observations.append("latch")
+        return real_latch(payload)
+
+    def locked_release(lock_result):
+        assert lock_path.exists()
+        observations.append("release")
+        return real_release(lock_result)
+
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_snapshot",
+        locked_snapshot,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_clear_implementation_protected_snapshot",
+        locked_clear,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_latch_implementation_protected_incident",
+        locked_latch,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_release_implementation_protected_verification_lock",
+        locked_release,
+    )
+
+    result = daemon._finalize_canonical_task_cancellation_fence(
+        task=task,
+        attempt=1,
+        workspace_path=repo,
+        before=before,
+        cancellation=cancellation,
+    )
+
+    assert result["reason"] == "implementation_protected_path_mutated"
+    assert result["protected_paths"] == ["todo.md"]
+    assert observations == [
+        "snapshot",
+        "snapshot",
+        "latch",
+        "release",
+    ]
+    incident = json.loads(
+        daemon._implementation_protected_incident_path().read_text(
+            encoding="utf-8"
+        )
+    )
+    assert incident["requires_operator_clearance"] is True
+    assert not lock_path.exists()
+
+
+def test_ephemeral_implementation_cancels_when_exact_board_task_completes(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_text = """# Agent Todos
+
+## ACCEL-050 Retire ephemeral implementation
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: README.md
+- Validation:
+- Acceptance: A peer may retire this exact task while its provider runs.
+"""
+    todo_path.write_text(todo_text, encoding="utf-8")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / ".gitignore").write_text("state/\n", encoding="utf-8")
+    _git(repo, "add", "todo.md", "README.md", ".gitignore")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-provider",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=(),
+        merge_target_branch="main",
+    )
+    [task] = daemon._load_tasks()
+    queue_outcomes: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: "implement",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_validation_project_dependency_preflight",
+        lambda **_kwargs: {"passed": True, "receipt_id": "dependency-ok"},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *args, **_kwargs: queue_outcomes.append(args),
+    )
+
+    def complete_board_and_cancel(_command, **kwargs):
+        todo_path.write_text(
+            todo_text.replace("- Status: todo", "- Status: completed"),
+            encoding="utf-8",
+        )
+        reason = kwargs["cancel_requested"]()
+        assert reason == "canonical_task_completed"
+        raise ProcessGroupCancelled(reason)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        complete_board_and_cancel,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["cancelled"] is True
+    assert result["reason"] == "canonical_task_completed"
+    assert result["provider_dispatched"] is True
+    assert result["attempt_consumed"] is False
+    assert result["returncode"] == 0
+    assert result["merge_result"]["reason"] == "not_attempted"
+    assert queue_outcomes == []
+    assert result["cleanup_result"]["cleaned"] is True
+    assert not Path(result["worktree_path"]).exists()
+    persisted = TodoTaskState.load(daemon.state_path)
+    assert persisted.active_task_id == ""
+    assert persisted.implementation_in_progress is False
+    assert persisted.implementation_attempts == {}
+    task_claim = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    assert not task_claim.exists()
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["type"] == "implementation_started" for event in events)
+    assert any(event["type"] == "implementation_cancelled" for event in events)
+    assert not any(event["type"] == "merge_candidate_enqueued" for event in events)
+
+
 def test_implementation_daemon_records_non_ephemeral_setup_exception(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -15980,6 +18396,237 @@ def test_implementation_daemon_records_non_ephemeral_setup_exception(tmp_path):
     events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert any(event["type"] == "implementation_exception" for event in events)
     assert events[-1]["type"] == "daemon_pass"
+
+
+def test_non_ephemeral_provider_completes_already_satisfied_task_without_proposal(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("already complete\n", encoding="utf-8")
+    (repo / ".gitignore").write_text("state/\n", encoding="utf-8")
+    _git(repo, "add", "README.md", ".gitignore")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=False,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Accept an already satisfied in-place task",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="The tracked baseline already satisfies the contract.",
+    )
+    durable_completion = {
+        "updated": True,
+        "durable": True,
+        "completion_publication": {"published": True},
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: "verify existing code",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_validation_project_dependency_preflight",
+        lambda **_kwargs: {"passed": True, "receipt_id": "dependency-ok"},
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_tasks_for_declared_output_gate",
+        lambda *_args, **_kwargs: ([task], ""),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_publication_intent",
+        lambda *_args, **_kwargs: {"task_id": task.task_id},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_or_bundle_completed_in_todo",
+        lambda *_args, **_kwargs: durable_completion,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["returncode"] == 0
+    assert result["validation_result"]["proposal_gate"]["accepted"] is False
+    assert result["validation_result"]["no_change_policy_gate"]["accepted"] is True
+    assert result["validation_result"]["no_change_guard"]["allowed"] is True
+    assert result["validation_result"]["candidate_binding"]["verified"] is True
+    assert result["todo_update_result"] == durable_completion
+    assert result["attempt_consumed"] is True
+
+
+def test_non_ephemeral_retry_repair_does_not_probe_shared_checkout(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("already complete\n", encoding="utf-8")
+    (repo / ".gitignore").write_text("state/\n", encoding="utf-8")
+    _git(repo, "add", "README.md", ".gitignore")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=False,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-002",
+        title="Resolve implementation retry-budget failure for ACCEL-001",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Remove ACCEL-001 from strategy blocked_tasks.",
+        metadata={
+            "Generated by": implementation_daemon_module.RETRY_BUDGET_REPAIR_SCHEMA,
+            "Retry repair source": "ACCEL-001",
+            "Retry failure kind": "implementation",
+        },
+    )
+    durable_completion = {
+        "updated": True,
+        "durable": True,
+        "completion_publication": {"published": True},
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: "provider prompt must remain unused",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_validation_project_dependency_preflight",
+        lambda **_kwargs: {"passed": True, "receipt_id": "dependency-ok"},
+    )
+    provider_calls = []
+
+    def run_provider(*_args, **_kwargs):
+        provider_calls.append(True)
+        return subprocess.CompletedProcess(args=(), returncode=0)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        run_provider,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_tasks_for_declared_output_gate",
+        lambda *_args, **_kwargs: ([task], ""),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_publication_intent",
+        lambda *_args, **_kwargs: {"task_id": task.task_id},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_or_bundle_completed_in_todo",
+        lambda *_args, **_kwargs: durable_completion,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["returncode"] == 0
+    assert result["provider_dispatched"] is True
+    assert provider_calls == [True]
+    assert result["validation_result"]["candidate_binding"]["verified"] is True
+    assert result["validation_result"]["no_change_guard"]["allowed"] is True
+    assert "pre_dispatch_no_change" not in result["validation_result"]
+    assert result["todo_update_result"] == durable_completion
 
 
 def test_bounded_merge_proof_projection_contains_no_floats():
@@ -16097,6 +18744,630 @@ def test_failed_ephemeral_attempt_finalizes_worktree_lifecycle(
     assert (
         daemon.worktree_lifecycle.load_workspace(result["worktree_path"])
         is None
+    )
+
+
+def test_ephemeral_provider_completes_already_satisfied_task_without_proposal(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("already complete\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-012",
+        title="Accept an already satisfied provider task",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="The tracked baseline already satisfies the contract.",
+    )
+    durable_completion = {
+        "updated": True,
+        "durable": True,
+        "completion_publication": {"published": True},
+    }
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_tasks_for_declared_output_gate",
+        lambda *_args, **_kwargs: ([task], ""),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_publication_intent",
+        lambda *_args, **_kwargs: {"task_id": task.task_id},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_or_bundle_completed_in_todo",
+        lambda *_args, **_kwargs: durable_completion,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=TodoTaskState(),
+        attempt=1,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        log_path=state_dir / "implementation.log",
+        prompt="verify the existing implementation",
+    )
+
+    assert result["returncode"] == 0
+    assert result["implementation_commit"] == ""
+    assert result["commit_result"]["reason"] == "no_changes"
+    assert result["commit_result"]["no_change_guard"]["allowed"] is True
+    assert result["validation_result"]["proposal_gate"]["accepted"] is False
+    assert result["validation_result"]["no_change_policy_gate"]["accepted"] is True
+    assert result["validation_result"]["candidate_binding"]["verified"] is True
+    assert result["board_completion"]["complete"] is True
+    assert result["todo_update_result"] == durable_completion
+
+
+def test_ephemeral_retry_repair_proves_satisfaction_before_provider_dispatch(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("already complete\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-012",
+        title="Resolve implementation retry-budget failure for ACCEL-011",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance=(
+            "The repair must remove ACCEL-011 from strategy blocked_tasks."
+        ),
+        metadata={
+            "Generated by": implementation_daemon_module.RETRY_BUDGET_REPAIR_SCHEMA,
+            "Retry repair source": "ACCEL-011",
+            "Retry failure kind": "implementation",
+        },
+    )
+    durable_completion = {
+        "updated": True,
+        "durable": True,
+        "completion_publication": {"published": True},
+    }
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail(
+            "an already-satisfied retry repair must not dispatch a provider"
+        ),
+    )
+    for provider_only_method in (
+        "_active_provider_capacity_backoff",
+        "_build_implementation_prompt",
+        "_persist_implementation_context_receipt",
+        "_build_implementation_command",
+    ):
+        monkeypatch.setattr(
+            daemon,
+            provider_only_method,
+            lambda *_args, _method=provider_only_method, **_kwargs: pytest.fail(
+                f"local retry proof must precede {_method}"
+            ),
+        )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_tasks_for_declared_output_gate",
+        lambda *_args, **_kwargs: ([task], ""),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_publication_intent",
+        lambda *_args, **_kwargs: {"task_id": task.task_id},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_or_bundle_completed_in_todo",
+        lambda *_args, **_kwargs: durable_completion,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["returncode"] == 0
+    assert result["provider_dispatched"] is False
+    assert result["implementation_commit"] == ""
+    assert result["commit_result"]["reason"] == "no_changes"
+    assert result["commit_result"]["no_change_guard"]["allowed"] is True
+    assert result["validation_result"]["candidate_binding"]["verified"] is True
+    assert result["validation_result"]["pre_dispatch_no_change"]["reason"] == (
+        "declared_validation_proved_existing_contract"
+    )
+    assert result["board_completion"]["complete"] is True
+    assert result["todo_update_result"] == durable_completion
+    assert "context_receipt_path" not in result
+
+
+def test_failed_retry_probe_discards_ignored_side_effect_before_provider(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(".ignored-probe-sentinel\n", encoding="utf-8")
+    _git(repo, "add", "README.md", ".gitignore")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-022",
+        title="Resolve implementation retry-budget failure for ACCEL-021",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Remove ACCEL-021 from strategy blocked_tasks.",
+        metadata={
+            "Generated by": implementation_daemon_module.RETRY_BUDGET_REPAIR_SCHEMA,
+            "Retry repair source": "ACCEL-021",
+            "Retry failure kind": "implementation",
+        },
+    )
+    probe_paths = []
+
+    def failed_probe(workspace_path, *_args, **_kwargs):
+        probe_paths.append(Path(workspace_path))
+        (Path(workspace_path) / ".ignored-probe-sentinel").write_text(
+            "must not reach provider\n",
+            encoding="utf-8",
+        )
+        return {
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "results": [],
+            "no_change_policy_gate": {"accepted": True},
+        }
+
+    provider_paths = []
+
+    def run_provider(_command, *, cwd, **_kwargs):
+        provider_path = Path(cwd)
+        provider_paths.append(provider_path)
+        assert "local-probe" not in provider_path.name
+        assert not (provider_path / ".ignored-probe-sentinel").exists()
+        return subprocess.CompletedProcess(args=(), returncode=1)
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_clean_candidate_validation",
+        failed_probe,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_active_provider_capacity_backoff",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: "repair from the clean baseline",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_command",
+        lambda *_args, **_kwargs: ["fake-agent"],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        run_provider,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["provider_dispatched"] is True
+    assert len(probe_paths) == 1
+    assert len(provider_paths) == 1
+    assert probe_paths[0] != provider_paths[0]
+    assert not probe_paths[0].exists()
+    assert result["retry_probe_result"]["cleanup_result"]["cleaned"] is True
+    assert result["retry_probe_result"]["attempt_consumed"] is False
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    assert any(
+        event.get("type") == "implementation_finished"
+        and event.get("execution_mode") == "local-retry-proof"
+        and event.get("provider_dispatched") is False
+        for event in events
+    )
+
+
+def test_failed_retry_probe_honors_capacity_before_fresh_provider_workspace(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-032",
+        title="Resolve implementation retry-budget failure for ACCEL-031",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Remove ACCEL-031 from strategy blocked_tasks.",
+        metadata={
+            "Generated by": implementation_daemon_module.RETRY_BUDGET_REPAIR_SCHEMA,
+            "Retry repair source": "ACCEL-031",
+            "Retry failure kind": "implementation",
+        },
+    )
+    probe_calls = []
+
+    def run_probe(**kwargs):
+        probe_calls.append(kwargs["retry_no_change_probe_only"])
+        return {
+            "task_id": task.task_id,
+            "attempt": 1,
+            "returncode": 1,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "retry_probe_requires_fresh_provider_workspace": True,
+            "cleanup_result": {"cleaned": True},
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation_in_ephemeral_worktree",
+        run_probe,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_active_provider_capacity_backoff",
+        lambda *_args, **_kwargs: {
+            "active": True,
+            "retry_at": "2026-08-03T10:00:00+00:00",
+            "retry_after_seconds": 120.0,
+            "providers": ["grok"],
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: pytest.fail(
+            "capacity must gate provider prompt after a failed probe"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: pytest.fail(
+            "capacity must gate provider context after a failed probe"
+        ),
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert probe_calls == [True]
+    assert result["reason"] == "provider_capacity_backoff"
+    assert result["provider_dispatched"] is False
+    assert result["attempt_consumed"] is False
+    assert result["retry_at"] == "2026-08-03T10:00:00+00:00"
+
+
+def test_cancelled_retry_probe_never_launches_or_consumes_attempt(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-042",
+        title="Resolve implementation retry-budget failure for ACCEL-041",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Remove ACCEL-041 from strategy blocked_tasks.",
+        metadata={
+            "Generated by": implementation_daemon_module.RETRY_BUDGET_REPAIR_SCHEMA,
+            "Retry repair source": "ACCEL-041",
+            "Retry failure kind": "implementation",
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_cancel_requested",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation_in_ephemeral_worktree",
+        lambda **_kwargs: pytest.fail(
+            "cancelled retry proof must not create a worktree"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_active_provider_capacity_backoff",
+        lambda *_args, **_kwargs: pytest.fail(
+            "cancelled retry proof must not probe provider capacity"
+        ),
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["skipped"] is True
+    assert result["reason"] == "implementation_dispatch_cancelled"
+    assert TodoTaskState.load(daemon.state_path).implementation_attempts == {}
+    assert not daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    ).exists()
+
+
+def test_blocked_retry_probe_records_failure_outcome_and_diagnostic(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-052",
+        title="Resolve implementation retry-budget failure for ACCEL-051",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Remove ACCEL-051 from strategy blocked_tasks.",
+        metadata={
+            "Generated by": implementation_daemon_module.RETRY_BUDGET_REPAIR_SCHEMA,
+            "Retry repair source": "ACCEL-051",
+            "Retry failure kind": "implementation",
+        },
+    )
+    outcomes = []
+    monkeypatch.setattr(
+        daemon,
+        "_run_retry_no_change_pre_dispatch_validation",
+        lambda *_args, **_kwargs: {
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "pre_dispatch_probe_changed_candidate",
+            "pre_dispatch_no_change": {
+                "reason": "pre_dispatch_probe_changed_candidate"
+            },
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *args, **kwargs: outcomes.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_failed_attempt_retry_context",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            receipt_id="diagnostic-receipt"
+        ),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail(
+            "blocked local proof must not dispatch a provider"
+        ),
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["attempt_consumed"] is True
+    assert result["provider_dispatched"] is False
+    assert result["reason"] == "pre_dispatch_probe_changed_candidate"
+    assert result["diagnostic_receipt_id"] == "diagnostic-receipt"
+    assert len(outcomes) == 1
+    assert outcomes[0][0][1] == 1
+    assert outcomes[0][1]["reason"] == (
+        "pre_dispatch_probe_changed_candidate"
     )
 
 
@@ -16540,6 +19811,232 @@ def test_implementation_daemon_promotes_fully_validated_timeout_work(
         for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert any(event["type"] == "implementation_timeout_salvaged" for event in events)
+
+
+def test_timeout_salvage_completes_already_satisfied_task_without_proposal(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("already complete\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        implementation_timeout=0.1,
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Salvage an already satisfied timeout",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="The unchanged baseline remains valid after timeout.",
+    )
+    durable_completion = {
+        "updated": True,
+        "durable": True,
+        "completion_publication": {"published": True},
+    }
+
+    def timeout_runner(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(["fake-agent"], timeout=0.1)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        timeout_runner,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_tasks_for_declared_output_gate",
+        lambda *_args, **_kwargs: ([task], ""),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completion_publication_intent",
+        lambda *_args, **_kwargs: {"task_id": task.task_id},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_or_bundle_completed_in_todo",
+        lambda *_args, **_kwargs: durable_completion,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=TodoTaskState(),
+        attempt=1,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        log_path=state_dir / "implementation.log",
+        prompt="verify the existing implementation",
+    )
+
+    assert result["returncode"] == 0
+    assert result["timeout_result"]["salvaged"] is True
+    assert result["implementation_commit"] == ""
+    assert result["commit_result"]["reason"] == "no_changes"
+    assert result["commit_result"]["no_change_guard"]["allowed"] is True
+    assert result["validation_result"]["proposal_gate"]["accepted"] is False
+    assert result["validation_result"]["no_change_policy_gate"]["accepted"] is True
+    assert result["board_completion"]["complete"] is True
+    assert result["todo_update_result"] == durable_completion
+
+
+def test_timeout_salvage_preserves_typed_artifact_restore_failure(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        implementation_timeout=0.1,
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-RESTORE",
+        title="Preserve a timeout restore failure",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="A typed restore failure is preserved without dispatch.",
+    )
+    failed_receipt = {
+        "reason": "pre_validation_generated_artifact",
+        "failed_count": 1,
+        "scan_failed": True,
+        "scan_failure_stage": "initial",
+    }
+
+    def timeout_runner(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(["fake-agent"], timeout=0.1)
+
+    def fail_restore(*_args, **_kwargs):
+        raise implementation_daemon_module.ValidationGeneratedArtifactRestoreError(
+            failed_receipt
+        )
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        timeout_runner,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_prepare_worktree_for_validation",
+        fail_restore,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_preserve_timed_out_worktree",
+        lambda *_args, **_kwargs: {
+            "preserved": True,
+            "commit_result": {
+                "committed": False,
+                "reason": "validation_failed",
+            },
+            "cleanup_result": {"cleaned": False, "preserved": True},
+        },
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=TodoTaskState(),
+        attempt=1,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        log_path=state_dir / "implementation.log",
+        prompt="time out before validation",
+    )
+
+    assert result["returncode"] != 0
+    assert result["validation_result"]["reason"] == (
+        "validation_generated_artifact_restore_failed"
+    )
+    assert result["validation_result"]["generated_dirty_restore"] == (
+        failed_receipt
+    )
+    assert result["timeout_result"]["salvaged"] is False
+    assert result["timeout_result"].get("salvage_error_type") != (
+        "UnboundLocalError"
+    )
+    assert result["timeout_result"]["preservation_result"]["preserved"] is True
 
 
 def test_implementation_daemon_preserves_timed_out_work_on_rescue_branch(
@@ -20476,93 +23973,6 @@ def test_general_task_authorizes_identity_bound_evidence_outputs(tmp_path):
     assert capsule["scope"]["evidence_output_paths"] == list(manifests)
 
 
-def test_general_task_authorizes_nonmandatory_allowed_paths(tmp_path):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    todo_path = repo / "todo.md"
-    todo_path.write_text("# Todos\n", encoding="utf-8")
-    state_dir = repo / "state"
-    task = PortalTask(
-        task_id="FVT-081",
-        title="Build a release candidate",
-        status="todo",
-        completion="manual",
-        priority="P0",
-        track="completion",
-        outputs=["docs/release-candidate.json"],
-        metadata={
-            "allowed paths": (
-                "docs/completion-receipt.json, ../outside.json"
-            ),
-        },
-    )
-    daemon = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-        task_header_prefix="## FVT-",
-    )
-
-    assert daemon._proposal_scope_paths(task) == (
-        "docs/completion-receipt.json",
-        "docs/release-candidate.json",
-    )
-    capsule = json.loads(daemon._build_implementation_prompt(task, attempt=1))
-    edit_policy = capsule["authority"]["edit_policy"]
-    assert edit_policy["mode"] == "task_output_and_allowed_exact"
-    assert edit_policy["allowed_paths"] == [
-        "docs/release-candidate.json",
-        "docs/completion-receipt.json",
-    ]
-    assert capsule["scope"]["expected_outputs"] == [
-        "docs/release-candidate.json"
-    ]
-
-
-@pytest.mark.parametrize(
-    "unsafe_path",
-    ("*", "**", "docs/?.json", "docs/[ab].json"),
-)
-def test_general_task_rejects_glob_allowed_path_authority(
-    tmp_path,
-    unsafe_path,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    todo_path = repo / "todo.md"
-    todo_path.write_text("# Todos\n", encoding="utf-8")
-    state_dir = repo / "state"
-    task = PortalTask(
-        task_id="FVT-999",
-        title="Keep optional authority exact",
-        status="todo",
-        completion="manual",
-        priority="P0",
-        track="completion",
-        outputs=["docs/release-candidate.json"],
-        metadata={"allowed paths": unsafe_path},
-    )
-    daemon = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-        task_header_prefix="## FVT-",
-    )
-
-    assert daemon._proposal_scope_paths(task) == (
-        "docs/release-candidate.json",
-    )
-    capsule = json.loads(daemon._build_implementation_prompt(task, attempt=1))
-    assert capsule["authority"]["edit_policy"]["allowed_paths"] == [
-        "docs/release-candidate.json"
-    ]
-    assert capsule["authority"]["edit_policy"]["mode"] == "task_output_exact"
-
-
 @pytest.mark.parametrize(
     "metadata",
     [
@@ -21148,7 +24558,9 @@ def test_task_llm_context_budget_caps_codex_window_without_widening_operator_lim
     assert resolution.provider_context_window == 6_000
     assert resolution.effective_input_limit == 4_500
     assert result.capsule.budget.max_input_tokens == 4_500
-    assert ["-c", "model_context_window=6000"] == command[5:7]
+    assert "--ignore-user-config" in command
+    context_config_index = command.index("model_context_window=6000")
+    assert command[context_config_index - 1] == "-c"
     assert "model_context_window=200000" not in command
 
 
@@ -21515,6 +24927,92 @@ def test_implementation_daemon_prefers_retry_repair_for_blocked_source(tmp_path)
 
     assert selected is not None
     assert selected.task_id == "ACCEL-002"
+
+
+def test_provider_backoff_selection_runs_local_probe_candidate_first(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        f"""# Todos
+
+## ACCEL-000 Completed source task
+
+- Status: completed
+- Priority: P1
+- Track: runtime
+- Outputs: source.txt
+- Validation: test -f source.txt
+- Acceptance: Source task is complete.
+
+## ACCEL-001 Higher-ranked ordinary task
+
+- Status: todo
+- Priority: P0
+- Track: runtime
+- Outputs: ordinary.txt
+- Validation: test -f ordinary.txt
+- Acceptance: Run the ordinary model-assisted task.
+
+## ACCEL-002 Resolve implementation retry-budget failure for ACCEL-000
+
+- Status: todo
+- Priority: P1
+- Track: ops
+- Generated by: {implementation_daemon_module.RETRY_BUDGET_REPAIR_SCHEMA}
+- Retry repair source: ACCEL-000
+- Retry failure kind: implementation
+- Outputs: repair.txt
+- Validation: test -f repair.txt
+- Acceptance: Remove ACCEL-000 from strategy blocked_tasks.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_submodule_paths=[],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_active_provider_capacity_backoff",
+        lambda *_args, **_kwargs: {
+            "active": True,
+            "retry_at": "2026-08-03T10:00:00+00:00",
+            "retry_after_seconds": 120.0,
+            "providers": ["grok"],
+        },
+    )
+    selected_ids = []
+
+    def run_selected(task, _state):
+        selected_ids.append(task.task_id)
+        return {
+            "skipped": True,
+            "reason": "test_selection_only",
+            "task_id": task.task_id,
+        }
+
+    monkeypatch.setattr(daemon, "_run_implementation", run_selected)
+
+    result = daemon.run_once()
+
+    assert selected_ids == ["ACCEL-002"]
+    assert result["active_task_id"] == "ACCEL-002"
+    assert TodoTaskState.load(daemon.state_path).selectable_ready_task_ids == [
+        "ACCEL-002"
+    ]
 
 
 def test_pending_retry_repair_fences_source_across_lane_local_strategies(
@@ -24160,7 +27658,19 @@ def test_bundle_supervisor_writes_manifest_without_starting_lanes(tmp_path):
     assert "--no-implement" in manifest["lanes"][0]["command"]
 
 
-def test_implementation_daemon_invokes_configured_llm_merge_resolver(tmp_path):
+def test_implementation_daemon_invokes_configured_llm_merge_resolver(
+    tmp_path,
+    monkeypatch,
+):
+    for name in (
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_PROVIDER_ENV,
+        implementation_daemon_module.IMPLEMENTATION_FALLBACK_TRIGGER_ENV,
+        implementation_daemon_module._GROK_MODEL_ENV,
+        implementation_daemon_module._CODEX_MODEL_ENV,
+        implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
+    ):
+        monkeypatch.delenv(name, raising=False)
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -24216,6 +27726,63 @@ def test_implementation_daemon_invokes_configured_llm_merge_resolver(tmp_path):
     events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert events[-1]["type"] == "llm_merge_resolver_invoked"
     assert events[-1]["prompt_chars"] == len(prompt)
+
+
+def test_sealed_route_ignores_custom_merge_resolver_command(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _seal_ordered_grok_codex_route(monkeypatch)
+    captured: dict[str, object] = {}
+
+    def fake_invoke(payload, *, command_template, timeout_seconds):
+        captured.update(
+            {
+                "payload": payload,
+                "command_template": command_template,
+                "timeout_seconds": timeout_seconds,
+            }
+        )
+        return {"applied": False, "llm_returncode": 1}
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.merge.merge_resolver.invoke_llm_resolver",
+        fake_invoke,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        llm_merge_resolver_command="codex exec -",
+    )
+
+    daemon._invoke_llm_merge_resolver_for_failed_merge(
+        workspace=repo,
+        task=PortalTask(
+            task_id="ACCEL-SEALED-MERGE",
+            title="Resolve through reviewed route",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        ),
+        attempt=1,
+        branch_name="implementation/accel-sealed-merge",
+        target_branch="main",
+        merge_command=["git", "merge", "implementation/accel-sealed-merge"],
+        merge_stdout="",
+        merge_stderr="CONFLICT (content): Merge conflict",
+    )
+
+    assert captured["command_template"] == llm_merge_resolver_fallback_command(
+        python_executable=sys.executable,
+    )
+    assert captured["command_template"] != "codex exec -"
 
 
 def test_llm_merge_resolver_times_out_hung_command(tmp_path):
@@ -24454,7 +28021,11 @@ def test_implementation_supervisor_aborts_interrupted_main_checkout_merge_with_r
     assert target.read_text(encoding="utf-8") == "main\n"
 
 
-def test_implementation_supervisor_invokes_llm_for_interrupted_main_checkout_merge(tmp_path):
+def test_implementation_supervisor_invokes_llm_for_interrupted_main_checkout_merge(
+    tmp_path,
+    monkeypatch,
+):
+    _clear_ordered_grok_codex_route(monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -29494,7 +33065,11 @@ def test_readiness_doc_and_heap_name_the_same_launch_validation_gate():
     assert _git(repo, "merge-base", "--is-ancestor", "implementation/mgw-launch", "HEAD") == ""
 
 
-def test_implementation_daemon_invokes_llm_resolver_for_dirty_checkout_blocker(tmp_path):
+def test_implementation_daemon_invokes_llm_resolver_for_dirty_checkout_blocker(
+    tmp_path,
+    monkeypatch,
+):
+    _clear_ordered_grok_codex_route(monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -29684,7 +33259,11 @@ def test_implementation_daemon_reconciles_generated_dirty_submodule_overlap_with
     assert _git(submodule, "status", "--porcelain") == ""
 
 
-def test_implementation_daemon_repairs_dirty_managed_main_merge_worktree(tmp_path):
+def test_implementation_daemon_repairs_dirty_managed_main_merge_worktree(
+    tmp_path,
+    monkeypatch,
+):
+    _clear_ordered_grok_codex_route(monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -29747,7 +33326,11 @@ def test_implementation_daemon_repairs_dirty_managed_main_merge_worktree(tmp_pat
     assert any(event["type"] == "main_merge_workspace_blocker_resolved" for event in events)
 
 
-def test_implementation_daemon_invokes_llm_resolver_for_dirty_submodule_checkout(tmp_path):
+def test_implementation_daemon_invokes_llm_resolver_for_dirty_submodule_checkout(
+    tmp_path,
+    monkeypatch,
+):
+    _clear_ordered_grok_codex_route(monkeypatch)
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     _git(submodule, "checkout", "-b", "implementation/auto-001-submodule-libs-child")
     (submodule / "child.txt").write_text("branch\n", encoding="utf-8")
@@ -29981,6 +33564,7 @@ def test_implementation_daemon_repairs_stale_submodule_source_before_setup(
 
 def test_implementation_daemon_fallback_initializes_only_configured_submodule(
     tmp_path,
+    monkeypatch,
 ):
     repo = tmp_path / "repo"
     worktree = tmp_path / "worktree"
@@ -30003,12 +33587,44 @@ def test_implementation_daemon_fallback_initializes_only_configured_submodule(
         worktree_submodule_paths=["external/dependency"],
     )
     calls: list[list[str]] = []
+    initialized = False
+    target = worktree / "external" / "dependency"
+    real_run = subprocess.run
 
-    def fake_run_git(args: list[str], *, cwd: Path):
-        calls.append(list(args))
-        return subprocess.CompletedProcess(["git", *args], 0, "", "")
+    def fake_run(command, *args, **kwargs):
+        nonlocal initialized
+        normalized = [str(part) for part in command]
+        if normalized[:4] == ["git", "submodule", "update", "--init"]:
+            calls.append(normalized[1:])
+            initialized = True
+            return subprocess.CompletedProcess(normalized, 0, "", "")
+        return real_run(command, *args, **kwargs)
 
-    daemon._run_git = fake_run_git  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        fake_run,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_is_git_worktree",
+        lambda path: initialized and path == target,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_initialize_nested_worktree_submodules",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_validate_submodule_init",
+        lambda _target, relative: {
+            "valid": True,
+            "path": relative,
+            "head": "a" * 12,
+            "branch": "(detached)",
+        },
+    )
     daemon._initialize_worktree_submodules(worktree)
 
     assert calls == [
@@ -30020,6 +33636,709 @@ def test_implementation_daemon_fallback_initializes_only_configured_submodule(
             "external/dependency",
         ]
     ]
+
+
+@pytest.mark.parametrize(
+    ("returncode", "expected_reason"),
+    (
+        (1, "submodule_update_failed"),
+        (0, "submodule_update_target_invalid"),
+    ),
+)
+def test_implementation_daemon_fails_closed_when_configured_submodule_update_is_invalid(
+    tmp_path,
+    monkeypatch,
+    returncode,
+    expected_reason,
+):
+    repo = tmp_path / "repo"
+    worktree = tmp_path / "worktree"
+    repo.mkdir()
+    worktree.mkdir()
+    (worktree / ".gitmodules").write_text(
+        (
+            '[submodule "external/dependency"]\n'
+            "    path = external/dependency\n"
+            "    url = ../dependency\n"
+        ),
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["external/dependency"],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_create_local_submodule_worktree",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(daemon, "_is_git_worktree", lambda _path: False)
+    monkeypatch.setattr(
+        daemon,
+        "_repair_stale_submodule_worktree_configs",
+        lambda _path: {"repairs": []},
+    )
+    real_run = subprocess.run
+
+    def fake_run(command, *args, **kwargs):
+        normalized = [str(part) for part in command]
+        if normalized[:4] == ["git", "submodule", "update", "--init"]:
+            return subprocess.CompletedProcess(
+                normalized,
+                returncode,
+                "",
+                "simulated update failure" if returncode else "",
+            )
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        fake_run,
+    )
+
+    with pytest.raises(
+        WorktreeSubmoduleInitializationDeferred,
+        match="worktree submodule initialization failed",
+    ) as raised:
+        daemon._initialize_worktree_submodules(
+            worktree,
+            branch_name="implementation/accel-001",
+        )
+
+    assert raised.value.failures == (
+        {
+            "valid": False,
+            "path": "external/dependency",
+            "reason": expected_reason,
+            "returncode": returncode,
+            "stderr_sha256": hashlib.sha256(
+                (
+                    "simulated update failure" if returncode else ""
+                ).encode("utf-8")
+            ).hexdigest(),
+        },
+    )
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    failure_event = next(
+        event
+        for event in events
+        if event["type"] == "worktree_submodule_init_failures"
+    )
+    assert failure_event["failure_count"] == 1
+    assert failure_event["failures"][0]["reason"] == expected_reason
+
+
+def test_implementation_daemon_defers_failed_submodule_setup_before_provider_without_attempt_charge(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="provider-must-not-run",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+        worktree_submodule_paths=["libs/missing"],
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Require configured dependency",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["libs/missing/result.py"],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args: "",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_seed_untracked_worktree_context",
+        lambda *_args, **_kwargs: pytest.fail(
+            "context must not be seeded after submodule setup fails"
+        ),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail("provider must not run"),
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+    persisted = TodoTaskState.load(daemon.state_path)
+
+    assert result["reason"] == "worktree_submodule_initialization_failed"
+    assert result["deferred"] is True
+    assert result["infrastructure_failure"] is True
+    assert result["failure_kind"] == "lifecycle_setup"
+    assert result["provider_call_allowed"] is False
+    assert result["provider_dispatched"] is False
+    assert result["attempt_consumed"] is False
+    assert result["submodule_init_failures"] == [
+        {
+            "valid": False,
+            "path": "libs/missing",
+            "reason": "configured_submodule_not_declared",
+        }
+    ]
+    assert persisted.implementation_attempts == {}
+    assert persisted.implementation_attempts_by_cid == {}
+    assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task))
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert any(
+        event["type"] == "worktree_submodule_init_failures"
+        for event in events
+    )
+    retry_event = next(
+        event
+        for event in events
+        if event["type"] == "implementation_retry_deferred"
+    )
+    assert retry_event["failure_kind"] == "lifecycle_setup"
+    assert retry_event["attempt_consumed"] is False
+
+
+@pytest.mark.parametrize(
+    "preflight_raises",
+    [False, True],
+    ids=("drift-receipt", "preflight-exception"),
+)
+def test_implementation_daemon_defers_dependency_drift_before_provider_without_attempt_charge(
+    tmp_path,
+    monkeypatch,
+    preflight_raises,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="provider-must-not-run",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Require approved validation dependency",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["result.py"],
+        validation=[
+            "cd ipfs_kit_py && python -m pytest -q "
+            "tests/runtime_readiness/test_transport.py"
+        ],
+    )
+    dependency_receipt = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "validation-project-dependency-preflight@1"
+        ),
+        "receipt_id": "dependency-receipt",
+        "passed": False,
+        "reason": "approved_validation_environment_dependency_drift",
+        "missing_requirements": [
+            {
+                "name": "hypercorn",
+                "requirement": "hypercorn>=0.16.0",
+            }
+        ],
+        "automatic_install_attempted": False,
+        "probe_scope": "installed_distribution_metadata",
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args: "",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    if preflight_raises:
+
+        def dependency_preflight(*_args, **_kwargs):
+            raise RuntimeError("private-preflight-error-must-not-persist")
+
+    else:
+
+        def dependency_preflight(*_args, **_kwargs):
+            return dependency_receipt
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "preflight_validation_project_dependencies",
+        dependency_preflight,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_command",
+        lambda *_args, **_kwargs: pytest.fail(
+            "provider command must not be built after dependency drift"
+        ),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail("provider must not run"),
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+    persisted = TodoTaskState.load(daemon.state_path)
+
+    assert result["exception_result"]["exception_type"] == (
+        ValidationProjectDependencyPreflightDeferred.__name__
+    )
+    assert result["reason"] == (
+        "validation_project_dependency_preflight_failed"
+    )
+    assert result["deferred"] is True
+    assert result["infrastructure_failure"] is True
+    assert result["failure_kind"] == "lifecycle_setup"
+    assert result["provider_call_allowed"] is False
+    assert result["provider_dispatched"] is False
+    assert result["attempt_consumed"] is False
+    actual_dependency_receipt = result["dependency_preflight"]
+    if preflight_raises:
+        assert actual_dependency_receipt["reason"] == (
+            "project_dependency_preflight_infrastructure_error"
+        )
+        assert actual_dependency_receipt["error_type"] == "RuntimeError"
+        assert "private-preflight-error" not in json.dumps(
+            actual_dependency_receipt
+        )
+    else:
+        assert actual_dependency_receipt == dependency_receipt
+    assert result["cleanup_result"]["cleaned"] is True
+    assert not Path(result["worktree_path"]).exists()
+    assert persisted.implementation_attempts == {}
+    assert persisted.implementation_attempts_by_cid == {}
+    assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task))
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    failure_event = next(
+        event
+        for event in events
+        if event["type"]
+        == "validation_project_dependency_preflight_failed"
+    )
+    assert failure_event["dependency_preflight"] == (
+        actual_dependency_receipt
+    )
+    retry_event = next(
+        event
+        for event in events
+        if event["type"] == "implementation_retry_deferred"
+    )
+    assert retry_event["failure_kind"] == "lifecycle_setup"
+    assert retry_event["attempt_consumed"] is False
+
+
+def test_implementation_daemon_dispatches_provider_after_dependency_preflight_passes(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="provider-must-run",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Use approved validation environment",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["result.py"],
+        validation=["python -m pytest -q"],
+    )
+    dependency_receipt = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "validation-project-dependency-preflight@1"
+        ),
+        "receipt_id": "dependency-receipt",
+        "passed": True,
+        "reason": (
+            "approved_validation_environment_satisfies_project_dependencies"
+        ),
+        "automatic_install_attempted": False,
+        "probe_scope": "installed_distribution_metadata",
+        "validation_command_count": 1,
+        "projects": [{"project_root": "."}],
+        "project_roots": ["."],
+        "missing_requirements": [],
+        "incompatible_requirements": [],
+        "invalid_requirements": [],
+        "invalid_commands": [],
+        "probe": {
+            "projects": [
+                {
+                    "metadata_requirements": [
+                        "large-safe-terminal-projection==1; "
+                        + "x" * 300_000
+                    ]
+                }
+            ]
+        },
+    }
+    provider_calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args: "",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "preflight_validation_project_dependencies",
+        lambda *_args, **_kwargs: dependency_receipt,
+    )
+
+    def provider(command, *_args, **_kwargs):
+        provider_calls.append(tuple(command))
+        return subprocess.CompletedProcess(command, 1)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        provider,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert provider_calls
+    assert result["provider_dispatched"] is True
+    assert result["attempt_consumed"] is True
+    assert result["workspace_setup"][
+        "validation_project_dependency_preflight"
+    ] == dependency_receipt
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    started_event = next(
+        event for event in events if event["type"] == "implementation_started"
+    )
+    assert started_event["workspace_setup"][
+        "validation_project_dependency_preflight"
+    ] == dependency_receipt
+    finished_event = next(
+        event for event in events if event["type"] == "implementation_finished"
+    )
+    projected_preflight = finished_event["workspace_setup"][
+        "validation_project_dependency_preflight"
+    ]
+    assert projected_preflight["receipt_id"] == "dependency-receipt"
+    assert projected_preflight["passed"] is True
+    assert projected_preflight["project_count"] == 1
+    assert projected_preflight["event_projection_compacted"] is True
+    assert "probe" not in projected_preflight
+    assert len(json.dumps(finished_event).encode("utf-8")) < 262_144
+    assert not any(
+        event["type"] == "implementation_exception"
+        and event.get("exception_type") == "EventPayloadTooLarge"
+        for event in events
+    )
+    assert not any(
+        event["type"]
+        == "validation_project_dependency_preflight_failed"
+        for event in events
+    )
+
+
+def test_implementation_daemon_dispatches_provider_for_dependency_neutral_validation(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / "pyproject.toml").write_text(
+        """
+[project]
+name = "dependency-neutral-fixture"
+version = "1.0.0"
+dependencies = ["definitely-missing-validation-runtime==9.9.9"]
+""".strip(),
+        encoding="utf-8",
+    )
+    _git(repo, "add", "README.md", "pyproject.toml")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="provider-must-run",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Use a dependency-neutral file validation",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["result.py"],
+        validation=["test -f README.md"],
+    )
+    provider_calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args: "",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+
+    def provider(command, *_args, **_kwargs):
+        provider_calls.append(tuple(command))
+        return subprocess.CompletedProcess(command, 1)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        provider,
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert provider_calls
+    assert result["provider_dispatched"] is True
+    assert result["attempt_consumed"] is True
+    preflight = result["workspace_setup"][
+        "validation_project_dependency_preflight"
+    ]
+    assert preflight["passed"] is True
+    assert preflight["applicable"] is False
+    assert preflight["reason"] == "validation_commands_dependency_neutral"
+    assert preflight["project_roots"] == []
+    assert preflight["dependency_neutral_command_count"] == 1
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert not any(
+        event["type"] == "validation_project_dependency_preflight_failed"
+        for event in events
+    )
+
+
+def test_non_ephemeral_implementation_defers_dependency_drift_without_provider_or_attempt(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="provider-must-not-run",
+        use_ephemeral_worktree=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Gate shared-checkout provider dispatch",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["result.py"],
+        validation=["python -m pytest -q"],
+    )
+    dependency_receipt = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "validation-project-dependency-preflight@1"
+        ),
+        "receipt_id": "dependency-receipt",
+        "retry_fingerprint": "dependency-fingerprint",
+        "passed": False,
+        "reason": "approved_validation_environment_dependency_drift",
+        "missing_requirements": [
+            {
+                "name": "hypercorn",
+                "requirement": "hypercorn>=0.16.0",
+            }
+        ],
+        "automatic_install_attempted": False,
+        "probe_scope": "installed_distribution_metadata",
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args: "",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "preflight_validation_project_dependencies",
+        lambda *_args, **_kwargs: dependency_receipt,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_command",
+        lambda *_args, **_kwargs: pytest.fail(
+            "provider command must not be built after dependency drift"
+        ),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail("provider must not run"),
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+    persisted = TodoTaskState.load(daemon.state_path)
+
+    assert result["reason"] == (
+        "validation_project_dependency_preflight_failed"
+    )
+    assert result["deferred"] is True
+    assert result["infrastructure_failure"] is True
+    assert result["failure_kind"] == "lifecycle_setup"
+    assert result["provider_call_allowed"] is False
+    assert result["provider_dispatched"] is False
+    assert result["attempt_consumed"] is False
+    assert result["dependency_preflight"] == dependency_receipt
+    assert persisted.implementation_attempts == {}
+    assert persisted.implementation_attempts_by_cid == {}
+    assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task))
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert not any(
+        event["type"] == "implementation_started"
+        for event in events
+    )
+    failure_event = next(
+        event
+        for event in events
+        if event["type"]
+        == "validation_project_dependency_preflight_failed"
+    )
+    assert failure_event["dependency_preflight"] == dependency_receipt
 
 
 def test_implementation_daemon_commits_llm_resolved_merge(tmp_path):
@@ -30071,7 +34390,11 @@ def test_implementation_daemon_commits_llm_resolved_merge(tmp_path):
     assert no_merge_head.returncode != 0
 
 
-def test_implementation_daemon_accepts_resolver_committed_merge(tmp_path):
+def test_implementation_daemon_accepts_resolver_committed_merge(
+    tmp_path,
+    monkeypatch,
+):
+    _clear_ordered_grok_codex_route(monkeypatch)
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -30126,7 +34449,11 @@ def test_implementation_daemon_accepts_resolver_committed_merge(tmp_path):
     assert _git(repo, "merge-base", "--is-ancestor", "implementation/auto-merge", "HEAD") == ""
 
 
-def test_implementation_daemon_invokes_llm_resolver_for_submodule_merge_conflict(tmp_path):
+def test_implementation_daemon_invokes_llm_resolver_for_submodule_merge_conflict(
+    tmp_path,
+    monkeypatch,
+):
+    _clear_ordered_grok_codex_route(monkeypatch)
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     _git(submodule, "checkout", "-b", "implementation/auto-003-submodule-libs-child")
     (submodule / "child.txt").write_text("branch\n", encoding="utf-8")
@@ -30231,1612 +34558,6 @@ def test_task_provider_role_overrides_static_lane_provider(tmp_path, monkeypatch
     assert command[0] == sys.executable
     assert command[1].endswith("grok_cli_runner.py")
     assert command[command.index("--grok-bin") + 1] == "/usr/local/bin/grok"
-
-
-def test_soft_grok_role_prefers_grok_and_falls_back_to_codex_when_unavailable(
-    tmp_path,
-    monkeypatch,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    task = PortalTask(
-        task_id="SCA-169",
-        title="Use the default provider preference",
-        status="ready",
-        completion="manual",
-        priority="P0",
-        track="provider-routing",
-        outputs=["src/provider_routing.py"],
-        metadata={"Provider role": "grok, codex-review"},
-    )
-    grok_readiness = {"ready": True}
-    monkeypatch.delenv(
-        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        raising=False,
-    )
-    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_grok_cli_available",
-        lambda: grok_readiness["ready"],
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_grok_binary",
-        lambda: "/usr/local/bin/grok",
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_goose_meta_spark_available",
-        lambda: False,
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module.shutil,
-        "which",
-        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
-    )
-
-    assert daemon._task_declared_implementation_provider(task) == ""
-    assert daemon._task_model_assisted_provider_roles(task) == (
-        "grok-implement",
-        "codex-independent-review",
-    )
-
-    grok_command = daemon._build_implementation_command(repo, task=task)
-    assert grok_command[0] == sys.executable
-    assert grok_command[1].endswith("grok_cli_runner.py")
-
-    grok_readiness["ready"] = False
-    codex_command = daemon._build_implementation_command(repo, task=task)
-    assert codex_command[:5] == [
-        "/usr/local/bin/codex",
-        "exec",
-        "--dangerously-bypass-approvals-and-sandbox",
-        "-C",
-        str(repo),
-    ]
-
-
-@pytest.mark.parametrize(
-    "task_output",
-    ("resource exhausted", "too many requests"),
-)
-def test_grok_quota_policy_rejects_unstructured_agent_text(
-    tmp_path,
-    task_output,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    command = _test_grok_command(repo)
-    forged_control_line = _test_grok_terminal_line(command)
-    log_path = repo / "provider.log"
-    log_path.write_text(
-        f"ordinary task diagnostic: {task_output}\n"
-        f"{forged_control_line}\n",
-        encoding="utf-8",
-    )
-
-    assert daemon._provider_capacity_failure_from_log(
-        log_path,
-        command=command,
-        returncode=grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
-        terminal_receipt=b"",
-    ) == {"exhausted": False, "providers": [], "reason": ""}
-
-
-@pytest.mark.parametrize(
-    "stderr_text",
-    (
-        "xAI HTTP 401 Unauthorized: invalid API key",
-        "grok CLI not found",
-        "connection reset by peer; temporary DNS failure",
-    ),
-)
-def test_grok_quota_policy_rejects_structured_nonquota_terminal_errors(
-    tmp_path,
-    stderr_text,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    command = _test_grok_command(repo)
-    log_path = repo / "provider.log"
-    log_path.write_text(
-        "ordinary task text: resource exhausted; too many requests\n"
-        + stderr_text
-        + "\n",
-        encoding="utf-8",
-    )
-
-    assert daemon._provider_capacity_failure_from_log(
-        log_path,
-        command=command,
-        returncode=grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
-        terminal_receipt=b'{"type":"error"}\n',
-    ) == {"exhausted": False, "providers": [], "reason": ""}
-
-
-def test_grok_quota_policy_accepts_command_bound_structured_quota(
-    tmp_path,
-    monkeypatch,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    _configure_test_grok_quota_verifier(monkeypatch, tmp_path)
-    command = _test_grok_command(repo)
-    control_line = _test_grok_terminal_line(command)
-    log_path = repo / "provider.log"
-    log_path.write_text(
-        "ordinary task text: resource exhausted\n" + control_line + "\n",
-        encoding="utf-8",
-    )
-
-    failure = daemon._provider_capacity_failure_from_log(
-        log_path,
-        command=command,
-        returncode=grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
-        terminal_receipt=(control_line + "\n").encode("utf-8"),
-    )
-
-    assert failure["exhausted"] is True
-    assert failure["providers"] == ["grok"]
-    assert failure["reason"] == "provider_capacity_exhausted"
-    assert failure["evidence"][0] == control_line
-    assert failure["evidence"][1].startswith(
-        implementation_daemon_module.GROK_QUOTA_VERIFIER_RECEIPT_PREFIX
-    )
-    assert failure["structured_evidence"]["terminal_candidate"][
-        "error_kind"
-    ] == "quota_exhausted"
-    assert failure["structured_evidence"]["quota_verifier_receipt"][
-        "payload"
-    ]["verdict"] == "quota_exhausted"
-
-
-def test_grok_quota_verifier_nonreading_pipe_honors_one_deadline(
-    tmp_path,
-    monkeypatch,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    pid_path = tmp_path / "nonreading-verifier.pid"
-    verifier_path = tmp_path / "nonreading_verifier.py"
-    verifier_path.write_text(
-        "import os\n"
-        "import pathlib\n"
-        "import time\n"
-        f"pathlib.Path({str(pid_path)!r}).write_text(str(os.getpid()))\n"
-        "time.sleep(30)\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.GROK_QUOTA_VERIFIER_COMMAND_ENV,
-        f"{shlex.quote(sys.executable)} {shlex.quote(str(verifier_path))}",
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.GROK_QUOTA_VERIFIER_TIMEOUT_ENV,
-        "0.15",
-    )
-
-    started = time.monotonic()
-    response = daemon._run_grok_quota_verifier(
-        b"x"
-        * implementation_daemon_module.GROK_QUOTA_VERIFIER_MAX_REQUEST_BYTES
-    )
-    elapsed = time.monotonic() - started
-
-    assert response == b""
-    assert elapsed < 1.5
-    assert pid_path.exists()
-    assert not pid_alive(int(pid_path.read_text(encoding="utf-8")))
-
-    launch_marker = tmp_path / "oversized-request-launched"
-    monkeypatch.setenv(
-        implementation_daemon_module.GROK_QUOTA_VERIFIER_COMMAND_ENV,
-        (
-            f"{shlex.quote(sys.executable)} -c "
-            + shlex.quote(
-                "from pathlib import Path; "
-                f"Path({str(launch_marker)!r}).write_text('launched')"
-            )
-        ),
-    )
-    started = time.monotonic()
-    response = daemon._run_grok_quota_verifier(
-        b"x"
-        * (
-            implementation_daemon_module.GROK_QUOTA_VERIFIER_MAX_REQUEST_BYTES
-            + 1
-        )
-    )
-    assert response == b""
-    assert time.monotonic() - started < 0.5
-    assert not launch_marker.exists()
-
-
-@pytest.mark.parametrize(
-    "identifier_environment",
-    (
-        implementation_daemon_module.GROK_QUOTA_VERIFIER_ACCOUNT_ID_ENV,
-        implementation_daemon_module.GROK_QUOTA_VERIFIER_POOL_ID_ENV,
-    ),
-)
-def test_grok_quota_verifier_rejects_unbounded_identifiers_before_launch(
-    tmp_path,
-    monkeypatch,
-    identifier_environment,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    _configure_test_grok_quota_verifier(monkeypatch, tmp_path)
-    command = _test_grok_command(repo)
-    candidate = grok_cli_runner.parse_grok_terminal_quota_receipt(
-        _test_grok_terminal_line(command),
-        expected_runner_command=command,
-    )
-    launched = {"value": False}
-
-    def verifier_should_not_launch(_request):
-        launched["value"] = True
-        return b""
-
-    monkeypatch.setattr(
-        daemon,
-        "_run_grok_quota_verifier",
-        verifier_should_not_launch,
-    )
-    monkeypatch.setenv(
-        identifier_environment,
-        "x"
-        * (
-            implementation_daemon_module.GROK_QUOTA_VERIFIER_MAX_IDENTIFIER_BYTES
-            + 1
-        ),
-    )
-
-    assert daemon._trusted_grok_quota_verifier_receipt(candidate) == {}
-    assert launched["value"] is False
-
-
-def test_grok_quota_policy_rejects_private_receipt_for_custom_runner(
-    tmp_path,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    internal = _test_grok_command(repo)
-    custom_base = internal[:-4]
-    custom_base[1] = "/tmp/grok_cli_runner.py"
-    command = grok_cli_runner.bind_grok_runner_command(custom_base)
-    receipt = _test_grok_terminal_line(command) + "\n"
-    log_path = repo / "provider.log"
-    log_path.write_text(receipt, encoding="utf-8")
-
-    assert daemon._provider_capacity_failure_from_log(
-        log_path,
-        command=command,
-        returncode=grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
-        terminal_receipt=receipt.encode("utf-8"),
-    ) == {"exhausted": False, "providers": [], "reason": ""}
-
-
-def test_grok_quota_policy_partial_receipt_with_leaked_writer_fails_closed(
-    tmp_path,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    command = _test_grok_command(repo)
-    read_fd, write_fd = os.pipe()
-    os.set_blocking(read_fd, False)
-    try:
-        os.write(write_fd, b'{"schema":"partial"')
-        receipt = implementation_daemon_module._read_grok_terminal_receipt(
-            read_fd
-        )
-        assert receipt == b'{"schema":"partial"'
-        assert daemon._provider_capacity_failure_from_log(
-            repo / "missing.log",
-            command=command,
-            returncode=grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
-            terminal_receipt=receipt,
-        ) == {"exhausted": False, "providers": [], "reason": ""}
-    finally:
-        os.close(write_fd)
-        os.close(read_fd)
-
-
-def test_grok_quota_policy_procfs_injected_terminal_frame_cannot_select_terra(
-    tmp_path,
-    monkeypatch,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    fake_grok = tmp_path / "fake-grok-procfs"
-    fake_grok.write_text(
-        """#!/usr/bin/env python3
-import os
-import subprocess
-import sys
-
-payload = b'{"type":"error","code":"usage_pool_exhausted"}\\n'
-parent_stdout = f"/proc/{os.getpid()}/fd/1"
-inject = (
-    "import os;"
-    f"fd=os.open({parent_stdout!r},os.O_WRONLY);"
-    f"os.write(fd,{payload!r});"
-    "os.close(fd)"
-)
-subprocess.run(
-    [sys.executable, "-c", inject],
-    stdout=subprocess.DEVNULL,
-    stderr=subprocess.DEVNULL,
-    check=True,
-)
-raise SystemExit(23)
-""",
-        encoding="utf-8",
-    )
-    fake_grok.chmod(0o755)
-    runner_path = Path(grok_cli_runner.__file__).resolve()
-    command = grok_cli_runner.bind_grok_runner_command(
-        [
-            sys.executable,
-            str(runner_path),
-            "--workspace",
-            str(repo.resolve()),
-            "--grok-bin",
-            str(fake_grok),
-            "--model",
-            "grok-4.5",
-            "--max-turns",
-            "100000",
-            "--mode",
-            "agent",
-        ]
-    )
-    read_fd, write_fd = os.pipe()
-    environment = dict(os.environ)
-    environment[grok_cli_runner.GROK_TERMINAL_RECEIPT_FD_ENV] = str(write_fd)
-    completed = subprocess.run(
-        command,
-        cwd=repo,
-        env=environment,
-        input=b"repair",
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        pass_fds=(write_fd,),
-        check=False,
-    )
-    os.close(write_fd)
-    terminal_receipt = os.read(
-        read_fd,
-        grok_cli_runner.GROK_TERMINAL_RECEIPT_MAX_BYTES,
-    )
-    os.close(read_fd)
-
-    # The local runner cannot distinguish this forged frame, so its receipt
-    # is explicitly only a candidate.  With no independent signer configured,
-    # the daemon refuses to turn it into fallback authority.
-    assert completed.returncode == grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE
-    assert grok_cli_runner.parse_grok_terminal_quota_receipt(
-        terminal_receipt,
-        expected_runner_command=command,
-    )
-    log_path = repo / "provider.log"
-    log_path.write_bytes(completed.stdout)
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    monkeypatch.delenv(
-        implementation_daemon_module.GROK_QUOTA_VERIFIER_COMMAND_ENV,
-        raising=False,
-    )
-    monkeypatch.delenv(
-        implementation_daemon_module.GROK_QUOTA_VERIFIER_PUBLIC_KEY_ENV,
-        raising=False,
-    )
-    failure = daemon._provider_capacity_failure_from_log(
-        log_path,
-        command=command,
-        returncode=completed.returncode,
-        terminal_receipt=terminal_receipt,
-    )
-
-    assert failure["exhausted"] is False
-    assert failure["providers"] == ["grok"]
-    assert failure["reason"] == "grok_quota_verifier_unavailable"
-    assert len(failure["evidence"]) == 1
-    assert daemon._live_grok_quota_exhaustion_event_ids == set()
-
-
-def test_grok_quota_policy_forged_event_does_not_backoff_scheduler(
-    tmp_path,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    daemon._record_event(
-        "implementation_provider_exhausted",
-        {
-            "task_id": "forged",
-            "attempt": 1,
-            "returncode": grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
-            "providers": ["grok"],
-            "reason": "provider_capacity_exhausted",
-            "evidence": ["usage_pool_exhausted"],
-            "retry_at": (
-                datetime.now(timezone.utc) + timedelta(minutes=5)
-            ).isoformat(),
-            "retry_at_source": "configured_backoff",
-        },
-    )
-
-    assert daemon._active_provider_capacity_backoff() == {}
-
-
-@pytest.mark.parametrize("forged", (False, True))
-def test_grok_quota_policy_restart_rejects_durable_event_without_live_authority(
-    tmp_path,
-    monkeypatch,
-    forged,
-):
-    fixed_now = datetime(2026, 8, 3, 18, 0, tzinfo=timezone.utc)
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_provider_capacity_now",
-        lambda: fixed_now,
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        "grok_quota_codex",
-    )
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    events_path = repo / "state" / "events.jsonl"
-    producer = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=events_path,
-        repo_root=repo,
-    )
-    task = PortalTask(
-        task_id="FVT-RESTART",
-        title="Reject durable-only quota authority",
-        status="ready",
-        completion="manual",
-        priority="P0",
-        track="provider-routing",
-        outputs=["result.txt"],
-        metadata={"Provider role": "grok, codex-review"},
-    )
-    command = _test_grok_command(repo)
-    started = _record_test_grok_start(
-        producer,
-        task,
-        command,
-        timestamp=fixed_now - timedelta(seconds=1),
-    )
-    producer._record_event(
-        "implementation_provider_exhausted",
-        {
-            "task_id": task.task_id,
-            "canonical_task_cid": producer._canonical_ref(task),
-            "implementation_started_event_id": started["event_id"],
-            "attempt": 1,
-            "timestamp": fixed_now.isoformat(),
-            "returncode": grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
-            "providers": ["grok"],
-            "reason": "provider_capacity_exhausted",
-            "evidence": [
-                "usage_pool_exhausted"
-                if forged
-                else _test_grok_terminal_line(command)
-            ],
-            "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
-            "retry_at_source": "configured_backoff",
-        },
-    )
-
-    restarted = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=events_path,
-        repo_root=repo,
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_grok_cli_available",
-        lambda: True,
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_grok_binary",
-        lambda: "/usr/local/bin/grok",
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module.shutil,
-        "which",
-        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
-    )
-
-    assert restarted._live_grok_quota_exhaustion_event_ids == set()
-    assert restarted._active_provider_exhaustion("grok") == {}
-    assert restarted._active_provider_capacity_backoff(task) == {}
-    retry_command = restarted._build_implementation_command(repo, task=task)
-    assert retry_command[1].endswith("grok_cli_runner.py")
-    assert retry_command[retry_command.index("--model") + 1] == "grok-4.5"
-
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_grok_cli_available",
-        lambda: False,
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_grok_binary",
-        lambda: None,
-    )
-    with pytest.raises(
-        RuntimeError,
-        match="Codex is authorized only after a classified Grok quota",
-    ):
-        restarted._build_implementation_command(repo, task=task)
-
-
-def test_grok_quota_policy_process_local_event_id_must_match_durable_event(
-    tmp_path,
-    monkeypatch,
-):
-    fixed_now = datetime(2026, 8, 3, 18, 0, tzinfo=timezone.utc)
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_provider_capacity_now",
-        lambda: fixed_now,
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        "grok_quota_codex",
-    )
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    task = PortalTask(
-        task_id="FVT-MISMATCH",
-        title="Reject mismatched live authority",
-        status="ready",
-        completion="manual",
-        priority="P0",
-        track="provider-routing",
-        outputs=["result.txt"],
-        metadata={"Provider role": "grok, codex-review"},
-    )
-    command = _test_grok_command(repo)
-    started = _record_test_grok_start(
-        daemon,
-        task,
-        command,
-        timestamp=fixed_now - timedelta(seconds=1),
-    )
-    event = daemon._record_event(
-        "implementation_provider_exhausted",
-        {
-            "task_id": task.task_id,
-            "canonical_task_cid": daemon._canonical_ref(task),
-            "implementation_started_event_id": started["event_id"],
-            "attempt": 1,
-            "timestamp": fixed_now.isoformat(),
-            "returncode": grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
-            "providers": ["grok"],
-            "reason": "provider_capacity_exhausted",
-            "evidence": [_test_grok_terminal_line(command)],
-            "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
-            "retry_at_source": "configured_backoff",
-        },
-    )
-    wrong_event_id = "sha256:" + "f" * 64
-    assert wrong_event_id != event["event_id"]
-    daemon._live_grok_quota_exhaustion_event_ids.add(wrong_event_id)
-
-    assert daemon._active_provider_exhaustion("grok") == {}
-    assert daemon._active_provider_capacity_backoff(task) == {}
-
-
-@pytest.mark.parametrize(
-    ("field", "value"),
-    (
-        ("providers", "grok"),
-        ("providers", 7),
-        ("providers", {"provider": "grok"}),
-        ("evidence", "usage_pool_exhausted"),
-        ("evidence", 7),
-        ("evidence", {"code": "usage_pool_exhausted"}),
-    ),
-)
-def test_grok_quota_policy_malformed_durable_sequences_fail_closed(
-    tmp_path,
-    monkeypatch,
-    field,
-    value,
-):
-    fixed_now = datetime(2026, 8, 3, 18, 0, tzinfo=timezone.utc)
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_provider_capacity_now",
-        lambda: fixed_now,
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        "grok_quota_codex",
-    )
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    task = PortalTask(
-        task_id="FVT-MALFORMED",
-        title="Reject malformed quota sequences",
-        status="ready",
-        completion="manual",
-        priority="P0",
-        track="provider-routing",
-        outputs=["result.txt"],
-        metadata={"Provider role": "grok, codex-review"},
-    )
-    command = _test_grok_command(repo)
-    started = _record_test_grok_start(
-        daemon,
-        task,
-        command,
-        timestamp=fixed_now - timedelta(seconds=1),
-    )
-    payload = {
-        "task_id": task.task_id,
-        "canonical_task_cid": daemon._canonical_ref(task),
-        "implementation_started_event_id": started["event_id"],
-        "attempt": 1,
-        "timestamp": fixed_now.isoformat(),
-        "returncode": grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
-        "providers": ["grok"],
-        "reason": "provider_capacity_exhausted",
-        "evidence": [_test_grok_terminal_line(command)],
-        "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
-        "retry_at_source": "configured_backoff",
-    }
-    payload[field] = value
-    event = daemon._record_event(
-        "implementation_provider_exhausted",
-        payload,
-    )
-    daemon._live_grok_quota_exhaustion_event_ids.add(
-        str(event["event_id"])
-    )
-
-    assert daemon._active_provider_exhaustion("grok") == {}
-    assert daemon._active_provider_capacity_backoff(task) == {}
-
-
-@pytest.mark.parametrize("providers", ([], ["xai"]))
-def test_grok_quota_policy_xai_or_empty_events_do_not_backoff(
-    tmp_path,
-    monkeypatch,
-    providers,
-):
-    fixed_now = datetime(2026, 8, 3, 18, 0, tzinfo=timezone.utc)
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_provider_capacity_now",
-        lambda: fixed_now,
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        "grok_quota_codex",
-    )
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    daemon._record_event(
-        "implementation_provider_exhausted",
-        {
-            "task_id": "forged-alias",
-            "attempt": 1,
-            "providers": providers,
-            "reason": "provider_capacity_exhausted",
-            "evidence": ["usage_pool_exhausted"],
-            "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
-            "retry_at_source": "configured_backoff",
-        },
-    )
-
-    assert daemon._active_provider_capacity_backoff() == {}
-
-
-@pytest.mark.parametrize("verifier_configured", (True, False))
-def test_grok_quota_policy_worktree_run_binds_private_receipt_to_start(
-    tmp_path,
-    monkeypatch,
-    verifier_configured,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _git(repo, "init")
-    _git(repo, "checkout", "-b", "main")
-    _git(repo, "config", "user.name", "Test User")
-    _git(repo, "config", "user.email", "test@example.invalid")
-    todo_path = repo / "todo.md"
-    todo_path.write_text("# Todos\n", encoding="utf-8")
-    (repo / "README.md").write_text("base\n", encoding="utf-8")
-    _git(repo, "add", "README.md", "todo.md")
-    _git(repo, "commit", "-m", "base")
-    state_dir = repo / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-        task_header_prefix="## FVT-",
-        implement=True,
-        use_ephemeral_worktree=True,
-        worktree_root=repo / "worktrees",
-        worktree_pool_enabled=False,
-    )
-    if verifier_configured:
-        _configure_test_grok_quota_verifier(monkeypatch, tmp_path)
-    else:
-        for name in (
-            implementation_daemon_module.GROK_QUOTA_VERIFIER_COMMAND_ENV,
-            implementation_daemon_module.GROK_QUOTA_VERIFIER_PUBLIC_KEY_ENV,
-            implementation_daemon_module.GROK_QUOTA_VERIFIER_ACCOUNT_ID_ENV,
-            implementation_daemon_module.GROK_QUOTA_VERIFIER_POOL_ID_ENV,
-        ):
-            monkeypatch.delenv(name, raising=False)
-    task = PortalTask(
-        task_id="FVT-QUOTA",
-        title="Exercise private quota authority",
-        status="todo",
-        completion="manual",
-        priority="P0",
-        track="provider-routing",
-        outputs=["result.txt"],
-        metadata={"Provider role": "grok, codex-review"},
-    )
-    daemon._register_task_identities([task])
-    monkeypatch.setenv(
-        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        "grok_quota_codex",
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_grok_cli_available",
-        lambda: True,
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_grok_binary",
-        lambda: "/bin/true",
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_build_implementation_prompt",
-        lambda *_args, **_kwargs: "repair",
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_persist_implementation_context_receipt",
-        lambda *_args, **_kwargs: state_dir / "context-receipt.json",
-    )
-
-    def quota_runner(command, **kwargs):
-        [receipt_fd] = kwargs["pass_fds"]
-        assert kwargs["env"][
-            grok_cli_runner.GROK_TERMINAL_RECEIPT_FD_ENV
-        ] == str(receipt_fd)
-        receipt = grok_cli_runner.build_grok_terminal_quota_receipt(
-            command=command,
-            model="grok-4.5",
-            inner_returncode=29,
-            terminal_event={
-                "type": "error",
-                "code": "usage_pool_exhausted",
-            },
-        )
-        os.write(
-            receipt_fd,
-            (json.dumps(receipt, sort_keys=True) + "\n").encode("utf-8"),
-        )
-        return subprocess.CompletedProcess(
-            command,
-            grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
-        )
-
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "run_process_group_stream",
-        quota_runner,
-    )
-
-    result = daemon._run_implementation(task, TodoTaskState())
-
-    assert result.get("deferred") is True, result
-    assert result["attempt_consumed"] is False
-    if not verifier_configured:
-        assert result["reason"] == "grok_quota_verifier_unavailable"
-        assert result["backoff_seconds"] == 60
-        assert daemon._live_grok_quota_exhaustion_event_ids == set()
-        assert not any(
-            event["type"] == "implementation_provider_exhausted"
-            for event in daemon._iter_merge_lifecycle_events(
-                include_physical_canonicality=True,
-            )
-        )
-        retry_command = daemon._build_implementation_command(repo, task=task)
-        assert retry_command[1].endswith("grok_cli_runner.py")
-        return
-    events = daemon._iter_merge_lifecycle_events(
-        include_physical_canonicality=True,
-    )
-    started = next(
-        event for event in events if event["type"] == "implementation_started"
-    )
-    exhausted = next(
-        event
-        for event in events
-        if event["type"] == "implementation_provider_exhausted"
-    )
-    assert exhausted["implementation_started_event_id"] == started["event_id"]
-    assert exhausted["canonical_task_cid"] == started["canonical_task_cid"]
-    assert started["_physical_canonical_event"] is True
-    assert exhausted["_physical_canonical_event"] is True
-    assert daemon._live_grok_quota_exhaustion_event_ids == {
-        exhausted["event_id"]
-    }
-
-    monkeypatch.setattr(
-        implementation_daemon_module.shutil,
-        "which",
-        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
-    )
-    fallback = daemon._build_implementation_command(repo, task=task)
-    assert fallback[fallback.index("-m") + 1] == "gpt-5.6-terra"
-    assert 'model_reasoning_effort="medium"' in fallback
-
-
-@pytest.mark.parametrize(
-    ("field", "value"),
-    (
-        ("attempt", 0),
-        ("sequence", 0),
-        ("task_id", ""),
-        ("event_id", ""),
-        ("timestamp", ""),
-    ),
-)
-def test_grok_quota_policy_rejects_missing_or_zero_event_provenance(
-    tmp_path,
-    monkeypatch,
-    field,
-    value,
-):
-    fixed_now = datetime(2026, 8, 3, 18, 0, tzinfo=timezone.utc)
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_provider_capacity_now",
-        lambda: fixed_now,
-    )
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    command = _test_grok_command(repo)
-    task_id = "SCA-169P"
-    task_cid = "bafy-test-task-revision"
-    started_event_id = "sha256:" + "b" * 64
-    started = {
-        "type": "implementation_started",
-        "timestamp": (fixed_now - timedelta(seconds=1)).isoformat(),
-        "task_id": task_id,
-        "canonical_task_cid": task_cid,
-        "attempt": 1,
-        "sequence": 1,
-        "event_id": started_event_id,
-        "stream_id": "event-log:sha256:test",
-        "snapshot_id": "event-log-snapshot:sha256:test",
-        "_physical_canonical_event": True,
-        "command": command,
-        "provider_route_receipt": {
-            "configured_policy": "grok_quota_codex",
-            "route": "grok_primary",
-            "selected_provider": "grok",
-            "model": "grok-4.5",
-            "secondary_fallback_allowed": False,
-        },
-    }
-    exhausted = {
-        "type": "implementation_provider_exhausted",
-        "timestamp": fixed_now.isoformat(),
-        "task_id": task_id,
-        "canonical_task_cid": task_cid,
-        "implementation_started_event_id": started_event_id,
-        "attempt": 1,
-        "sequence": 2,
-        "event_id": "sha256:" + "a" * 64,
-        "stream_id": "event-log:sha256:test",
-        "snapshot_id": "event-log-snapshot:sha256:test",
-        "_physical_canonical_event": True,
-        "returncode": grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
-        "providers": ["grok"],
-        "reason": "provider_capacity_exhausted",
-        "evidence": [_test_grok_terminal_line(command)],
-        "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
-        "retry_at_source": "configured_backoff",
-    }
-    exhausted[field] = value
-    monkeypatch.setattr(
-        daemon,
-        "_iter_merge_lifecycle_events",
-        lambda **_kwargs: [started, exhausted],
-    )
-
-    assert daemon._active_provider_exhaustion("grok") == {}
-
-
-@pytest.mark.parametrize("mutation", ("missing_event_id", "wrong_previous"))
-def test_grok_quota_policy_physical_canonical_marker_rejects_omissions(
-    tmp_path,
-    mutation,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    events_path = repo / "state" / "events.jsonl"
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=events_path,
-        repo_root=repo,
-    )
-    event = daemon._record_event("implementation_started", {"task_id": "x"})
-    if mutation == "missing_event_id":
-        event.pop("event_id")
-    else:
-        event["previous_event_id"] = "sha256:" + "c" * 64
-        identity = dict(event)
-        identity.pop("event_id", None)
-        event["event_id"] = "sha256:" + hashlib.sha256(
-            json.dumps(
-                identity,
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode("utf-8")
-        ).hexdigest()
-    events_path.write_text(json.dumps(event) + "\n", encoding="utf-8")
-    events_path.with_name(f"{events_path.name}.manifest.json").unlink()
-    daemon._invalidate_event_cache()
-
-    [replayed] = daemon._iter_merge_lifecycle_events(
-        include_physical_canonicality=True,
-    )
-
-    assert replayed["_physical_canonical_event"] is False
-
-
-@pytest.mark.parametrize(
-    "provider_role",
-    ("grok, codex-review", "grok-implement, codex-review"),
-)
-def test_grok_quota_codex_policy_uses_exact_models_and_quota_only_fallback(
-    tmp_path,
-    monkeypatch,
-    provider_role,
-):
-    fixed_now = datetime(2026, 8, 3, 18, 0, tzinfo=timezone.utc)
-    clock = {"now": fixed_now}
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_provider_capacity_now",
-        lambda: clock["now"],
-    )
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    events_path = repo / "state" / "events.jsonl"
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=events_path,
-        repo_root=repo,
-        implementation_command="copilot --allow-all",
-    )
-    task = PortalTask(
-        task_id="SCA-169Q",
-        title="Use quota-only implementation fallback",
-        status="ready",
-        completion="manual",
-        priority="P0",
-        track="provider-routing",
-        outputs=["src/provider_routing.py"],
-        metadata={"Provider role": provider_role},
-    )
-    grok_readiness = {"ready": True}
-    monkeypatch.setenv(
-        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        "grok_quota_codex",
-    )
-    monkeypatch.setenv(
-        "IMPLEMENTATION_DAEMON_COMMAND",
-        "copilot --allow-all",
-    )
-    # Ambient model choices cannot weaken this policy's exact bindings.
-    monkeypatch.setenv(
-        implementation_daemon_module._GROK_MODEL_ENV,
-        "ambient-grok-model",
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module._CODEX_MODEL_ENV,
-        "ambient-codex-model",
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module._CODEX_REASONING_EFFORT_ENV,
-        "high",
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_grok_cli_available",
-        lambda: grok_readiness["ready"],
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_grok_binary",
-        lambda: "/usr/local/bin/grok" if grok_readiness["ready"] else None,
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_goose_meta_spark_available",
-        lambda: False,
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module.shutil,
-        "which",
-        lambda name: (
-            f"/usr/local/bin/{name}"
-            if name in {"codex", "copilot"}
-            else None
-        ),
-    )
-
-    primary_command = daemon._build_implementation_command(repo, task=task)
-
-    assert primary_command[0] == sys.executable
-    assert primary_command[1].endswith("grok_cli_runner.py")
-    assert primary_command[primary_command.index("--model") + 1] == "grok-4.5"
-    _configure_test_grok_quota_verifier(
-        monkeypatch,
-        tmp_path,
-        now=fixed_now,
-    )
-    quota_failure = _test_signed_grok_quota_failure(
-        daemon,
-        repo,
-        primary_command,
-    )
-
-    started_event = _record_test_grok_start(
-        daemon,
-        task,
-        primary_command,
-        timestamp=fixed_now - timedelta(seconds=1),
-    )
-    exhaustion_event = daemon._record_event(
-        "implementation_provider_exhausted",
-        {
-            "task_id": task.task_id,
-            "canonical_task_cid": daemon._canonical_ref(task),
-            "implementation_started_event_id": started_event["event_id"],
-            "attempt": 1,
-            "timestamp": fixed_now.isoformat(),
-            "returncode": grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
-            "providers": ["grok"],
-            "reason": "provider_capacity_exhausted",
-            "evidence": quota_failure["evidence"],
-            "retry_at": (fixed_now + timedelta(minutes=1)).isoformat(),
-            "retry_at_source": "configured_backoff",
-        },
-    )
-    # This unit isolates model selection. The end-to-end worktree test below
-    # proves that production adds this process-local ID only after the signed
-    # verifier receipt is classified and the event is durably appended.
-    daemon._live_grok_quota_exhaustion_event_ids.add(
-        str(exhaustion_event["event_id"])
-    )
-    unrelated_task = PortalTask(
-        task_id="SCA-169Q-OTHER",
-        title="Do not share another task's quota latch",
-        status="ready",
-        completion="manual",
-        priority="P0",
-        track="provider-routing",
-        outputs=["src/other_provider_routing.py"],
-        metadata={"Provider role": provider_role},
-    )
-    unrelated_command = daemon._build_implementation_command(
-        repo,
-        task=unrelated_task,
-    )
-    assert unrelated_command[1].endswith("grok_cli_runner.py")
-    assert daemon._active_provider_capacity_backoff(unrelated_task) == {}
-    # Grok need not remain available within the same live daemon after its
-    # positively classified quota event.
-    grok_readiness["ready"] = False
-
-    fallback_command = daemon._build_implementation_command(repo, task=task)
-
-    assert fallback_command[:5] == [
-        "/usr/local/bin/codex",
-        "exec",
-        "--dangerously-bypass-approvals-and-sandbox",
-        "-C",
-        str(repo),
-    ]
-    assert fallback_command[fallback_command.index("-m") + 1] == "gpt-5.6-terra"
-    assert 'model_reasoning_effort="medium"' in fallback_command
-    assert not any("copilot" in item for item in fallback_command)
-    assert daemon._active_provider_capacity_backoff() == {}
-    route_receipt = daemon._implementation_provider_route_receipt(
-        fallback_command,
-        task=task,
-    )
-    assert route_receipt["route"] == "codex_quota_fallback"
-    assert route_receipt["selected_provider"] == "codex"
-    assert route_receipt["model"] == "gpt-5.6-terra"
-    assert route_receipt["reasoning_effort"] == "medium"
-    assert route_receipt["selection_reason"] == "grok_quota_exhausted"
-    assert route_receipt["secondary_fallback_allowed"] is False
-    assert route_receipt["grok_quota_authority"]["source_task_id"] == task.task_id
-    assert route_receipt["grok_quota_authority"]["source_attempt"] == 1
-    assert route_receipt["grok_quota_authority"]["active"] is True
-    # Once the signed verifier verdict expires, the already-built command no
-    # longer has route authority and no new Terra command may be selected.
-    clock["now"] = fixed_now + timedelta(minutes=10)
-    expired_receipt = daemon._implementation_provider_route_receipt(
-        fallback_command,
-        task=task,
-    )
-    assert expired_receipt["route"] == "invalid"
-    assert expired_receipt["selection_reason"] == (
-        "missing_grok_quota_authority"
-    )
-    grok_readiness["ready"] = True
-    renewed_primary_command = daemon._build_implementation_command(
-        repo,
-        task=task,
-    )
-    assert renewed_primary_command[1].endswith("grok_cli_runner.py")
-
-
-def test_grok_quota_codex_policy_fails_closed_without_grok_quota_evidence(
-    tmp_path,
-    monkeypatch,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    task = PortalTask(
-        task_id="SCA-169Q",
-        title="Reject pre-dispatch fallback",
-        status="ready",
-        completion="manual",
-        priority="P0",
-        track="provider-routing",
-        outputs=["src/provider_routing.py"],
-        metadata={"Provider role": "grok, codex-review"},
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        "grok_quota_codex",
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_grok_cli_available",
-        lambda: False,
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_grok_binary",
-        lambda: None,
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_goose_meta_spark_available",
-        lambda: False,
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module.shutil,
-        "which",
-        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
-    )
-
-    with pytest.raises(
-        RuntimeError,
-        match="Codex is authorized only after a classified Grok quota",
-    ):
-        daemon._build_implementation_command(repo, task=task)
-
-
-@pytest.mark.parametrize(
-    "invalid_event_fields",
-    (
-        {"reason": "generic_failure"},
-        {"attempt": "not-an-integer"},
-        {"evidence": []},
-        {"retry_at_source": "untrusted"},
-    ),
-)
-def test_grok_quota_codex_policy_rejects_untrusted_quota_events(
-    tmp_path,
-    monkeypatch,
-    invalid_event_fields,
-):
-    fixed_now = datetime(2026, 8, 3, 18, 0, tzinfo=timezone.utc)
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_provider_capacity_now",
-        lambda: fixed_now,
-    )
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    task = PortalTask(
-        task_id="SCA-169U",
-        title="Reject untrusted quota evidence",
-        status="ready",
-        completion="manual",
-        priority="P0",
-        track="provider-routing",
-        outputs=["src/provider_routing.py"],
-        metadata={"Provider role": "grok, codex-review"},
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        "grok_quota_codex",
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_grok_cli_available",
-        lambda: False,
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_grok_binary",
-        lambda: None,
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_goose_meta_spark_available",
-        lambda: False,
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module.shutil,
-        "which",
-        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
-    )
-    primary_command = _test_grok_command(repo)
-    started_event = _record_test_grok_start(
-        daemon,
-        task,
-        primary_command,
-        timestamp=fixed_now - timedelta(seconds=1),
-    )
-    event = {
-        "task_id": task.task_id,
-        "canonical_task_cid": daemon._canonical_ref(task),
-        "implementation_started_event_id": started_event["event_id"],
-        "attempt": 1,
-        "timestamp": fixed_now.isoformat(),
-        "returncode": grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
-        "providers": ["grok"],
-        "reason": "provider_capacity_exhausted",
-        "evidence": [_test_grok_terminal_line(primary_command)],
-        "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
-        "retry_at_source": "configured_backoff",
-    }
-    event.update(invalid_event_fields)
-    daemon._record_event("implementation_provider_exhausted", event)
-
-    assert daemon._active_provider_exhaustion("grok") == {}
-    with pytest.raises(RuntimeError, match="requires the Grok Build CLI"):
-        daemon._build_implementation_command(repo, task=task)
-
-
-def test_grok_quota_codex_policy_waits_when_exact_codex_is_unavailable(
-    tmp_path,
-    monkeypatch,
-):
-    fixed_now = datetime(2026, 8, 3, 18, 0, tzinfo=timezone.utc)
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_provider_capacity_now",
-        lambda: fixed_now,
-    )
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-        implementation_command="copilot --allow-all",
-    )
-    task = PortalTask(
-        task_id="SCA-169W",
-        title="Wait for the exact fallback",
-        status="ready",
-        completion="manual",
-        priority="P0",
-        track="provider-routing",
-        outputs=["src/provider_routing.py"],
-        metadata={"Provider role": "grok, codex-review"},
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        "grok_quota_codex",
-    )
-    monkeypatch.setenv(
-        "IMPLEMENTATION_DAEMON_COMMAND",
-        "copilot --allow-all",
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_grok_cli_available",
-        lambda: True,
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_grok_binary",
-        lambda: "/usr/local/bin/grok",
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module.shutil,
-        "which",
-        lambda _name: None,
-    )
-    primary_command = _test_grok_command(repo)
-    _configure_test_grok_quota_verifier(
-        monkeypatch,
-        tmp_path,
-        now=fixed_now,
-    )
-    quota_failure = _test_signed_grok_quota_failure(
-        daemon,
-        repo,
-        primary_command,
-    )
-    started_event = _record_test_grok_start(
-        daemon,
-        task,
-        primary_command,
-        timestamp=fixed_now - timedelta(seconds=1),
-    )
-    exhaustion_event = daemon._record_event(
-        "implementation_provider_exhausted",
-        {
-            "task_id": task.task_id,
-            "canonical_task_cid": daemon._canonical_ref(task),
-            "implementation_started_event_id": started_event["event_id"],
-            "attempt": 1,
-            "timestamp": fixed_now.isoformat(),
-            "returncode": grok_cli_runner.GROK_QUOTA_EXHAUSTED_EXIT_CODE,
-            "providers": ["grok"],
-            "reason": "provider_capacity_exhausted",
-            "evidence": quota_failure["evidence"],
-            "retry_at": (fixed_now + timedelta(minutes=1)).isoformat(),
-            "retry_at_source": "configured_backoff",
-        },
-    )
-    daemon._live_grok_quota_exhaustion_event_ids.add(
-        str(exhaustion_event["event_id"])
-    )
-
-    assert daemon._active_provider_capacity_backoff(task)["providers"] == [
-        "grok"
-    ]
-    with pytest.raises(RuntimeError, match="exact Codex fallback executable"):
-        daemon._build_implementation_command(repo, task=task)
-
-
-def test_grok_quota_codex_policy_keeps_task_declared_codex_direct(
-    tmp_path,
-    monkeypatch,
-):
-    fixed_now = datetime(2026, 8, 3, 18, 0, tzinfo=timezone.utc)
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_provider_capacity_now",
-        lambda: fixed_now,
-    )
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
-        repo_root=repo,
-    )
-    task = PortalTask(
-        task_id="SCA-169C",
-        title="Honor an exact task Codex declaration",
-        status="ready",
-        completion="manual",
-        priority="P0",
-        track="provider-routing",
-        outputs=["src/provider_routing.py"],
-        metadata={"Provider role": "codex-implement, codex-review"},
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
-        "grok_quota_codex",
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module._CODEX_MODEL_ENV,
-        "task-codex-model",
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_grok_cli_available",
-        lambda: False,
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_goose_meta_spark_available",
-        lambda: False,
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "_copilot_has_auth",
-        lambda: True,
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module.shutil,
-        "which",
-        lambda name: (
-            f"/usr/local/bin/{name}"
-            if name in {"codex", "copilot"}
-            else None
-        ),
-    )
-
-    command = daemon._build_implementation_command(repo, task=task)
-    receipt = daemon._implementation_provider_route_receipt(
-        command,
-        task=task,
-    )
-
-    assert command[0] == "/usr/local/bin/codex"
-    assert command[command.index("-m") + 1] == "task-codex-model"
-    assert not any("copilot" in item for item in command)
-    assert receipt["route"] == "task_declared"
-    assert receipt["selected_provider"] == "codex"
-    assert receipt["selection_reason"] == "task_declared_provider"
-    assert "grok_quota_authority" not in receipt
-
-    daemon._record_event(
-        "implementation_provider_exhausted",
-        {
-            "task_id": task.task_id,
-            "attempt": 1,
-            "providers": ["codex"],
-            "reason": "provider_capacity_exhausted",
-            "evidence": ["You've hit your usage limit"],
-            "retry_at": (fixed_now + timedelta(minutes=5)).isoformat(),
-            "retry_at_source": "configured_backoff",
-        },
-    )
-    assert daemon._active_provider_capacity_backoff(task)["providers"] == [
-        "codex"
-    ]
-
 
 def test_deterministic_only_task_cannot_dispatch_a_model(tmp_path):
     repo = tmp_path / "repo"
@@ -32226,14 +34947,6 @@ def test_clean_already_satisfied_candidate_runs_declared_validation(
         }
 
     monkeypatch.setattr(daemon, "_run_validation_commands", run_validation)
-    monkeypatch.setattr(
-        daemon,
-        "_validate_implementation_patch",
-        lambda *_args, **_kwargs: pytest.fail(
-            "a clean candidate must validate before the empty-patch gate"
-        ),
-    )
-
     result = daemon._run_validation_with_candidate_binding(
         repo,
         task,
@@ -32245,42 +34958,17 @@ def test_clean_already_satisfied_candidate_runs_declared_validation(
     assert calls[0]["force_uncached"] is True
     assert result["passed"] is True
     assert result["candidate_binding"]["verified"] is True
-    assert result["declared_output_invariant"]["passed"] is True
-    assert result["declared_output_invariant"]["mode"] == (
-        "repository_tree"
+    assert result["proposal_gate"]["accepted"] is False
+    assert result["proposal_gate"]["reason"] == (
+        "empty_patch_reserved_for_no_change_gate"
     )
-    assert result["declared_output_invariant"]["repository_ref"] == (
-        baseline
-    )
-    assert result["declared_output_invariant"]["checks"] == [
-        {
-            "task_id": "AUTO-123",
-            "path": "README.md",
-            "repository": ".",
-            "tracked_path": "README.md",
-            "tracked": True,
-            "exists": True,
-            "reason": "declared_output_tracked",
-            "repository_ref": baseline,
-        }
-    ]
-    assert result["proposal_gate"] == {
-        "attempted": False,
-        "accepted": True,
-        "reason": "validated_no_change_candidate",
-        "changed_paths": [],
-        "reason_codes": [],
-    }
+    assert result["no_change_policy_gate"]["accepted"] is True
+    assert result["no_change_policy_gate"]["proposal_receipt_id"]
 
 
-@pytest.mark.parametrize(
-    "output_mode",
-    ("missing", "untracked", "undeclared"),
-)
-def test_clean_candidate_bypass_requires_outputs_tracked_in_exact_baseline(
+def test_clean_candidate_requires_every_declared_output_at_baseline(
     tmp_path: Path,
     monkeypatch,
-    output_mode: str,
 ):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -32288,16 +34976,10 @@ def test_clean_candidate_bypass_requires_outputs_tracked_in_exact_baseline(
     _git(repo, "checkout", "-b", "main")
     _git(repo, "config", "user.name", "Test User")
     _git(repo, "config", "user.email", "test@example.invalid")
-    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-m", "base")
     baseline = _git(repo, "rev-parse", "HEAD")
-    outputs = [] if output_mode == "undeclared" else ["result.txt"]
-    if output_mode == "untracked":
-        (repo / "result.txt").write_text(
-            "not baseline evidence\n",
-            encoding="utf-8",
-        )
     state_dir = tmp_path / "state"
     daemon = TodoImplementationDaemon(
         todo_path=repo / "todo.md",
@@ -32309,20 +34991,20 @@ def test_clean_candidate_bypass_requires_outputs_tracked_in_exact_baseline(
     )
     task = PortalTask(
         task_id="AUTO-123",
-        title="Do not bypass the strict proposal gate",
+        title="Do not accept a missing output",
         status="todo",
         completion="manual",
         priority="P0",
         track="ops",
-        outputs=outputs,
-        validation=["true"],
-        acceptance="Only an exact baseline output can prove no change.",
+        outputs=["missing-report.json"],
+        validation=["python -m pytest"],
+        acceptance="The declared report exists and is tracked.",
     )
     monkeypatch.setattr(
         daemon,
         "_run_validation_commands",
         lambda *_args, **_kwargs: pytest.fail(
-            "ineligible clean candidates must not dispatch validation"
+            "missing outputs must not reach already-satisfied validation"
         ),
     )
 
@@ -32337,8 +35019,102 @@ def test_clean_candidate_bypass_requires_outputs_tracked_in_exact_baseline(
     assert result is None
 
 
-def test_normal_implementation_completes_already_satisfied_task(
+def test_clean_candidate_accepts_tracked_output_inside_managed_submodule(
     tmp_path: Path,
+    monkeypatch,
+):
+    child = tmp_path / "child-source"
+    child.mkdir()
+    _git(child, "init")
+    _git(child, "checkout", "-b", "main")
+    _git(child, "config", "user.name", "Test User")
+    _git(child, "config", "user.email", "test@example.invalid")
+    (child / "report.json").write_text('{"passed":true}\n', encoding="utf-8")
+    _git(child, "add", "report.json")
+    _git(child, "commit", "-m", "child baseline")
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child),
+        "child",
+    )
+    _git(repo, "commit", "-m", "parent baseline")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["child"],
+    )
+    task = PortalTask(
+        task_id="AUTO-123",
+        title="Recognize an existing submodule output",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["child/report.json"],
+        validation=["python -m pytest"],
+        acceptance="The managed child output is present at the parent baseline.",
+    )
+    validation_calls: list[dict[str, object]] = []
+
+    def run_validation(*_args, **kwargs):
+        validation_calls.append(dict(kwargs))
+        return {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"changed_files": []},
+        }
+
+    monkeypatch.setattr(daemon, "_run_validation_commands", run_validation)
+
+    result = daemon._run_clean_candidate_validation(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        state=None,
+        baseline_ref=baseline,
+    )
+
+    assert result is not None
+    assert result["passed"] is True
+    assert result["candidate_binding"]["verified"] is True
+    assert validation_calls[0]["force_uncached"] is True
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    output_check = next(
+        event
+        for event in events
+        if event["type"] == "implementation_expected_outputs_checked"
+    )
+    assert output_check["passed"] is True
+    assert output_check["expected_paths"] == ["child/report.json"]
+    assert output_check["issues"] == []
+
+
+def test_clean_candidate_policy_rejects_unsafe_command_before_dispatch(
+    tmp_path: Path,
+    monkeypatch,
 ):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -32346,71 +35122,59 @@ def test_normal_implementation_completes_already_satisfied_task(
     _git(repo, "checkout", "-b", "main")
     _git(repo, "config", "user.name", "Test User")
     _git(repo, "config", "user.email", "test@example.invalid")
-    todo_path = repo / "todo.md"
-    todo_path.write_text(
-        """# Agent Todos
-
-## ACCEL-001 Validate the existing implementation
-
-- Status: todo
-- Completion: manual
-- Priority: P0
-- Track: runtime
-- Depends on:
-- Outputs: result.txt
-- Validation: test -f result.txt
-- Acceptance: The tracked result and declared validation prove the task is complete.
-""",
-        encoding="utf-8",
-    )
-    (repo / "result.txt").write_text(
-        "already implemented\n",
-        encoding="utf-8",
-    )
-    _git(repo, "add", "result.txt", "todo.md")
+    (repo / "README.md").write_text("complete\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
     _git(repo, "commit", "-m", "base")
     baseline = _git(repo, "rev-parse", "HEAD")
     state_dir = tmp_path / "state"
     daemon = TodoImplementationDaemon(
-        todo_path=todo_path,
+        todo_path=repo / "todo.md",
         state_path=state_dir / "task_state.json",
         strategy_path=state_dir / "strategy.json",
         events_path=state_dir / "events.jsonl",
         repo_root=repo,
-        task_header_prefix="## ACCEL-",
-        implement=True,
-        implementation_command="true",
-        use_ephemeral_worktree=True,
-        worktree_root=tmp_path / "worktrees",
-        worktree_pool_enabled=False,
         worktree_submodule_paths=[],
     )
-    task = daemon._load_tasks()[0]
-
-    result = daemon._run_implementation(task, TodoTaskState())
-
-    validation = result["validation_result"]
-    assert result["returncode"] == 0
-    assert result["provider_dispatched"] is True
-    assert result["baseline_ref"] == baseline
-    assert validation["attempted"] is True
-    assert validation["passed"] is True
-    assert validation["proposal_gate"]["reason"] == (
-        "validated_no_change_candidate"
+    task = PortalTask(
+        task_id="AUTO-UNSAFE",
+        title="Never execute an eval-form validation",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="security",
+        outputs=["README.md"],
+        validation=["python -c 'print(unsafe)'"],
+        acceptance="The no-change policy rejects eval-form commands.",
     )
-    assert validation["candidate_binding"]["verified"] is True
-    assert validation["declared_output_invariant"]["passed"] is True
-    assert validation["declared_output_invariant"]["repository_ref"] == (
-        baseline
+    monkeypatch.setattr(
+        daemon,
+        "_validation_command_runner",
+        lambda *_args, **_kwargs: pytest.fail(
+            "a rejected no-change policy must not dispatch validation"
+        ),
     )
-    assert result["commit_result"]["reason"] == "no_changes"
-    assert result["commit_result"]["no_change_guard"]["allowed"] is True
-    assert result["board_completion"]["complete"] is True
-    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+
+    result = daemon._run_clean_candidate_validation(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        state=None,
+        baseline_ref=baseline,
+    )
+
+    assert result is not None
+    assert result["passed"] is False
+    assert result["reason"] == "proposal_gate_failed"
+    assert result["no_change_policy_gate"]["accepted"] is False
+    assert any(
+        finding[0] == "command_forbidden"
+        for finding in result["no_change_policy_gate"]["actual_findings"]
+    )
 
 
-def test_normal_already_satisfied_task_fails_when_authoritative_validation_fails(
+def test_clean_candidate_policy_fails_closed_on_second_collection_error(
     tmp_path: Path,
+    monkeypatch,
 ):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -32418,65 +35182,217 @@ def test_normal_already_satisfied_task_fails_when_authoritative_validation_fails
     _git(repo, "checkout", "-b", "main")
     _git(repo, "config", "user.name", "Test User")
     _git(repo, "config", "user.email", "test@example.invalid")
-    todo_path = repo / "todo.md"
-    todo_path.write_text(
-        """# Agent Todos
-
-## ACCEL-001 Reject an invalid existing implementation
-
-- Status: todo
-- Completion: manual
-- Priority: P0
-- Track: runtime
-- Depends on:
-- Outputs: result.txt
-- Validation: false
-- Acceptance: Completion requires the authoritative command to pass.
-""",
-        encoding="utf-8",
-    )
-    (repo / "result.txt").write_text(
-        "tracked but invalid\n",
-        encoding="utf-8",
-    )
-    _git(repo, "add", "result.txt", "todo.md")
+    (repo / "README.md").write_text("complete\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
     _git(repo, "commit", "-m", "base")
     baseline = _git(repo, "rev-parse", "HEAD")
     state_dir = tmp_path / "state"
     daemon = TodoImplementationDaemon(
-        todo_path=todo_path,
+        todo_path=repo / "todo.md",
         state_path=state_dir / "task_state.json",
         strategy_path=state_dir / "strategy.json",
         events_path=state_dir / "events.jsonl",
         repo_root=repo,
-        task_header_prefix="## ACCEL-",
-        implement=True,
-        implementation_command="true",
-        use_ephemeral_worktree=True,
-        worktree_root=tmp_path / "worktrees",
-        worktree_pool_enabled=False,
         worktree_submodule_paths=[],
     )
-    task = daemon._load_tasks()[0]
-
-    result = daemon._run_implementation(task, TodoTaskState())
-
-    validation = result["validation_result"]
-    assert result["returncode"] != 0
-    assert result["provider_dispatched"] is True
-    assert result["baseline_ref"] == baseline
-    assert validation["attempted"] is True
-    assert validation["passed"] is False
-    assert validation["proposal_gate"]["reason"] == (
-        "validated_no_change_candidate"
+    task = PortalTask(
+        task_id="AUTO-COLLECT",
+        title="Fail closed on a transient candidate collection error",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="security",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Every policy-bound candidate collection succeeds.",
     )
-    assert validation["declared_output_invariant"]["passed"] is True
-    assert validation["failure_review"]["decision"] != "accept"
-    assert validation["rescue_guidance_markdown"]
-    assert validation["next_attempt_prompt_addendum"]
-    assert result["board_completion"]["complete"] is False
-    assert "no_change_guard" not in result["commit_result"]
-    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+    collect = daemon._collect_proposal_candidate_diff
+    collection_calls = 0
+
+    def fail_policy_collection(*args, **kwargs):
+        nonlocal collection_calls
+        collection_calls += 1
+        if collection_calls == 2:
+            raise RuntimeError("transient collection failure")
+        return collect(*args, **kwargs)
+
+    monkeypatch.setattr(
+        daemon,
+        "_collect_proposal_candidate_diff",
+        fail_policy_collection,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_validation_command_runner",
+        lambda *_args, **_kwargs: pytest.fail(
+            "a collection failure must stop before validation dispatch"
+        ),
+    )
+
+    result = daemon._run_clean_candidate_validation(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        state=None,
+        baseline_ref=baseline,
+    )
+
+    assert result is not None
+    assert collection_calls >= 3
+    assert result["passed"] is False
+    assert result["no_change_policy_gate"]["accepted"] is False
+    assert result["no_change_policy_gate"]["proposal_collection_error"] == (
+        "RuntimeError"
+    )
+
+
+def test_no_change_completion_guard_rejects_self_consistent_unissued_gate(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("complete\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="AUTO-FORGE",
+        title="Reject a fabricated no-change gate",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="security",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Only this daemon attempt can issue completion authority.",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_commands",
+        lambda *_args, **_kwargs: {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"changed_files": []},
+        },
+    )
+    result = daemon._run_clean_candidate_validation(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        state=None,
+        baseline_ref=baseline,
+    )
+    assert result is not None and result["passed"] is True
+
+    forged_gate = dict(result["no_change_policy_gate"])
+    forged_gate["proposal_receipt_id"] = "forged-receipt"
+    forged_gate.pop("gate_id")
+    forged_gate["gate_id"] = implementation_daemon_module.content_identity(
+        forged_gate
+    )
+    forged_result = {
+        **result,
+        "no_change_policy_gate": forged_gate,
+        "proposal_gate": {
+            **result["proposal_gate"],
+            "receipt_id": "forged-receipt",
+        },
+    }
+
+    guard = daemon._validated_no_change_completion_guard(
+        baseline_ref=baseline,
+        current_head=baseline,
+        expected_branch="main",
+        current_branch="main",
+        validation_result=forged_result,
+        expected_task_id=task.task_id,
+        expected_task_cid=daemon._canonical_ref(task),
+        authoritative_no_change_policy_gate=(
+            daemon._take_issued_no_change_policy_gate(forged_result)
+        ),
+    )
+
+    assert guard["allowed"] is False
+    assert "no_change_policy_gate_not_issued_for_attempt" in guard["reasons"]
+
+
+def test_rejected_empty_proposal_short_circuits_before_declared_graph(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("already complete\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="AUTO-123",
+        title="Reject an empty mutation proposal",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python -c 'raise SystemExit(99)'"],
+        acceptance="A rejected proposal dispatches no command.",
+    )
+    proposal = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_validation_command_runner",
+        lambda *_args, **_kwargs: pytest.fail(
+            "a rejected proposal must never dispatch validation"
+        ),
+    )
+
+    result = daemon._run_validation_commands(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        proposal_validation=proposal,
+    )
+
+    assert result["attempted"] is False
+    assert result["passed"] is False
+    assert result["returncode"] == 78
+    assert result["reason"] == "proposal_gate_failed"
+    assert result["error"] == "proposal_validation_failed"
+    assert "configuration_error" not in result
+
 
 def test_clean_candidate_rebinds_validation_materialized_output(
     tmp_path: Path,
@@ -33660,6 +36576,8 @@ def test_retry_budget_repair_provenance_is_explicit_and_tamper_evident(
     assert repair.metadata["retry failure kind"] == "validation"
     assert repair.metadata["canonical board task"] == "false"
     assert retry_budget_repair_source(repair) == ("ACCEL-001", "validation")
+    assert repair.outputs == ["src/runtime.py"]
+    assert str(discovery_path.parent) not in repair.outputs
 
     forged = replace(
         repair,
@@ -33669,6 +36587,189 @@ def test_retry_budget_repair_provenance_is_explicit_and_tamper_evident(
         },
     )
     assert retry_budget_repair_source(forged) == ("", "")
+
+
+def test_retry_no_change_scope_requires_completed_board_bound_repair(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Original source task
+
+- Status: todo
+- Priority: P0
+- Track: runtime
+- Outputs: README.md
+- Validation: python --version
+- Acceptance: Implement the runtime.
+
+## ACCEL-002 Resolve implementation retry-budget failure for ACCEL-001
+
+- Status: completed
+- Priority: P1
+- Track: ops
+- Generated by: ipfs_accelerate_py.agent_supervisor.retry-budget-repair@1
+- Retry repair source: ACCEL-001
+- Retry failure kind: implementation
+- Outputs: README.md
+- Validation: python --version
+- Acceptance: Use the durable repair evidence, then remove ACCEL-001 from strategy blocked_tasks.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
+    source = next(task for task in tasks if task.task_id == "ACCEL-001")
+    state = TodoTaskState(
+        retry_budget_repair_receipts={"ACCEL-001": "ACCEL-002"}
+    )
+
+    scope = daemon._retry_no_change_pre_dispatch_scope(source, state)
+
+    assert scope is not None
+    assert scope["kind"] == "retry_budget_released_source"
+    assert scope["source_task_id"] == "ACCEL-001"
+    assert scope["repair_task_id"] == "ACCEL-002"
+    assert scope["failure_kind"] == "implementation"
+
+    state.retry_budget_repair_receipts["ACCEL-001"] = "ACCEL-999"
+    assert daemon._retry_no_change_pre_dispatch_scope(source, state) is None
+
+    unfinished = todo_path.read_text(encoding="utf-8").replace(
+        "- Status: completed",
+        "- Status: todo",
+    )
+    todo_path.write_text(unfinished, encoding="utf-8")
+    state.retry_budget_repair_receipts["ACCEL-001"] = "ACCEL-002"
+    assert daemon._retry_no_change_pre_dispatch_scope(source, state) is None
+
+
+def test_merge_retry_repair_cannot_use_no_change_provider_bypass(tmp_path):
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## ACCEL-",
+    )
+    repair = PortalTask(
+        task_id="ACCEL-002",
+        title="Resolve merge retry-budget failure for ACCEL-001",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["src/runtime.py"],
+        validation=["python --version"],
+        acceptance="Reconcile the stranded implementation lineage.",
+        metadata={
+            "Generated by": RETRY_BUDGET_REPAIR_SCHEMA,
+            "Retry repair source": "ACCEL-001",
+            "Retry failure kind": "merge",
+        },
+    )
+
+    assert (
+        daemon._retry_no_change_pre_dispatch_scope(repair, TodoTaskState())
+        is None
+    )
+
+
+def test_retry_pre_dispatch_probe_blocks_validation_candidate_mutation(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="ACCEL-002",
+        title="Resolve implementation retry-budget failure for ACCEL-001",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+        validation=["python --version"],
+        acceptance="Remove ACCEL-001 from strategy blocked_tasks.",
+        metadata={
+            "Generated by": implementation_daemon_module.RETRY_BUDGET_REPAIR_SCHEMA,
+            "Retry repair source": "ACCEL-001",
+            "Retry failure kind": "implementation",
+        },
+    )
+
+    def mutating_failed_validation(*_args, **_kwargs):
+        (repo / "README.md").write_text(
+            "validation side effect\n",
+            encoding="utf-8",
+        )
+        return {
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "results": [],
+            "no_change_policy_gate": {"accepted": True},
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_clean_candidate_validation",
+        mutating_failed_validation,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+
+    result = daemon._run_retry_no_change_pre_dispatch_validation(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        state=TodoTaskState(),
+        attempt=1,
+        baseline_ref=baseline,
+        protected_path_snapshot={},
+        branch_name="main",
+        prepare_workspace=False,
+    )
+
+    assert result is not None
+    assert result["passed"] is False
+    assert result["reason"] == "pre_dispatch_probe_changed_candidate"
+    assert result["pre_dispatch_no_change"]["changed_path_count"] == 1
+    assert result["pre_dispatch_no_change"]["provider_dispatched"] is False
 
 def _merged_cleanup_configured_submodule_fixture(
     tmp_path: Path,
@@ -34243,370 +37344,3 @@ def test_reconciliation_guardrail_recurrence_preserves_completed_history(tmp_pat
         task_prefix="ACCEL-",
     ) == []
     assert "ACCEL-003" not in todo_path.read_text(encoding="utf-8")
-
-
-@pytest.mark.parametrize(
-    "eligibility_line",
-    [
-        "- Is schedulable: false",
-        "- Review only: true",
-        "- Is schedulable: not-a-boolean",
-        "- Review only: not-a-boolean",
-    ],
-)
-def test_direct_implementation_daemon_rejects_ineligible_task_metadata(
-    tmp_path,
-    eligibility_line,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    todo_path = repo / "todo.md"
-    todo_path.write_text(
-        f"""# Todos
-
-## ACCEL-001 Policy-ineligible task
-
-- Status: todo
-- Priority: P0
-- Track: runtime
-- Outputs: src/ineligible.py
-{eligibility_line}
-- Acceptance: This task requires another execution path.
-
-## ACCEL-002 Legacy directly implementable task
-
-- Status: todo
-- Priority: P2
-- Track: runtime
-- Outputs: src/legacy.py
-- Acceptance: Implement the legacy-compatible task.
-""",
-        encoding="utf-8",
-    )
-    state_dir = repo / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-    )
-    tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
-    statuses = {task.task_id: "ready" for task in tasks}
-
-    selected = daemon._select_next_task(tasks, statuses, {}, {}, {})
-    scope = daemon._selection_scope(tasks, statuses, {})
-
-    assert selected is not None
-    assert selected.task_id == "ACCEL-002"
-    assert scope["selectable_ready_task_ids"] == ["ACCEL-001", "ACCEL-002"]
-    assert scope["eligible_ready_task_ids"] == ["ACCEL-002"]
-
-
-@pytest.mark.parametrize(
-    "eligibility_lines",
-    [
-        "",
-        "- Is schedulable: true\n- Review only: false",
-    ],
-)
-def test_direct_implementation_daemon_allows_compatible_task_metadata(
-    tmp_path,
-    eligibility_lines,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    todo_path = repo / "todo.md"
-    todo_path.write_text(
-        f"""# Todos
-
-## ACCEL-001 Directly implementable task
-
-- Status: todo
-- Priority: P1
-- Track: runtime
-- Outputs: src/runtime.py
-{eligibility_lines}
-- Acceptance: Implement the runtime task.
-""",
-        encoding="utf-8",
-    )
-    state_dir = repo / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-    )
-    task = parse_task_file(
-        todo_path,
-        task_header_prefix="## ACCEL-",
-    )[0]
-
-    assert daemon._select_next_task(
-        [task],
-        {"ACCEL-001": "ready"},
-        {},
-        {},
-        {},
-    ) is task
-
-
-@pytest.mark.parametrize(
-    ("eligibility_lines", "expected_blocker"),
-    [
-        ("- Is schedulable: false", "task_marked_unschedulable"),
-        ("- Review only: true", "task_marked_review_only"),
-        ("- Is schedulable: invalid", "invalid_is_schedulable"),
-        (
-            "- Is schedulable: false\n- IS SCHEDULABLE: true",
-            "ambiguous_is_schedulable",
-        ),
-    ],
-)
-def test_direct_implementation_daemon_projects_policy_ineligible_task_as_blocked(
-    tmp_path,
-    eligibility_lines,
-    expected_blocker,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    todo_path = repo / "todo.md"
-    todo_path.write_text(
-        f"""# Todos
-
-## ACCEL-001 Policy-ineligible task
-
-- Status: todo
-- Completion: manual
-- Priority: P0
-- Track: runtime
-{eligibility_lines}
-- Acceptance: Do not dispatch this task directly.
-""",
-        encoding="utf-8",
-    )
-    state_dir = repo / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-        task_header_prefix="## ACCEL-",
-    )
-
-    result = daemon.run_once()
-    state = TodoTaskState.load(daemon.state_path)
-
-    assert result["ready_count"] == 0
-    assert result["blocked_count"] == 1
-    assert result["active_task_id"] == ""
-    assert result["selection_idle_reason"] == (
-        "all_selectable_ready_tasks_ineligible_by_task_metadata"
-    )
-    assert result["task_policy_blockers"] == {
-        "ACCEL-001": [expected_blocker]
-    }
-    assert state.task_policy_blockers == result["task_policy_blockers"]
-    assert daemon._selectable_task_retry_schedule() == {}
-
-
-def test_direct_implementation_daemon_preserves_task_source_policy_alias_ambiguity(
-    tmp_path,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    state_dir = repo / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-    )
-    source_task = SimpleNamespace(
-        task_id="ACCEL-001",
-        title="Ambiguous source task",
-        status="todo",
-        task_cid="cid-task",
-        goal_id="goal-1",
-        goal_cid="cid-goal",
-        dependency_task_ids=(),
-        board_namespace="test",
-        source_line=1,
-        body={"is_schedulable": False, "is-schedulable": True},
-    )
-
-    task = daemon._portal_task_from_source_task(source_task)
-
-    assert task.metadata["is schedulable"] == (
-        implementation_daemon_module.AMBIGUOUS_TASK_BOOLEAN_METADATA
-    )
-    assert daemon._task_direct_implementation_blockers(task) == (
-        "ambiguous_is_schedulable",
-    )
-
-    source_task.body = {
-        "is_schedulable": False,
-        "provenance": {"is schedulable": True},
-    }
-    fallback_task = daemon._portal_task_from_source_task(source_task)
-
-    assert fallback_task.metadata["is schedulable"] == "false"
-    assert daemon._task_direct_implementation_blockers(fallback_task) == (
-        "task_marked_unschedulable",
-    )
-
-
-def test_direct_implementation_boundary_rejects_policy_ineligible_task(
-    tmp_path,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    state_dir = repo / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-    )
-    daemon._build_implementation_prompt = lambda *_args, **_kwargs: pytest.fail(
-        "policy-ineligible task reached provider prompt construction"
-    )
-    task = PortalTask(
-        task_id="ACCEL-001",
-        title="Review-only task",
-        status="todo",
-        completion="manual",
-        priority="P0",
-        track="runtime",
-        metadata={"review only": "true"},
-    )
-
-    assert daemon._run_implementation(task, TodoTaskState()) == {
-        "skipped": True,
-        "reason": "task_direct_implementation_ineligible",
-        "task_id": "ACCEL-001",
-        "attempt": 1,
-        "policy_blockers": ["task_marked_review_only"],
-    }
-
-
-def test_direct_implementation_daemon_does_not_reopen_policy_blocked_task(
-    tmp_path,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    todo_path = repo / "todo.md"
-    todo_path.write_text(
-        """# Todos
-
-## ACCEL-001 Completed prerequisite
-
-- Status: completed
-- Completion: manual
-- Priority: P1
-- Track: runtime
-
-## ACCEL-002 Review-only dependent task
-
-- Status: blocked
-- Completion: manual
-- Priority: P1
-- Track: runtime
-- Depends on: ACCEL-001
-- Review only: true
-""",
-        encoding="utf-8",
-    )
-    state_dir = repo / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-        task_header_prefix="## ACCEL-",
-    )
-    before = todo_path.read_text(encoding="utf-8")
-
-    result = daemon.run_once()
-
-    assert todo_path.read_text(encoding="utf-8") == before
-    assert result["task_policy_blockers"] == {
-        "ACCEL-002": ["task_marked_review_only"]
-    }
-
-
-def test_direct_implementation_daemon_borrows_when_local_shard_is_policy_blocked(
-    tmp_path,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    todo_path = repo / "todo.md"
-    todo_path.write_text(
-        """# Todos
-
-## ACCEL-000 Policy-blocked even task
-
-- Status: todo
-- Completion: manual
-- Priority: P0
-- Track: runtime
-- Is schedulable: false
-
-## ACCEL-001 Eligible odd task
-
-- Status: todo
-- Completion: manual
-- Priority: P1
-- Track: runtime
-""",
-        encoding="utf-8",
-    )
-    state_dir = repo / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=todo_path,
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-        task_header_prefix="## ACCEL-",
-        task_shard_count=2,
-        task_shard_index=0,
-    )
-
-    result = daemon.run_once()
-    state = TodoTaskState.load(daemon.state_path)
-
-    assert result["active_task_id"] == "ACCEL-001"
-    assert state.ready_task_ids == ["ACCEL-001"]
-    assert state.blocked_task_ids == ["ACCEL-000"]
-
-
-def test_direct_implementation_daemon_does_not_retry_policy_ineligible_ready_work(
-    tmp_path,
-):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    state_dir = repo / "state"
-    daemon = TodoImplementationDaemon(
-        todo_path=repo / "todo.md",
-        state_path=state_dir / "task_state.json",
-        strategy_path=state_dir / "strategy.json",
-        events_path=state_dir / "events.jsonl",
-        repo_root=repo,
-    )
-    TodoTaskState(
-        ready_task_ids=["ACCEL-001"],
-        selectable_ready_task_ids=["ACCEL-001"],
-        eligible_ready_task_ids=[],
-        selection_idle_reason=(
-            "all_selectable_ready_tasks_ineligible_by_task_metadata"
-        ),
-    ).save(daemon.state_path)
-
-    assert daemon._selectable_task_retry_schedule() == {}

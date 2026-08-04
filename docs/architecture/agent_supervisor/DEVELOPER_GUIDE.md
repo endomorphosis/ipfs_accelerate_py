@@ -1,5 +1,22 @@
 # Agent Supervisor developer guide
 
+**Status:** Current
+
+**Owner:** agent-supervisor maintainers
+
+**Audience:** Developers and implementation agents extending the supervisor
+
+**Sources:** `ipfs_accelerate_py/agent_supervisor/` domain packages and public
+exports; `ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py`;
+`ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py`; supervisor module
+`--help` output; `test/api/test_agent_supervisor_*.py`
+
+**Last-verified:** 2026-08-03 @ `8e940eb01`; package placement, imports,
+entrypoints, tests, and provider routing rechecked
+
+**Freshness triggers:** package-layout, public-export, daemon/provider,
+entrypoint, control-contract, or supervisor-test changes
+
 Practical guide for engineers and agents who **build on or inside**
 `ipfs_accelerate_py.agent_supervisor`.
 
@@ -7,10 +24,15 @@ Practical guide for engineers and agents who **build on or inside**
 | --- | --- |
 | New developer | This guide → [Philosophy](../AGENT_SUPERVISOR_PHILOSOPHY.md) → [Package map](PACKAGE_MAP.md) |
 | Operator | [Operator guide](../../guides/AGENT_SUPERVISOR_GUIDE.md) |
-| Deep design | [Architecture](../AGENT_SUPERVISOR_ARCHITECTURE.md) |
+| Control contracts | [CONTROL_PLANE.md](CONTROL_PLANE.md) |
+| Lanes / recovery | [EXECUTION_AND_RECOVERY.md](EXECUTION_AND_RECOVERY.md) |
+| Plans / proofs | [PLANNING_AND_ASSURANCE.md](PLANNING_AND_ASSURANCE.md) |
+| Prompt-first composition | [PROMPT_FIRST_RUNTIME.md](PROMPT_FIRST_RUNTIME.md) |
 | Implementation agent | [FOR_AGENTS.md](FOR_AGENTS.md) |
+| PR checklist | [FOR_CONTRIBUTORS.md](FOR_CONTRIBUTORS.md) |
 
-Package entry README: [`ipfs_accelerate_py/agent_supervisor/README.md`](../../../ipfs_accelerate_py/agent_supervisor/README.md).
+Package entry README:
+[`ipfs_accelerate_py/agent_supervisor/README.md`](../../../ipfs_accelerate_py/agent_supervisor/README.md).
 
 ---
 
@@ -39,12 +61,16 @@ ipfs_accelerate_py/agent_supervisor/
   core/ control/ task_sources/ context/ prompt/
   analysis/ proof/ objectives/ planning/ validation/
   merge/ rescue/ runtime/ self_improvement/
-  integrations/ todo_daemon/
+  integrations/ todo_daemon/ entrypoints/
   __init__.py          # reviewed public re-exports + layout inventories
   README.md            # package developer entry
 
 docs/architecture/agent_supervisor/
   DEVELOPER_GUIDE.md   # this file
+  CONTROL_PLANE.md
+  EXECUTION_AND_RECOVERY.md
+  PLANNING_AND_ASSURANCE.md
+  PROMPT_FIRST_RUNTIME.md
   PACKAGE_MAP.md
   packages/*.md        # semantic package pages
   programs/            # long-running program indexes
@@ -60,8 +86,8 @@ scripts/ops/agent_supervisor/           # launch & ops entrypoints
 
 | Namespace | Meaning | Examples |
 | --- | --- | --- |
-| Product / domain | What the system is | `proof/`, control operations |
-| Program / board | How work was scheduled | `## ASI-170`, `## ASREF-G020` |
+| Product / domain | What the system is | `proof/`, `prompt/`, control operations |
+| Program / board | How work was scheduled | `## PREFIX-123` task headers on a board |
 
 Do not put board prefixes into public API names. Boards record *work*; packages
 record *ownership*.
@@ -81,6 +107,9 @@ from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
     OperationRequest,
     OperationResult,
 )
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
+    PromptSupervisorService,
+)
 ```
 
 ### Package-root inventories (semantic)
@@ -97,13 +126,13 @@ from ipfs_accelerate_py.agent_supervisor import (
 
 | Prefer | Avoid as primary name |
 | --- | --- |
-| `AGENT_SUPERVISOR_CORE_PACKAGES` | `AGENT_SUPERVISOR_G020_PACKAGES` |
+| `AGENT_SUPERVISOR_CORE_PACKAGES` | Goal-numbered package aliases |
 | `AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE` | `AGENT_SUPERVISOR_LANDED_MODULE_OWNERS` |
 | `AGENT_SUPERVISOR_PUBLIC_API_EXPORTS` | only `V2_STABLE_EXPORTS` |
-| `AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS` | `AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050` |
+| `AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS` | Evidence-cluster goal aliases |
 
 Deprecated aliases still resolve for compatibility. Board IDs remain **string
-values** (e.g. `"ASREF-G020"`) for scanners.
+values** on boards and scanners—not product API names.
 
 ### Cold import rules
 
@@ -132,8 +161,14 @@ Transport (Python / CLI / MCP)
     → OperationResult (status, effects, receipts)
 ```
 
-All three transports share one operation vocabulary. They differ in **how roots
-and credentials are configured**, not in what operations mean.
+The closed catalog has **31** operations, including prompt-control members
+`workflow_preview`, `workflow_materialize`, `restart`, `rescue_preview`, and
+`rescue`. All three transports share one vocabulary. They differ in **how
+roots and credentials are configured**, not in what operations mean.
+
+Operator surface:
+[AGENT_SUPERVISOR_GUIDE.md](../../guides/AGENT_SUPERVISOR_GUIDE.md).
+Contract depth: [CONTROL_PLANE.md](CONTROL_PLANE.md).
 
 ### Adding or changing an operation
 
@@ -144,8 +179,6 @@ and credentials are configured**, not in what operations mean.
 5. Add conformance tests under `test/api/`.
 6. Do **not** casually expand `AGENT_SUPERVISOR_PUBLIC_API_EXPORTS` — that set is
    a closed generation-2 manifest; treat additions as API review work.
-
-See architecture: *Stable control surface and operating model*.
 
 ---
 
@@ -159,20 +192,23 @@ Use [PACKAGE_MAP.md](PACKAGE_MAP.md). Quick table:
 | Board parse, queue, DuckDB source | `task_sources/` |
 | Prover, attestation, proof cache | `proof/` |
 | Context capsule / decision runtime | `context/` |
+| Prompt scan / plan admission / bootstrap | `prompt/` |
 | Formal plan compile/validate | `planning/` |
 | Proposal validation / pre-merge gate | `validation/` |
 | Merge train, checkout lock, lease | `merge/` |
 | Multi-lane runner, event log | `runtime/` |
 | Implementation daemon loop | `todo_daemon/` |
+| Prompt-first resolvers / run registry | `entrypoints/` |
 | Optional external tool bridge | `integrations/` |
 | Self-improvement epoch / refill | `self_improvement/` |
 | Program board only (no new domain) | `docs/architecture/*.{todo,objectives}.md` |
 
 ### Dependency rules
 
-- Edges flow **up** the DAG (core at bottom; daemons at top).
+- Edges flow **up** the DAG (core at bottom; daemons and `entrypoints` at top).
 - No cycles.
 - `core` must not import `todo_daemon`, `runtime`, `merge`, or `rescue`.
+- Lower domain packages must not import `entrypoints`.
 - Prefer absolute imports:
   `from ipfs_accelerate_py.agent_supervisor.<pkg>.<mod> import …`
 - Relative imports stay within a package (`from .x import y`).
@@ -182,15 +218,17 @@ Use [PACKAGE_MAP.md](PACKAGE_MAP.md). Quick table:
 `AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE` maps historical flat stems to domain
 packages. Root resolution may alias `agent_supervisor.<stem>` →
 `agent_supervisor.<package>.<stem>` for compatibility. **New callers must import
-the domain path.**
+the domain path** (for example
+`agent_supervisor.prompt.prompt_workflow`, not a flat `prompt_workflow`).
 
 ---
 
 ## 6. Programs vs packages
 
-A **program** is a long-running effort with boards and objectives (self-improvement,
-codebase-proof, domain layout, Goose, catalog, …). It is **not** a second
-supervisor and usually **not** a top-level package named after the prefix.
+A **program** is a long-running effort with boards and objectives
+(self-improvement, codebase-proof, domain layout, catalog, …). It is **not** a
+second supervisor and usually **not** a top-level package named after a board
+prefix.
 
 1. Keep/add `docs/architecture/<program>.{objectives,todo}.md`.
 2. Register the glossary row in [PROGRAMS.md](PROGRAMS.md).
@@ -202,7 +240,7 @@ supervisor and usually **not** a top-level package named after the prefix.
 
 ## 7. Implementation daemons and lanes
 
-High-level loop (see also architecture *Execution daemons*):
+High-level loop (see also [EXECUTION_AND_RECOVERY.md](EXECUTION_AND_RECOVERY.md)):
 
 1. Parse taskboard + apply shard / ready / dependency filters.
 2. Claim a task; create or reuse a fenced worktree.
@@ -222,32 +260,80 @@ When debugging:
 Ops entrypoints: `scripts/ops/agent_supervisor/` and the
 [operator guide](../../guides/AGENT_SUPERVISOR_GUIDE.md).
 
-Default provider env (ops may override):
+Default provider route:
 
-| Path | Typical setting |
+| Stage | Setting / behavior |
 | --- | --- |
-| Grok-first; Codex only during a durable Grok quota latch | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok_quota_codex` |
-| Legacy availability-based Grok/Codex selection | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=auto` |
-| Codex | `IPFS_ACCELERATE_AGENT_CODEX_MODEL=…` |
+| Production quota router | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok_quota_codex` |
+| Primary | Authenticated Grok CLI with exact `grok-4.5` |
+| Quota-only fallback | Daemon-pinned `gpt-5.6-terra`, reasoning `medium`, only after independently signed quota authority and only on the corresponding fresh retry |
+| Legacy compatibility | Unset / `auto` is availability-based; do not use it when quota-only fallback authority is required |
+| Explicit Grok | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok`; forced Grok with no fallback |
 
-The quota-routed policy binds Grok to `grok-4.5` and its only implementation
-fallback to direct `gpt-5.6-terra` with `medium` reasoning. It does not use
-Codex for missing Grok auth, a missing binary, generic provider failures,
-timeouts, malformed responses, or validation failures, and it never promotes
-Copilot into that route.
+Direct `codex` / `openai` selection is not the fallback path. Missing auth,
+predispatch unavailability, and non-quota Grok failures fail closed on the
+default route. General Codex model and reasoning environment variables affect
+direct Codex selection; they do not redefine either quota-only fallback.
+
+`grok_quota_codex` persists independently signed daemon quota authority,
+defers and releases the Grok attempt, and
+selects Terra only for the associated retry in a fresh fenced worktree. The
+hyphenated `grok-quota-codex` spelling and the `_fallback` / `-fallback`
+spellings are accepted compatibility aliases.
+
+The legacy in-runner `auto` path runs Grok in a capability-restricted outer
+container that withholds peer-provider credentials, configuration, binaries,
+and runtime sockets. Only the active worktree and Grok's ephemeral state are
+writable. Explicit Grok selection may use the native custom sandbox where it
+is enforceable. Grok necessarily retains access
+to its own authentication and state; the container is a peer-provider and
+execution-capability boundary, not a confidentiality boundary against Grok
+itself. The fixed model tool surface permits repository read/search/edit
+operations but no arbitrary shell, web, MCP meta-tools, memory, or subagents;
+the supervisor runs validation outside that boundary. The Codex argv stays
+with the parent runner and uses its own workspace-write sandbox. A fallback
+requires an unchanged parent-computed workspace fingerprint, a
+quota-correlated terminal record from the primary session, and a fresh,
+tool-free `grok-4.5` quota probe; streamed or model-authored text is never
+sufficient. Missing isolation or ambiguous termination fails closed, and an
+out-of-process cleanup watchdog reaps the isolated container and temporary
+state.
+
+That compatibility path is not the production supervisor quota-authority
+policy. The production policy binds Grok to `grok-4.5` and its only
+implementation fallback to direct `gpt-5.6-terra` with `medium` reasoning.
+It does not use Codex for missing Grok auth, a missing binary, generic provider
+failures, timeouts, malformed responses, or validation failures, and never
+promotes Copilot into the route. The runner's private receipt and reserved
+exit status remain untrusted candidates: only the daemon's independently
+signed, invocation/task/account/pool-bound verifier authorizes the fresh retry.
+The supervisor must never attach `--codex-fallback-command-json` to
+`grok_quota_codex`.
 
 ---
 
-## 8. Evidence and validation
+## 8. Prompt and entrypoints layer
+
+| Layer | Status | Use for |
+| --- | --- | --- |
+| `prompt/` + control ops | Landed | `workflow_preview` / materialize / rescue today |
+| `entrypoints/` resolvers, broker, run registry | Landed library | Compose targets/profiles without shell flags |
+| Product `Supervisor.open()` / CLI facade | Planned | See [PROMPT_FIRST_RUNTIME.md](PROMPT_FIRST_RUNTIME.md) |
+
+Do not reintroduce flat module re-exports as the documented import path.
+
+---
+
+## 9. Evidence and validation
 
 Typed evidence classes must not be collapsed:
 
-- unit/integration tests  
-- runtime observations / metrics  
-- static analysis findings  
-- solver candidates  
-- kernel-checked proofs  
-- cryptographic attestations  
+- unit/integration tests
+- runtime observations / metrics
+- static analysis findings
+- solver candidates
+- kernel-checked proofs
+- cryptographic attestations
 
 Cache hits **re-derive** assurance; they do not invent it.
 
@@ -266,25 +352,32 @@ python -m pytest \
   test/api/test_agent_supervisor_semantic_layout_exports.py -q
 ```
 
+Primary-doc vocabulary guard:
+
+```bash
+python scripts/docs/check_agent_supervisor_docs.py
+```
+
 ---
 
-## 9. Documentation obligations
+## 10. Documentation obligations
 
 Non-trivial changes should update:
 
 | Change type | Docs to touch |
 | --- | --- |
 | New/moved module | Owning package `README.md` + `packages/<name>.md` if semantic page lags |
-| New public operation | Architecture control section, operator guide examples |
+| New public operation | CONTROL_PLANE, operator guide examples |
 | Authority / evidence rule | Philosophy + agent capsule |
 | Package placement rule | PACKAGE_MAP + this guide |
 | New program | PROGRAMS.md + program plan |
+| Prompt-first facade | PROMPT_FIRST_RUNTIME |
 
 Checklist: [FOR_CONTRIBUTORS.md](FOR_CONTRIBUTORS.md).
 
 ---
 
-## 10. Common pitfalls
+## 11. Common pitfalls
 
 1. **Flat imports** after domain layout — use domain paths.
 2. **Treating import success as capability** — always probe.
@@ -293,15 +386,17 @@ Checklist: [FOR_CONTRIBUTORS.md](FOR_CONTRIBUTORS.md).
 5. **Expanding v2 export manifests casually** — closed sets need review.
 6. **Putting daemon logic in `core`/`proof`** — wrong DAG layer.
 7. **Assuming local tests equal kernel proof** — different evidence tiers.
+8. **Importing `entrypoints` from lower packages** — facade is top-edge only.
 
 ---
 
-## 11. Where to go next
+## 12. Where to go next
 
 | Topic | Document |
 | --- | --- |
 | Design pillars & authority ladder | [Philosophy](../AGENT_SUPERVISOR_PHILOSOPHY.md) |
 | Subsystems, leases, formal planning | [Architecture](../AGENT_SUPERVISOR_ARCHITECTURE.md) |
+| Control catalog & transports | [CONTROL_PLANE.md](CONTROL_PLANE.md) |
 | CLI / MCP / profiles / recovery | [Operator guide](../../guides/AGENT_SUPERVISOR_GUIDE.md) |
 | Package ownership | [PACKAGE_MAP.md](PACKAGE_MAP.md) |
 | Board prefix glossary | [PROGRAMS.md](PROGRAMS.md) |

@@ -100,19 +100,347 @@ def _missing_capabilities(requires: Iterable[Any], supported: Iterable[Any]) -> 
     return sorted(missing)
 
 
+# ---------------------------------------------------------------------------
+# MCP-IDL content identity profile (SCA-608 / SCAEV181MCPRUNTIME)
+# ---------------------------------------------------------------------------
+# Pseudo-identities of the form ``cidv1-sha256-<hex>`` are rejected.  Every
+# interface CID is a real multiformats CIDv1 with explicit profile metadata.
+# Cross-package (accelerator / kit / datasets) profiles are never silently
+# equated; this profile is MCP-IDL specific.
+
+IDL_IDENTITY_PROFILE: str = "mcp-idl-identity-v1"
+IDL_IDENTITY_PROFILE_ID: str = "ContentIdentityProfile/mcp-idl-identity-v1"
+IDL_IDENTITY_SCHEMA: str = (
+    "ipfs_accelerate_py/mcp-server/mcplusplus/idl-identity@1"
+)
+IDL_CID_VERSION: int = 1
+IDL_CID_MULTIBASE: str = "base32"
+IDL_CID_MULTICODEC: str = "raw"
+IDL_CID_MULTIHASH: str = "sha2-256"
+IDL_PSEUDO_CID_PREFIX: str = "cidv1-sha256-"
+
+
+class IDLIdentityError(ValueError):
+    """Fail-closed IDL identity / CID validation error."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason_code: str = "idl_identity_error",
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        super().__init__(message)
+        self.reason_code = reason_code
+        self.details = dict(details or {})
+
+
+@dataclass(frozen=True)
+class InterfaceIdentity:
+    """Profile-tagged identity for one MCP-IDL interface descriptor.
+
+    ``cid`` is always a decodable multiformats CIDv1.  Plain digests live only
+    in ``digest`` (``sha256:<hex>``) and are never accepted as CIDs.
+    """
+
+    profile: str
+    profile_id: str
+    canonical_bytes: bytes
+    byte_length: int
+    digest: str
+    cid: str
+    cid_version: int
+    multibase: str
+    multicodec: str
+    multihash: str
+    validated: bool = True
+    reason_codes: tuple[str, ...] = ()
+    schema: str = IDL_IDENTITY_SCHEMA
+
+    def to_dict(self, *, include_canonical_bytes: bool = False) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "schema": self.schema,
+            "profile": self.profile,
+            "profile_id": self.profile_id,
+            "byte_length": self.byte_length,
+            "digest": self.digest,
+            "cid": self.cid,
+            "cid_version": self.cid_version,
+            "multibase": self.multibase,
+            "multicodec": self.multicodec,
+            "multihash": self.multihash,
+            "validated": self.validated,
+            "reason_codes": list(self.reason_codes),
+        }
+        if include_canonical_bytes:
+            payload["canonical_bytes_hex"] = self.canonical_bytes.hex()
+        return payload
+
+    @property
+    def hexdigest(self) -> str:
+        return self.digest.removeprefix("sha256:")
+
+
 def canonicalize_descriptor(descriptor: Dict[str, Any]) -> bytes:
-    """Return deterministic canonical bytes for an interface descriptor."""
-    return json.dumps(descriptor, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    """Return deterministic canonical bytes for an interface descriptor.
+
+    Canonicalization is part of the ``mcp-idl-identity-v1`` profile and must
+    remain stable: sorted keys, compact separators, ASCII-only JSON.
+    """
+    return json.dumps(
+        descriptor, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("utf-8")
+
+
+def _require_multiformats() -> Any:
+    try:
+        from multiformats import CID, multihash  # type: ignore[attr-defined]
+    except Exception as exc:  # noqa: BLE001 - normalize optional dependency
+        raise IDLIdentityError(
+            "multiformats is required for MCP-IDL CID operations",
+            reason_code="multiformats_unavailable",
+            details={"cause": repr(exc)},
+        ) from exc
+    return CID, multihash
+
+
+def is_pseudo_interface_cid(value: Any) -> bool:
+    """Return True when *value* is a digest-shaped pseudo-CID placeholder."""
+
+    if not isinstance(value, str) or not value:
+        return False
+    text = value.strip()
+    if text.startswith(IDL_PSEUDO_CID_PREFIX):
+        body = text[len(IDL_PSEUDO_CID_PREFIX) :]
+        return len(body) == 64 and all(
+            ch in "0123456789abcdefABCDEF" for ch in body
+        )
+    if text.startswith("sha256:"):
+        body = text[len("sha256:") :]
+        return len(body) == 64 and all(
+            ch in "0123456789abcdefABCDEF" for ch in body
+        )
+    if len(text) == 64 and all(ch in "0123456789abcdefABCDEF" for ch in text):
+        return True
+    return False
+
+
+def _sha256_hex(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _mint_raw_cid(canonical_bytes: bytes) -> str:
+    """Mint a lowercase base32 CIDv1/raw/sha2-256 for *canonical_bytes*."""
+
+    if not isinstance(canonical_bytes, (bytes, bytearray, memoryview)):
+        raise TypeError("canonical_bytes must be bytes-like")
+    retained = bytes(canonical_bytes)
+    CID, multihash = _require_multiformats()
+    digest = multihash.digest(retained, IDL_CID_MULTIHASH)
+    cid = CID(IDL_CID_MULTIBASE, IDL_CID_VERSION, IDL_CID_MULTICODEC, digest)
+    text = str(cid)
+    if text != text.lower():
+        raise IDLIdentityError(
+            "CID must be lowercase base32",
+            reason_code="cid_not_lowercase",
+            details={"cid": text},
+        )
+    return text
 
 
 def compute_interface_cid(descriptor: Dict[str, Any]) -> str:
-    """Compute stable content-addressed identifier for descriptor bytes.
+    """Compute a decodable CIDv1 for descriptor bytes under the IDL profile.
 
-    The implementation uses a deterministic SHA-256 digest representation as a
-    lightweight CID placeholder for current migration phases.
+    Returns a multiformats CIDv1 (base32 / raw / sha2-256) whose multihash
+    digest equals SHA-256 of :func:`canonicalize_descriptor` output.  Never
+    returns a ``cidv1-sha256-<hex>`` pseudo-identity.
     """
-    digest = hashlib.sha256(canonicalize_descriptor(descriptor)).hexdigest()
-    return f"cidv1-sha256-{digest}"
+    return identify_interface_descriptor(descriptor).cid
+
+
+def identify_interface_descriptor(
+    descriptor: Dict[str, Any],
+    *,
+    validate: bool = True,
+) -> InterfaceIdentity:
+    """Return profile-tagged identity for an MCP-IDL interface descriptor."""
+
+    if not isinstance(descriptor, dict):
+        raise IDLIdentityError(
+            "descriptor must be an object",
+            reason_code="descriptor_not_object",
+        )
+    canonical = canonicalize_descriptor(descriptor)
+    cid = _mint_raw_cid(canonical)
+    identity = InterfaceIdentity(
+        profile=IDL_IDENTITY_PROFILE,
+        profile_id=IDL_IDENTITY_PROFILE_ID,
+        canonical_bytes=canonical,
+        byte_length=len(canonical),
+        digest=f"sha256:{_sha256_hex(canonical)}",
+        cid=cid,
+        cid_version=IDL_CID_VERSION,
+        multibase=IDL_CID_MULTIBASE,
+        multicodec=IDL_CID_MULTICODEC,
+        multihash=IDL_CID_MULTIHASH,
+        validated=False,
+        reason_codes=("mcp_idl_identity_v1",),
+    )
+    if validate:
+        return validate_interface_identity(identity)
+    return identity
+
+
+def validate_interface_cid(
+    cid_text: str,
+    canonical_bytes: bytes,
+    *,
+    expected_profile: str = IDL_IDENTITY_PROFILE,
+) -> Dict[str, Any]:
+    """Decode *cid_text* and require its raw digest equals SHA-256 of *bytes*.
+
+    Rejects pseudo-CIDs, digest-shaped strings, codec/base/version mismatches,
+    and multihash preimage mismatches.  Fails closed when multiformats is
+    unavailable.
+    """
+
+    if is_pseudo_interface_cid(cid_text):
+        raise IDLIdentityError(
+            "pseudo or digest-shaped interface CID is not a multiformat CID",
+            reason_code="pseudo_cid_rejected",
+            details={"cid_prefix": str(cid_text)[:24]},
+        )
+    if not isinstance(cid_text, str) or not cid_text or cid_text != cid_text.lower():
+        raise IDLIdentityError(
+            "CID must be a nonempty lowercase string",
+            reason_code="cid_not_lowercase",
+        )
+    if not isinstance(canonical_bytes, (bytes, bytearray, memoryview)):
+        raise TypeError("canonical_bytes must be bytes-like")
+    retained = bytes(canonical_bytes)
+
+    CID, multihash = _require_multiformats()
+    try:
+        parsed = CID.decode(cid_text)
+    except Exception as exc:
+        raise IDLIdentityError(
+            "CID is not decodable",
+            reason_code="cid_not_decodable",
+            details={"cid": cid_text, "cause": repr(exc)},
+        ) from exc
+
+    expected_digest = hashlib.sha256(retained).digest()
+    expected_size = multihash.get(IDL_CID_MULTIHASH).max_digest_size
+    raw_digest = bytes(parsed.raw_digest)
+
+    failures: List[str] = []
+    if int(parsed.version) != IDL_CID_VERSION:
+        failures.append("cid_version_mismatch")
+    if parsed.base.name != IDL_CID_MULTIBASE:
+        failures.append("multibase_mismatch")
+    if parsed.codec.name != IDL_CID_MULTICODEC:
+        failures.append("multicodec_mismatch")
+    if parsed.hashfun.name != IDL_CID_MULTIHASH:
+        failures.append("multihash_mismatch")
+    if expected_size is not None and len(raw_digest) != expected_size:
+        failures.append("digest_size_mismatch")
+    if raw_digest != expected_digest:
+        failures.append("multihash_digest_mismatch")
+    if str(parsed) != cid_text:
+        failures.append("cid_roundtrip_mismatch")
+
+    if failures:
+        raise IDLIdentityError(
+            "interface CID failed decode/preimage verification: "
+            + ",".join(failures),
+            reason_code=failures[0],
+            details={
+                "cid": cid_text,
+                "expected_profile": expected_profile,
+                "expected_digest": expected_digest.hex(),
+                "raw_digest": raw_digest.hex(),
+                "failures": failures,
+            },
+        )
+
+    return {
+        "schema": IDL_IDENTITY_SCHEMA,
+        "profile": expected_profile,
+        "profile_id": IDL_IDENTITY_PROFILE_ID,
+        "cid": cid_text,
+        "cid_version": int(parsed.version),
+        "multibase": parsed.base.name,
+        "multicodec": parsed.codec.name,
+        "multihash": parsed.hashfun.name,
+        "raw_digest": raw_digest.hex(),
+        "digest": f"sha256:{expected_digest.hex()}",
+        "byte_length": len(retained),
+        "validated": True,
+        "reason_codes": ["cid_verified", "mcp_idl_identity_v1"],
+    }
+
+
+def validate_interface_identity(identity: InterfaceIdentity) -> InterfaceIdentity:
+    """Revalidate an :class:`InterfaceIdentity` against its retained bytes."""
+
+    if identity.profile != IDL_IDENTITY_PROFILE:
+        raise IDLIdentityError(
+            f"unsupported IDL identity profile: {identity.profile!r}",
+            reason_code="unknown_idl_profile",
+            details={"profile": identity.profile},
+        )
+    result = validate_interface_cid(
+        identity.cid,
+        identity.canonical_bytes,
+        expected_profile=identity.profile,
+    )
+    reason_codes = tuple(
+        dict.fromkeys((*identity.reason_codes, *result["reason_codes"]))
+    )
+    return InterfaceIdentity(
+        profile=identity.profile,
+        profile_id=identity.profile_id,
+        canonical_bytes=identity.canonical_bytes,
+        byte_length=identity.byte_length,
+        digest=identity.digest,
+        cid=identity.cid,
+        cid_version=identity.cid_version,
+        multibase=identity.multibase,
+        multicodec=identity.multicodec,
+        multihash=identity.multihash,
+        validated=True,
+        reason_codes=reason_codes,
+        schema=identity.schema,
+    )
+
+
+def idl_identity_profile() -> Dict[str, Any]:
+    """Return the explicit shared MCP-IDL identity profile metadata."""
+
+    return {
+        "schema": IDL_IDENTITY_SCHEMA,
+        "profile": IDL_IDENTITY_PROFILE,
+        "profile_id": IDL_IDENTITY_PROFILE_ID,
+        "cid_version": IDL_CID_VERSION,
+        "multibase": IDL_CID_MULTIBASE,
+        "multicodec": IDL_CID_MULTICODEC,
+        "multihash": IDL_CID_MULTIHASH,
+        "canonicalization": {
+            "encoding": "utf-8",
+            "json": {
+                "sort_keys": True,
+                "separators": [",", ":"],
+                "ensure_ascii": True,
+            },
+            "preimage": "canonicalize_descriptor",
+        },
+        "policies": {
+            "pseudo_cid_allowed": False,
+            "digest_labeled_as_cid_allowed": False,
+            "cross_package_profile_equality_allowed": False,
+            "decoded_multihash_must_match_canonical_bytes": True,
+        },
+    }
 
 
 def build_descriptor(
@@ -2215,7 +2543,16 @@ __all__ = [
     "AI_USAGE_SCHEMA_REVISION",
     "AI_USAGE_VERSION",
     "CompatibilityVerdict",
+    "IDL_CID_MULTIBASE",
+    "IDL_CID_MULTICODEC",
+    "IDL_CID_MULTIHASH",
+    "IDL_CID_VERSION",
+    "IDL_IDENTITY_PROFILE",
+    "IDL_IDENTITY_PROFILE_ID",
+    "IDL_IDENTITY_SCHEMA",
+    "IDLIdentityError",
     "IDLValidationError",
+    "InterfaceIdentity",
     "InterfaceUpgradeRequired",
     "InterfaceDescriptorRegistry",
     "ai_catalog_v1_input_schemas",
@@ -2228,10 +2565,15 @@ __all__ = [
     "build_descriptor",
     "canonicalize_descriptor",
     "compute_interface_cid",
+    "identify_interface_descriptor",
+    "idl_identity_profile",
+    "is_pseudo_interface_cid",
     "register_ai_catalog_v1",
     "register_ai_usage_v1",
     "resolve_ai_catalog_operation",
     "usage_control_authorities",
     "usage_control_reason_codes",
     "validate_ai_catalog_payload",
+    "validate_interface_cid",
+    "validate_interface_identity",
 ]

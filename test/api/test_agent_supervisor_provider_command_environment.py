@@ -165,6 +165,12 @@ def test_grok_runner_exposes_sealed_wrapper_and_contract_digest(
     real_run = subprocess.run
     captured: dict[str, object] = {}
 
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_select_grok_isolation_backend",
+        lambda **_kwargs: grok_cli_runner.GROK_ISOLATION_GROK_SANDBOX,
+    )
+
     def fake_run(command, **kwargs):
         environment = dict(kwargs["env"])
         wrapper = environment[PROVIDER_COMMAND_ENV_WRAPPER_ENV]

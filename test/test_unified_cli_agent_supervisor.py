@@ -52,6 +52,58 @@ def _binding(repo_root: Path, state_root: Path) -> dict[str, Any]:
     }
 
 
+def _parity_parameters(operation: Operation) -> dict[str, Any]:
+    """Return a valid fixture for operations with closed parameter schemas."""
+
+    if operation is Operation.WORKFLOW_PREVIEW:
+        return {
+            "directory": "docs",
+            "prompt_source": {
+                "kind": "inline",
+                "inline_text": "Validate CLI and Python execution parity.",
+            },
+        }
+    if operation is Operation.WORKFLOW_MATERIALIZE:
+        return {
+            "preview_ref": "receipt:preview",
+            "preview_root": "plan:root",
+            "preview_repository_id": "repo:fixture",
+            "preview_tree_id": "tree:abc",
+            "preview_objective_id": "ASI-G103",
+            "preview_objective_revision": "objective:1",
+            "preview_policy_id": "policy:control",
+            "preview_policy_revision": "policy:1",
+        }
+    if operation in {Operation.RESCUE_PREVIEW, Operation.RESCUE}:
+        parameters: dict[str, Any] = {
+            "incident_cid": "incident:fixture",
+            "incident_root": "incident-root:fixture",
+            "incident_repository_id": "repo:fixture",
+            "incident_tree_id": "tree:abc",
+            "incident_objective_id": "ASI-G103",
+            "incident_objective_revision": "objective:1",
+            "incident_policy_id": "policy:control",
+            "incident_policy_revision": "policy:1",
+        }
+        if operation is Operation.RESCUE:
+            parameters.update(
+                {
+                    "rescue_plan_cid": "rescue-plan:fixture",
+                    "rescue_plan_root": "rescue-plan-root:fixture",
+                    "rescue_plan_incident_cid": "incident:fixture",
+                    "rescue_plan_tree_id": "tree:abc",
+                    "action_index": 0,
+                }
+            )
+        return parameters
+    if operation.mutating:
+        return {
+            "target_id": "supervisor:fixture",
+            "reason": "exhaustive CLI parity validation",
+        }
+    return {}
+
+
 def _request(
     repo_root: Path,
     state_root: Path,
@@ -296,6 +348,7 @@ def test_every_cli_operation_has_exact_python_execution_parity(
     }
 
     for operation in sorted(Operation, key=lambda item: item.value):
+        parameters = _parity_parameters(operation)
         if operation.mutating:
             effect = ExpectedEffect(
                 effect_id=f"{operation.value}:parity",
@@ -307,15 +360,17 @@ def test_every_cli_operation_has_exact_python_execution_parity(
             request = OperationRequest(
                 operation=operation,
                 **_binding(repo_root, state_root),
-                parameters={
-                    "target_id": "supervisor:fixture",
-                    "reason": "exhaustive CLI parity validation",
-                },
+                parameters=parameters,
                 expected_effects=(effect,),
                 dry_run=True,
             )
         else:
-            request = _request(repo_root, state_root, operation)
+            request = _request(
+                repo_root,
+                state_root,
+                operation,
+                parameters=parameters,
+            )
 
         python_record = service.execute(request).to_record()
         code, cli_record = _invoke(

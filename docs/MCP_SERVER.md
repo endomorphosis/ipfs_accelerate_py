@@ -1,22 +1,277 @@
-# MCP Server: AI Catalog and Router Tools
+# MCP Server Reference
 
-The canonical MCP runtime is `ipfs_accelerate_py.mcp_server`. Its AI tools
-separate catalog information from router invocation and carry the selected
-catalog revision across both planes.
+**Status:** Current
 
-- Catalog tools query the `ModelManager` facade. They never invoke a provider.
-- Invocation tools resolve one immutable revision, then call the owning LLM,
-  embeddings, multimodal, or voice router.
-- MCP++ `ai.catalog.v1` publishes the same eleven canonical operations with
-  bounded schemas and separate read, refresh, and invoke authorities.
+**Owner:** MCP maintainers
 
-For server installation and transport startup, see
-[MCP setup](guides/MCP_SETUP_GUIDE.md) and the
-[runtime README](../ipfs_accelerate_py/mcp_server/README.md).
+**Audience:** Operators, integrators, and agents selecting or embedding the MCP
+runtime
 
-## Canonical tools
+**Scope:** Canonical package identity, startup entry points, install extras,
+configuration, transports, tool discovery, AI catalog/router tools, security
+gates, compatibility migration, and auto-install caveats
 
-Catalog query tools:
+**Non-goals:** Full MCP++ chapter checklists (`mcpplusplus/`); architecture
+internals beyond operator-needed maps (see
+[MCP runtime architecture](architecture/MCP_RUNTIME.md)); agent-supervisor
+control-plane design
+
+**Sources:** `requirements.txt`; `pyproject.toml`;
+`ipfs_accelerate_py/mcp_server/`; `ipfs_accelerate_py/mcp/`;
+`ipfs_accelerate_py/cli.py`; `docs/architecture/MCP_RUNTIME.md`
+
+**Last-verified:** 2026-08-03 @ `d5f3aa5c6`; entrypoints, dependency metadata,
+fixed HTTP routes, tests, environment keys, and side-effect notes rechecked
+
+**Freshness triggers:** changes to base dependencies or MCP extras; MCP route,
+configuration, transport, CLI, compatibility, or catalog-test changes
+
+## Package identity
+
+| Package | Role | Prefer for |
+| --- | --- | --- |
+| `ipfs_accelerate_py.mcp_server` | **Canonical** registry, server construct, FastAPI host, MCP++ primitives | New integrations, embedding, production HTTP hosting |
+| `ipfs_accelerate_py.mcp` | **Compatibility facade** for historical imports and the task-worker CLI | Legacy callers mid-migration only |
+| `ipfs_accelerate_py.mcplusplus_module` | Alternate Trio-first MCP++ surface | Existing Trio hosts; keep business logic in `mcp_server` |
+| `mcpplusplus/` | Spec/conformance records | Evidence — not an importable runtime |
+
+**Selection rule:** start and embed through `ipfs_accelerate_py.mcp_server`.
+Do not treat `ipfs_accelerate_py.mcp` as the ownership target. Compatibility
+paths default to the unified runtime when not forced onto the legacy wrapper,
+but they still carry import-time auto-install side effects and facade
+telemetry.
+
+Deep runtime, dispatch, and trust-ladder detail lives in
+[MCP runtime architecture](architecture/MCP_RUNTIME.md). Package module notes
+are in the [canonical server README](../ipfs_accelerate_py/mcp_server/README.md).
+
+## Install extras
+
+Running an MCP service is optional, but the current packaging metadata does
+**not** isolate its core dependencies from the base install. `pyproject.toml`
+loads base dependencies from `requirements.txt`, which already names FastMCP,
+Flask, Flask-CORS, Werkzeug, and PyGithub. The canonical server code is also
+part of the package. The `mcp` extra repeats those dependencies and adds
+`async-timeout`; it is an explicit feature-selection signal, not the boundary
+that first installs the MCP host.
+
+```bash
+python -m pip install "ipfs-accelerate-py[mcp]"
+```
+
+The canonical FastAPI entrypoint imports FastAPI and Uvicorn. They are not
+listed directly in the current `mcp` extra, although a resolver may install
+them transitively through FastMCP. For a locked environment, verify those two
+imports or install/pin them explicitly. This packaging mismatch is code-owned;
+documentation must not imply that `[mcp]` is a complete isolation boundary.
+
+| Extra | What it adds | What it does **not** prove |
+| --- | --- | --- |
+| Base dependencies | Currently include FastMCP, Flask/Werkzeug, Flask-CORS, and PyGithub | That an MCP process is running or configured |
+| `mcp` | Repeats the base MCP/Flask set and adds `async-timeout` | A complete dependency boundary, live peer, GPU, IPFS node, or auth boundary |
+| `mcp-p2p` / `libp2p` | libp2p, protobuf, multihash, dnspython | Reachable mesh, queue durability, or tool authority |
+| `all` | Broad application deps including FastMCP, **without** native P2P by default | Full production readiness |
+
+Install extras explicitly in production images. Do not rely on import-time
+auto-install (see [Auto-install and optional dependencies](#auto-install-and-optional-dependencies)).
+
+## Canonical startup (preferred)
+
+Use one of these paths first. They stay inside the canonical package and do
+not require the historical `mcp` CLI.
+
+### 1. Standalone FastAPI host (HTTP MCP)
+
+```bash
+export IPFS_MCP_HOST=127.0.0.1
+export IPFS_MCP_PORT=8000
+# Optional: attach hierarchical meta-tools and MCP++ services
+export IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP=1
+python -m ipfs_accelerate_py.mcp_server.fastapi_service
+```
+
+Health endpoints on this host:
+
+| Path | Purpose |
+| --- | --- |
+| `GET /healthz` | Process liveness |
+| `GET /mcp/health` | MCP service + tool-count summary |
+
+The canonical FastAPI service currently defines its JSON-RPC and tool routes at
+the fixed `/mcp` prefix. `IPFS_MCP_MOUNT_PATH` only controls where the wrapper's
+minimal sub-application is mounted; it does **not** relocate `/mcp`,
+`/mcp/health`, or `/mcp/tools/*`. Leave the default in place unless you are
+embedding and have tested that wrapper mount separately. Keep development
+servers on localhost unless authentication, TLS, firewall, and resource limits
+are configured.
+
+### 2. Programmatic construction
+
+```python
+from ipfs_accelerate_py.mcp_server import create_server
+
+server = create_server(
+    name="ipfs-accelerate",
+    host="127.0.0.1",
+    port=8000,
+    mount_path="/mcp",
+)
+# Mount a functional transport (for example the FastAPI service) or call
+# server.run(...) only when the returned object exposes a verified run path.
+```
+
+`create_server` builds the canonical wrapper and, when
+`IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP=1`, attaches the hierarchical registry,
+meta-tools, and MCP++ service factories. Bootstrap is **off by default**;
+without it you get the base server without the unified meta-tool control plane.
+
+### 3. Product CLI (operator surface)
+
+```bash
+python -m ipfs_accelerate_py.cli mcp start --host 127.0.0.1 --port 9000
+python -m ipfs_accelerate_py.cli mcp status --host 127.0.0.1 --port 9000
+```
+
+When the `ipfs-accelerate` console script is installed, the same commands are
+`ipfs-accelerate mcp start|status|dashboard`. Default bind port for this CLI is
+**9000**. The start path prefers the Flask dashboard when present and falls
+back to an integrated HTTP dashboard. It is the product operator entry, not the
+lowest-level transport host.
+
+Inspect flags from the live tree:
+
+```bash
+python -m ipfs_accelerate_py.cli mcp --help
+python -m ipfs_accelerate_py.cli mcp start --help
+```
+
+### Entrypoint selection table
+
+| Entry | Package | When to use | Caveat |
+| --- | --- | --- | --- |
+| `python -m ipfs_accelerate_py.mcp_server.fastapi_service` | canonical | Functional HTTP MCP host | Uses `IPFS_MCP_*` env; bootstrap flag separate |
+| `from ipfs_accelerate_py.mcp_server import create_server` | canonical | Embed or test registry/lifecycle | Not a complete client-facing host by itself |
+| `python -m ipfs_accelerate_py.mcp_server --fastapi` | canonical | Standalone wrapper that runs the FastAPI path | Without `--fastapi`, do not assume full MCP routes |
+| `python -m ipfs_accelerate_py.cli mcp start` | product CLI | Dashboard-oriented operator start | Pulls dashboard/autoscaler options; not pure transport |
+| `python -m ipfs_accelerate_py.mcp.cli …` | **compatibility** | TaskQueue/libp2p worker host options | Imports `mcp` (auto-install risk); bridges to unified by default |
+| `from ipfs_accelerate_py.mcp.server import create_mcp_server` | **compatibility** | Legacy factory | Defaults to unified bridge; may fall back under rollback flags |
+
+**Do not** point MCP clients at a bare lifecycle shell that only serves
+`/healthz`. Prefer `fastapi_service` or an explicitly mounted transport over
+`python -m ipfs_accelerate_py.mcp_server` without `--fastapi`. Canonical stdio
+transport is not currently implemented under `mcp_server`.
+
+## Configuration map
+
+### FastAPI host (`UnifiedFastAPIConfig`)
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `IPFS_MCP_HOST` | `0.0.0.0` | Bind host |
+| `IPFS_MCP_PORT` | `8000` | Bind port |
+| `IPFS_MCP_MOUNT_PATH` | `/mcp` | Wrapper sub-app mount; does not relocate the fixed canonical `/mcp` routes |
+| `IPFS_MCP_NAME` | `ipfs-accelerate-mcp` | Service name |
+| `IPFS_MCP_DESCRIPTION` | `IPFS Accelerate MCP Server` | Service description |
+| `IPFS_MCP_VERBOSE` | off | Verbose logging (`1`/`true`/`yes`/`on`) |
+
+Legacy fallback keys (`HOST`, `PORT`, `MOUNT_PATH`, `APP_NAME`,
+`APP_DESCRIPTION`, `DEBUG`) are accepted only when the canonical key is unset.
+Prefer `IPFS_MCP_*`.
+
+### Unified runtime / MCP++ gates (`UnifiedMCPServerConfig`)
+
+All feature gates default **off** unless noted. Setting a flag advertises or
+enables a code path; it does not install missing packages or prove a peer is
+alive.
+
+| Variable | Purpose |
+| --- | --- |
+| `IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP` | Attach hierarchical meta-tools and MCP++ service factories |
+| `IPFS_MCP_UNIFIED_PRELOAD_CATEGORIES` | Preload `ipfs`, `workflow`, `p2p`, or `all` |
+| `IPFS_MCP_SERVER_ENABLE_CID_ARTIFACTS` | CID-native artifact emission |
+| `IPFS_MCP_SERVER_ARTIFACT_STORE_BACKEND` | `memory` or `json` |
+| `IPFS_MCP_SERVER_ARTIFACT_STORE_PATH` | JSON store path when durable |
+| `IPFS_MCP_SERVER_ENABLE_UCAN_VALIDATION` | UCAN validation on guarded dispatch |
+| `IPFS_MCP_SERVER_ENABLE_POLICY_EVALUATION` | Temporal/deontic policy evaluation |
+| `IPFS_MCP_SERVER_ENABLE_POLICY_AUDIT` | Policy audit log |
+| `IPFS_MCP_SERVER_ENABLE_MONITORING` | Runtime monitoring collectors |
+| `IPFS_MCP_SERVER_ENABLE_OTEL_TRACING` | OpenTelemetry hooks |
+| `IPFS_MCP_SERVER_ENABLE_PROMETHEUS_EXPORTER` | Prometheus exporter |
+| `IPFS_MCP_SERVER_ENABLE_PROMETHEUS_HTTP_SERVER` | Prometheus HTTP server |
+| `IPFS_MCP_SERVER_ENABLE_SECRETS_VAULT` | Secrets vault |
+| `IPFS_MCP_SERVER_ENABLE_SECRETS_ENV_AUTOLOAD` | Autoload secrets into the environment |
+| `IPFS_MCP_SERVER_ENABLE_SECRETS_ENV_OVERWRITE` | Allow secrets autoload to overwrite env |
+| `IPFS_MCP_SERVER_ENABLE_RISK_SCORING` | Risk scoring on guarded dispatch |
+| `IPFS_MCP_SERVER_ENABLE_RISK_FRONTIER_EXECUTION` | Frontier execution binding |
+
+### Compatibility facade runtime selection
+
+| Variable | Effect |
+| --- | --- |
+| `IPFS_MCP_FORCE_LEGACY_ROLLBACK` | Force `create_mcp_server` onto the legacy wrapper |
+| `IPFS_MCP_UNIFIED_CUTOVER_DRY_RUN` | Probe unified `create_server`, then stay on legacy |
+| `IPFS_MCP_ENABLE_UNIFIED_BRIDGE` | Explicit bridge telemetry; unified is already the default when not forced legacy |
+
+These flags affect **facade factory selection**, not install policy. New code
+should call `ipfs_accelerate_py.mcp_server.create_server` and avoid needing
+them.
+
+## Transports
+
+| Transport | Primary modules | Operator note |
+| --- | --- | --- |
+| FastAPI / HTTP JSON-RPC | `mcp_server.fastapi_service`, `fastapi_config` | Preferred functional HTTP host |
+| Process / standalone shell | `mcp_server.standalone_server` | Use with `--fastapi` for MCP routes; bare shell is not a full MCP client host |
+| Product CLI dashboard | `cli.py` → dashboard / integrated HTTP | Operator UX; optional autoscaler and browser open |
+| Compatibility CLI + TaskQueue | `mcp.cli` + `p2p_tasks` | Optional libp2p/queue worker host; compatibility import path |
+| MCP+p2p | `mcp_server.mcp_p2p_transport` → `p2p_tasks.mcp_p2p` | Requires `mcp-p2p` extra and network identity |
+| gRPC | `mcp_server.grpc_transport` | Compatibility facade when source module present |
+| Canonical stdio | — | **Not implemented** under `mcp_server` today |
+
+Transport success (HTTP 200, stream open) is delivery only. It is not
+authorization. Guarded admission for category/tool dispatch lives on the
+`tools_dispatch` meta-tool path when unified bootstrap is attached; ordinary
+direct tool routes may not yet share every UCAN/policy gate. See the runtime
+architecture guide for the direct-call gap.
+
+## Tool discovery and meta-tools
+
+When unified bootstrap is enabled, the control-plane meta-tools are:
+
+| Meta-tool | Purpose |
+| --- | --- |
+| `tools_list_categories` | List registered categories |
+| `tools_list_tools` | List tools in a category |
+| `tools_get_schema` | Fetch a tool schema |
+| `tools_dispatch` | Guarded category/tool dispatch |
+| `tools_runtime_metrics` | Runtime telemetry surface |
+
+Category loaders are lazy: listing or dispatching a category triggers
+registration. Optional preload uses `IPFS_MCP_UNIFIED_PRELOAD_CATEGORIES`.
+
+Do not assume a tool exists because an older guide listed it. Query the runtime
+manifest or meta-tools:
+
+```python
+from ipfs_accelerate_py import get_instance
+
+report = get_instance().get_capabilities(detail=True)
+print(report.get("mcp", {}))
+```
+
+Wave A native categories include `ipfs`, `workflow`, and `p2p`. Many additional
+native categories register under `ipfs_accelerate_py/mcp_server/tools/*` when
+their loaders run and optional dependencies are present.
+
+## AI catalog and router tools
+
+Catalog tools query the `ModelManager` facade. They never invoke a provider.
+Invocation tools resolve one immutable revision, then call the owning LLM,
+embeddings, multimodal, or voice router. MCP++ `ai.catalog.v1` publishes the
+same eleven canonical operations with bounded schemas and separate read,
+refresh, and invoke authorities.
+
+### Catalog query tools
 
 | Tool | Purpose |
 | --- | --- |
@@ -27,7 +282,7 @@ Catalog query tools:
 | `model_catalog_health` | Read already-published source and record health |
 | `model_catalog_refresh` | Explicitly refresh named sources with authority |
 
-Router invocation tools:
+### Router invocation tools
 
 | Tool | Owner | Operation |
 | --- | --- | --- |
@@ -42,7 +297,7 @@ Compatibility names `generate_text`, `generate_embeddings`, and
 to the canonical text/embedding implementation. Historical `model_*` tools
 also remain available while callers migrate to `model_catalog_*`.
 
-## Revisions, pagination, and receipts
+### Revisions, pagination, and receipts
 
 Successful catalog and invocation envelopes include `schema_version` and
 `catalog_revision`. Invocation output also includes the selected binding and a
@@ -59,7 +314,7 @@ URIs are redacted from MCP responses. Receipts include selection facts and
 revision but exclude prompts, media, model output, headers, credentials, and
 raw endpoints.
 
-## Bounded schemas and errors
+### Bounded schemas and errors
 
 Input schemas reject unknown properties and bound free text, arrays, pages,
 timeouts, output sizes, embedding dimensions, stream chunks, and media. Media
@@ -78,7 +333,7 @@ Common error codes include:
 Errors retain the safe catalog revision when available and do not echo
 credential values, private endpoint details, prompts, or media bodies.
 
-## Authority and refresh
+### Authority and refresh
 
 MCP++ separates authority by effect:
 
@@ -98,7 +353,7 @@ expiry, replay state, catalog revision, page bounds, URL/media policy, and
 capabilities are validated before records enter a peer source. A remote record
 cannot override a trusted local identity.
 
-## Migration
+### Migration (AI tools)
 
 Migrate discovery first, invocation second:
 
@@ -117,6 +372,58 @@ Compatibility aliases have no scheduled removal date. See the
 [catalog sunset policy](architecture/AI_SERVICE_CATALOG.md#compatibility-sunset-policy)
 for the gates required before a future removal.
 
+## Security and policy prerequisites
+
+MCP tools may expose inference, storage, GitHub, Docker, P2P, or operational
+actions depending on installed capabilities and policy. A registered tool is
+not automatically authorized for an untrusted caller.
+
+Operator checklist:
+
+1. Bind development servers to `127.0.0.1` until auth and network policy exist.
+2. Keep secrets out of client configs, prompts, and checked-in MCP client files.
+3. Enable UCAN/policy/risk gates deliberately for high-assurance dispatch; use
+   `tools_dispatch` when those gates must apply.
+4. Treat peer advertisements and remote catalog pages as untrusted input.
+5. Do not interpret transport success as authorization.
+6. Production images: pin extras, disable auto-install, and verify capabilities
+   after deploy.
+
+## Auto-install and optional dependencies
+
+| Path | Side effect | Production guidance |
+| --- | --- | --- |
+| Bare `import ipfs_accelerate_py.mcp_server` | Lazy package facade only | Preferred package boundary for discovery |
+| Resolving `mcp_server.create_server` / importing `mcp_server.server` | Configures logging; eagerly imports native registrars; inference registrar currently reaches compatibility `mcp` | May trigger auto-install policy; not a pure discovery import |
+| `import ipfs_accelerate_py.mcp` | Best-effort `ensure_packages({fastapi, uvicorn, fastmcp})` | **May install packages** when policy allows |
+| `ipfs_accelerate_py.mcp.server` | Same class of best-effort ensure for fastapi/uvicorn/fastmcp | Compatibility surface |
+
+Auto-install is controlled by `IPFS_ACCEL_AUTO_INSTALL`:
+
+- unset: enabled inside a virtualenv, skipped outside;
+- set to `0` / `false` / `no`: never auto-install;
+- other truthy values: allow best-effort `pip install`.
+
+**Production:** install `mcp` / `mcp-p2p` (and host deps) explicitly, set
+`IPFS_ACCEL_AUTO_INSTALL=0`, then verify the capability report. Auto-install is
+a convenience for local development, not a deploy contract.
+
+Presence of an optional extra is install-time capability only. It does not prove
+a GPU, IPFS daemon, libp2p peer, provider credential, or external queue is
+available.
+
+## Compatibility migration
+
+1. Prefer imports from `ipfs_accelerate_py.mcp_server` for new code.
+2. Replace `create_mcp_server` with `create_server` at call sites when practical.
+3. Replace `python -m ipfs_accelerate_py.mcp.cli` with
+   `python -m ipfs_accelerate_py.mcp_server.fastapi_service` for pure HTTP
+   hosting; keep the compatibility CLI only when you need its TaskQueue/libp2p
+   worker flags.
+4. Keep rollback/dry-run flags available for operational safety during cutover;
+   do not document them as the preferred steady-state path.
+5. Treat facade success as a bridge result, not a second ownership model.
+
 ## Testing and rollout
 
 Default tests use fake routers/providers and require no network:
@@ -130,6 +437,18 @@ python -m pytest \
   test/test_mcplusplus_ai_catalog.py \
   test/test_ai_catalog_conformance.py -q
 ```
+
+**Known test-owned mismatch at 2026-08-03 @ `d5f3aa5c6`:** on Linux with
+Python 3.12.3 and pytest 9.0.3, that exact command reports 82 passed, 5 skipped,
+and 3 failed. The failures are
+`test_descriptor_round_trip_and_cid_are_stable`,
+`test_existing_descriptor_cid_and_registry_behavior_are_unchanged`, and
+`test_unknown_version_and_operation_include_upgrade_metadata` in
+`test/test_mcplusplus_ai_catalog_idl.py`. The implementation emits real
+multibase CIDv1 values beginning `bafkrei`, while those stale golden assertions
+still require the historical synthetic `cidv1-sha256-...` form. Do not cite the
+full command as green rollout evidence until the code/test contract is aligned;
+the remaining passes are still useful focused evidence.
 
 Usage control tools (`model_catalog_usage`, `model_catalog_usage_metrics`,
 `route_preview`) share reason codes and authorities with the Python control
@@ -170,18 +489,30 @@ security failure, or elevated routing errors:
 5. pin the previous server release;
 6. restore compatible tool names and rerun offline parity tests.
 
-Troubleshooting:
-
 | Symptom | Action |
 | --- | --- |
-| `no_match` | Inspect the safe resolution reasons and required operational state. |
-| `ambiguous_identifier` | Retry with a stable ID rather than an alias. |
-| revision mismatch | Re-list or re-resolve and bind the request to the returned revision. |
-| refresh denied | Use refresh—not read—authority and specify named sources. |
-| stale peer | Check signature, issuer, expiry, replay window, and advertised revision. |
-| redacted endpoint | Expected behavior; invoke by binding/deployment ID. |
-| oversized media/output | Reduce the bounded request or select a compatible binding. |
-| registration resolves a manager/provider | Release blocker; tool registration must remain cold. |
+| Import / missing FastMCP or Flask | Install `ipfs-accelerate-py[mcp]` explicitly; set `IPFS_ACCEL_AUTO_INSTALL=0` in production |
+| Server starts but tools missing | Enable `IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP=1`; query meta-tools / capability report |
+| Only `/healthz` responds | Use `fastapi_service` (or `--fastapi`); bare standalone shell is not a full MCP host |
+| Status cannot connect | Confirm host/port, process still running, and which entrypoint default port you used (CLI `9000` vs FastAPI `8000`) |
+| P2P / queue fails | Install `mcp-p2p`, configure queue path and ports, verify identity/firewall |
+| Unexpected `pip install` on import | Compatibility auto-install; set `IPFS_ACCEL_AUTO_INSTALL=0` and preinstall extras |
+| Facade lands on legacy runtime | Check `IPFS_MCP_FORCE_LEGACY_ROLLBACK` and dry-run flags; prefer direct `mcp_server` imports |
+| `no_match` | Inspect safe resolution reasons and required operational state |
+| `ambiguous_identifier` | Retry with a stable ID rather than an alias |
+| revision mismatch | Re-list or re-resolve and bind the request to the returned revision |
+| refresh denied | Use refresh—not read—authority and specify named sources |
+| redacted endpoint | Expected; invoke by binding/deployment ID |
+| oversized media/output | Reduce the bounded request or select a compatible binding |
 
-See the [AI Service Catalog architecture](architecture/AI_SERVICE_CATALOG.md),
-[LLM Router](LLM_ROUTER.md), and [MCP++ records](../mcpplusplus/README.md).
+## Related documentation
+
+- [MCP setup guide](guides/MCP_SETUP_GUIDE.md)
+- [MCP quick start](guides/QUICK_START_MCP.md)
+- [MCP runtime architecture](architecture/MCP_RUNTIME.md)
+- [Canonical server README](../ipfs_accelerate_py/mcp_server/README.md)
+- [MCP dashboard guide](MCP_DASHBOARD_GUIDE.md)
+- [AI Service Catalog architecture](architecture/AI_SERVICE_CATALOG.md)
+- [LLM Router](LLM_ROUTER.md)
+- [MCP++ records](../mcpplusplus/README.md)
+- [Installation](guides/getting-started/installation.md)

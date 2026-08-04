@@ -4,7 +4,9 @@ IPFS Accelerate MCP Prompts
 This module defines prompt templates for interacting with the IPFS Accelerate MCP server.
 """
 import logging
-from fastmcp import FastMCP
+from typing import Any
+
+FastMCP = Any
 
 logger = logging.getLogger("ipfs_accelerate_mcp.prompts")
 

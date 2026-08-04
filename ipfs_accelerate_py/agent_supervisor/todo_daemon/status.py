@@ -11,6 +11,11 @@ from typing import Any, Iterable, Mapping, Optional
 
 from .engine import utc_now
 
+# SCA-229 acceptance-state vocabulary shared with implementation_daemon.
+ACCEPTANCE_STATE_MERGED_PENDING = "implemented_merged_but_pending"
+ACCEPTANCE_STATE_AUTHORITATIVE = "authoritatively_completed"
+ACCEPTANCE_STATE_REOPENED = "acceptance_reopened"
+
 
 @dataclass(frozen=True)
 class ActiveStatusSnapshot:
@@ -222,3 +227,173 @@ def build_ready_after_supervisor_repair_status(
     }
     payload.update(dict(extra or {}))
     return payload
+
+
+def project_authoritative_acceptance_status(
+    *,
+    task_id: str,
+    receipt: Mapping[str, Any] | None = None,
+    gate: Mapping[str, Any] | None = None,
+    now: Optional[str] = None,
+    extra: Optional[Mapping[str, Any]] = None,
+) -> dict[str, Any]:
+    """Fail-closed status projection for post-merge acceptance (SCA-229).
+
+    A clean merge is implementation evidence only.  Until the authoritative
+    completion gate admits, the projected board/acceptance state remains
+    ``implemented_merged_but_pending`` (or ``acceptance_reopened`` after stale
+    post-merge validation) and ``completion_authoritative`` stays false.
+    """
+
+    timestamp = now or utc_now()
+    receipt_payload = dict(receipt or {})
+    gate_payload = dict(gate or {})
+    pending_gates = [
+        str(item)
+        for item in (
+            gate_payload.get("pending_gates")
+            or receipt_payload.get("pending_gates")
+            or ()
+        )
+        if str(item)
+    ]
+    completion_authoritative = bool(
+        gate_payload.get("completion_authoritative")
+        if "completion_authoritative" in gate_payload
+        else receipt_payload.get("completion_authoritative")
+    )
+    admitted = bool(gate_payload.get("admitted")) and completion_authoritative and not pending_gates
+    if admitted:
+        acceptance_state = ACCEPTANCE_STATE_AUTHORITATIVE
+        board_status = "completed"
+        state = "authoritatively_completed"
+    else:
+        raw_state = str(
+            receipt_payload.get("acceptance_state")
+            or gate_payload.get("acceptance_state")
+            or ACCEPTANCE_STATE_MERGED_PENDING
+        )
+        if raw_state == ACCEPTANCE_STATE_REOPENED:
+            acceptance_state = ACCEPTANCE_STATE_REOPENED
+            state = "acceptance_reopened"
+        else:
+            acceptance_state = ACCEPTANCE_STATE_MERGED_PENDING
+            state = "implemented_merged_but_pending"
+        board_status = "pending"
+        completion_authoritative = False
+
+    implementation_commit = str(
+        receipt_payload.get("implementation_commit")
+        or gate_payload.get("implementation_commit")
+        or ""
+    )
+    merge_commit = str(
+        receipt_payload.get("merge_commit") or gate_payload.get("merge_commit") or ""
+    )
+    payload = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/authoritative-acceptance-status@1",
+        "updated_at": timestamp,
+        "task_id": str(task_id or receipt_payload.get("task_id") or ""),
+        "state": state,
+        "acceptance_state": acceptance_state,
+        "board_status": board_status,
+        "completion_authoritative": completion_authoritative,
+        "admitted": admitted,
+        "pending_gates": pending_gates,
+        "implementation_commit": implementation_commit,
+        "merge_commit": merge_commit,
+        "implementation_commit_preserved": bool(implementation_commit),
+        "reason_codes": [
+            str(item)
+            for item in (
+                gate_payload.get("reason_codes")
+                or receipt_payload.get("reason_codes")
+                or ()
+            )
+            if str(item)
+        ],
+    }
+    if receipt_payload:
+        payload["receipt"] = receipt_payload
+    if gate_payload:
+        payload["gate"] = gate_payload
+    payload.update(dict(extra or {}))
+    return payload
+
+
+def build_merged_pending_acceptance_status(
+    *,
+    task_id: str,
+    implementation_commit: str = "",
+    merge_commit: str = "",
+    pending_gates: Iterable[str] = (),
+    reason_codes: Iterable[str] = (),
+    now: Optional[str] = None,
+    extra: Optional[Mapping[str, Any]] = None,
+) -> dict[str, Any]:
+    """Status for implemented/merged-but-pending acceptance projection."""
+
+    return project_authoritative_acceptance_status(
+        task_id=task_id,
+        receipt={
+            "task_id": task_id,
+            "implementation_commit": implementation_commit,
+            "merge_commit": merge_commit,
+            "completion_authoritative": False,
+            "pending_gates": list(pending_gates),
+            "reason_codes": list(reason_codes),
+            "acceptance_state": ACCEPTANCE_STATE_MERGED_PENDING,
+            "merged": True,
+        },
+        gate={
+            "admitted": False,
+            "completion_authoritative": False,
+            "pending_gates": list(pending_gates),
+            "reason_codes": list(reason_codes),
+            "acceptance_state": ACCEPTANCE_STATE_MERGED_PENDING,
+            "implementation_commit": implementation_commit,
+            "merge_commit": merge_commit,
+        },
+        now=now,
+        extra=extra,
+    )
+
+
+def build_reopened_acceptance_status(
+    *,
+    task_id: str,
+    implementation_commit: str = "",
+    merge_commit: str = "",
+    pending_gates: Iterable[str] = ("freshness",),
+    stale_reason: str = "post_merge_validation_stale",
+    now: Optional[str] = None,
+    extra: Optional[Mapping[str, Any]] = None,
+) -> dict[str, Any]:
+    """Status after stale post-merge validation reopens acceptance."""
+
+    reasons = [stale_reason, "acceptance_reopened"]
+    return project_authoritative_acceptance_status(
+        task_id=task_id,
+        receipt={
+            "task_id": task_id,
+            "implementation_commit": implementation_commit,
+            "merge_commit": merge_commit,
+            "completion_authoritative": False,
+            "pending_gates": list(pending_gates),
+            "reason_codes": reasons,
+            "acceptance_state": ACCEPTANCE_STATE_REOPENED,
+            "validation_stale": True,
+            "merged": True,
+        },
+        gate={
+            "admitted": False,
+            "completion_authoritative": False,
+            "pending_gates": list(pending_gates),
+            "reason_codes": reasons,
+            "acceptance_state": ACCEPTANCE_STATE_REOPENED,
+            "implementation_commit": implementation_commit,
+            "merge_commit": merge_commit,
+        },
+        now=now,
+        extra=extra,
+    )

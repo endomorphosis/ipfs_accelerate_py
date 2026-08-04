@@ -300,6 +300,30 @@ def test_persistent_queue_migrates_legacy_display_id_to_canonical_identity(tmp_p
     assert restored.dirty is False
 
 
+def test_persistent_queue_metric_updates_preserve_priority_and_track(tmp_path) -> None:
+    queue = PersistentTaskQueue.load(tmp_path / "task_queue.json", save_interval=0)
+    identity = canonical_task_identity(
+        _task("REF-001"),
+        board_namespace="main",
+        source_path="tasks.todo.md",
+    )
+    entry = queue.register_task(identity, priority="P0", track="agent")
+
+    queue.record_selection(identity.canonical_task_cid)
+    queue.record_success(identity.canonical_task_cid)
+    queue.record_failure(identity.canonical_task_cid, reason="retry")
+    queue.record_no_change(identity.canonical_task_cid)
+    queue.record_merge_failure(identity.canonical_task_cid)
+    queue.defer(identity.canonical_task_cid, 1.0, reason="capacity")
+
+    assert entry.priority == "P0"
+    assert entry.track == "agent"
+    restored = PersistentTaskQueue.load(tmp_path / "task_queue.json")
+    restored_entry = restored.entries[identity.canonical_task_cid]
+    assert restored_entry.priority == "P0"
+    assert restored_entry.track == "agent"
+
+
 def test_persistent_queue_recovers_from_malformed_numeric_state(tmp_path) -> None:
     path = tmp_path / "task_queue.json"
     path.write_text(

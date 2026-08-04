@@ -34,6 +34,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     PROPOSAL_ARTIFACT_AUTHORITY_SCHEMA,
     PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY,
     PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA,
+    PROPOSAL_BINARY_ARCHIVE_ARTIFACT_ENVELOPE_SCHEMA,
     PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA,
     PortalImplementationDaemon,
     PortalTask,
@@ -779,7 +780,7 @@ def test_daemon_accepts_explicit_binary_fixture_under_directory_output(
                     "schema": PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA,
                     "paths": [relative_fixture],
                     "allow_binary": True,
-                    "max_file_bytes": 1_000_000,
+                    "max_file_bytes": 1_048_576,
                     "max_patch_bytes": 2_000_000,
                     "max_output_bytes": 2_500_000,
                 },
@@ -801,6 +802,73 @@ def test_daemon_accepts_explicit_binary_fixture_under_directory_output(
     assert result.policy.task_owned_paths == ("tests/fixtures",)
     assert result.policy.policy_version.endswith(
         "+declared-binary-artifact-envelope-v2"
+    )
+
+
+def test_daemon_accepts_exact_declared_binary_archive_fixture(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    fixture = repo / "tests" / "fixtures" / "documents" / "synthetic.docx"
+    fixture.parent.mkdir(parents=True)
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "supervisor@example.invalid")
+    _git(repo, "config", "user.name", "Supervisor Test")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "baseline")
+    baseline_ref = _git(repo, "rev-parse", "HEAD")
+    fixture.write_bytes(b"PK\x03\x04synthetic-docx-fixture")
+
+    relative_fixture = fixture.relative_to(repo).as_posix()
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="PATLAW-024",
+        title="Admit one synthetic office-document fixture",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="private-uspto",
+        outputs=["tests/fixtures/documents"],
+        validation=["python -m pytest"],
+        acceptance="Admit only the exact task-declared synthetic archive.",
+        metadata={
+            PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY: json.dumps(
+                {
+                    "schema": PROPOSAL_BINARY_ARCHIVE_ARTIFACT_ENVELOPE_SCHEMA,
+                    "paths": [relative_fixture],
+                    "allow_binary": True,
+                    "allow_archives": True,
+                    "max_file_bytes": 1_048_576,
+                    "max_patch_bytes": 2_000_000,
+                    "max_output_bytes": 2_500_000,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        },
+    )
+
+    result = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline_ref,
+    )
+
+    assert result.accepted
+    assert result.policy.allow_binary is True
+    assert result.policy.allow_archives is True
+    assert result.policy.allowed_paths == (relative_fixture,)
+    assert result.policy.task_owned_paths == ("tests/fixtures/documents",)
+    assert result.policy.policy_version.endswith(
+        "+declared-binary-archive-artifact-envelope-v3"
     )
 
 

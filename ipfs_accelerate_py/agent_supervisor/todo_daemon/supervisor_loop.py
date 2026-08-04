@@ -90,6 +90,10 @@ class SupervisorLoopResult:
 
 
 WatchdogHook = Callable[["SupervisorLoop", SupervisedChild, Mapping[str, Any]], SupervisorLoopDecision]
+StaleHeartbeatHook = Callable[
+    ["SupervisorLoop", SupervisedChild, Mapping[str, Any]],
+    Optional[SupervisorLoopDecision],
+]
 SupervisorLoopConfigFactory = Callable[[argparse.Namespace], SupervisorLoopConfig]
 
 
@@ -124,11 +128,13 @@ class SupervisorLoop:
         config: SupervisorLoopConfig,
         *,
         watchdog_hook: Optional[WatchdogHook] = None,
+        stale_heartbeat_hook: Optional[StaleHeartbeatHook] = None,
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self.config = config
         self.watchdog_hook = watchdog_hook
+        self.stale_heartbeat_hook = stale_heartbeat_hook
         self.sleep = sleep
         self.monotonic = monotonic
         self.status = SupervisorStatusContext(
@@ -451,6 +457,17 @@ class SupervisorLoop:
         current_status = read_json(self.config.spec.resolve(self.config.spec.status_path))
         decision = self.default_watchdog(child, current_status)
         if decision.action != "continue":
+            if (
+                decision.reason == "stale_heartbeat"
+                and self.stale_heartbeat_hook is not None
+            ):
+                exception = self.stale_heartbeat_hook(
+                    self,
+                    child,
+                    current_status,
+                )
+                if exception is not None:
+                    return exception
             return decision
         if self.watchdog_hook is not None:
             return self.watchdog_hook(self, child, current_status)

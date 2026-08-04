@@ -8,7 +8,8 @@ This guide provides step-by-step instructions for getting started with the IPFS 
 
 Before installing the MCP integration, ensure you have:
 
-- Python 3.8 or higher
+- Python 3.8 or higher. FastMCP 2.14.7 requires Python 3.10+; Python 3.8/3.9
+  continue through the built-in Standalone transport.
 - IPFS Accelerate package installed
 - Pip package manager
 
@@ -17,7 +18,7 @@ Before installing the MCP integration, ensure you have:
 1. Install the core dependencies:
 
 ```bash
-pip install fastmcp fastapi uvicorn requests pydantic
+pip install -r ipfs_accelerate_py/mcp/requirements.txt
 ```
 
 2. Install hardware information dependencies:

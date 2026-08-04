@@ -60,8 +60,11 @@ from ipfs_accelerate_py.agent_supervisor.analysis.repository_indexer import (  #
     RepositoryIndex,
     RepositoryIndexer,
     RepositoryIndexerError,
+    build_multi_root_repository_index,
+    write_provider_index_baseline,
 )
 from ipfs_accelerate_py.agent_supervisor.analysis.repository_snapshot import (  # noqa: E402
+    DEFAULT_PROVIDER_PACKAGE_SPECS,
     RepositorySnapshotError,
     build_repository_snapshot,
     default_scope_policy_path,
@@ -77,6 +80,9 @@ HANDOFF_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/sca-repository-index-handoff@1"
 )
 HANDOFF_EVIDENCE = "SCAEV022INDEX"
+# SCA-G071 / SCAEV071PROOFCACHE: sole authoritative proof-receipt cache root
+# published beside the baseline artifacts.
+PROOF_PIPELINE_EVIDENCE = "SCAEV071PROOFCACHE"
 _COMPILER_UNAVAILABLE_MARKERS = (
     "compiler_unavailable",
     "node_unavailable",
@@ -244,6 +250,33 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "the same snapshot roots"
         ),
     )
+    provider_indexes = parser.add_mutually_exclusive_group()
+    provider_indexes.add_argument(
+        "--include-provider-indexes",
+        dest="include_provider_indexes",
+        action="store_true",
+        default=True,
+        help=(
+            "also scan configured provider package roots "
+            "(ipfs_accelerate_py, ipfs_kit_py, ipfs_datasets_py) and publish "
+            "provider-index.json beside the primary baseline (default: on)"
+        ),
+    )
+    provider_indexes.add_argument(
+        "--skip-provider-indexes",
+        dest="include_provider_indexes",
+        action="store_false",
+        help="skip multi-root provider package indexing",
+    )
+    parser.add_argument(
+        "--require-provider-authority",
+        action="store_true",
+        help=(
+            "return status 4 when multi-root provider indexes are missing, "
+            "dirty, partial, opaque, version-divergent, or otherwise fail "
+            "exhaustive parity (zero model calls)"
+        ),
+    )
     parser.add_argument(
         "--publish-handoff",
         action="store_true",
@@ -267,6 +300,23 @@ def build_arg_parser() -> argparse.ArgumentParser:
         dest="invalidate_compiler_unavailable",
         action="store_false",
         help="allow previous compiler-unavailable rows to be considered for reuse",
+    )
+    parser.add_argument(
+        "--proof-cache-dir",
+        default=None,
+        help=(
+            "durable TrustAwareProofCache directory for SCAEV071PROOFCACHE "
+            "end-to-end proof/cache orchestration; defaults to "
+            "<output-root>/proof-cache"
+        ),
+    )
+    parser.add_argument(
+        "--skip-proof-pipeline",
+        action="store_true",
+        help=(
+            "skip McpContractProver / TrustAwareProofCache orchestration and "
+            "retain parity-only baseline terminals"
+        ),
     )
     return parser
 
@@ -429,10 +479,73 @@ def validate_authoritative_publication_options(
         problems.append("--max-parser-failure-ratio cannot exceed 0.01")
     if not bool(args.invalidate_compiler_unavailable):
         problems.append("--keep-compiler-unavailable is forbidden")
+    if not bool(getattr(args, "include_provider_indexes", True)):
+        problems.append(
+            "--skip-provider-indexes cannot publish a complete multi-root handoff"
+        )
+    if not bool(getattr(args, "require_provider_authority", False)):
+        problems.append("--require-provider-authority is mandatory")
     if problems:
         raise ValueError(
             "authoritative handoff mode rejected: " + "; ".join(problems)
         )
+
+
+def _provider_authority_summary(multi_root) -> dict[str, Any]:
+    """Compact zero-model multi-root authority ledger for the run summary."""
+
+    providers: list[dict[str, Any]] = []
+    for item in multi_root.providers:
+        observation = item.observation
+        providers.append(
+            {
+                "package": item.package,
+                "scope_path": observation.scope_path,
+                "indexed": bool(item.indexed),
+                "healthy": bool(item.healthy),
+                "opaque_gitlink": bool(item.opaque_gitlink),
+                "symbol_count": len(item.symbols),
+                "symbol_extraction_complete": bool(
+                    item.symbol_extraction_complete
+                ),
+                "status": getattr(
+                    observation.status, "value", str(observation.status)
+                ),
+                "dirty": bool(observation.dirty),
+                "version_divergent": bool(observation.version_divergent),
+                "head_commit_id": observation.head_commit_id,
+                "head_tree_id": observation.head_tree_id,
+                "origin_url": observation.origin_url,
+            }
+        )
+    return {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "sca-multi-root-provider-authority@1"
+        ),
+        "evidence_id": "SCAEV043MULTIROOT",
+        "multi_root_id": multi_root.multi_root_id,
+        "provider_count": len(multi_root.providers),
+        "expected_packages": [
+            spec.package for spec in DEFAULT_PROVIDER_PACKAGE_SPECS
+        ],
+        "all_providers_indexed": multi_root.all_providers_indexed,
+        "all_providers_healthy": multi_root.all_providers_healthy,
+        "all_symbol_extractions_complete": (
+            multi_root.all_symbol_extractions_complete
+        ),
+        "any_opaque_gitlink": multi_root.any_opaque_gitlink,
+        "exhaustive_parity_allowed": multi_root.exhaustive_parity_allowed,
+        "has_blocking_contradictions": (
+            multi_root.multi_root_snapshot.has_blocking_contradictions
+            or bool(multi_root.contradictions)
+        ),
+        "contradiction_count": len(multi_root.contradictions),
+        "providers": providers,
+        "llm_call_count": 0,
+        "provider_call_count": 0,
+        "model_call_count": 0,
+    }
 
 
 def _fsync_directory(path: Path) -> None:
@@ -954,6 +1067,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             if candidate.is_dir():
                 swissknife_root = str(candidate)
 
+        proof_cache_dir = (
+            Path(args.proof_cache_dir).expanduser().resolve()
+            if args.proof_cache_dir
+            else (output_root / "proof-cache")
+        )
+        run_proof_pipeline = not bool(args.skip_proof_pipeline)
+
         if args.skip_extraction:
             from ipfs_accelerate_py.agent_supervisor.analysis.contract_assurance_baseline import (
                 materialize_contract_assurance_baseline,
@@ -964,6 +1084,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 extract_expected=False,
                 output_root=output_root,
                 max_file_bytes=args.max_artifact_bytes,
+                proof_cache_dir=proof_cache_dir,
+                run_proof_pipeline=run_proof_pipeline,
             )
         else:
             baseline = materialize_baseline_from_repository_index(
@@ -972,6 +1094,35 @@ def main(argv: Sequence[str] | None = None) -> int:
                 repo_root=args.repo_root,
                 swissknife_root=swissknife_root,
                 max_file_bytes=args.max_artifact_bytes,
+                proof_cache_dir=proof_cache_dir,
+                run_proof_pipeline=run_proof_pipeline,
+            )
+
+        multi_root_summary: dict[str, Any] | None = None
+        multi_root_authority_failed = False
+        if bool(args.include_provider_indexes):
+            multi_root_index_root = output_root / "provider-indexes"
+            multi_root = build_multi_root_repository_index(
+                args.repo_root,
+                index_root=multi_root_index_root,
+                scope_config_path=args.scope_config,
+                provider_packages=DEFAULT_PROVIDER_PACKAGE_SPECS,
+                provider=provider,
+                health_thresholds=thresholds,
+                include_primary_snapshot=False,
+                allow_dirty_analysis=args.allow_dirty,
+                max_paths=args.max_paths,
+                extract_symbols=True,
+            )
+            provider_index_path = write_provider_index_baseline(
+                multi_root,
+                output_root / "provider-index.json",
+            )
+            multi_root_summary = _provider_authority_summary(multi_root)
+            multi_root_summary["provider_index_path"] = str(provider_index_path)
+            multi_root_summary["provider_index_root"] = str(multi_root_index_root)
+            multi_root_authority_failed = not bool(
+                multi_root.exhaustive_parity_allowed
             )
 
         handoff_root = resolve_handoff_root(
@@ -1019,6 +1170,21 @@ def main(argv: Sequence[str] | None = None) -> int:
                 invalidation_receipt=invalidation_receipt,
                 publication_evidence=publication_evidence,
             )
+            if multi_root_summary is not None:
+                handoff_provider_index = (
+                    Path(handoff_root) / "baseline" / "provider-index.json"
+                )
+                if (output_root / "provider-index.json").is_file():
+                    handoff_provider_index.parent.mkdir(
+                        parents=True, exist_ok=True, mode=0o700
+                    )
+                    shutil.copy2(
+                        output_root / "provider-index.json",
+                        handoff_provider_index,
+                    )
+                    multi_root_summary["handoff_provider_index_path"] = str(
+                        handoff_provider_index
+                    )
 
         summary = {
             "schema": (
@@ -1047,10 +1213,31 @@ def main(argv: Sequence[str] | None = None) -> int:
             ),
             "findings_root": baseline.findings.get("findings_root", ""),
             "graph_root": baseline.findings.get("graph_root", ""),
+            "proof_pipeline": {
+                "evidence_id": PROOF_PIPELINE_EVIDENCE,
+                "enabled": run_proof_pipeline,
+                "proof_cache_dir": str(proof_cache_dir),
+                "attempted": baseline.findings.get("proof_outcomes", {}).get(
+                    "attempted", 0
+                ),
+                "proved": baseline.findings.get("proof_outcomes", {}).get(
+                    "proved", 0
+                ),
+                "refuted": baseline.findings.get("proof_outcomes", {}).get(
+                    "refuted", 0
+                ),
+                "cache_hits": baseline.findings.get("proof_outcomes", {}).get(
+                    "cache_hits", 0
+                ),
+                "outcome_count": len(baseline.proof_pipeline_outcomes),
+            },
             "typescript_path": typescript_path or "",
             "typescript_version": typescript_version or "",
             "parser_identity": indexer.parser_identity,
             "compiler_unavailable_invalidation": invalidation_receipt,
+            "multi_root_providers": multi_root_summary
+            if multi_root_summary is not None
+            else {"included": False},
             "handoff": (
                 {
                     "published": True,
@@ -1069,6 +1256,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 else {"published": False}
             ),
         }
+        if multi_root_summary is not None:
+            summary["multi_root_providers"]["included"] = True
         _atomic_json(output_root / "repository-index.json", result.to_dict())
         _atomic_json(
             output_root / "analyzer-health.json", result.health.to_dict()
@@ -1082,6 +1271,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             and result.health.status is not AnalyzerHealthStatus.HEALTHY
         ):
             return 3
+        if bool(args.require_provider_authority) and multi_root_authority_failed:
+            return 4
         return 0
     except (
         RepositoryIndexerError,

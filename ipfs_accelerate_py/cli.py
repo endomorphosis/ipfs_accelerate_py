@@ -2,18 +2,17 @@
 """
 IPFS Accelerate CLI Tool
 
-This is the main CLI tool for IPFS Accelerate that provides a unified interface
-for all functionality including MCP server management, inference operations,
-file operations, and more.
+Unified hyphenated entry point (`ipfs-accelerate`) for MCP, agent-supervisor
+control, modality helpers, and model-manager operations. The live top-level
+groups are registered in `main()`; invoke `--help` for the authoritative list.
 
 Usage:
     ipfs-accelerate mcp start               # Start MCP server
     ipfs-accelerate mcp dashboard           # Start MCP server dashboard
     ipfs-accelerate mcp status              # Check MCP server status
-    ipfs-accelerate inference generate      # Run text generation
-    ipfs-accelerate files add               # Add files to IPFS
-    ipfs-accelerate network status          # Check network status
-    ipfs-accelerate models list             # List available models
+    ipfs-accelerate agent capabilities --help
+    ipfs-accelerate text --ai-help          # Text modality command tree
+    ipfs-accelerate models list --output-json
     ipfs-accelerate --help                  # Show help for all commands
 """
 
@@ -88,12 +87,21 @@ def _load_heavy_imports():
         return  # Already loaded
     
     try:
-        from ipfs_accelerate_py.mcp_server.server import IPFSAccelerateMCPServer as _IPFSAccelerateMCPServer
-        
+        from ipfs_accelerate_py.shared import (
+            FileOperations,
+            InferenceOperations,
+            ModelOperations,
+            NetworkOperations,
+            QueueOperations,
+            SharedCore,
+            TestOperations,
+        )
+        from ipfs_accelerate_py.mcp_server.server import (
+            IPFSAccelerateMCPServer as _IPFSAccelerateMCPServer,
+        )
+
         IPFSAccelerateMCPServer = _IPFSAccelerateMCPServer
         HAVE_CORE = True
-        
-        # Initialize core components
         shared_core = SharedCore()
         inference_ops = InferenceOperations(shared_core)
         file_ops = FileOperations(shared_core)
@@ -101,14 +109,14 @@ def _load_heavy_imports():
         network_ops = NetworkOperations(shared_core)
         queue_ops = QueueOperations(shared_core)
         test_ops = TestOperations(shared_core)
-        
     except ImportError as e:
         logger.warning(f"Core modules not available: {e}")
         try:
-            # Try alternative import paths (editable checkouts, non-standard layouts)
-            import sys
-            import os
-            sys.path.append(os.path.dirname(__file__))
+            # Editable checkouts may expose the legacy package only after the
+            # package directory is made importable explicitly.
+            package_dir = str(Path(__file__).resolve().parent)
+            if package_dir not in sys.path:
+                sys.path.append(package_dir)
             from ipfs_accelerate_py.shared import (
                 FileOperations,
                 InferenceOperations,
@@ -136,40 +144,6 @@ def _load_heavy_imports():
             logger.warning(f"Alternative import also failed: {e2}")
             HAVE_CORE = False
 
-    except ImportError as e:
-        logger.warning(f"Core modules not available: {e}")
-        try:
-            # Try alternative import paths
-            import sys
-            import os
-            sys.path.append(os.path.dirname(__file__))
-            from ipfs_accelerate_py.shared import (
-                FileOperations,
-                InferenceOperations,
-                ModelOperations,
-                NetworkOperations,
-                QueueOperations,
-                SharedCore,
-                TestOperations,
-            )
-            from ipfs_accelerate_py.mcp_server.server import IPFSAccelerateMCPServer as _IPFSAccelerateMCPServer
-            
-            IPFSAccelerateMCPServer = _IPFSAccelerateMCPServer
-            HAVE_CORE = True
-            
-            # Initialize core components
-            shared_core = SharedCore()
-            inference_ops = InferenceOperations(shared_core)
-            file_ops = FileOperations(shared_core)
-            model_ops = ModelOperations(shared_core)
-            network_ops = NetworkOperations(shared_core)
-            queue_ops = QueueOperations(shared_core)
-            test_ops = TestOperations(shared_core)
-            
-        except ImportError as e2:
-            logger.warning(f"Alternative import also failed: {e2}")
-            HAVE_CORE = False
-            
             # Fallback shared core for when imports fail
             class SharedCore:
                 def __init__(self):
@@ -2617,10 +2591,9 @@ Examples:
   ipfs-accelerate agent pause --request-file authorized-pause.json --output-json
   ipfs-accelerate mcp start --dashboard --open-browser
   ipfs-accelerate mcp status
-  ipfs-accelerate inference generate --prompt "Hello world"
+  ipfs-accelerate text --ai-help
   ipfs-accelerate models list --output-json
-  ipfs-accelerate queue status
-  ipfs-accelerate network status
+  ipfs-accelerate --output-json models search "embedding"
             """
         )
         

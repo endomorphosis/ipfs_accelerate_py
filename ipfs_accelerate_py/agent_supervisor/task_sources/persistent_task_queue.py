@@ -255,16 +255,33 @@ class PersistentTaskQueue:
         self._dirty = self._dirty or changed or entry.to_dict() != before_entry
         return entry
 
-    def get_or_create(self, task_id: str, *, priority: str = "P2", track: str = "") -> TaskQueueEntry:
+    def get_or_create(
+        self,
+        task_id: str,
+        *,
+        priority: str | None = None,
+        track: str | None = None,
+    ) -> TaskQueueEntry:
+        """Return an entry without overwriting scheduling metadata by default.
+
+        Outcome-recording helpers call this method with only a task ID.  Their
+        updates must not implicitly reset a registered task's priority or
+        track; those fields change only when a caller supplies them.
+        """
+
         key = self.resolve_key(task_id)
         if key not in self.entries:
-            self.entries[key] = TaskQueueEntry(task_id=task_id, priority=priority, track=track)
+            self.entries[key] = TaskQueueEntry(
+                task_id=task_id,
+                priority=priority or "P2",
+                track=track or "",
+            )
             self._dirty = True
         entry = self.entries[key]
-        if priority and entry.priority != priority:
+        if priority is not None and entry.priority != priority:
             entry.priority = priority
             self._dirty = True
-        if track and entry.track != track:
+        if track is not None and entry.track != track:
             entry.track = track
             self._dirty = True
         return entry

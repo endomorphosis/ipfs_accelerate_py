@@ -14,7 +14,7 @@ import sys
 import time
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from hashlib import sha1
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -28,6 +28,7 @@ from ..merge.checkout_lock import (
     acquire_checkout_mutation_lease as acquire_atomic_checkout_mutation_lease,
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
+    checkout_lock_repository_matches,
     checkout_mutation_lock_path,
     generated_protected_board_commit_subject,
     read_checkout_mutation_lease,
@@ -40,6 +41,17 @@ from ..runtime.event_log import append_jsonl_event, repair_jsonl_event_log, uniq
 from .implementation_supervisor_runner import (
     persist_goal_completion_projection,
     persist_supervisor_scan_receipt,
+)
+from .legacy_landed_attestation import LegacyLandedReviewAuthority
+from .legacy_landed_review import load_legacy_landed_review_policy
+from .production_provider_attestation import (
+    DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME,
+)
+from .production_provider_cli import (
+    DEFAULT_CONTEXT_BUDGET_TOKENS as DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS,
+    DEFAULT_PROVIDER_TIMEOUT_SECONDS as DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS,
+    PRODUCTION_CLI_POLICY_NAME,
+    ProductionCLIProviderPolicy,
 )
 from ..merge.merge_conflict_repair import resolve_append_only_markdown_conflicts
 from ..objectives.scan_receipts import (
@@ -73,6 +85,7 @@ from .implementation_daemon import (
     load_json_dict,
     normalize_focus_tracks,
     normalize_implementation_protected_paths,
+    normalize_llm_merge_resolver_command,
     normalize_relative_path_list,
     parse_task_file,
     parse_timestamp,
@@ -175,20 +188,73 @@ def _projection_is_quiescent_for_heartbeat_fallback(
         return False
     if status["implementation_in_progress"] is not False:
         return False
-    if status["selection_idle_reason"] != (
-        "no_shard_selectable_ready_tasks"
+    idle_reason = status["selection_idle_reason"]
+    if not isinstance(idle_reason, str):
+        return False
+    exact_idle_reasons = {
+        "no_shard_selectable_ready_tasks",
+        "all_selectable_ready_tasks_deferred_by_resource_claim",
+        "all_selectable_ready_tasks_deprioritized_as_off_mission",
+        "no_eligible_ready_tasks_after_selection_filters",
+        "all_selectable_ready_tasks_reached_max_task_attempts",
+        "provider_capacity_backoff",
+        "no_tasks_found",
+    }
+    resource_claim_prefix = "resource_claim_deferred:"
+    resource_claim_race = idle_reason.startswith(resource_claim_prefix) and bool(
+        idle_reason[len(resource_claim_prefix) :].strip()
+    )
+    implementation_retry_prefix = "implementation_retry_deferred:"
+    implementation_retry_deferred = idle_reason.startswith(
+        implementation_retry_prefix
+    ) and bool(idle_reason[len(implementation_retry_prefix) :].strip())
+    if (
+        idle_reason not in exact_idle_reasons
+        and not resource_claim_race
+        and not implementation_retry_deferred
     ):
         return False
-    for field_name in (
-        "ready_count",
-        "selectable_ready_count",
-        "eligible_ready_count",
-        "blocked_count",
+    counts: dict[str, int] = {}
+    for field_name in required_fields.difference(
+        {"active_task_id", "implementation_in_progress", "selection_idle_reason"}
     ):
         value = status[field_name]
-        if isinstance(value, bool) or not isinstance(value, int) or value != 0:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             return False
-    return True
+        counts[field_name] = value
+    if idle_reason == "no_tasks_found":
+        return all(value == 0 for value in counts.values())
+    if idle_reason == "no_shard_selectable_ready_tasks":
+        # Strict sharding can leave this lane with no selectable work even
+        # though the board-wide projection still reports ready or blocked
+        # tasks owned by other lanes.
+        return (
+            counts["selectable_ready_count"] == 0
+            and counts["eligible_ready_count"] == 0
+        )
+    if idle_reason in {
+        "all_selectable_ready_tasks_deferred_by_resource_claim",
+        "all_selectable_ready_tasks_reached_max_task_attempts",
+    } or implementation_retry_deferred:
+        return (
+            counts["ready_count"] > 0
+            and counts["selectable_ready_count"] == 0
+            and counts["eligible_ready_count"] == 0
+        )
+    if idle_reason in {
+        "all_selectable_ready_tasks_deprioritized_as_off_mission",
+        "no_eligible_ready_tasks_after_selection_filters",
+    }:
+        return (
+            counts["ready_count"] > 0
+            and counts["selectable_ready_count"] > 0
+            and counts["eligible_ready_count"] == 0
+        )
+    # A provider-capacity deferral or a resource-claim race happens after a
+    # task was selected, so the prior projection may legitimately retain
+    # selectable and eligible work.  The explicit idle reason and the active
+    # implementation fences above are authoritative in those two states.
+    return counts["ready_count"] > 0
 
 
 class ObjectiveRefillTimeoutError(TimeoutError):
@@ -205,6 +271,7 @@ class ObjectiveCompletionArtifactRefreshError(RuntimeError):
 
 OBJECTIVE_REFILL_ANALYZER_VERSION = "objective-daemon-v1"
 CODEBASE_REFILL_ANALYZER_VERSION = "codebase-scan-v1"
+POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION = "post-completion-ops-refill/v1"
 
 # Fields derived exclusively from a validated ``ProofRolloutStatus``.  Keeping
 # the set explicit lets a long-running supervisor replace the whole projection
@@ -340,6 +407,12 @@ class PortalSupervisorConfig:
     reconciliation_only: bool = False
     implement: bool = False
     implementation_command: str = ""
+    production_provider_policy: str = ""
+    production_provider_context_budget_tokens: int = 0
+    production_provider_timeout_seconds: float = 0.0
+    production_provider_review_authority_key_path: Path | None = None
+    legacy_landed_review_policy_path: Path | None = None
+    legacy_landed_review_key_path: Path | None = None
     llm_merge_resolver_command: str = ""
     llm_merge_resolver_timeout_seconds: float | None = None
     implementation_timeout: float = 1800.0
@@ -389,6 +462,10 @@ class PortalSupervisorConfig:
     generated_dirty_repair_max_paths: int = 200
     generated_dirty_repair_stale_lock_seconds: float = 300.0
     generated_dirty_repair_paths: tuple[Path, ...] = field(default_factory=tuple)
+    # Generic crash-avoidance heal for every board: auto-commit trusted
+    # protected/generated dirt and soft-defer healable maintenance failures
+    # instead of killing the supervisor loop.
+    supervisor_auto_heal_enabled: bool = True
     external_reservation_manifest_paths: tuple[Path, ...] = field(default_factory=tuple)
     assumed_completed_task_ids: tuple[str, ...] = field(default_factory=tuple)
     execution_slice_task_ids: tuple[str, ...] = field(default_factory=tuple)
@@ -407,6 +484,11 @@ class PortalSupervisorConfig:
     codebase_scan_commit_outputs: bool = False
     codebase_scan_commit_subject: str = "Agent: record supervisor codebase scan findings"
     objective_refill_enabled: bool = False
+    post_completion_ops_refill_enabled: bool = False
+    post_completion_ops_catalog_path: Path | None = None
+    post_completion_ops_config_path: Path | None = None
+    post_completion_ops_board_namespace: str = ""
+    post_completion_ops_require_drained: bool = True
     objective_task_janitor_enabled: bool = True
     objective_task_janitor_max_blocked_tasks: int = 50
     objective_task_janitor_max_deprioritized_tasks: int = 50
@@ -1325,10 +1407,17 @@ class PortalImplementationSupervisor:
         )
 
     def _protected_path_maintenance_lease_metadata(self) -> dict[str, Any]:
-        metadata = self._implementation_maintenance_lease_metadata()
-        metadata["kind"] = "implementation-protected-maintenance"
-        metadata["lease_role"] = "shared_protected_path_maintenance"
-        return metadata
+        local_metadata = self._implementation_maintenance_lease_metadata()
+        owner_script = str(local_metadata.pop("owner_script") or "")
+        for field_name in ("kind", "pid", "repo_root"):
+            local_metadata.pop(field_name, None)
+        local_metadata["lease_role"] = "shared_protected_path_maintenance"
+        return checkout_lock_metadata(
+            kind="implementation-protected-maintenance",
+            repo_root=self.config.repo_root,
+            owner_script=owner_script,
+            extra=local_metadata,
+        )
 
     def _protected_path_maintenance_owner_is_active(
         self,
@@ -1367,16 +1456,14 @@ class PortalImplementationSupervisor:
                 )
                 continue
             kind = str(metadata.get("kind") or "")
-            repo_root = str(metadata.get("repo_root") or "")
             try:
-                same_repository = (
-                    not repo_root
-                    or Path(repo_root).resolve()
-                    == self.config.repo_root.resolve()
+                repository_match = checkout_lock_repository_matches(
+                    metadata,
+                    self.config.repo_root,
                 )
                 pid = int(metadata.get("pid") or 0)
-            except (OSError, TypeError, ValueError):
-                same_repository = False
+            except (OSError, RuntimeError, TypeError, ValueError):
+                repository_match = None
                 pid = 0
             protected_fence_paths = (
                 implementation_task_claim_protected_fence_paths(metadata)
@@ -1389,8 +1476,12 @@ class PortalImplementationSupervisor:
             # after its process exits.
             if (
                 (not kind or kind == IMPLEMENTATION_TASK_CLAIM_LOCK_KIND)
-                and same_repository
-                and (owner_live or protected_fence_paths)
+                and repository_match is not False
+                and (
+                    repository_match is None
+                    or owner_live
+                    or protected_fence_paths
+                )
             ):
                 active.append(
                     {
@@ -1398,6 +1489,9 @@ class PortalImplementationSupervisor:
                         "task_id": str(metadata.get("task_id") or ""),
                         "pid": pid,
                         "owner_live": owner_live,
+                        "repository_identity_uncertain": (
+                            repository_match is None
+                        ),
                         "state_dir": str(metadata.get("state_dir") or ""),
                         "protected_fence_paths": list(
                             protected_fence_paths
@@ -1812,40 +1906,84 @@ class PortalImplementationSupervisor:
         update_maintenance_phase("main_checkout_repair")
         main_checkout_repair = self.repair_main_checkout_merge_state()
         update_maintenance_phase("generated_dirty_repair")
-        generated_dirty_repair = self.repair_generated_dirty_checkouts()
-        update_maintenance_phase("worktree_reconciliation")
-        worktree_reconciliation = self.reconcile_backlogged_worktrees(
-            preacquired_implementation_lock=(
-                implementation_maintenance_lease
-            ),
+        generated_dirty_repair = self._run_healable_maintenance_step(
+            "generated_dirty_repair",
+            lambda: self.repair_generated_dirty_checkouts(),
+            default={"attempted": False, "reason": "auto_heal_deferred"},
         )
-        update_maintenance_phase("worktree_reconciliation_replay")
-        worktree_reconciliation_replay = (
-            self.recover_already_merged_reconciliation_candidates(
+        update_maintenance_phase("worktree_reconciliation")
+        worktree_reconciliation = self._run_healable_maintenance_step(
+            "worktree_reconciliation",
+            lambda: self.reconcile_backlogged_worktrees(
                 preacquired_implementation_lock=(
                     implementation_maintenance_lease
                 ),
-            )
+            ),
+            default={},
+        )
+        update_maintenance_phase("worktree_reconciliation_replay")
+        worktree_reconciliation_replay = self._run_healable_maintenance_step(
+            "worktree_reconciliation_replay",
+            lambda: self.recover_already_merged_reconciliation_candidates(
+                preacquired_implementation_lock=(
+                    implementation_maintenance_lease
+                ),
+            ),
+            default={},
         )
         update_maintenance_phase("worktree_cleanup")
-        worktree_cleanup = self.cleanup_backlogged_worktrees()
+        worktree_cleanup = self._run_healable_maintenance_step(
+            "worktree_cleanup",
+            lambda: self.cleanup_backlogged_worktrees(),
+            default={},
+        )
+        # Proactively heal protected generated dirt so later board producers
+        # (guardrail release, refill, janitor) do not hard-crash the loop.
+        update_maintenance_phase("protected_dirty_auto_heal")
+        protected_dirty_auto_heal = self._auto_heal_protected_generated_dirt(
+            reason="pre_board_mutation_maintenance",
+        )
         update_maintenance_phase("strategy_state_repair")
-        strategy_file_repair = self.ensure_strategy_file()
-        todo_board_repair = self.ensure_todo_board_for_refill()
+        strategy_file_repair = self._run_healable_maintenance_step(
+            "strategy_state_repair",
+            self.ensure_strategy_file,
+            default={"repaired": False, "reason": "auto_heal_deferred"},
+        )
+        todo_board_repair = self._run_healable_maintenance_step(
+            "todo_board_repair",
+            self.ensure_todo_board_for_refill,
+            default={"repaired": False, "reason": "auto_heal_deferred"},
+        )
         update_maintenance_phase("objective_goal_migration")
-        objective_goal_migration = self.migrate_legacy_objective_goal_completion()
+        objective_goal_migration = self._run_healable_maintenance_step(
+            "objective_goal_migration",
+            self.migrate_legacy_objective_goal_completion,
+            default={"changed": False, "reason": "auto_heal_deferred"},
+        )
         update_maintenance_phase("objective_task_janitor")
-        objective_task_janitor = self.reconcile_objective_task_janitor()
+        objective_task_janitor = self._run_healable_maintenance_step(
+            "objective_task_janitor",
+            self.reconcile_objective_task_janitor,
+            default={"changed": False, "reason": "auto_heal_deferred"},
+        )
         update_maintenance_phase("reconciliation_guardrails")
-        reconciliation_findings = self.record_reconciliation_guardrails(
-            worktree_reconciliation,
-            worktree_cleanup,
+        reconciliation_findings = self._run_healable_maintenance_step(
+            "reconciliation_guardrails",
+            lambda: self.record_reconciliation_guardrails(
+                worktree_reconciliation,
+                worktree_cleanup,
+            ),
+            default=[],
         )
         update_maintenance_phase("guardrail_releases")
-        guardrail_releases = self.release_completed_guardrail_blocks(
-            reconciliation_result=worktree_reconciliation,
-            cleanup_result=worktree_cleanup,
-            replay_result=worktree_reconciliation_replay,
+        guardrail_releases = self._run_healable_maintenance_step(
+            "guardrail_releases",
+            lambda: self.release_completed_guardrail_blocks(
+                reconciliation_result=worktree_reconciliation,
+                cleanup_result=worktree_cleanup,
+                replay_result=worktree_reconciliation_replay,
+            ),
+            default=[],
         )
         state = PortalTaskState.load(self.config.state_path)
         now_ts = time.time()
@@ -2068,6 +2206,45 @@ class PortalImplementationSupervisor:
                     "changed": False,
                     "reason": "no_mapped_contradictions",
                 }
+            update_maintenance_phase("post_completion_ops_refill")
+            post_completion_started_at = datetime.now(timezone.utc)
+            try:
+                post_completion_result = self._adapt_legacy_objective_result(
+                    self._run_protected_refill_mutation(
+                        scan_kind="post_completion_ops",
+                        scan_mode="supervisor_callback",
+                        analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
+                        started_at=post_completion_started_at,
+                        output_paths=self._post_completion_ops_refill_output_paths(),
+                        callback=self.refill_post_completion_ops_backlog,
+                    )
+                    if self.config.post_completion_ops_refill_enabled
+                    else self.refill_post_completion_ops_backlog(),
+                    scan_mode="supervisor_callback",
+                    started_at=post_completion_started_at,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Post-completion ops refill failed; leaving supervisor alive",
+                    exc_info=True,
+                )
+                post_completion_result = self._terminal_refill_result(
+                    ScanTerminalReason.FAILED,
+                    scan_mode="supervisor_callback",
+                    analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
+                    started_at=post_completion_started_at,
+                    error=f"{type(exc).__name__}: {exc}",
+                    metadata={"error_type": type(exc).__name__},
+                )
+            post_completion_scan = self._persist_refill_result(
+                "post_completion_ops", post_completion_result
+            )
+            post_completion_payload = dict(post_completion_result.metadata)
+            post_completion_generated_count = int(
+                post_completion_payload.get("generated_count")
+                or len(post_completion_payload.get("task_ids") or [])
+                or post_completion_result.generated_count
+            )
         else:
             update_maintenance_phase("preflight_refill_deferred")
             objective_payload = {}
@@ -2091,6 +2268,16 @@ class PortalImplementationSupervisor:
                 "changed": False,
                 "reason": "refill_deferred",
             }
+            post_completion_result = self._terminal_refill_result(
+                ScanTerminalReason.DISABLED,
+                scan_mode="preflight_deferred",
+                analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
+                started_at=datetime.now(timezone.utc),
+                metadata={"deferred_reason": "preflight_refill_deferred_until_daemon_loop"},
+            )
+            post_completion_scan = {}
+            post_completion_payload = {}
+            post_completion_generated_count = 0
         update_maintenance_phase("post_refill_generated_dirty_repair")
         post_refill_generated_dirty_repair = self.repair_generated_dirty_checkouts()
         update_maintenance_phase("supervisor_check_event")
@@ -2168,8 +2355,12 @@ class PortalImplementationSupervisor:
                 ),
                 "codebase_refill_count": codebase_result.generated_count,
                 "codebase_deferred_reason": codebase_deferred_reason,
+                "post_completion_ops_refill_count": post_completion_generated_count,
+                "post_completion_ops_reason": post_completion_payload.get("reason")
+                or getattr(post_completion_result, "terminal_reason", ""),
                 "objective_scan": objective_scan,
                 "codebase_scan": codebase_scan,
+                "post_completion_ops_scan": post_completion_scan,
                 "generated_dirty_repair_committed_count": int(
                     generated_dirty_repair.get("committed_count") or 0
                 ),
@@ -2196,6 +2387,8 @@ class PortalImplementationSupervisor:
             "objective_contradiction_reconciliation": objective_contradiction_reconciliation,
             "codebase_refill_count": codebase_result.generated_count,
             "codebase_deferred_reason": codebase_deferred_reason,
+            "post_completion_ops_refill_count": post_completion_generated_count,
+            "post_completion_ops_scan": post_completion_scan,
             "objective_scan": objective_scan,
             "codebase_scan": codebase_scan,
             "event_log_repair": event_log_repair,
@@ -2304,6 +2497,9 @@ class PortalImplementationSupervisor:
             loop = self.shared_supervisor_loop_class(
                 self.build_supervisor_loop_config(),
                 watchdog_hook=self._supervisor_loop_watchdog_decision,
+                stale_heartbeat_hook=(
+                    self._provider_backoff_stale_heartbeat_decision
+                ),
             )
             result = loop.run()
             self.restart_count = result.restart_count
@@ -2497,6 +2693,25 @@ class PortalImplementationSupervisor:
                 "task_prefix": self.config.task_prefix,
                 "state_prefix": self.config.state_prefix,
                 "max_task_attempts": max(0, int(self.config.max_task_attempts)),
+                "production_provider_policy": (
+                    self.config.production_provider_policy
+                ),
+                "production_provider_context_budget_tokens": int(
+                    self.config.production_provider_context_budget_tokens
+                ),
+                "production_provider_timeout_seconds": float(
+                    self.config.production_provider_timeout_seconds
+                ),
+                "production_provider_review_authority_key_path": str(
+                    self.config.production_provider_review_authority_key_path
+                    or ""
+                ),
+                "legacy_landed_review_policy_path": str(
+                    self.config.legacy_landed_review_policy_path or ""
+                ),
+                "legacy_landed_review_key_path": str(
+                    self.config.legacy_landed_review_key_path or ""
+                ),
                 "worktree_no_child_stall_seconds": max(
                     0.0,
                     float(self.config.implementation_log_stall_seconds),
@@ -2579,6 +2794,137 @@ class PortalImplementationSupervisor:
                 detail={"active_task_id": result.get("active_task_id") or ""},
             )
         return SupervisorLoopDecision.keep_running()
+
+    def _provider_backoff_watchdog_pause(
+        self,
+        current_status: Mapping[str, Any],
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Return a bounded stale-heartbeat exception for a durable retry latch.
+
+        Provider-capacity deferrals deliberately leave task state, queues, and
+        events unchanged while the daemon sleeps until ``retry_at``.  That is
+        healthy idle time, not a stalled child.  Admit the exception only from
+        the latest exact, non-consuming provider-exhaustion event and only for
+        the task that the current lane still exposes as ready.
+        """
+
+        if (
+            current_status.get("selection_idle_reason")
+            != "provider_capacity_backoff"
+            or bool(current_status.get("active_task_id"))
+            or current_status.get("implementation_in_progress") is True
+        ):
+            return {}
+
+        heartbeat_at = parse_timestamp(
+            str(current_status.get("heartbeat_at") or "")
+        )
+        if heartbeat_at is None:
+            return {}
+
+        ready_task_ids: set[str] = set()
+        for field_name in (
+            "eligible_ready_task_ids",
+            "selectable_ready_task_ids",
+            "ready_task_ids",
+        ):
+            value = current_status.get(field_name)
+            if not isinstance(value, (list, tuple, set, frozenset)):
+                continue
+            ready_task_ids.update(
+                str(item).strip() for item in value if str(item).strip()
+            )
+        if not ready_task_ids:
+            return {}
+
+        latest_boundary: dict[str, Any] | None = None
+        events_path = self._managed_daemon_events_path()
+        try:
+            with events_path.open("r", encoding="utf-8") as handle:
+                for raw_line in handle:
+                    if not raw_line.strip():
+                        continue
+                    event = json.loads(raw_line)
+                    if not isinstance(event, dict):
+                        return {}
+                    if str(event.get("type") or "") in {
+                        "implementation_provider_exhausted",
+                        "implementation_started",
+                        "implementation_finished",
+                    }:
+                        latest_boundary = event
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+        if (
+            latest_boundary is None
+            or latest_boundary.get("type")
+            != "implementation_provider_exhausted"
+            or latest_boundary.get("reason") != "provider_capacity_exhausted"
+            or latest_boundary.get("deferred") is not True
+            or latest_boundary.get("attempt_consumed") is not False
+        ):
+            return {}
+
+        task_id = str(latest_boundary.get("task_id") or "").strip()
+        if not task_id or task_id not in ready_task_ids:
+            return {}
+        raw_providers = latest_boundary.get("providers")
+        if not isinstance(raw_providers, (list, tuple, set, frozenset)):
+            return {}
+        providers = [
+            str(item).strip()
+            for item in raw_providers
+            if str(item).strip()
+        ]
+        if not providers:
+            return {}
+
+        retry_at = parse_timestamp(str(latest_boundary.get("retry_at") or ""))
+        if retry_at is None or retry_at <= heartbeat_at:
+            return {}
+        now_at = now or datetime.now(timezone.utc)
+        if now_at.tzinfo is None:
+            now_at = now_at.replace(tzinfo=timezone.utc)
+        grace_seconds = max(30.0, float(self.config.check_interval) * 2.0)
+        watchdog_until = retry_at + timedelta(seconds=grace_seconds)
+        if watchdog_until <= now_at:
+            return {}
+
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "provider-backoff-watchdog-pause@1"
+            ),
+            "reason": "provider_capacity_backoff",
+            "task_id": task_id,
+            "providers": providers,
+            "retry_at": retry_at.isoformat(),
+            "watchdog_until": watchdog_until.isoformat(),
+            "remaining_seconds": max(
+                0.0,
+                (watchdog_until - now_at).total_seconds(),
+            ),
+            "attempt_consumed": False,
+            "events_path": str(events_path),
+        }
+
+    def _provider_backoff_stale_heartbeat_decision(
+        self,
+        _loop: SupervisorLoop,
+        _child: Any,
+        current_status: Mapping[str, Any],
+    ) -> SupervisorLoopDecision | None:
+        pause = self._provider_backoff_watchdog_pause(current_status)
+        if not pause:
+            return None
+        return SupervisorLoopDecision(
+            action="continue",
+            reason="provider_capacity_backoff",
+            detail=pause,
+        )
 
     def repair_main_checkout_merge_state(self) -> dict[str, Any]:
         """Resolve or abort an interrupted merge in the shared repository checkout."""
@@ -2811,9 +3157,9 @@ class PortalImplementationSupervisor:
         process_lines = self._list_process_commands()
         active_worktree = state.active_worktree_path.strip()
         # Validation can leave an MCP compatibility adapter in a task worktree
-        # after the implementation runner exits.  Only Codex/Copilot proves
-        # that an implementation attempt is still live; a local service must
-        # not prevent stale-state recovery indefinitely.
+        # after the implementation runner exits.  Only a recognized
+        # implementation-provider runner proves that an attempt is still live;
+        # a local service must not prevent stale-state recovery indefinitely.
         if active_worktree and any(
             active_worktree in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(line)
             for line in process_lines
@@ -2916,6 +3262,7 @@ class PortalImplementationSupervisor:
         operation: str = "generated_board_update",
         callback,
         deferred_result=None,
+        _auto_heal_attempted: bool = False,
     ):
         """Serialize a committed generated-board update with checkout mutations."""
 
@@ -3015,6 +3362,56 @@ class PortalImplementationSupervisor:
                         initial_verdict
                     )
                 )
+                # When the only fault is pre-existing protected generated dirt,
+                # auto-heal once (force commit of trusted supervisor outputs)
+                # instead of crashing the entire maintenance loop. Applies to
+                # every board when supervisor_auto_heal_enabled is true.
+                if (
+                    not initial_verdict.get("release_allowed")
+                    and not dirty_repair_preflight
+                    and not _auto_heal_attempted
+                    and operation != "generated_dirty_repair"
+                    and getattr(self.config, "supervisor_auto_heal_enabled", True)
+                    and self._generated_dirty_repair_preflight_allowed(
+                        initial_verdict
+                    )
+                ):
+                    release_error = (
+                        self._clear_and_release_supervisor_checkout_lease(
+                            lease,
+                            operation=operation,
+                        )
+                    )
+                    self._checkout_mutation_context.lease = None
+                    self._checkout_mutation_context.transaction_depth = 0
+                    heal = self.repair_generated_dirty_checkouts(force=True)
+                    try:
+                        self._record_event(
+                            "generated_protected_dirty_auto_heal",
+                            {
+                                "producer": producer,
+                                "operation": operation,
+                                "release_verdict": dict(initial_verdict),
+                                "heal": dict(heal) if isinstance(heal, Mapping) else {
+                                    "result": str(heal)
+                                },
+                                "lease_release_error": release_error or "",
+                            },
+                        )
+                    except Exception:
+                        logger.warning(
+                            "Failed to record protected dirty auto-heal for %s",
+                            producer,
+                            exc_info=True,
+                        )
+                    return self._run_generated_board_producer(
+                        producer=producer,
+                        commit_outputs=commit_outputs,
+                        operation=operation,
+                        callback=callback,
+                        deferred_result=deferred_result,
+                        _auto_heal_attempted=True,
+                    )
                 if (
                     not initial_verdict.get("release_allowed")
                     and not dirty_repair_preflight
@@ -3180,6 +3577,135 @@ class PortalImplementationSupervisor:
             item.get("reason") == "protected_generated_outputs_dirty"
             for item in failed_scopes
         )
+
+    @staticmethod
+    def _is_healable_supervisor_error(exc: BaseException) -> bool:
+        """Return True for errors the generic auto-heal path can recover from."""
+
+        if not isinstance(exc, RuntimeError):
+            return False
+        message = str(exc).lower()
+        healable_markers = (
+            "protected generated outputs are unsafe",
+            "protected_generated_outputs_dirty",
+            "checkout_mutation_protected_recovery_required",
+            "checkout_mutation_lock",
+            "protected_generated_history",
+            "protected_outputs",
+        )
+        return any(marker in message for marker in healable_markers)
+
+    def _run_healable_maintenance_step(
+        self,
+        step_name: str,
+        callback,
+        *,
+        default: Any,
+    ) -> Any:
+        """Run a maintenance step; auto-heal and soft-defer on healable crashes.
+
+        Applies to every board when ``supervisor_auto_heal_enabled`` is true
+        (the default). Non-healable exceptions still propagate.
+        """
+
+        try:
+            return callback()
+        except Exception as exc:
+            if not getattr(self.config, "supervisor_auto_heal_enabled", True):
+                raise
+            if not self._is_healable_supervisor_error(exc):
+                raise
+            logger.warning(
+                "Maintenance step %s hit healable error; auto-healing: %s",
+                step_name,
+                exc,
+            )
+            heal = self._auto_heal_protected_generated_dirt(
+                reason=f"maintenance_step:{step_name}",
+            )
+            try:
+                return callback()
+            except Exception as retry_exc:
+                if not self._is_healable_supervisor_error(retry_exc):
+                    raise
+                logger.warning(
+                    "Maintenance step %s deferred after auto-heal retry failed: %s",
+                    step_name,
+                    retry_exc,
+                )
+                try:
+                    self._record_event(
+                        "supervisor_maintenance_step_deferred",
+                        {
+                            "step": step_name,
+                            "error": f"{type(retry_exc).__name__}: {retry_exc}",
+                            "heal": heal,
+                        },
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to record deferred maintenance step %s",
+                        step_name,
+                        exc_info=True,
+                    )
+                return default
+
+    def _auto_heal_protected_generated_dirt(
+        self,
+        *,
+        reason: str,
+    ) -> dict[str, Any]:
+        """Commit trusted protected generated dirt so maintenance can proceed.
+
+        Generic for every supervised board: todo/strategy/protected paths often
+        receive supervisor-authored writes (refill, guardrail, janitor). Leaving
+        those dirty crashes later maintenance producers; auto-committing the
+        already-authorized generated outputs keeps the supervisor alive.
+        """
+
+        if not getattr(self.config, "supervisor_auto_heal_enabled", True):
+            return {
+                "attempted": False,
+                "reason": "supervisor_auto_heal_disabled",
+                "trigger": reason,
+            }
+
+        protected_candidates = [
+            self.config.todo_path,
+            self.config.strategy_path,
+            *tuple(self.config.generated_dirty_repair_paths or ()),
+        ]
+        for relative in self.config.implementation_protected_paths:
+            text = str(relative).strip()
+            if text:
+                protected_candidates.append(Path(text))
+        dirty_paths = self._dirty_implementation_protected_paths(protected_candidates)
+        if not dirty_paths:
+            return {
+                "attempted": False,
+                "reason": "protected_outputs_clean",
+                "trigger": reason,
+            }
+        heal = self.repair_generated_dirty_checkouts(
+            force=True,
+            additional_paths=tuple(
+                self.config.repo_root / path for path in dirty_paths
+            ),
+        )
+        payload = {
+            "attempted": True,
+            "trigger": reason,
+            "dirty_paths": [str(path) for path in dirty_paths],
+            "heal": dict(heal) if isinstance(heal, Mapping) else {"result": str(heal)},
+        }
+        try:
+            self._record_event("protected_generated_dirty_auto_heal", payload)
+        except Exception:
+            logger.warning(
+                "Failed to record protected generated dirty auto-heal",
+                exc_info=True,
+            )
+        return payload
 
     def _record_generated_checkout_retention(
         self,
@@ -4058,6 +4584,95 @@ class PortalImplementationSupervisor:
             deferred_result=deferred,
         )
 
+    def _post_completion_ops_refill_output_paths(self) -> tuple[Path, ...]:
+        paths: list[Path] = [self.config.todo_path, self.config.strategy_path]
+        if self.config.post_completion_ops_config_path is not None:
+            paths.append(self.config.post_completion_ops_config_path)
+        return tuple(paths)
+
+    def refill_post_completion_ops_backlog(self) -> RefillScanResult:
+        """Seed reviewed post-completion ops tasks when the board is drained."""
+
+        started_at = datetime.now(timezone.utc)
+        if not self.config.post_completion_ops_refill_enabled:
+            return self._terminal_refill_result(
+                ScanTerminalReason.DISABLED,
+                scan_mode="disabled",
+                analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
+                started_at=started_at,
+            )
+        catalog_path = self.config.post_completion_ops_catalog_path
+        if catalog_path is None:
+            return self._terminal_refill_result(
+                ScanTerminalReason.FAILED,
+                scan_mode="prerequisite_check",
+                analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
+                started_at=started_at,
+                error="post_completion_ops_catalog_path is not configured",
+            )
+        try:
+            from ipfs_accelerate_py.agent_supervisor.objectives.post_completion_ops_refill import (
+                load_post_completion_ops_catalog,
+                seed_post_completion_ops,
+            )
+
+            catalog = load_post_completion_ops_catalog(Path(catalog_path))
+            seed_result = seed_post_completion_ops(
+                todo_path=self.config.todo_path,
+                strategy_path=self.config.strategy_path,
+                catalog=catalog,
+                state_path=self.config.state_path,
+                config_path=self.config.post_completion_ops_config_path,
+                board_namespace=self.config.post_completion_ops_board_namespace
+                or catalog.program,
+                shard_count=max(1, int(self.config.task_shard_count)),
+                shard_index=int(self.config.task_shard_index),
+                require_drained=bool(self.config.post_completion_ops_require_drained),
+            )
+        except Exception as exc:
+            return self._terminal_refill_result(
+                ScanTerminalReason.FAILED,
+                scan_mode="seed",
+                analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
+                started_at=started_at,
+                error=f"{type(exc).__name__}: {exc}",
+                metadata={"error_type": type(exc).__name__},
+            )
+
+        # Expand the in-process execution slice so managed daemons restarted
+        # after this pass can select newly seeded post-completion tasks.
+        expanded = tuple(
+            str(task_id).strip()
+            for task_id in seed_result.expanded_execution_slice_task_ids
+            if str(task_id).strip()
+        )
+        if expanded:
+            merged = list(self.config.execution_slice_task_ids)
+            for task_id in expanded:
+                if task_id not in merged:
+                    merged.append(task_id)
+            self.config.execution_slice_task_ids = tuple(merged)
+
+        metadata = seed_result.to_metadata()
+        if seed_result.error:
+            terminal = ScanTerminalReason.FAILED
+        elif seed_result.seeded_task_ids or seed_result.config_updated:
+            terminal = ScanTerminalReason.GENERATED
+        elif seed_result.reason in {"already_seeded", "already_present"}:
+            terminal = ScanTerminalReason.DUPLICATE_ONLY
+        elif seed_result.reason == "board_not_drained":
+            terminal = ScanTerminalReason.THRESHOLD_SATISFIED
+        else:
+            terminal = ScanTerminalReason.PARTIAL
+        return self._terminal_refill_result(
+            terminal,
+            scan_mode=seed_result.reason or "seed",
+            analyzer_version=POST_COMPLETION_OPS_REFILL_ANALYZER_VERSION,
+            started_at=started_at,
+            metadata=metadata,
+            error=seed_result.error or None,
+        )
+
     def _objective_refill_output_paths(self) -> tuple[Path, ...]:
         from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
             default_objective_path,
@@ -4279,6 +4894,54 @@ class PortalImplementationSupervisor:
         unmerged_paths: list[str],
     ) -> dict[str, Any]:
         from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import build_merge_prompt, invoke_llm_resolver
+        from ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback import (
+            llm_merge_resolver_fallback_command,
+        )
+
+        ordered_values = {
+            "primary": os.environ.get(
+                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER", ""
+            ).strip(),
+            "fallback": os.environ.get(
+                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER", ""
+            ).strip(),
+            "trigger": os.environ.get(
+                "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER", ""
+            ).strip(),
+            "grok_model": os.environ.get(
+                "IPFS_ACCELERATE_AGENT_GROK_MODEL", ""
+            ).strip(),
+            "codex_model": os.environ.get(
+                "IPFS_ACCELERATE_AGENT_CODEX_MODEL", ""
+            ).strip(),
+            "codex_effort": os.environ.get(
+                "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT", ""
+            ).strip(),
+        }
+        ordered_route_requested = bool(
+            ordered_values["fallback"] or ordered_values["trigger"]
+        )
+        sealed_ordered_route = ordered_values == {
+            "primary": "grok_cli",
+            "fallback": "codex",
+            "trigger": "primary_quota_exhausted",
+            "grok_model": "grok-4.5",
+            "codex_model": "gpt-5.6-terra",
+            "codex_effort": "medium",
+        }
+        if ordered_route_requested and not sealed_ordered_route:
+            return {
+                "attempted": False,
+                "deferred": True,
+                "reason": "ordered_merge_resolver_policy_invalid",
+            }
+        command_template = (
+            llm_merge_resolver_fallback_command(
+                python_executable=sys.executable,
+            )
+            if sealed_ordered_route
+            else self.config.llm_merge_resolver_command
+        )
 
         target_branch = self._git_current_branch(repo_root) or "HEAD"
         active_task_id = ""
@@ -4321,7 +4984,7 @@ class PortalImplementationSupervisor:
         }
         return invoke_llm_resolver(
             payload,
-            command_template=self.config.llm_merge_resolver_command,
+            command_template=command_template,
             timeout_seconds=self.config.llm_merge_resolver_timeout_seconds,
         )
 
@@ -10899,9 +11562,16 @@ class PortalImplementationSupervisor:
     ) -> str:
         if str(metadata.get("kind") or "") != "merge":
             return "kind_mismatch"
+        worktree_root = str(
+            metadata.get("worktree_root")
+            or metadata.get("repo_root")
+            or ""
+        )
         try:
-            if Path(str(metadata.get("repo_root") or "")).resolve() != (
-                self.config.repo_root.resolve()
+            if (
+                not worktree_root
+                or Path(worktree_root).resolve()
+                != self.config.repo_root.resolve()
             ):
                 return "repository_mismatch"
         except (OSError, RuntimeError, ValueError):
@@ -11659,6 +12329,46 @@ class PortalImplementationSupervisor:
         if self.config.implement:
             command.append("--implement")
             command.extend(["--implementation-timeout", str(self.config.implementation_timeout)])
+            if self.config.production_provider_policy:
+                review_authority_key_path = (
+                    self.config.production_provider_review_authority_key_path
+                    or self.config.state_dir
+                    / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
+                )
+                command.extend(
+                    [
+                        "--production-provider-policy",
+                        self.config.production_provider_policy,
+                        "--production-provider-context-budget-tokens",
+                        str(
+                            int(
+                                self.config.production_provider_context_budget_tokens
+                            )
+                        ),
+                        "--production-provider-timeout-seconds",
+                        str(float(self.config.production_provider_timeout_seconds)),
+                        "--production-provider-review-authority-key-path",
+                        str(review_authority_key_path),
+                    ]
+                )
+            if (self.config.legacy_landed_review_policy_path is None) != (
+                self.config.legacy_landed_review_key_path is None
+            ):
+                raise ValueError(
+                    "legacy landed review requires both explicit policy and key paths"
+                )
+            if (
+                self.config.legacy_landed_review_policy_path is not None
+                and self.config.legacy_landed_review_key_path is not None
+            ):
+                command.extend(
+                    [
+                        "--legacy-landed-review-policy-path",
+                        str(self.config.legacy_landed_review_policy_path),
+                        "--legacy-landed-review-key-path",
+                        str(self.config.legacy_landed_review_key_path),
+                    ]
+                )
             if self.config.implementation_command:
                 command.extend(["--implementation-command", self.config.implementation_command])
             if self.config.llm_merge_resolver_command:
@@ -11742,6 +12452,9 @@ class PortalImplementationSupervisor:
 
     def _managed_daemon_pid_path(self) -> Path:
         return self.config.state_dir / f"{self.config.state_prefix}_managed_daemon.pid"
+
+    def _managed_daemon_events_path(self) -> Path:
+        return self.config.state_dir / f"{self.config.state_prefix}_events.jsonl"
 
     def _terminate_managed_daemon_tree(self, *, grace_seconds: float = 1.0) -> dict[str, Any]:
         """Stop the daemon this supervisor owns, including late-spawned workers."""
@@ -12006,6 +12719,70 @@ class PortalImplementationSupervisor:
             self.config.execution_slice_task_cids
         ):
             return False
+        expected_provider_policies = (
+            {self.config.production_provider_policy}
+            if self.config.implement and self.config.production_provider_policy
+            else set()
+        )
+        if option_values("--production-provider-policy") != expected_provider_policies:
+            return False
+        expected_provider_budgets = (
+            {str(int(self.config.production_provider_context_budget_tokens))}
+            if expected_provider_policies
+            else set()
+        )
+        if (
+            option_values("--production-provider-context-budget-tokens")
+            != expected_provider_budgets
+        ):
+            return False
+        expected_provider_timeouts = (
+            {str(float(self.config.production_provider_timeout_seconds))}
+            if expected_provider_policies
+            else set()
+        )
+        if (
+            option_values("--production-provider-timeout-seconds")
+            != expected_provider_timeouts
+        ):
+            return False
+        expected_review_authority_key_paths = (
+            {
+                str(
+                    self.config.production_provider_review_authority_key_path
+                    or self.config.state_dir
+                    / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
+                )
+            }
+            if expected_provider_policies
+            else set()
+        )
+        if (
+            option_values(
+                "--production-provider-review-authority-key-path"
+            )
+            != expected_review_authority_key_paths
+        ):
+            return False
+        expected_legacy_policy_paths = (
+            {str(self.config.legacy_landed_review_policy_path)}
+            if self.config.implement
+            and self.config.legacy_landed_review_policy_path is not None
+            and self.config.legacy_landed_review_key_path is not None
+            else set()
+        )
+        expected_legacy_key_paths = (
+            {str(self.config.legacy_landed_review_key_path)}
+            if expected_legacy_policy_paths
+            else set()
+        )
+        if (
+            option_values("--legacy-landed-review-policy-path")
+            != expected_legacy_policy_paths
+            or option_values("--legacy-landed-review-key-path")
+            != expected_legacy_key_paths
+        ):
+            return False
         expected_merge_targets = (
             {self.config.merge_target_branch}
             if self.config.merge_target_branch
@@ -12102,7 +12879,70 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--implementation-command",
         default="",
-        help="Command used by the daemon for implementation. Defaults to codex exec --full-auto.",
+        help=(
+            "Command used by the daemon for implementation. The default route "
+            "requires an authenticated Grok CLI (grok-4.5 by default). Only a "
+            "verified native Grok quota-exhaustion event may invoke the pinned "
+            "gpt-5.6-terra medium fallback; other failures and predispatch "
+            "unavailability fail closed. Explicit Grok selection has no "
+            "fallback."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-policy",
+        default="",
+        choices=("", PRODUCTION_CLI_POLICY_NAME),
+        help=(
+            "Opt in to the typed production packet route using Grok for "
+            "implementation and a distinct Codex CLI invocation for review. "
+            "This is an operator policy overlay and does not rewrite task metadata."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-context-budget-tokens",
+        type=int,
+        default=0,
+        help=(
+            "Positive bounded context budget for --production-provider-policy. "
+            f"Zero selects the policy default ({DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS})."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-timeout-seconds",
+        type=float,
+        default=0.0,
+        help=(
+            "Positive bounded per-provider timeout for the production route. "
+            f"Zero selects the policy default ({DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS:g}s)."
+        ),
+    )
+    parser.add_argument(
+        "--production-provider-review-authority-key-path",
+        type=Path,
+        default=None,
+        help=(
+            "Operator-controlled Ed25519 private-key file forwarded unchanged "
+            "to the managed daemon. Bundle supervisors use one shared path "
+            "for every lane."
+        ),
+    )
+    parser.add_argument(
+        "--legacy-landed-review-policy-path",
+        type=Path,
+        default=None,
+        help=(
+            "Explicit operator-owned LegacyLandedReviewPolicy@2 JSON forwarded "
+            "unchanged; omitted by default and never inferred from task metadata."
+        ),
+    )
+    parser.add_argument(
+        "--legacy-landed-review-key-path",
+        type=Path,
+        default=None,
+        help=(
+            "Explicit mode-0600 Ed25519 key bound by the legacy policy. Both "
+            "legacy paths are required together."
+        ),
     )
     parser.add_argument(
         "--implementation-protected-path",
@@ -12407,6 +13247,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.set_defaults(generated_dirty_repair_enabled=False)
     parser.add_argument(
+        "--no-supervisor-auto-heal",
+        dest="supervisor_auto_heal_enabled",
+        action="store_false",
+        help=(
+            "Disable generic supervisor auto-heal. By default the supervisor heals "
+            "protected generated dirt and soft-defers healable maintenance crashes "
+            "for every board instead of killing the loop."
+        ),
+    )
+    parser.set_defaults(supervisor_auto_heal_enabled=True)
+    parser.add_argument(
         "--generated-dirty-commit-subject",
         default="Agent: commit generated supervisor outputs",
     )
@@ -12514,6 +13365,41 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Refine the objective heap and append objective-gap todos when the supervised backlog is low or drained.",
     )
+    parser.add_argument(
+        "--post-completion-ops-refill",
+        action="store_true",
+        help=(
+            "When the todo board is fully drained, seed reviewed post-completion "
+            "ops tasks from --post-completion-ops-catalog and expand execution slices."
+        ),
+    )
+    parser.add_argument(
+        "--post-completion-ops-catalog",
+        type=Path,
+        default=None,
+        help="JSON catalog of post-completion ops tasks to seed after board drain.",
+    )
+    parser.add_argument(
+        "--post-completion-ops-config",
+        type=Path,
+        default=None,
+        help=(
+            "Optional supervisor config JSON whose lane_slices should be expanded "
+            "when post-completion ops tasks are seeded."
+        ),
+    )
+    parser.add_argument(
+        "--post-completion-ops-board-namespace",
+        default="",
+        help="Board namespace stamped onto seeded post-completion task cards.",
+    )
+    parser.add_argument(
+        "--post-completion-ops-allow-before-drain",
+        dest="post_completion_ops_require_drained",
+        action="store_false",
+        help="Allow catalog seeding even when open tasks remain (idempotent).",
+    )
+    parser.set_defaults(post_completion_ops_require_drained=True)
     parser.add_argument(
         "--no-objective-task-janitor",
         dest="objective_task_janitor_enabled",
@@ -12754,9 +13640,81 @@ def supervisor_config_from_args(
     effective_repo_root = (repo_root or REPO_ROOT).resolve()
     reconciliation_only = bool(args.reconciliation_only)
     implement = bool(args.implement and not reconciliation_only)
-    llm_merge_resolver_command = args.llm_merge_resolver_command
+    llm_merge_resolver_command = normalize_llm_merge_resolver_command(
+        args.llm_merge_resolver_command
+    )
     if reconciliation_only and not args.allow_reconciliation_only_llm_resolver:
         llm_merge_resolver_command = ""
+    production_provider_policy = str(
+        getattr(args, "production_provider_policy", "") or ""
+    ).strip()
+    raw_production_budget = int(
+        getattr(args, "production_provider_context_budget_tokens", 0) or 0
+    )
+    raw_production_timeout = float(
+        getattr(args, "production_provider_timeout_seconds", 0.0) or 0.0
+    )
+    raw_review_authority_key_path = getattr(
+        args, "production_provider_review_authority_key_path", None
+    )
+    if (
+        raw_production_budget
+        or raw_production_timeout
+        or raw_review_authority_key_path is not None
+    ) and not production_provider_policy:
+        raise ValueError(
+            "production provider bounds/review authority require a production "
+            "provider policy"
+        )
+    production_provider_context_budget_tokens = 0
+    production_provider_timeout_seconds = 0.0
+    production_provider_review_authority_key_path = None
+    if production_provider_policy:
+        production_policy = ProductionCLIProviderPolicy(
+            name=production_provider_policy,
+            context_budget_tokens=(
+                raw_production_budget
+                or DEFAULT_PRODUCTION_CONTEXT_BUDGET_TOKENS
+            ),
+            provider_timeout_seconds=(
+                raw_production_timeout
+                or DEFAULT_PRODUCTION_PROVIDER_TIMEOUT_SECONDS
+            ),
+        )
+        production_provider_context_budget_tokens = (
+            production_policy.context_budget_tokens
+        )
+        production_provider_timeout_seconds = float(
+            production_policy.provider_timeout_seconds
+        )
+        production_provider_review_authority_key_path = Path(
+            raw_review_authority_key_path
+            or args.state_dir / DEFAULT_PRODUCTION_PROVIDER_REVIEW_KEY_NAME
+        )
+    legacy_landed_review_policy_path = getattr(
+        args, "legacy_landed_review_policy_path", None
+    )
+    legacy_landed_review_key_path = getattr(
+        args, "legacy_landed_review_key_path", None
+    )
+    if (legacy_landed_review_policy_path is None) != (
+        legacy_landed_review_key_path is None
+    ):
+        raise ValueError(
+            "legacy landed review requires both explicit policy and key paths"
+        )
+    if (
+        legacy_landed_review_policy_path is not None
+        and legacy_landed_review_key_path is not None
+    ):
+        legacy_policy = load_legacy_landed_review_policy(
+            legacy_landed_review_policy_path
+        )
+        legacy_authority = LegacyLandedReviewAuthority.from_private_key_path(
+            legacy_landed_review_key_path
+        )
+        if legacy_policy.issuer_key_id != legacy_authority.issuer_key_id:
+            raise ValueError("legacy landed review policy/key binding is invalid")
     return PortalSupervisorConfig(
         todo_path=args.todo_path,
         state_path=state_path or args.state_dir / f"{args.state_prefix}_task_state.json",
@@ -12774,6 +13732,16 @@ def supervisor_config_from_args(
         reconciliation_only=reconciliation_only,
         implement=implement,
         implementation_command=args.implementation_command,
+        production_provider_policy=production_provider_policy,
+        production_provider_context_budget_tokens=(
+            production_provider_context_budget_tokens
+        ),
+        production_provider_timeout_seconds=production_provider_timeout_seconds,
+        production_provider_review_authority_key_path=(
+            production_provider_review_authority_key_path
+        ),
+        legacy_landed_review_policy_path=legacy_landed_review_policy_path,
+        legacy_landed_review_key_path=legacy_landed_review_key_path,
         llm_merge_resolver_command=llm_merge_resolver_command,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
         implementation_timeout=args.implementation_timeout,
@@ -12836,6 +13804,9 @@ def supervisor_config_from_args(
         generated_dirty_repair_max_paths=args.generated_dirty_max_paths,
         generated_dirty_repair_stale_lock_seconds=args.generated_dirty_stale_lock_seconds,
         generated_dirty_repair_paths=tuple(args.generated_dirty_repair_paths),
+        supervisor_auto_heal_enabled=bool(
+            getattr(args, "supervisor_auto_heal_enabled", True)
+        ),
         codebase_refill_enabled=args.codebase_refill_scan and not reconciliation_only,
         codebase_scan_discovery_dir=args.codebase_scan_discovery_dir,
         codebase_scan_discovery_output_path=args.codebase_scan_discovery_output_path,
@@ -12850,6 +13821,19 @@ def supervisor_config_from_args(
         codebase_scan_commit_outputs=args.codebase_scan_commit_outputs,
         codebase_scan_commit_subject=args.codebase_scan_commit_subject,
         objective_refill_enabled=args.objective_refill_scan and not reconciliation_only,
+        post_completion_ops_refill_enabled=(
+            bool(args.post_completion_ops_refill)
+            and args.post_completion_ops_catalog is not None
+            and not reconciliation_only
+        ),
+        post_completion_ops_catalog_path=args.post_completion_ops_catalog,
+        post_completion_ops_config_path=args.post_completion_ops_config,
+        post_completion_ops_board_namespace=str(
+            args.post_completion_ops_board_namespace or ""
+        ),
+        post_completion_ops_require_drained=bool(
+            args.post_completion_ops_require_drained
+        ),
         objective_task_janitor_enabled=args.objective_task_janitor_enabled and not reconciliation_only,
         objective_task_janitor_max_blocked_tasks=args.objective_task_janitor_max_blocked_tasks,
         objective_task_janitor_max_deprioritized_tasks=args.objective_task_janitor_max_deprioritized_tasks,

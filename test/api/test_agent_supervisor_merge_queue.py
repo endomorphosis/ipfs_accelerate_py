@@ -5,7 +5,6 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
     MergeQueue,
     MergeQueueFenceError,
@@ -190,6 +189,84 @@ def test_merge_debt_stops_additional_claims_until_a_slot_is_released(
         request.request_id for request in claimed
     }
     assert queue.status()["merge_debt"] == 2
+
+
+def test_deferred_claim_persists_cooldown_without_consuming_retry(
+    tmp_path: Path,
+) -> None:
+    now = [100.0]
+    queue_path = tmp_path / "queue"
+    queue = MergeQueue(
+        queue_path,
+        clock=lambda: now[0],
+        max_attempts=2,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/wait-for-live-lock",
+        task_id="WAIT-FOR-LOCK",
+        commit_sha="d" * 40,
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:first")
+    assert claimed is not None
+
+    deferred = queue.defer(
+        claimed,
+        reason="lock_exists",
+        delay_seconds=30,
+        metadata={"lock_owner_pid": 4321},
+    )
+
+    assert deferred is not None
+    assert deferred.status == "pending"
+    assert deferred.attempt == 1
+    assert deferred.failure_count == 0
+    assert deferred.retry_not_before == 130.0
+    assert deferred.metadata["deferrals"][-1]["metadata"] == {
+        "lock_owner_pid": 4321
+    }
+    with pytest.raises(MergeQueueFenceError):
+        queue.complete(claimed)
+
+    restarted = MergeQueue(
+        queue_path,
+        clock=lambda: now[0],
+        max_attempts=2,
+    )
+    assert restarted.dequeue(consumer_id="merge-train:too-early") is None
+    now[0] = 130.0
+    reclaimed = restarted.dequeue(consumer_id="merge-train:after-cooldown")
+    assert reclaimed is not None
+    assert reclaimed.request_id == request.request_id
+    assert reclaimed.attempt == 1
+    assert reclaimed.failure_count == 0
+    assert reclaimed.retry_not_before == 0.0
+
+
+@pytest.mark.parametrize("delay", [float("nan"), float("inf"), 3601.0])
+def test_defer_rejects_unbounded_cooldown(
+    tmp_path: Path,
+    delay: float,
+) -> None:
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="implementation/unbounded-cooldown",
+        task_id="UNBOUNDED-COOLDOWN",
+        commit_sha="e" * 40,
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:cooldown-validation")
+    assert claimed is not None
+
+    with pytest.raises(ValueError, match="deferral delay"):
+        queue.defer(
+            claimed,
+            reason="lock_exists",
+            delay_seconds=delay,
+        )
+
+    stored = queue.get(request.request_id)
+    assert stored is not None
+    assert stored.status == "processing"
+    assert stored.claim_token == claimed.claim_token
 
 
 def test_failed_validation_is_quarantined_with_a_durable_receipt(

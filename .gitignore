@@ -12,6 +12,7 @@ state/*
 *model_functionality_report*
 *model_functionality*
 *.json
+!test/fixtures/agent_supervisor_prompt_entrypoints/manifest.json
 .venv-test
 *result.json*
 *benchmark_report*
@@ -162,6 +163,7 @@ Thumbs.db
 *.rej
 
 # Local/ephemeral data under data/ (WAL, ad-hoc DBs; keep intentional fixtures)
+/data/agent_supervisor/ipfs_kit_runtime_readiness/
 data/*.db
 data/*.sqlite
 data/*.sqlite3
@@ -196,3 +198,7 @@ state/**/*.out
 !docs/architecture/formal_verification_authoritative_vendor_release.json
 !docs/architecture/formal_verification_post_remediation_delta.json
 !docs/architecture/formal_verification_production_authorization_replacement_receipt.json
+
+# Stable IPFS Kit runtime-readiness scheduler policy is a source artifact.
+!config/agent_supervisor_ipfs_kit_runtime_readiness_scheduler.json
+

@@ -551,12 +551,20 @@ def test_parallel_daemon_lanes_resume_one_proof_workflow_and_report_truth(
         primary_task_id=task.task_id,
         completion_reason="proof_e2e",
     )
-    assert first_transition["updated_task_ids"] == [task.task_id]
+    assert first_transition["updated"] is False
+    assert first_transition["updated_task_ids"] == []
+    assert (
+        first_transition["reason"]
+        == "authoritative_completion_packet_missing"
+    )
     assert duplicate_transition["updated"] is False
-    assert duplicate_transition["reason"] == "already_completed"
+    assert (
+        duplicate_transition["reason"]
+        == "authoritative_completion_packet_missing"
+    )
     assert todo_path.read_text(encoding="utf-8").count(
         "- Status: completed"
-    ) == 1
+    ) == 0
 
 
 def test_scheduler_receipt_flows_into_fail_closed_merge_gate(tmp_path: Path) -> None:

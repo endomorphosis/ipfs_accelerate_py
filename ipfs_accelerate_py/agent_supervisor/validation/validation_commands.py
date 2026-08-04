@@ -93,6 +93,19 @@ class ValidationRequirementKind(str, Enum):
     MANUAL_REVIEW = "manual_review"
 
 
+class ValidationDependencyScope(str, Enum):
+    """Whether a validation command needs the Python project environment.
+
+    ``PROJECT_REQUIRED`` is deliberately the default for commands that are
+    unknown, compound, or otherwise not proven independent of project code.
+    The narrower ``DEPENDENCY_NEUTRAL`` value is reserved for reviewed shell
+    predicates whose execution cannot import the project or a Python package.
+    """
+
+    PROJECT_REQUIRED = "project_required"
+    DEPENDENCY_NEUTRAL = "dependency_neutral"
+
+
 @dataclass(frozen=True)
 class ValidationCommand:
     """One atomic shell validation command and its scheduling metadata."""
@@ -415,8 +428,127 @@ def normalize_validation_command_text(value: str) -> str:
     return command
 
 
+def _quote_shell_token(token: str) -> str:
+    """Return a shell-safe spelling of one structure token."""
+
+    text = str(token)
+    if text in {"&&", "||", ";", "|", "&", "(", ")"}:
+        return text
+    if text and all(
+        character.isalnum() or character in "._/+-=:@%,[]{}~^"
+        for character in text
+    ):
+        return text
+    return shlex.quote(text)
+
+
+def _join_shell_segments_with_and(
+    segments: Sequence[Sequence[str]],
+) -> str:
+    """Reconstruct one ``&&``-joined shell command from structure segments."""
+
+    rendered: list[str] = []
+    for segment in segments:
+        if not segment:
+            continue
+        rendered.append(" ".join(_quote_shell_token(token) for token in segment))
+    return " && ".join(rendered)
+
+
+def expand_cd_parent_return_validation_commands(command: str) -> list[str]:
+    """Expand a reviewed ``cd sub && … && cd .. && …`` closeout pattern.
+
+    Boards sometimes validate both a package-local suite and a monorepo-root
+    script in one shell chain by changing into a submodule, running tests, then
+    returning with ``cd ..`` before the root script.  That form is intentional
+    and safe when:
+
+    * the only working-directory changes are a leading ``cd <safe-relative>``
+      and exactly one later ``cd ..`` that returns to the repository root; and
+    * neither body introduces another ``cd``/pushd/popd/source/eval form.
+
+    The historical preflight required a single leading ``cd`` for the entire
+    chain, which permanently deferred tasks such as release closeout with a
+    long dependency-drift backoff even though each half of the chain was
+    independently safe.  Expanding into two commands restores the intended
+    authority while keeping unsafe multi-``cd`` forms fail-closed.
+    """
+
+    text = normalize_validation_command_text(command)
+    if not text:
+        return []
+    # Already a single-root command: leave unchanged.
+    if validation_command_repository_root(text) is not None:
+        return [text]
+
+    structure_tokens = _shell_structure_tokens(text)
+    if not structure_tokens:
+        return [text]
+    # Only pure &&-chains are eligible; mixed | || ; keep fail-closed.
+    if any(token in {";", "|", "||", "&"} for token in structure_tokens):
+        return [text]
+    segments = _shell_command_segments(structure_tokens)
+    if len(segments) < 3:
+        return [text]
+
+    first = segments[0]
+    if len(first) != 2 or first[0] != "cd":
+        return [text]
+    subdir = _safe_literal_repository_path(
+        first[1],
+        allow_current_directory=False,
+    )
+    if subdir is None or not subdir:
+        return [text]
+
+    return_indices = [
+        index
+        for index, segment in enumerate(segments)
+        if len(segment) == 2 and segment[0] == "cd" and segment[1] == ".."
+    ]
+    if len(return_indices) != 1:
+        return [text]
+    return_index = return_indices[0]
+    if return_index <= 1 or return_index >= len(segments) - 1:
+        return [text]
+
+    left_body = segments[1:return_index]
+    right_body = segments[return_index + 1 :]
+    for segment in (*left_body, *right_body):
+        command_meta = _shell_segment_command(segment)
+        if command_meta is None:
+            continue
+        if command_meta[0] == "cd":
+            return [text]
+        # Reject other cwd-indeterminate builtins in either half.
+        if command_meta[0] in _CWD_INDETERMINATE_SHELL_BUILTINS:
+            return [text]
+
+    if (
+        _has_unquoted_shell_grouping(text)
+        or _has_unquoted_shell_newline(text)
+        or _uses_unsafe_env_options(segments)
+        or _uses_nested_shell_command(segments)
+    ):
+        return [text]
+
+    left_command = _join_shell_segments_with_and((first, *left_body))
+    right_command = _join_shell_segments_with_and(right_body)
+    if (
+        validation_command_repository_root(left_command) is None
+        or validation_command_repository_root(right_command) is None
+    ):
+        return [text]
+    return [left_command, right_command]
+
+
 def split_validation_commands(value: str) -> list[str]:
-    """Split semicolon-separated shell commands without splitting quoted code."""
+    """Split semicolon-separated shell commands without splitting quoted code.
+
+    After semicolon splitting, expand the reviewed
+    ``cd <sub> && … && cd .. && …`` monorepo closeout pattern into two
+    independently rooted commands so dependency preflight can accept each half.
+    """
 
     text = normalize_validation_command_text(value)
     commands: list[str] = []
@@ -454,7 +586,11 @@ def split_validation_commands(value: str) -> list[str]:
         current.append(char)
 
     flush()
-    return commands
+
+    expanded: list[str] = []
+    for command in commands:
+        expanded.extend(expand_cd_parent_return_validation_commands(command))
+    return expanded
 
 
 def _shell_tokens(command: str) -> list[str]:
@@ -464,6 +600,399 @@ def _shell_tokens(command: str) -> list[str]:
         return []
 
 
+_DYNAMIC_PATH_CHARACTERS = frozenset("*?[]{}$`;&|<>")
+_CWD_INDETERMINATE_SHELL_BUILTINS = frozenset(
+    {
+        ".",
+        "alias",
+        "case",
+        "coproc",
+        "do",
+        "done",
+        "elif",
+        "else",
+        "esac",
+        "eval",
+        "fi",
+        "for",
+        "function",
+        "if",
+        "popd",
+        "pushd",
+        "select",
+        "source",
+        "shopt",
+        "then",
+        "trap",
+        "unalias",
+        "until",
+        "while",
+        "{",
+        "}",
+    }
+)
+_SHELL_LITERAL_ARGUMENT_COMMANDS = frozenset(
+    {
+        "echo",
+        "printf",
+    }
+)
+_NESTED_SHELL_EXECUTABLES = frozenset(
+    {
+        "ash",
+        "bash",
+        "dash",
+        "ksh",
+        "sh",
+        "zsh",
+    }
+)
+_DEPENDENCY_NEUTRAL_TEST_FILE_OPERATORS = frozenset(
+    {
+        "-L",
+        "-S",
+        "-b",
+        "-c",
+        "-d",
+        "-e",
+        "-f",
+        "-g",
+        "-h",
+        "-p",
+        "-r",
+        "-s",
+        "-u",
+        "-w",
+        "-x",
+    }
+)
+_SHELL_EXPANSION_CHARACTERS = frozenset("*?[]{}$`;&|<>()\n\r")
+
+
+def _has_unquoted_shell_grouping(command: str) -> bool:
+    escaped = False
+    in_single_quote = False
+    in_double_quote = False
+    for character in command:
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\" and not in_single_quote:
+            escaped = True
+            continue
+        if character == "'" and not in_double_quote:
+            in_single_quote = not in_single_quote
+            continue
+        if character == '"' and not in_single_quote:
+            in_double_quote = not in_double_quote
+            continue
+        if character in {"(", ")"} and not in_single_quote and not in_double_quote:
+            return True
+    return False
+
+
+def _has_unquoted_shell_newline(command: str) -> bool:
+    """Return whether command text contains a shell command separator line."""
+
+    escaped = False
+    in_single_quote = False
+    in_double_quote = False
+    for character in command:
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\" and not in_single_quote:
+            escaped = True
+            continue
+        if character == "'" and not in_double_quote:
+            in_single_quote = not in_single_quote
+            continue
+        if character == '"' and not in_single_quote:
+            in_double_quote = not in_double_quote
+            continue
+        if character in {"\n", "\r"} and not in_single_quote and not in_double_quote:
+            return True
+    return False
+
+
+def _shell_structure_tokens(command: str) -> list[str]:
+    try:
+        lexer = shlex.shlex(
+            command,
+            posix=True,
+            punctuation_chars=";&|()",
+        )
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        return list(lexer)
+    except ValueError:
+        return []
+
+
+def _shell_command_segments(tokens: Sequence[str]) -> tuple[tuple[str, ...], ...]:
+    segments: list[tuple[str, ...]] = []
+    current: list[str] = []
+    for token in tokens:
+        if token in {"&", "&&", ";", "|", "||"}:
+            if current:
+                segments.append(tuple(current))
+                current = []
+            continue
+        current.append(token)
+    if current:
+        segments.append(tuple(current))
+    return tuple(segments)
+
+
+def _shell_segment_command_index(segment: Sequence[str]) -> int | None:
+    index = 0
+    while index < len(segment):
+        token = segment[index]
+        if _ENV_ASSIGNMENT_RE.match(token) or token == "!":
+            index += 1
+            continue
+        if token in {"builtin", "command", "exec", "nohup", "time"}:
+            index += 1
+            while index < len(segment) and segment[index].startswith("-"):
+                index += 1
+            continue
+        if token == "env":
+            index += 1
+            while index < len(segment) and (
+                segment[index].startswith("-")
+                or _ENV_ASSIGNMENT_RE.match(segment[index])
+            ):
+                index += 1
+            continue
+        return index
+    return None
+
+
+def _shell_segment_command(segment: Sequence[str]) -> tuple[str, int] | None:
+    index = _shell_segment_command_index(segment)
+    if index is None:
+        return None
+    raw_command = str(segment[index]).replace("\\", "/")
+    command = (
+        raw_command
+        if raw_command in _CWD_INDETERMINATE_SHELL_BUILTINS
+        else PurePosixPath(raw_command).name
+    )
+    return command, index
+
+
+def _uses_unsafe_env_options(
+    segments: Sequence[Sequence[str]],
+) -> bool:
+    """Mirror the authoritative runner's rejection of env option parsing."""
+
+    for segment in segments:
+        command = _shell_segment_command(segment)
+        if command is not None and command[0] in _SHELL_LITERAL_ARGUMENT_COMMANDS:
+            continue
+        for index, token in enumerate(segment):
+            executable = PurePosixPath(str(token).replace("\\", "/")).name
+            if executable != "env":
+                continue
+            for argument in segment[index + 1 :]:
+                argument_text = str(argument)
+                if argument_text == "--":
+                    break
+                if argument_text == "-" or argument_text.startswith("-"):
+                    return True
+                if _ENV_ASSIGNMENT_RE.match(argument_text):
+                    continue
+                break
+    return False
+
+
+def _uses_nested_shell_command(
+    segments: Sequence[Sequence[str]],
+) -> bool:
+    for segment in segments:
+        command = _shell_segment_command(segment)
+        if command is None:
+            continue
+        command_name, command_index = command
+        if command_name in _NESTED_SHELL_EXECUTABLES:
+            return True
+        if command_name in _SHELL_LITERAL_ARGUMENT_COMMANDS:
+            continue
+        for argument in segment[command_index + 1 :]:
+            executable = PurePosixPath(str(argument).replace("\\", "/")).name
+            if executable in _NESTED_SHELL_EXECUTABLES:
+                return True
+    return False
+
+
+def _safe_literal_repository_path(
+    value: str,
+    *,
+    allow_current_directory: bool = False,
+) -> str | None:
+    """Normalize one literal repository-relative path or reject it.
+
+    Validation targets become scope evidence, so shell-expanded, absolute,
+    drive-qualified, and parent-traversing values must never be projected onto
+    repository paths.  An empty string is reserved for the valid repository
+    root (``.``) when ``allow_current_directory`` is true; ``None`` means the
+    value is unsafe or malformed.
+    """
+
+    raw = str(value or "").strip().replace("\\", "/")
+    if (
+        not raw
+        or "\0" in raw
+        or raw.startswith("~")
+        or any(character in raw for character in _DYNAMIC_PATH_CHARACTERS)
+    ):
+        return None
+    while raw.startswith("./"):
+        raw = raw[2:]
+    path = PurePosixPath(raw or ".")
+    if (
+        path.is_absolute()
+        or ".." in path.parts
+        or (path.parts and path.parts[0].endswith(":"))
+    ):
+        return None
+    if path.as_posix() == ".":
+        return "" if allow_current_directory else None
+    return path.as_posix()
+
+
+def validation_command_repository_root(command: str) -> str | None:
+    """Return the bounded repository root used by a validation command.
+
+    The only supported working-directory change is an exact leading
+    ``cd <safe-relative> &&`` prefix.  Commands without ``cd`` use the
+    repository root and return ``""``.  ``None`` denotes malformed or unsafe
+    shell structure and tells callers to withhold all inferred path authority.
+    """
+
+    text = normalize_validation_command_text(command)
+    tokens = _shell_tokens(text)
+    if not tokens:
+        return "" if not text else None
+    structure_tokens = _shell_structure_tokens(text)
+    if not structure_tokens:
+        return None
+    segments = _shell_command_segments(structure_tokens)
+    commands = tuple(
+        command
+        for segment in segments
+        if (command := _shell_segment_command(segment)) is not None
+    )
+    if (
+        _has_unquoted_shell_grouping(text)
+        or _has_unquoted_shell_newline(text)
+        or _uses_unsafe_env_options(segments)
+        or _uses_nested_shell_command(segments)
+    ):
+        return None
+    if any(
+        command_name in _CWD_INDETERMINATE_SHELL_BUILTINS
+        for command_name, _index in commands
+    ):
+        return None
+    cd_commands = tuple(
+        (segment_index, command_index)
+        for segment_index, (command_name, command_index) in enumerate(commands)
+        if command_name == "cd"
+    )
+    if not cd_commands:
+        return ""
+    if (
+        cd_commands != ((0, 0),)
+        or len(structure_tokens) < 4
+        or structure_tokens[0] != "cd"
+        or structure_tokens[2] != "&&"
+    ):
+        return None
+    return _safe_literal_repository_path(
+        structure_tokens[1],
+        allow_current_directory=True,
+    )
+
+
+def _is_literal_shell_file_operand(value: str) -> bool:
+    """Return whether one predicate operand is free of shell expansion."""
+
+    operand = str(value or "")
+    return (
+        bool(operand)
+        and "\0" not in operand
+        and not operand.startswith("~")
+        and not any(
+            character in _SHELL_EXPANSION_CHARACTERS
+            for character in operand
+        )
+    )
+
+
+def _is_dependency_neutral_file_predicate(
+    segment: Sequence[str],
+) -> bool:
+    """Recognize one exact, literal POSIX ``test`` file predicate."""
+
+    if not segment:
+        return False
+    # Accept only the shell builtin spellings themselves.  A path named
+    # ``test`` or a wrapper such as ``env``/``command`` could execute arbitrary
+    # code and therefore remains project-required.
+    executable = str(segment[0])
+    if executable == "test":
+        arguments = tuple(str(item) for item in segment[1:])
+    elif executable == "[":
+        if len(segment) < 2 or str(segment[-1]) != "]":
+            return False
+        arguments = tuple(str(item) for item in segment[1:-1])
+    else:
+        return False
+    return (
+        len(arguments) == 2
+        and arguments[0] in _DEPENDENCY_NEUTRAL_TEST_FILE_OPERATORS
+        and _is_literal_shell_file_operand(arguments[1])
+    )
+
+
+def validation_command_dependency_scope(
+    command: str,
+) -> ValidationDependencyScope:
+    """Classify a validation command's Python project dependency scope.
+
+    This classifier is intentionally an allowlist.  Only a single literal
+    file predicate, optionally following the already-reviewed leading
+    ``cd <safe-relative> &&`` form, is dependency-neutral.  Every malformed,
+    dynamic, mixed, nested, or unknown command remains project-required.
+    """
+
+    text = normalize_validation_command_text(command)
+    if validation_command_repository_root(text) is None:
+        return ValidationDependencyScope.PROJECT_REQUIRED
+    structure_tokens = _shell_structure_tokens(text)
+    if not structure_tokens:
+        return ValidationDependencyScope.PROJECT_REQUIRED
+    segments = _shell_command_segments(structure_tokens)
+    predicate_segment: Sequence[str]
+    if len(segments) == 1:
+        if tuple(structure_tokens) != segments[0]:
+            return ValidationDependencyScope.PROJECT_REQUIRED
+        predicate_segment = segments[0]
+    elif (
+        len(segments) == 2
+        and len(segments[0]) == 2
+        and segments[0][0] == "cd"
+        and tuple(structure_tokens) == (*segments[0], "&&", *segments[1])
+    ):
+        predicate_segment = segments[1]
+    else:
+        return ValidationDependencyScope.PROJECT_REQUIRED
+    if _is_dependency_neutral_file_predicate(predicate_segment):
+        return ValidationDependencyScope.DEPENDENCY_NEUTRAL
+    return ValidationDependencyScope.PROJECT_REQUIRED
+
+
 def _normalize_path(value: str) -> str:
     normalized = str(value or "").strip().replace("\\", "/")
     while normalized.startswith("./"):
@@ -471,27 +1000,37 @@ def _normalize_path(value: str) -> str:
     return normalized.lstrip("/")
 
 
-def _looks_like_impact_path(token: str) -> bool:
-    value = _normalize_path(token.split("::", 1)[0])
-    if not value or value.startswith("-") or value in {".", ".."}:
-        return False
-    return (
+def _literal_impact_path(token: str) -> str:
+    raw_value = str(token or "").split("::", 1)[0]
+    value = _safe_literal_repository_path(raw_value)
+    if value is None or value.startswith("-"):
+        return ""
+    if (
         "/" in value
         or value.startswith(("test_", "tests", "test"))
         or value.endswith((".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs"))
-    )
+    ):
+        return value
+    return ""
 
 
 def infer_validation_impact_paths(command: str) -> tuple[str, ...]:
     """Extract explicit test/file targets from a shell command.
 
     An empty result means the command has global or unknown impact and must not
-    be omitted by impact selection.
+    be omitted by impact selection.  Targets are always resolved from the
+    repository root, including commands with a bounded leading
+    ``cd <safe-relative> &&`` prefix.
     """
 
     if not _TEST_RUNNER_RE.search(command):
         return ()
+    repository_root = validation_command_repository_root(command)
+    if repository_root is None:
+        return ()
     tokens = _shell_tokens(command)
+    if tokens and tokens[0] == "cd":
+        tokens = tokens[3:]
     impacts: list[str] = []
     after_runner = False
     for token in tokens:
@@ -504,10 +1043,18 @@ def infer_validation_impact_paths(command: str) -> tuple[str, ...]:
             continue
         if not after_runner:
             continue
-        if _looks_like_impact_path(token):
-            value = _normalize_path(token.split("::", 1)[0])
-            if value and value not in impacts:
-                impacts.append(value)
+        if token in {"&&", "||", ";", "|"}:
+            break
+        value = _literal_impact_path(token)
+        if not value:
+            continue
+        rooted_value = (
+            _safe_literal_repository_path(f"{repository_root}/{value}")
+            if repository_root
+            else value
+        )
+        if rooted_value and rooted_value not in impacts:
+            impacts.append(rooted_value)
     return tuple(impacts)
 
 

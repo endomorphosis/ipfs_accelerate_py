@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """ASREF-G100 multi-lane launch recipe for agent_supervisor module refactor.
 
-Autonomous supervisor execution with **Grok 4.6** (or any configured
-implementation provider) against the ASREF objective heap and todo board.
+Autonomous supervisor execution with exact **Grok 4.5** and quota-only Codex
+``gpt-5.6-terra`` medium fallback against the ASREF objective heap and board.
+Autonomous supervisor execution defaults to pinned **Grok 4.5**, with
+``gpt-5.6-terra`` at medium only after verified Grok quota exhaustion.
 
 This script is the operator-facing entry under ``scripts/ops/agent_supervisor``
 required by goal **ASREF-G100**. It delegates preflight/launch to
@@ -18,10 +20,10 @@ Preflight only::
 
     python scripts/ops/agent_supervisor/asref_multi_lane_launch.py preflight
 
-Dry-run multi-lane launch with Grok::
+Dry-run multi-lane launch with the default quota-routed policy::
 
     python scripts/ops/agent_supervisor/asref_multi_lane_launch.py launch \\
-        --lanes 4 --implementation-provider grok --dry-run
+        --lanes 4 --implementation-provider auto --dry-run
 
 Print the structured recipe JSON (no process start)::
 
@@ -106,7 +108,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "ASREF-G100: multi-lane implementation supervisor launch for the "
-            "agent_supervisor module refactor (Grok 4.6 / configured provider)"
+            "agent_supervisor module refactor (sealed Grok 4.5 / quota-only "
+            "Terra fallback)"
+            "agent_supervisor module refactor (Grok 4.5, quota-only "
+            "Terra/medium fallback)"
         )
     )
     sub = parser.add_subparsers(dest="command", required=True)
@@ -123,10 +128,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             or ASREF_DEFAULT_IMPLEMENTATION_PROVIDER,
             help=(
-                "Implementation provider for child daemons "
+                "Compatible Grok primary alias for child daemons "
                 f"(default: {ASREF_DEFAULT_IMPLEMENTATION_PROVIDER}; "
                 "also set via "
-                f"{ASREF_IMPLEMENTATION_PROVIDER_ENV})"
+                f"{ASREF_IMPLEMENTATION_PROVIDER_ENV}); incompatible routes "
+                "fail closed"
             ),
         )
         p.add_argument(

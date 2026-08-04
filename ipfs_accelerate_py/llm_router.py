@@ -220,6 +220,128 @@ _GROK_CLI_PROVIDER_ALIASES = {
     "grok_build_cli",
     "grok-build-cli",
 }
+_GROK_ALTERNATE_PROVIDER_ENV_EXACT = frozenset(
+    {
+        "CODEX_HOME",
+        "COPILOT_GITHUB_TOKEN",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "GNOME_KEYRING_CONTROL",
+        "GPG_AGENT_INFO",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "GOOGLE_API_KEY",
+        "HUGGINGFACEHUB_API_TOKEN",
+        "KUBECONFIG",
+        "MODEL_API_KEY",
+        "SSH_AUTH_SOCK",
+        "GH_ENTERPRISE_TOKEN",
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "OPENAI_API_KEY",
+    }
+)
+_GROK_ALTERNATE_PROVIDER_ENV_PREFIXES = (
+    "CODEX_",
+    "COPILOT_",
+    "GH_",
+    "GITHUB_",
+    "OPENAI_",
+    "AZURE_OPENAI_",
+    "OPENROUTER_",
+    "ANTHROPIC_",
+    "CLAUDE_",
+    "GEMINI_",
+    "GOOGLE_API_",
+    "GOOSE_",
+    "META_AI_",
+    "MISTRAL_",
+    "HUGGINGFACE_",
+    "HUGGINGFACEHUB_",
+    "HF_",
+    "DATABRICKS_",
+    "GROQ_",
+    "OLLAMA_",
+    "DOCKER_",
+    "PODMAN_",
+    "CONTAINER_",
+    "CONTAINERD_",
+    "BUILDAH_",
+    "IPFS_ACCELERATE_PY_CODEX_",
+    "IPFS_ACCELERATE_PY_COPILOT_",
+    "IPFS_ACCELERATE_PY_OPENAI_",
+    "IPFS_ACCELERATE_PY_AZURE_OPENAI_",
+    "IPFS_DATASETS_PY_CODEX_",
+    "IPFS_DATASETS_PY_COPILOT_",
+    "IPFS_DATASETS_PY_OPENAI_",
+    "IPFS_DATASETS_PY_AZURE_OPENAI_",
+    "IPFS_ACCELERATE_AGENT_CODEX_",
+    "IPFS_ACCELERATE_AGENT_COPILOT_",
+    "IPFS_ACCELERATE_AGENT_OPENAI_",
+    "IPFS_ACCELERATE_AGENT_GOOSE_",
+    "IPFS_ACCELERATE_AGENT_META_",
+    "IPFS_ACCELERATE_LLAMA_CPP_",
+)
+_GROK_ALTERNATE_PROVIDER_ENV_TOKENS = (
+    "ANTHROPIC",
+    "CLAUDE",
+    "CODEX",
+    "COPILOT",
+    "GEMINI",
+    "GOOSE",
+    "GOOGLE",
+    "HUGGINGFACE",
+    "HF_",
+    "DATABRICKS",
+    "GROQ",
+    "LLAMA_CPP",
+    "META_AI",
+    "MISTRAL",
+    "OLLAMA",
+    "OPENAI",
+    "OPENROUTER",
+)
+_GROK_CODEX_COMPATIBILITY_KILL_SWITCHES = {
+    "GROK_CODEX_AGENTS_ENABLED": "0",
+    "GROK_CODEX_HOOKS_ENABLED": "0",
+    "GROK_CODEX_MCPS_ENABLED": "0",
+    "GROK_CODEX_RULES_ENABLED": "0",
+    "GROK_CODEX_SESSIONS_ENABLED": "0",
+    "GROK_CODEX_SKILLS_ENABLED": "0",
+}
+_GROK_ROUTE_CONTROL_ENV_EXACT = frozenset(
+    {
+        "GROK_AUTH_PROVIDER_COMMAND",
+        "XAI_API_BASE_URL",
+        "GROK_XAI_API_BASE_URL",
+        "GROK_CLI_CHAT_PROXY_BASE_URL",
+        "GROK_WS_URL",
+        "GROK_WS_ORIGIN",
+        "GROK_MANAGED_CONFIG_URL",
+        "GROK_WORKSPACE_BUNDLED_SKILLS_DIR",
+        "GROK_SANDBOX_AUTO_ALLOW_BASH",
+        "GROK_SANDBOX",
+        "GROK_TOOLS",
+        "GROK_DISALLOWED_TOOLS",
+        "GROK_PERMISSION_MODE",
+        "GROK_AGENT",
+        "GROK_AGENTS",
+        "GROK_LEADER_SOCKET",
+    }
+)
+_GROK_SECRET_ENV_SUFFIXES = (
+    "_API_KEY",
+    "_TOKEN",
+    "_ACCESS_KEY",
+    "_SECRET_KEY",
+    "_CREDENTIAL",
+    "_CREDENTIALS",
+)
+_GROK_XAI_KEY_ALIASES = (
+    "XAI_API_KEY",
+    "GROK_CODE_XAI_API_KEY",
+    "ipfs_accelerate_py_XAI_API_KEY",
+    "IPFS_ACCELERATE_PY_XAI_API_KEY",
+    "IPFS_DATASETS_PY_XAI_API_KEY",
+)
 _XAI_API_PROVIDER_ALIASES = {
     "xai",
     "xai_api",
@@ -1712,7 +1834,7 @@ def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs
                 "IPFS_ACCELERATE_PY_CODEX_MODEL",
                 "IPFS_DATASETS_PY_CODEX_MODEL",
             )
-            or "chatgpt-5.6-terra"
+            or "gpt-5.6-sol"
         ).strip()
     if pk == "copilot_sdk":
         return _coalesce_env(
@@ -1790,6 +1912,28 @@ def _response_cache_key(*, provider: Optional[str], model_name: Optional[str], p
     prompt_digest = hashlib.sha256((prompt or "").encode("utf-8")).hexdigest()[:16]
     kw_digest = _stable_kwargs_digest(kwargs)
     return f"llm_response::{provider_key}::{model_key}::{prompt_digest}::{kw_digest}"
+
+
+def _response_cache_routing_kwargs(
+    kwargs: Mapping[str, object],
+    *,
+    allow_local_fallback: bool,
+    allow_cross_provider_fallback: bool,
+) -> Dict[str, object]:
+    """Bind fallback authority into response-cache identity.
+
+    An exact-provider request must never consume a response previously cached
+    after cross-provider failover under the same requested provider/model.
+    These values affect only cache identity and are never forwarded to a
+    provider.
+    """
+
+    cache_kwargs = dict(kwargs)
+    cache_kwargs["__router_allow_local_fallback"] = bool(allow_local_fallback)
+    cache_kwargs["__router_allow_cross_provider_fallback"] = bool(
+        allow_cross_provider_fallback
+    )
+    return cache_kwargs
 
 
 @runtime_checkable
@@ -2606,15 +2750,15 @@ def _clean_grok_cli_output(text: str) -> str:
 
 
 def _grok_cli_command() -> str:
-    return (
-        _coalesce_env(
-            "ipfs_accelerate_py_GROK_CLI_CMD",
-            "IPFS_ACCELERATE_PY_GROK_CLI_CMD",
-            "IPFS_DATASETS_PY_GROK_CLI_CMD",
-            "GROK_CLI_CMD",
-        )
-        or "grok"
+    configured = _coalesce_env(
+        "ipfs_accelerate_py_GROK_CLI_CMD",
+        "IPFS_ACCELERATE_PY_GROK_CLI_CMD",
+        "IPFS_DATASETS_PY_GROK_CLI_CMD",
+        "GROK_CLI_CMD",
     )
+    if configured:
+        return configured
+    return find_grok_cli() or "grok"
 
 
 def _grok_cli_auth_path() -> Path:
@@ -3748,7 +3892,7 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
 
     class _CodexCLIProvider:
         def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
-            model = (model_name or _coalesce_env("ipfs_accelerate_py_CODEX_CLI_MODEL", "ipfs_accelerate_py_CODEX_MODEL") or "chatgpt-5.6-terra").strip()
+            model = (model_name or _coalesce_env("ipfs_accelerate_py_CODEX_CLI_MODEL", "ipfs_accelerate_py_CODEX_MODEL") or "gpt-5.6-sol").strip()
             sandbox = (os.getenv("ipfs_accelerate_py_CODEX_SANDBOX", "auto") or "auto").strip()
             skip_git_repo_check = os.getenv("ipfs_accelerate_py_CODEX_SKIP_GIT_REPO_CHECK", "1") != "0"
             timeout = float(kwargs.get("timeout", 180))
@@ -4068,7 +4212,13 @@ def build_goose_cli_env(
 
 
 def find_grok_cli() -> Optional[str]:
-    """Locate the official Grok CLI binary without starting a process."""
+    """Locate the official Grok CLI binary without starting a process.
+
+    User services commonly receive systemd's minimal ``PATH`` rather than the
+    interactive login path.  Check the two conventional per-user install
+    locations after configured/PATH discovery so an authenticated local Grok
+    install remains the default in supervised processes.
+    """
 
     configured = _coalesce_env(
         "ipfs_accelerate_py_GROK_CLI_CMD",
@@ -4087,7 +4237,19 @@ def find_grok_cli() -> Optional[str]:
             found = shutil.which(parts[0])
             if found:
                 return found
-    return shutil.which("grok")
+    found = shutil.which("grok")
+    if found:
+        return found
+    for candidate in (
+        Path.home() / ".local" / "bin" / "grok",
+        Path.home() / ".grok" / "bin" / "grok",
+    ):
+        try:
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return str(candidate)
+        except OSError:
+            continue
+    return None
 
 
 def _grok_default_model() -> str:
@@ -4115,6 +4277,8 @@ def build_grok_cli_command(
     always_approve: Optional[bool] = None,
     permission_mode: Optional[str] = None,
     tools: Optional[str] = None,
+    sandbox_profile: Optional[str] = None,
+    deny_rules: Optional[Sequence[str]] = None,
 ) -> list[str]:
     """Return argv for a Grok CLI invocation.
 
@@ -4191,6 +4355,14 @@ def build_grok_cli_command(
     if normalized_permission_mode:
         cmd.extend(["--permission-mode", normalized_permission_mode])
 
+    normalized_sandbox_profile = str(sandbox_profile or "").strip()
+    if normalized_sandbox_profile:
+        cmd.extend(["--sandbox", normalized_sandbox_profile])
+    for rule in deny_rules or ():
+        normalized_rule = str(rule or "").strip()
+        if normalized_rule:
+            cmd.extend(["--deny", normalized_rule])
+
     if normalized == "chat":
         # Match the generate() provider defaults for headless JSON text.
         cmd.extend(
@@ -4212,6 +4384,8 @@ def build_grok_cli_command(
         cmd.extend(["--tools", str(tools or "")])
     else:
         cmd.extend(["--output-format", "plain"])
+        if tools is not None:
+            cmd.extend(["--tools", str(tools)])
 
     if prompt_file is not None:
         cmd.extend(["--prompt-file", str(Path(prompt_file).expanduser())])
@@ -4221,10 +4395,49 @@ def build_grok_cli_command(
 def build_grok_cli_env(
     *,
     base_env: Optional[Mapping[str, str]] = None,
+    isolate_alternate_providers: bool = False,
 ) -> dict[str, str]:
-    """Environment for Grok CLI runs (propagates alternate XAI key names)."""
+    """Build a Grok environment, optionally withholding peer-provider authority.
 
-    env = dict(base_env or os.environ)
+    The isolation mode is for side-effecting Grok agents.  It strips Codex,
+    OpenAI, Copilot, and GitHub credential/configuration variables from the
+    Grok process while leaving the caller's environment untouched.  A parent
+    runner can therefore retain the separately quota-gated Codex fallback.
+    """
+
+    source_env = dict(base_env or os.environ)
+    if isolate_alternate_providers:
+        xai_api_key = next(
+            (
+                str(source_env.get(name) or "").strip()
+                for name in _GROK_XAI_KEY_ALIASES
+                if str(source_env.get(name) or "").strip()
+            ),
+            "",
+        )
+        basic_names = {
+            "COLORTERM",
+            "LANG",
+            "LOGNAME",
+            "NO_COLOR",
+            "TERM",
+            "TZ",
+            "USER",
+        }
+        env = {
+            name: value
+            for name, value in source_env.items()
+            if name in basic_names or name.startswith("LC_")
+        }
+        env["PATH"] = "/usr/bin:/bin"
+        if xai_api_key:
+            env["XAI_API_KEY"] = xai_api_key
+        # Do not let Grok discover or import Codex compatibility artifacts even
+        # if user-level defaults enabled those integrations.
+        env.update(_GROK_CODEX_COMPATIBILITY_KILL_SWITCHES)
+        return env
+
+    env = source_env
     if not str(env.get("XAI_API_KEY") or "").strip():
         alternate = _coalesce_env(
             "ipfs_accelerate_py_XAI_API_KEY",
@@ -7102,7 +7315,7 @@ _BUILTIN_LLM_PROVIDER_SPECS: Tuple[_LLMProviderSpec, ...] = (
             "IPFS_ACCELERATE_PY_CODEX_MODEL",
             "IPFS_DATASETS_PY_CODEX_MODEL",
         ),
-        default_model="chatgpt-5.6-terra",
+        default_model="gpt-5.6-sol",
         tools="supported",
     ),
     _LLMProviderSpec(
@@ -8035,6 +8248,10 @@ def _set_last_generation_trace(
         "effective_model_name": str(model_name or "").strip(),
     }
     if route_trace:
+        for key in ("effective_provider_name", "effective_model_name"):
+            value = route_trace.get(key)
+            if isinstance(value, str) and value.strip():
+                payload[key] = value.strip()
         for key in _PINNED_SYMAI_TRACE_KEYS:
             value = route_trace.get(key)
             if isinstance(value, str) and value.strip():
@@ -8369,9 +8586,10 @@ def _llm_provider_display_name(
     requested: Optional[str] = None,
 ) -> str:
     if backend is not None:
-        name = getattr(backend, "router_provider_name", None)
-        if isinstance(name, str) and name.strip():
-            return _canonicalize_provider(name) or name.strip()
+        for attribute in ("router_provider_name", "provider_name", "name"):
+            name = getattr(backend, attribute, None)
+            if isinstance(name, str) and name.strip():
+                return _canonicalize_provider(name) or name.strip()
     if requested:
         return _canonicalize_provider(requested) or str(requested).strip()
     return ""
@@ -8806,6 +9024,7 @@ def _generate_text_with_usage_admission(
     provider_instance: Optional[LLMProvider],
     deps: RouterDeps,
     allow_local_fallback: bool,
+    allow_cross_provider_fallback: bool,
     kwargs: Dict[str, object],
     usage_coordinator: object,
     usage_policy: object,
@@ -8853,12 +9072,20 @@ def _generate_text_with_usage_admission(
         and kwargs.get(_SYMAI_ROUTE_BINDING_KWARG) is None
         and not side_effecting_request
     )
+    response_cache_kwargs = _response_cache_routing_kwargs(
+        kwargs,
+        allow_local_fallback=allow_local_fallback,
+        allow_cross_provider_fallback=allow_cross_provider_fallback,
+    )
 
     # Cache lookup first: full cache hits create no remote charge.
     if response_cache_ok:
         try:
             cache_key = _response_cache_key(
-                provider=provider, model_name=model_name, prompt=prompt, kwargs=dict(kwargs)
+                provider=provider,
+                model_name=model_name,
+                prompt=prompt,
+                kwargs=response_cache_kwargs,
             )
             getter = getattr(deps, "get_cached_or_remote", None)
             cached = getter(cache_key) if callable(getter) else deps.get_cached(cache_key)
@@ -8961,8 +9188,9 @@ def _generate_text_with_usage_admission(
             kwargs=kwargs,
         )
     )
-    if side_effecting_request:
-        # Side-effecting work must never fallback across providers.
+    if side_effecting_request or not allow_cross_provider_fallback:
+        # Side-effecting and exact-provider work must never fallback across
+        # providers, including through usage-admission candidate routing.
         candidates = candidates[:1]
     else:
         filtered = _filter_llm_compatible_candidates(
@@ -9028,7 +9256,7 @@ def _generate_text_with_usage_admission(
                 provider=provider,
                 model_name=used_model_name,
                 prompt=prompt,
-                kwargs=dict(kwargs),
+                kwargs=response_cache_kwargs,
             )
             setter = getattr(deps, "set_cached_and_remote", None)
             if callable(setter):
@@ -9390,6 +9618,7 @@ def generate_text(
     provider_instance: Optional[LLMProvider] = None,
     deps: Optional[RouterDeps] = None,
     allow_local_fallback: bool = True,
+    allow_cross_provider_fallback: Optional[bool] = None,
     usage_coordinator: Optional[object] = None,
     usage_policy: Optional[object] = None,
     usage_candidates: Optional[Sequence[object]] = None,
@@ -9417,11 +9646,26 @@ def generate_text(
     Off mode and a missing coordinator preserve legacy selection and errors
     exactly. Enforce/assist reserve before remote dispatch; observe/shadow
     never change the selected provider; cache hits create no remote charge.
+
+    ``allow_cross_provider_fallback`` controls remote-provider failover
+    independently from local Hugging Face fallback. When omitted, the legacy
+    remote-provider failover behavior remains enabled. Exact provider
+    boundaries must pass ``False`` explicitly.
     """
 
     started = time.perf_counter()
     resolved_deps = deps or get_default_router_deps()
     effective_provider_name = _effective_llm_provider_name(provider)
+    cross_provider_fallback_allowed = (
+        True
+        if allow_cross_provider_fallback is None
+        else bool(allow_cross_provider_fallback)
+    )
+    if not cross_provider_fallback_allowed:
+        # Exact-provider supervisor boundaries are exact-model boundaries too.
+        # Otherwise the same provider silently retries ``model_name=None`` and
+        # can cache that result under the operator-pinned requested model.
+        kwargs["disable_model_retry"] = True
     _clear_last_generation_trace()
     _set_last_usage_admission(None)
 
@@ -9442,6 +9686,7 @@ def generate_text(
             provider_instance=provider_instance,
             deps=resolved_deps,
             allow_local_fallback=allow_local_fallback,
+            allow_cross_provider_fallback=cross_provider_fallback_allowed,
             kwargs=dict(kwargs),
             usage_coordinator=usage_coordinator,
             usage_policy=policy,
@@ -9472,10 +9717,20 @@ def generate_text(
         and kwargs.get(_SYMAI_ROUTE_BINDING_KWARG) is None
         and not side_effecting_request
     )
+    response_cache_kwargs = _response_cache_routing_kwargs(
+        kwargs,
+        allow_local_fallback=allow_local_fallback,
+        allow_cross_provider_fallback=cross_provider_fallback_allowed,
+    )
     remote_dispatched = False
     if response_cache_ok:
         try:
-            cache_key = _response_cache_key(provider=provider, model_name=model_name, prompt=prompt, kwargs=dict(kwargs))
+            cache_key = _response_cache_key(
+                provider=provider,
+                model_name=model_name,
+                prompt=prompt,
+                kwargs=response_cache_kwargs,
+            )
             getter = getattr(resolved_deps, "get_cached_or_remote", None)
             cached = getter(cache_key) if callable(getter) else resolved_deps.get_cached(cache_key)
             if isinstance(cached, str):
@@ -9523,7 +9778,7 @@ def generate_text(
                 provider=provider,
                 model_name=used_model_name,
                 prompt=prompt,
-                kwargs=dict(kwargs),
+                kwargs=response_cache_kwargs,
             )
             setter = getattr(resolved_deps, "set_cached_and_remote", None)
             if callable(setter):
@@ -9559,7 +9814,7 @@ def generate_text(
             if isinstance(candidate_trace, dict):
                 route_trace = candidate_trace
         _set_last_generation_trace(
-            provider_name=effective_provider_name,
+            provider_name=provider_used_name,
             model_name=model_name,
             route_trace=route_trace,
         )
@@ -9617,7 +9872,7 @@ def generate_text(
             provider is not None
             and pinned_provider in _UNPINNED_OPTIONAL_PROVIDER_ORDER
         )
-        if provider is None or pinned_optional:
+        if cross_provider_fallback_allowed and (provider is None or pinned_optional):
             for fallback_name, fallback_provider in _iter_unpinned_optional_providers():
                 if fallback_provider is backend:
                     continue
@@ -9669,7 +9924,7 @@ def generate_text(
                 except Exception:
                     pass
 
-        if pinned_optional:
+        if cross_provider_fallback_allowed and pinned_optional:
             try:
                 accelerate_provider = _get_accelerate_provider(resolved_deps)
                 if accelerate_provider is not None and accelerate_provider is not backend:

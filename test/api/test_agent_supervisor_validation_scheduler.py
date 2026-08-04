@@ -1660,6 +1660,66 @@ def test_daemon_uses_full_pre_merge_scope_and_preserves_result_contract(tmp_path
     assert report["failed_command"] == "git diff --check"
 
 
+def test_compound_bare_diff_check_covers_committed_candidate_from_baseline(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    baseline = _repo(repo)
+    (repo / "src" / "alpha.py").write_text(
+        "VALUE = 1  \n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "src/alpha.py")
+    _git(repo, "commit", "-qm", "model-created clean candidate")
+    assert _git(repo, "status", "--porcelain") == ""
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        validation_cache_dir=repo / "validation-cache",
+        merge_queue_dir=repo / "merge-queue",
+    )
+    declared_validation = (
+        "test -f src/alpha.py && rg -q 'VALUE' src/alpha.py && "
+        "rg -qi 'value' src/alpha.py && git diff --check"
+    )
+    task = PortalTask(
+        task_id="REF-043",
+        title="committed candidate whitespace",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="validation",
+        validation=[declared_validation],
+    )
+
+    assert daemon._declares_bare_git_diff_check(task.validation) is True
+    assert daemon._declares_bare_git_diff_check(
+        ("printf '%s\\n' 'git diff --check'",)
+    ) is False
+
+    report = daemon._run_validation_commands(
+        repo,
+        task,
+        repo / "validation.log",
+        baseline_ref=baseline,
+    )
+
+    assert report["passed"] is False
+    assert report["reason"] == "candidate_diff_check_failed"
+    invariant = report["candidate_diff_check"]
+    assert invariant["stage"] == "candidate_invariant"
+    assert invariant["returncode"] != 0
+    assert invariant["command"].startswith(
+        f"git diff --check {baseline}"
+    )
+    assert "src/alpha.py:1: trailing whitespace" in (
+        repo / "validation.log"
+    ).read_text(encoding="utf-8")
+
+
 def test_daemon_python_validation_imports_configured_worktree_packages(
     tmp_path: Path,
 ) -> None:
@@ -1703,11 +1763,166 @@ def test_daemon_python_validation_imports_configured_worktree_packages(
 
     assert report["passed"] is True
     assert report["results"][0]["command"].startswith(
-        "PYTHONPATH=external/provider python3 "
+        "export PYTHONPATH=external/provider && python3 "
     )
     assert (
         "added configured worktree package roots to PYTHONPATH"
         in (repo / "validation.log").read_text(encoding="utf-8")
+    )
+
+
+def test_daemon_pythonpath_export_covers_root_chained_validation_commands(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _repo(repo)
+    provider_root = repo / "external" / "provider"
+    provider_root.mkdir(parents=True)
+    (provider_root / "sibling_provider.py").write_text(
+        "VALUE = 9\n",
+        encoding="utf-8",
+    )
+    tool_root = repo / "tools"
+    tool_root.mkdir()
+    (tool_root / "check.py").write_text(
+        "import sibling_provider\nassert sibling_provider.VALUE == 9\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=("external/provider",),
+        worktree_pool_enabled=False,
+        validation_cache_dir=repo / "validation-cache",
+        merge_queue_dir=repo / "merge-queue",
+    )
+    task = PortalTask(
+        task_id="REF-044-ROOT-CHAIN",
+        title="chained repository-root worktree validation",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="validation",
+        validation=[
+            "python3 -c 'import sibling_provider; "
+            "assert sibling_provider.VALUE == 9' && python3 tools/check.py"
+        ],
+    )
+
+    report = daemon._run_validation_commands(
+        repo,
+        task,
+        repo / "validation.log",
+    )
+
+    assert report["passed"] is True
+    assert report["results"][0]["command"].startswith(
+        "export PYTHONPATH=external/provider && python3 "
+    )
+
+
+def test_daemon_python_validation_after_cd_keeps_worktree_packages_importable(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _repo(repo)
+    package_root = repo / "package"
+    package_root.mkdir()
+    provider_root = repo / "external" / "provider"
+    provider_root.mkdir(parents=True)
+    (provider_root / "sibling_provider.py").write_text(
+        "VALUE = 11\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=("external/provider",),
+        worktree_pool_enabled=False,
+        validation_cache_dir=repo / "validation-cache",
+        merge_queue_dir=repo / "merge-queue",
+    )
+    task = PortalTask(
+        task_id="REF-044-CD",
+        title="package-local worktree validation",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="validation",
+        validation=[
+            "cd package && python3 -c 'import sibling_provider; "
+            "assert sibling_provider.VALUE == 11'"
+        ],
+    )
+
+    report = daemon._run_validation_commands(
+        repo,
+        task,
+        repo / "validation.log",
+    )
+
+    assert report["passed"] is True
+    assert report["results"][0]["command"].startswith(
+        "cd package && export PYTHONPATH=../external/provider && python3 "
+    )
+
+
+def test_daemon_pythonpath_export_covers_chained_validation_commands(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _repo(repo)
+    package_root = repo / "package"
+    (package_root / "local_package").mkdir(parents=True)
+    (package_root / "local_package" / "__init__.py").write_text(
+        "VALUE = 13\n",
+        encoding="utf-8",
+    )
+    benchmark_root = package_root / "benchmarks"
+    benchmark_root.mkdir()
+    (benchmark_root / "run.py").write_text(
+        "import local_package\nassert local_package.VALUE == 13\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=("package",),
+        worktree_pool_enabled=False,
+        validation_cache_dir=repo / "validation-cache",
+        merge_queue_dir=repo / "merge-queue",
+    )
+    task = PortalTask(
+        task_id="REF-044-CHAIN",
+        title="chained package-local worktree validation",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="validation",
+        validation=[
+            "cd package && python3 -c 'import local_package; "
+            "assert local_package.VALUE == 13' && python3 benchmarks/run.py"
+        ],
+    )
+
+    report = daemon._run_validation_commands(
+        repo,
+        task,
+        repo / "validation.log",
+    )
+
+    assert report["passed"] is True
+    assert report["results"][0]["command"].startswith(
+        "cd package && export PYTHONPATH=. && python3 "
     )
 
 

@@ -11,6 +11,9 @@ import sys
 import subprocess
 import logging
 import platform
+import importlib.metadata
+import hashlib
+import re
 from typing import Dict, List, Optional, Tuple, Any
 from pathlib import Path
 import importlib.util
@@ -21,42 +24,154 @@ import time
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("comprehensive_dependency_installer")
 
+FASTMCP_REQUIREMENT = "fastmcp==2.14.7; python_version >= '3.10'"
+FASTAPI_REQUIREMENT = "fastapi>=0.110.0,<1.0.0"
+UVICORN_REQUIREMENT = (
+    "uvicorn>=0.35.0,<1.0.0; python_version >= '3.10'"
+    if sys.version_info >= (3, 10)
+    else "uvicorn>=0.27.0,<0.35.0; python_version < '3.10'"
+)
+WEBSOCKETS_REQUIREMENT = (
+    "websockets>=15.0.1; python_version >= '3.10'"
+    if sys.version_info >= (3, 10)
+    else "websockets==10.4; python_version < '3.10'"
+)
+LIBP2P_REQUIREMENT = (
+    "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main "
+    "; python_version >= '3.10'"
+)
 
-_PACKAGING_FILES = ("pyproject.toml", "setup.py", "setup.cfg")
-_WORKSPACE_SIBLING_ALIASES = {
-    "ipfs_datasets_py": "ipfs_datasets",
-    "ipfs_kit_py": "ipfs_kit",
-}
+_URL_USERINFO_RE = re.compile(r"([A-Za-z][A-Za-z0-9+.-]*://)([^/@\s]+)@")
+_SENSITIVE_VALUE_RE = re.compile(
+    r"(?i)([?&](?:[^=&]*(?:token|secret|password|passwd|api[_-]?key|signature|credential|auth)[^=&]*)=)[^&\s]*"
+)
 
 
-def _has_packaging_metadata(package_path: Path) -> bool:
-    """Return whether a directory is an installable Python package root."""
+def _redact_sensitive(value: object) -> str:
+    text = _URL_USERINFO_RE.sub(r"\1***@", str(value))
+    return _SENSITIVE_VALUE_RE.sub(r"\1***", text)
 
-    return package_path.is_dir() and any(
-        (package_path / name).is_file() for name in _PACKAGING_FILES
+
+def _diagnostic_receipt(value: object) -> str:
+    return hashlib.sha256(
+        str(value).encode("utf-8", errors="replace")
+    ).hexdigest()[:16]
+
+
+def _exception_diagnostic(error: BaseException) -> str:
+    error_type = type(error).__name__
+    if not error_type.isidentifier():
+        error_type = "Error"
+    return f"{error_type}:receipt={_diagnostic_receipt(error)}"
+
+
+def _subprocess_diagnostic(result: object) -> str:
+    output = f"{getattr(result, 'stdout', '')}{getattr(result, 'stderr', '')}"
+    return (
+        f"exit-code={getattr(result, 'returncode', 'unknown')}:"
+        f"receipt={_diagnostic_receipt(output)}"
     )
 
 
-def _resolve_local_package_path(repo_root: Path, package: str) -> Path:
-    """Resolve an installable local package without replacing existing paths."""
+def _requirement_label(package_name: str) -> str:
+    """Return a stable distribution label without persisting a direct URL."""
 
-    root_path = repo_root / package
-    legacy_path = repo_root / "external" / package
-    candidates = [root_path, legacy_path]
+    parser = _requirement_parser()
+    if parser is not None:
+        try:
+            name = str(parser(package_name).name)
+            if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", name):
+                return name
+        except Exception:
+            pass
+    return f"requirement-{_diagnostic_receipt(package_name)[:12]}"
 
-    sibling_name = _WORKSPACE_SIBLING_ALIASES.get(package)
-    if sibling_name:
-        candidates.append(repo_root.parent / sibling_name)
 
-    for candidate in candidates:
-        if _has_packaging_metadata(candidate):
-            return candidate
+def _is_direct_reference_or_path(package_name: str) -> bool:
+    raw = package_name.strip()
+    return (
+        " @ " in raw
+        or raw.startswith((".", "/", "git+", "http://", "https://", "file:"))
+    )
 
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
 
-    return root_path
+def _has_declarative_constraint(package_name: str) -> bool:
+    return ";" in package_name or bool(
+        re.search(r"[<>=!~]", package_name)
+    )
+
+
+def _requirement_parser():
+    try:
+        from packaging.requirements import Requirement
+
+        return Requirement
+    except ImportError:
+        try:
+            from pip._vendor.packaging.requirements import Requirement
+
+            return Requirement
+        except ImportError:
+            return None
+
+
+def _requirement_applies(package_name: Optional[str]) -> bool:
+    """Return whether a PEP 508 requirement applies to this interpreter."""
+
+    if not package_name:
+        return True
+    try:
+        parser = _requirement_parser()
+        if parser is None:
+            raise ImportError("no PEP 508 parser is available")
+        requirement = parser(package_name)
+    except Exception:
+        return True
+    version = tuple(sys.version_info[:3])
+    version += (0,) * (3 - len(version))
+    environment = {
+        "python_version": f"{version[0]}.{version[1]}",
+        "python_full_version": ".".join(str(part) for part in version),
+    }
+    return requirement.marker is None or requirement.marker.evaluate(environment)
+
+
+def _local_package_applies(package_name: str) -> bool:
+    """Return whether a source checkout supports this interpreter."""
+
+    return package_name != "ipfs_kit_py" or sys.version_info >= (3, 12)
+
+
+def _critical_dependency_counts(
+    status: Dict[str, Optional[bool]],
+) -> Tuple[int, int]:
+    """Count applicable critical dependencies without treating skips as failures."""
+
+    applicable = [value for value in status.values() if value is not None]
+    return sum(value is True for value in applicable), len(applicable)
+
+
+def _installed_requirement_satisfied(package_name: Optional[str]) -> bool:
+    """Return whether installed metadata satisfies a versioned requirement."""
+
+    if not package_name:
+        return True
+    try:
+        parser = _requirement_parser()
+        if parser is None:
+            raise ImportError("no PEP 508 parser is available")
+        requirement = parser(package_name)
+    except Exception:
+        if _is_direct_reference_or_path(package_name):
+            return True
+        return not _has_declarative_constraint(package_name)
+    if not requirement.specifier:
+        return True
+    try:
+        installed_version = importlib.metadata.version(requirement.name)
+    except Exception:
+        return False
+    return requirement.specifier.contains(installed_version, prereleases=True)
 
 
 class ComprehensiveDependencyInstaller:
@@ -70,41 +185,44 @@ class ComprehensiveDependencyInstaller:
         self.log_file = log_file
         self.system_info = self._get_system_info()
         self.repo_root = Path(__file__).resolve().parents[1]
+        self.external_dir = self.repo_root / "external"
         self.local_packages = [
             "ipfs_kit_py",
-            "ipfs_datasets_py",
             "ipfs_model_manager_py",
             "ipfs_transformers_py",
         ]
-        self.git_sources = {
-            "ipfs_kit_py": {
-                "repo": "https://github.com/endomorphosis/ipfs_kit_py.git",
-                "branch": "main",
-            },
-            "ipfs_datasets_py": {
-                "repo": "https://github.com/endomorphosis/ipfs_datasets_py.git",
-                "branch": "main",
-            },
-            "ipfs_model_manager_py": {
-                "repo": "https://github.com/endomorphosis/ipfs_model_manager_py.git",
-                "branch": "main",
-            },
-            "ipfs_transformers_py": {
-                "repo": "https://github.com/endomorphosis/ipfs_transformers_py.git",
-                "branch": "main",
-            },
-        }
         
         # Comprehensive dependency definitions
         self.dependencies = {
             # Core MCP and Web Framework Dependencies
             "fastmcp": {
-                "pip_name": "fastmcp",
+                "pip_name": FASTMCP_REQUIREMENT,
                 "import_name": "fastmcp",
                 "description": "FastMCP for Model Control Protocol server",
                 "category": "mcp",
                 "critical": True,
-                "fallback_packages": ["mcp", "uvicorn", "fastapi"]
+                "fallback_packages": ["mcp", UVICORN_REQUIREMENT, FASTAPI_REQUIREMENT]
+            },
+            "fastapi": {
+                "pip_name": FASTAPI_REQUIREMENT,
+                "import_name": "fastapi",
+                "description": "FastAPI for standalone and MCP++ HTTP serving",
+                "category": "mcp",
+                "critical": True,
+            },
+            "uvicorn": {
+                "pip_name": UVICORN_REQUIREMENT,
+                "import_name": "uvicorn",
+                "description": "ASGI server compatible with the selected MCP runtime",
+                "category": "mcp",
+                "critical": True,
+            },
+            "websockets": {
+                "pip_name": WEBSOCKETS_REQUIREMENT,
+                "import_name": "websockets",
+                "description": "WebSocket runtime compatible with the selected MCP runtime",
+                "category": "mcp",
+                "critical": True,
             },
             "flask": {
                 "pip_name": "flask",
@@ -190,7 +308,7 @@ class ComprehensiveDependencyInstaller:
                 "critical": False
             },
             "libp2p": {
-                "pip_name": "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main",
+                "pip_name": LIBP2P_REQUIREMENT,
                 "import_name": "libp2p",
                 "description": "libp2p networking library (git main)",
                 "category": "networking",
@@ -440,6 +558,13 @@ class ComprehensiveDependencyInstaller:
         if pip_name is None:
             logger.info(f"Skipping {package_name} (built-in module)")
             return True
+        if not _requirement_applies(pip_name):
+            logger.info(
+                "Skipping %s (%s does not apply)",
+                package_name,
+                _requirement_label(pip_name),
+            )
+            return True
             
         try:
             # Prepare installation command
@@ -451,7 +576,8 @@ class ComprehensiveDependencyInstaller:
             
             cmd.append(pip_name)
             
-            logger.info(f"Installing {package_name} ({pip_name})...")
+            safe_pip_name = _requirement_label(pip_name)
+            logger.info("Installing %s (%s)...", package_name, safe_pip_name)
             
             # Run installation with timeout
             result = subprocess.run(
@@ -462,6 +588,28 @@ class ComprehensiveDependencyInstaller:
             )
             
             if result.returncode == 0:
+                import_name = self.dependencies.get(package_name, {}).get(
+                    "import_name",
+                    package_name,
+                )
+                if not (
+                    _installed_requirement_satisfied(pip_name)
+                    and self.check_dependency(package_name, import_name)
+                ):
+                    safe_error = "installed distribution failed metadata/import validation"
+                    logger.error("❌ Failed to validate %s after install", package_name)
+                    self.failed_installations.append(
+                        {"package": package_name, "error": safe_error, "returncode": 0}
+                    )
+                    self.installation_log.append(
+                        {
+                            "package": package_name,
+                            "status": "failed",
+                            "error": safe_error,
+                            "timestamp": time.time(),
+                        }
+                    )
+                    return False
                 logger.info(f"✅ Successfully installed {package_name}")
                 
                 # Run post-installation commands if specified
@@ -477,29 +625,38 @@ class ComprehensiveDependencyInstaller:
                         if post_result.returncode == 0:
                             logger.info(f"✅ Post-install completed for {package_name}")
                         else:
-                            logger.warning(f"⚠️ Post-install failed for {package_name}: {post_result.stderr}")
+                            logger.warning(
+                                "⚠️ Post-install failed for %s: %s",
+                                package_name,
+                                _subprocess_diagnostic(post_result),
+                            )
                     except Exception as e:
-                        logger.warning(f"⚠️ Post-install error for {package_name}: {e}")
+                        logger.warning(
+                            "⚠️ Post-install error for %s: %s",
+                            package_name,
+                            _exception_diagnostic(e),
+                        )
                 
                 self.successful_installations.append(package_name)
                 self.installation_log.append({
                     "package": package_name,
                     "status": "success",
-                    "pip_name": pip_name,
+                    "pip_name": safe_pip_name,
                     "timestamp": time.time()
                 })
                 return True
             else:
-                logger.error(f"❌ Failed to install {package_name}: {result.stderr}")
+                safe_error = _subprocess_diagnostic(result)
+                logger.error("❌ Failed to install %s: %s", package_name, safe_error)
                 self.failed_installations.append({
                     "package": package_name,
-                    "error": result.stderr,
+                    "error": safe_error,
                     "returncode": result.returncode
                 })
                 self.installation_log.append({
                     "package": package_name,
                     "status": "failed",
-                    "error": result.stderr,
+                    "error": safe_error,
                     "timestamp": time.time()
                 })
                 return False
@@ -512,35 +669,124 @@ class ComprehensiveDependencyInstaller:
                 "returncode": -1
             })
             return False
+        except Exception as error:
+            diagnostic = _exception_diagnostic(error)
+            logger.error("❌ Installation error for %s: %s", package_name, diagnostic)
+            self.failed_installations.append({
+                "package": package_name,
+                "error": diagnostic,
+                "returncode": -1,
+            })
+            self.installation_log.append({
+                "package": package_name,
+                "status": "failed",
+                "error": diagnostic,
+                "timestamp": time.time(),
+            })
+            return False
 
     def install_local_packages(self) -> Dict[str, bool]:
         """Install local external packages in editable mode when present."""
         results: Dict[str, bool] = {}
+        external_dir = self.external_dir
+
+        git_sources = {
+            "ipfs_kit_py": {
+                "repo": "https://github.com/endomorphosis/ipfs_kit_py.git",
+                "branch": "main",
+            },
+            "ipfs_model_manager_py": {
+                "repo": "https://github.com/endomorphosis/ipfs_model_manager_py.git",
+                "branch": "main",
+            },
+            "ipfs_transformers_py": {
+                "repo": "https://github.com/endomorphosis/ipfs_transformers_py.git",
+                "branch": "main",
+            },
+        }
+
+        if not external_dir.exists():
+            logger.info("No root directory directory found; skipping local package installs")
+            return results
 
         for package in self.local_packages:
-            package_path = _resolve_local_package_path(self.repo_root, package)
-            if package in self.git_sources and not package_path.exists():
-                source = self.git_sources[package]
-                target_path = package_path
+            if not _local_package_applies(package):
+                results[package] = True
+                self.installation_log.append({
+                    "package": package,
+                    "status": "not-applicable",
+                    "reason": "unsupported Python version",
+                    "timestamp": time.time(),
+                })
+                continue
+            if package in git_sources:
+                source = git_sources[package]
+                target_path = external_dir / package
                 try:
-                    logger.info(f"Cloning {package} ({source['branch']}) into {target_path}")
-                    clone_result = subprocess.run(
-                        [
-                            "git",
-                            "clone",
-                            "--depth",
-                            "1",
-                            "--branch",
-                            source["branch"],
-                            source["repo"],
-                            str(target_path),
-                        ],
+                    if target_path.exists() and (target_path / ".git").exists():
+                        logger.info(f"Updating {package} to {source['branch']} in {target_path}")
+                        subprocess.run(
+                            ["git", "-C", str(target_path), "fetch", "origin"],
+                            capture_output=True,
+                            text=True,
+                            timeout=300,
+                            check=False,
+                        )
+                        subprocess.run(
+                            ["git", "-C", str(target_path), "checkout", source["branch"]],
+                            capture_output=True,
+                            text=True,
+                            timeout=300,
+                            check=False,
+                        )
+                        subprocess.run(
+                            ["git", "-C", str(target_path), "reset", "--hard", f"origin/{source['branch']}"] ,
+                            capture_output=True,
+                            text=True,
+                            timeout=300,
+                            check=False,
+                        )
+                    else:
+                        if target_path.exists():
+                            logger.warning(f"{target_path} exists but is not a git repo; reinstalling from git")
+                        logger.info(f"Cloning {package} ({source['branch']}) into {target_path}")
+                        clone_result = subprocess.run(
+                            [
+                                "git",
+                                "clone",
+                                "--depth",
+                                "1",
+                                "--branch",
+                                source["branch"],
+                                source["repo"],
+                                str(target_path),
+                            ],
+                            capture_output=True,
+                            text=True,
+                            timeout=300,
+                        )
+                        if clone_result.returncode != 0:
+                            raise RuntimeError(_subprocess_diagnostic(clone_result))
+
+                    logger.info(f"Installing {package} from {target_path}")
+                    install_result = subprocess.run(
+                        [sys.executable, "-m", "pip", "install", "-e", str(target_path)],
                         capture_output=True,
                         text=True,
                         timeout=300,
                     )
-                    if clone_result.returncode != 0:
-                        raise RuntimeError(clone_result.stderr.strip() or "git clone failed")
+                    if install_result.returncode == 0:
+                        self.successful_installations.append(package)
+                        self.installation_log.append({
+                            "package": package,
+                            "status": "success",
+                            "pip_name": package,
+                            "timestamp": time.time(),
+                        })
+                        results[package] = True
+                        logger.info(f"✅ Installed {package} from git ({source['branch']})")
+                    else:
+                        raise RuntimeError(_subprocess_diagnostic(install_result))
                 except subprocess.TimeoutExpired:
                     self.failed_installations.append({
                         "package": package,
@@ -549,17 +795,17 @@ class ComprehensiveDependencyInstaller:
                     })
                     results[package] = False
                     logger.error(f"❌ Installation timeout for {package}")
-                    continue
                 except Exception as e:
+                    diagnostic = _exception_diagnostic(e)
                     self.failed_installations.append({
                         "package": package,
-                        "error": str(e),
+                        "error": diagnostic,
                         "returncode": -1,
                     })
                     results[package] = False
-                    logger.error(f"❌ Installation error for {package}: {e}")
-                    continue
-
+                    logger.error("❌ Installation error for %s: %s", package, diagnostic)
+                continue
+            package_path = external_dir / package
             if not package_path.exists():
                 logger.info(f"⏭️ Skipping {package} (not found at {package_path})")
                 results[package] = False
@@ -575,7 +821,6 @@ class ComprehensiveDependencyInstaller:
                     "reason": "missing packaging metadata",
                     "timestamp": time.time(),
                 })
-                results[package] = False
                 continue
 
             try:
@@ -587,25 +832,26 @@ class ComprehensiveDependencyInstaller:
                     self.installation_log.append({
                         "package": package,
                         "status": "success",
-                        "pip_name": str(package_path),
+                        "pip_name": package,
                         "timestamp": time.time(),
                     })
                     results[package] = True
                     logger.info(f"✅ Installed local package {package}")
                 else:
+                    diagnostic = _subprocess_diagnostic(result)
                     self.failed_installations.append({
                         "package": package,
-                        "error": result.stderr,
+                        "error": diagnostic,
                         "returncode": result.returncode,
                     })
                     self.installation_log.append({
                         "package": package,
                         "status": "failed",
-                        "error": result.stderr,
+                        "error": diagnostic,
                         "timestamp": time.time(),
                     })
                     results[package] = False
-                    logger.error(f"❌ Failed to install {package}: {result.stderr}")
+                    logger.error("❌ Failed to install %s: %s", package, diagnostic)
             except subprocess.TimeoutExpired:
                 self.failed_installations.append({
                     "package": package,
@@ -615,20 +861,21 @@ class ComprehensiveDependencyInstaller:
                 results[package] = False
                 logger.error(f"❌ Installation timeout for {package}")
             except Exception as e:
+                diagnostic = _exception_diagnostic(e)
                 self.failed_installations.append({
                     "package": package,
-                    "error": str(e),
+                    "error": diagnostic,
                     "returncode": -1,
                 })
                 results[package] = False
-                logger.error(f"❌ Installation error for {package}: {e}")
+                logger.error("❌ Installation error for %s: %s", package, diagnostic)
 
         return results
 
     @staticmethod
     def _has_packaging_files(package_path: Path) -> bool:
         """Return True when a local path has Python packaging metadata."""
-        return _has_packaging_metadata(package_path)
+        return any((package_path / name).exists() for name in ("pyproject.toml", "setup.py", "setup.cfg"))
     
     def install_fallback_packages(self, main_package: str, fallback_packages: List[str]) -> bool:
         """Install fallback packages if main package fails."""
@@ -685,6 +932,7 @@ class ComprehensiveDependencyInstaller:
         total_deps = len(deps_to_install)
         installed_count = 0
         skipped_count = 0
+        not_applicable_count = 0
         failed_count = 0
         
         # Install local external packages first (if present)
@@ -718,9 +966,21 @@ class ComprehensiveDependencyInstaller:
             for name, dep in category_deps.items():
                 # Check if already available
                 import_name = dep.get("import_name", name)
+                pip_name = dep.get("pip_name")
+                if not _requirement_applies(pip_name):
+                    logger.info(
+                        "⏭️ Skipping %s (%s does not apply)",
+                        name,
+                        _requirement_label(pip_name),
+                    )
+                    not_applicable_count += 1
+                    continue
                 if name == "libp2p":
                     logger.info("🔁 Forcing libp2p install from git main")
-                elif self.check_dependency(name, import_name):
+                elif (
+                    _installed_requirement_satisfied(pip_name)
+                    and self.check_dependency(name, import_name)
+                ):
                     logger.info(f"✅ {name} already available")
                     skipped_count += 1
                     continue
@@ -761,12 +1021,20 @@ class ComprehensiveDependencyInstaller:
         self._save_installation_log()
         
         # Generate report
+        applicable_deps = total_deps - not_applicable_count
+        completed_applicable = installed_count + skipped_count
+        success_rate = (
+            completed_applicable / applicable_deps * 100
+            if applicable_deps
+            else 100.0
+        )
         report = {
             "total_dependencies": total_deps,
             "installed": installed_count,
             "skipped": skipped_count,
+            "not_applicable": not_applicable_count,
             "failed": failed_count,
-            "success_rate": (installed_count + skipped_count) / total_deps * 100,
+            "success_rate": success_rate,
             "local_packages": local_results,
             "critical_dependencies_status": self._check_critical_dependencies(),
             "system_info": self.system_info,
@@ -778,6 +1046,7 @@ class ComprehensiveDependencyInstaller:
         logger.info(f"   Total: {total_deps}")
         logger.info(f"   Installed: {installed_count}")
         logger.info(f"   Already Available: {skipped_count}")
+        logger.info(f"   Not Applicable: {not_applicable_count}")
         logger.info(f"   Failed: {failed_count}")
         logger.info(f"   Success Rate: {report['success_rate']:.1f}%")
         
@@ -789,6 +1058,10 @@ class ComprehensiveDependencyInstaller:
         
         verification_results = {}
         for name, dep in self.dependencies.items():
+            if not _requirement_applies(dep.get("pip_name")):
+                verification_results[name] = None
+                logger.debug("⏭️ %s is not applicable", name)
+                continue
             import_name = dep.get("import_name", name)
             if self.check_dependency(name, import_name):
                 verification_results[name] = True
@@ -799,11 +1072,14 @@ class ComprehensiveDependencyInstaller:
         
         return verification_results
     
-    def _check_critical_dependencies(self) -> Dict[str, bool]:
+    def _check_critical_dependencies(self) -> Dict[str, Optional[bool]]:
         """Check status of critical dependencies."""
         critical_status = {}
         for name, dep in self.dependencies.items():
             if dep.get("critical", False):
+                if not _requirement_applies(dep.get("pip_name")):
+                    critical_status[name] = None
+                    continue
                 import_name = dep.get("import_name", name)
                 critical_status[name] = self.check_dependency(name, import_name)
         
@@ -825,7 +1101,10 @@ class ComprehensiveDependencyInstaller:
             
             logger.info(f"📝 Installation log saved to {self.log_file}")
         except Exception as e:
-            logger.error(f"Failed to save installation log: {e}")
+            logger.error(
+                "Failed to save installation log: %s",
+                _exception_diagnostic(e),
+            )
     
     def create_mock_modules(self):
         """Create mock modules for failed dependencies to prevent import errors."""
@@ -881,7 +1160,10 @@ class ComprehensiveDependencyInstaller:
                 logger.info("✅ Selenium and ChromeDriver setup completed")
                 return True
             except Exception as e:
-                logger.warning(f"⚠️ ChromeDriver setup failed: {e}")
+                logger.warning(
+                    "⚠️ ChromeDriver setup failed: %s",
+                    _exception_diagnostic(e),
+                )
         
         logger.warning("⚠️ Browser automation dependencies not available")
         return False
@@ -943,7 +1225,12 @@ if __name__ == "__main__":
     
     print(f"\n🎯 Final Report:")
     print(f"Success Rate: {report['success_rate']:.1f}%")
-    print(f"Critical Dependencies: {sum(report['critical_dependencies_status'].values())}/{len(report['critical_dependencies_status'])} available")
+    critical_available, critical_total = _critical_dependency_counts(
+        report["critical_dependencies_status"]
+    )
+    print(
+        f"Critical Dependencies: {critical_available}/{critical_total} available"
+    )
     
     if report["failed_installations"]:
         print(f"\n❌ Failed installations:")

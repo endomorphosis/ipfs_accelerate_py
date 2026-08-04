@@ -461,6 +461,115 @@ def test_duplicate_attempt_rejected_while_owner_alive(tmp_path: Path) -> None:
         )
 
 
+def test_expired_claim_reclaimable_even_if_owner_pid_still_alive(
+    tmp_path: Path,
+) -> None:
+    """Supervisor auto-unstick: expired leases are abandoned claims.
+
+    Long-lived daemon PIDs remain "alive" after failed implementers; without
+    reclaim-on-expiry the board stalls indefinitely.
+    """
+
+    clock = FakeClock(1_000.0)
+    store = _store(tmp_path, lease_seconds=10.0, clock=clock)
+    workspace = tmp_path / "expired-alive"
+    first = store.begin_preparing(
+        task_id="EXP",
+        canonical_task_cid="cid:exp",
+        attempt=1,
+        lane_id="lane-a",
+        workspace_path=workspace,
+        branch="implementation/exp",
+        merge_target="main",
+        owner=current_process_birth(),
+    )
+    assert first.is_nonterminal
+    assert owner_liveness(first.owner) is OwnerLiveness.ALIVE
+
+    clock.advance(11.0)
+    reclaimed = store.reclaim_stale(
+        workspace,
+        reason="test_expired_alive_reclaim",
+    )
+    assert reclaimed is not None
+    assert reclaimed.is_terminal
+    assert reclaimed.terminal_reason == "test_expired_alive_reclaim"
+
+    # A new acquire must succeed after reclaim (or via begin_preparing itself).
+    second = store.begin_preparing(
+        task_id="EXP",
+        canonical_task_cid="cid:exp",
+        attempt=1,
+        lane_id="lane-b",
+        workspace_path=tmp_path / "expired-alive-2",
+        branch="implementation/exp-2",
+        merge_target="main",
+    )
+    assert second.is_nonterminal
+    assert second.lane_id == "lane-b"
+
+
+def test_reclaim_expired_nonterminal_bulk(tmp_path: Path) -> None:
+    clock = FakeClock(2_000.0)
+    store = _store(tmp_path, lease_seconds=5.0, clock=clock)
+    for index in range(3):
+        store.begin_preparing(
+            task_id=f"UIR-{index:03d}",
+            attempt=1,
+            lane_id=f"lane-{index}",
+            workspace_path=tmp_path / f"ws-{index}",
+            branch=f"implementation/uir-{index}",
+            merge_target="main",
+        )
+    # Leave one unexpired by renewing... actually all share clock; advance past
+    # lease so all three are expired, then reclaim only UIR- prefix.
+    clock.advance(6.0)
+    recovered = store.reclaim_expired_nonterminal(
+        reason="bulk_test",
+        task_id_prefix="UIR-",
+    )
+    assert len(recovered) == 3
+    assert all(record.is_terminal for record in recovered)
+    assert not [
+        record
+        for record in store.iter_records()
+        if record.is_nonterminal and str(record.task_id).startswith("UIR-")
+    ]
+
+
+def test_begin_preparing_replaces_expired_task_attempt_claim(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(3_000.0)
+    store = _store(tmp_path, lease_seconds=5.0, clock=clock)
+    original_ws = tmp_path / "orig"
+    store.begin_preparing(
+        task_id="REP",
+        canonical_task_cid="cid:rep",
+        attempt=2,
+        lane_id="lane-a",
+        workspace_path=original_ws,
+        branch="implementation/rep",
+        merge_target="main",
+        owner=current_process_birth(),
+    )
+    clock.advance(6.0)
+    # Different workspace, same task/attempt: expired claim must not block.
+    replacement = store.begin_preparing(
+        task_id="REP",
+        canonical_task_cid="cid:rep",
+        attempt=2,
+        lane_id="lane-b",
+        workspace_path=tmp_path / "replacement",
+        branch="implementation/rep-2",
+        merge_target="main",
+    )
+    assert replacement.lane_id == "lane-b"
+    original = store.load_workspace(original_ws)
+    assert original is not None
+    assert original.is_terminal
+
+
 def test_duplicate_attempts_do_not_leak_candidate_workspace_guards(
     tmp_path: Path,
 ) -> None:
@@ -970,3 +1079,74 @@ def test_record_round_trip_json(tmp_path: Path) -> None:
     assert payload["state"] == "preparing"
     assert payload["attempt"] == 9
     assert payload["owner"]["pid"] == record.owner.pid
+
+
+def test_reconcile_stale_task_indexes_after_terminal_workspace(tmp_path: Path) -> None:
+    """Task-index files must not keep advertising active after workspace terminal."""
+
+    clock = FakeClock(2_000.0)
+    store = _store(tmp_path, lease_seconds=30.0, clock=clock)
+    workspace = tmp_path / "wt-stale-index"
+    record = store.begin_preparing(
+        task_id="UIR-033",
+        canonical_task_cid="cid:uir-033",
+        attempt=1,
+        lane_id="lane-5",
+        workspace_path=workspace,
+        branch="implementation/uir-033",
+        merge_target="agent/ui-ux-ir",
+    )
+    # Expire and reclaim workspace claim.
+    clock.advance(60.0)
+    terminal = store.reclaim_stale(
+        workspace,
+        reason="test_expired",
+    )
+    assert terminal is not None and terminal.is_terminal
+
+    # Corrupt the task index back to a nonterminal advertisement.
+    index_path = store.task_index_path_for(
+        canonical_task_cid=record.canonical_task_cid,
+        task_id=record.task_id,
+        attempt=record.attempt,
+    )
+    stale = json.loads(index_path.read_text(encoding="utf-8"))
+    stale["state"] = "active"
+    index_path.write_text(json.dumps(stale), encoding="utf-8")
+
+    repaired = store.reconcile_stale_task_indexes(task_id_prefix="UIR-")
+    assert repaired == 1
+    fixed = json.loads(index_path.read_text(encoding="utf-8"))
+    assert fixed["state"] == "terminal"
+
+
+def test_reclaim_expired_repairs_task_indexes(tmp_path: Path) -> None:
+    clock = FakeClock(3_000.0)
+    store = _store(tmp_path, lease_seconds=10.0, clock=clock)
+    workspace = tmp_path / "wt-reclaim-idx"
+    record = store.begin_preparing(
+        task_id="UIR-055",
+        canonical_task_cid="cid:uir-055",
+        attempt=2,
+        lane_id="lane-0",
+        workspace_path=workspace,
+        branch="implementation/uir-055",
+        merge_target="agent/ui-ux-ir",
+    )
+    clock.advance(30.0)
+    # Mark workspace terminal directly via reclaim, then re-stale the index.
+    store.reclaim_stale(workspace, reason="pre")
+    index_path = store.task_index_path_for(
+        canonical_task_cid=record.canonical_task_cid,
+        task_id=record.task_id,
+        attempt=record.attempt,
+    )
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    payload["state"] = "preparing"
+    index_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    recovered = store.reclaim_expired_nonterminal(task_id_prefix="UIR-")
+    # Workspace already terminal → no reclaim list entry, but index repaired.
+    fixed = json.loads(index_path.read_text(encoding="utf-8"))
+    assert fixed["state"] == "terminal"
+    assert recovered == [] or all(r.is_terminal for r in recovered)

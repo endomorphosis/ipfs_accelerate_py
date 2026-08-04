@@ -37,8 +37,6 @@ MIN_LEASE_MS = 5_000
 MAX_LEASE_MS = 300_000
 PROVIDER_VERSION = "3.2.0"
 MAX_PERSISTED_DEPENDENCY_REPAIRS = 256
-PROFILE_G_MAX_TASK_ATTEMPTS = 100
-UNLIMITED_TASK_TERMINAL_BLOCK_ATTEMPT_CAP = 3
 STRUCTURAL_DEPENDENCY_REPAIR_KINDS = frozenset(
     {"missing_dependency", "dependency_cycle", "duplicate_alias", "duplicate_task"}
 )
@@ -46,9 +44,9 @@ READY_BUNDLE_TASK_STATUSES = frozenset({"todo", "ready", "needed", "queued", "in
 COORDINATION_STORE_SCHEMA = "ipfs_accelerate_py.agent_supervisor.lease-coordination-duckdb@1"
 COORDINATION_LOCK_TIMEOUT_SECONDS = 30.0
 COORDINATION_DUCKDB_MEMORY_LIMIT = "256MB"
-COORDINATION_DUCKDB_LOCK_RETRY_ATTEMPTS = 6
-COORDINATION_DUCKDB_LOCK_RETRY_INITIAL_SECONDS = 0.05
-COORDINATION_DUCKDB_LOCK_RETRY_MAX_SECONDS = 0.5
+COORDINATION_DUCKDB_CONNECT_MAX_ATTEMPTS = 8
+COORDINATION_DUCKDB_CONNECT_INITIAL_BACKOFF_SECONDS = 0.1
+COORDINATION_DUCKDB_CONNECT_MAX_BACKOFF_SECONDS = 2.0
 MAX_PERSISTED_HEARTBEATS_PER_LEASE = 8
 SMALL_STORE_FULL_ARTIFACT_LIMIT = 10_000
 DISTRIBUTED_INPUT_SCHEMA = (
@@ -101,7 +99,7 @@ def _is_transient_duckdb_lock_error(exc: Exception) -> bool:
 
 
 def profile_g_task_attempt_limit(value: Any, *, default: int = 3) -> int:
-    """Return a Profile-G-compatible attempt limit.
+    """Return the supervisor attempt policy accepted beside Profile-G tasks.
 
     Zero is the unlimited sentinel. Values above the Profile-G v1 boundary
     are rejected instead of being silently rewritten across queue layers.
@@ -118,6 +116,18 @@ def profile_g_task_attempt_limit(value: Any, *, default: int = 3) -> int:
     return raw
 
 
+def _profile_g_task_spec_attempt_limit(value: Any, *, default: int = 3) -> int:
+    """Translate supervisor attempt policy into strict Profile-G v1 syntax.
+
+    Profile-G v1 has no unlimited sentinel and accepts only values in
+    ``[1, 100]``. The executable bundle retains zero as its authoritative
+    unlimited policy; only the immutable TaskSpec uses the schema ceiling.
+    """
+
+    selected = profile_g_task_attempt_limit(value, default=default)
+    return PROFILE_G_MAX_TASK_ATTEMPTS if selected == 0 else selected
+
+
 def _coordinator_operation(method: Callable[..., Any]) -> Callable[..., Any]:
     """Open one flock-serialized DuckDB connection for a public operation."""
 
@@ -131,6 +141,49 @@ def _coordinator_operation(method: Callable[..., Any]) -> Callable[..., Any]:
 
 def _duckdb_path_literal(path: Path) -> str:
     return "'" + str(path).replace("'", "''") + "'"
+
+
+def _is_transient_duckdb_file_lock_error(
+    error: BaseException,
+    duckdb_module: Any,
+) -> bool:
+    """Recognize only DuckDB's cross-process file-lock connect failure."""
+
+    io_exception = getattr(duckdb_module, "IOException", None)
+    if not isinstance(io_exception, type) or not isinstance(error, io_exception):
+        return False
+    message = str(error).casefold()
+    return (
+        "could not set lock on file" in message
+        and "conflicting lock is held" in message
+    )
+
+
+def _connect_coordination_duckdb(duckdb_module: Any, path: Path) -> Any:
+    """Open a writable coordination connection with bounded lock retries.
+
+    The surrounding advisory lock remains held while this retries.  The retry
+    is deliberately limited to DuckDB's explicit cross-process file-lock
+    ``IOException``; corrupt stores, permission failures, and other I/O errors
+    fail immediately with their original exception.
+    """
+
+    delay = COORDINATION_DUCKDB_CONNECT_INITIAL_BACKOFF_SECONDS
+    for attempt in range(1, COORDINATION_DUCKDB_CONNECT_MAX_ATTEMPTS + 1):
+        try:
+            return duckdb_module.connect(str(path))
+        except Exception as exc:
+            if (
+                not _is_transient_duckdb_file_lock_error(exc, duckdb_module)
+                or attempt >= COORDINATION_DUCKDB_CONNECT_MAX_ATTEMPTS
+            ):
+                raise
+            time.sleep(delay)
+            delay = min(
+                delay * 2,
+                COORDINATION_DUCKDB_CONNECT_MAX_BACKOFF_SECONDS,
+            )
+    raise AssertionError("unreachable DuckDB connection retry state")
 
 
 class LeaseError(RuntimeError):
@@ -202,6 +255,29 @@ def profile_g_cid(value: Any) -> str:
     # CIDv1 + dag-json (0x0129 varint) + sha2-256 multihash.
     raw = b"\x01\xa9\x02\x12\x20" + digest
     return "b" + base64.b32encode(raw).decode("ascii").rstrip("=").lower()
+
+
+def _is_profile_g_cid(value: Any) -> bool:
+    """Return whether ``value`` is canonical Profile-G CIDv1 identity text."""
+
+    if not isinstance(value, str) or not value or value != value.lower():
+        return False
+    if not value.startswith("b"):
+        return False
+    encoded = value[1:]
+    padding = "=" * ((8 - len(encoded) % 8) % 8)
+    try:
+        raw = base64.b32decode(encoded.upper() + padding, casefold=False)
+    except (ValueError, TypeError):
+        return False
+    expected_prefix = b"\x01\xa9\x02\x12\x20"
+    return bool(
+        len(raw) == len(expected_prefix) + hashlib.sha256().digest_size
+        and raw.startswith(expected_prefix)
+        and "b"
+        + base64.b32encode(raw).decode("ascii").rstrip("=").lower()
+        == value
+    )
 
 
 def _content_digest(value: Any) -> str:
@@ -746,19 +822,19 @@ def adapt_goal_bundle(bundle: Mapping[str, Any], *, created_at_ms: int | None = 
         "tool": "codex.todo_bundle",
         "dependency_task_cids": dependency_task_cids,
         "idempotency_key": canonical_identity.semantic_fingerprint[:32],
+        "canonical_task_key": canonical_identity.canonical_task_key,
+        "canonical_task_cid": canonical_identity.canonical_task_cid,
         "resource_class": str(bundle.get("resource_class") or "cpu-small"),
         "deadline_ms": int(bundle.get("deadline_ms") or now + 86_400_000),
         "expected_value_millionths": int(bundle.get("expected_value_millionths") or 500_000),
-        "max_attempts": profile_g_task_attempt_limit(
+        "max_attempts": _profile_g_task_spec_attempt_limit(
             bundle.get("max_attempts"),
         ),
+        "max_attempts": int(bundle.get("max_attempts") or 3),
         "execution_mode": "idempotent",
     }
     task_spec_cid = profile_g_cid(task)
     artifacts = {profile_g_cid(item): item for item in (goal, subgoal, plan, selection, task)}
-    # Supervisor identity is adapter metadata, not a Profile-G TaskSpec field.
-    # Keep it beside the strict immutable artifact so datasets-owned validators
-    # can consume the TaskSpec without accepting implementation extensions.
     return {
         "goal": goal,
         "goal_cid": goal_cid,
@@ -795,6 +871,7 @@ def _validated_embedded_profile_g(
         bundle.get("max_attempts"),
         default=3,
     )
+    expected_task_limit = _profile_g_task_spec_attempt_limit(outer_limit)
     adapted = dict(embedded)
     artifacts = adapted.get("artifacts")
     if not isinstance(artifacts, Mapping):
@@ -856,7 +933,7 @@ def _validated_embedded_profile_g(
     if "max_attempts" not in task:
         raise ValueError("embedded Profile-G TaskSpec max_attempts is required")
     task_limit = profile_g_task_attempt_limit(task["max_attempts"])
-    if task_limit != outer_limit:
+    if task_limit != expected_task_limit:
         raise ValueError(
             "bundle max_attempts does not match embedded Profile-G TaskSpec"
         )
@@ -1222,34 +1299,11 @@ class LeaseCoordinator:
                     raise RuntimeError(
                         "DuckDB is required for lease coordination"
                     ) from exc
-                retry_delay = COORDINATION_DUCKDB_LOCK_RETRY_INITIAL_SECONDS
-                for attempt in range(1, COORDINATION_DUCKDB_LOCK_RETRY_ATTEMPTS + 1):
-                    duckdb_connection = None
-                    try:
-                        duckdb_connection = duckdb.connect(str(self.path))
-                        duckdb_connection.execute("SET threads=1")
-                        duckdb_connection.execute(
-                            f"SET memory_limit='{COORDINATION_DUCKDB_MEMORY_LIMIT}'"
-                        )
-                        break
-                    except Exception as exc:
-                        if duckdb_connection is not None:
-                            try:
-                                duckdb_connection.close()
-                            except Exception:
-                                pass
-                        if (
-                            not _is_transient_duckdb_lock_error(exc)
-                            or attempt >= COORDINATION_DUCKDB_LOCK_RETRY_ATTEMPTS
-                        ):
-                            raise
-                        time.sleep(retry_delay)
-                        retry_delay = min(
-                            COORDINATION_DUCKDB_LOCK_RETRY_MAX_SECONDS,
-                            retry_delay * 2,
-                        )
-                else:  # pragma: no cover - bounded loop either connects or raises.
-                    raise RuntimeError("DuckDB coordination connection retry exhausted")
+                duckdb_connection = _connect_coordination_duckdb(duckdb, self.path)
+                duckdb_connection.execute("SET threads=1")
+                duckdb_connection.execute(
+                    f"SET memory_limit='{COORDINATION_DUCKDB_MEMORY_LIMIT}'"
+                )
                 self._connection = _DuckConnection.wrap(
                     duckdb_connection,
                     transaction_on_context=True,
@@ -1503,11 +1557,7 @@ class LeaseCoordinator:
     @_coordinator_operation
     def register_bundle(self, bundle: Mapping[str, Any], *, created_at_ms: int | None = None) -> dict[str, Any]:
         embedded = bundle.get("profile_g")
-        adapted = (
-            _validated_embedded_profile_g(bundle, embedded)
-            if isinstance(embedded, Mapping) and embedded.get("task_cid")
-            else adapt_goal_bundle(bundle, created_at_ms=created_at_ms)
-        )
+        adapted = dict(embedded) if isinstance(embedded, Mapping) and embedded.get("task_cid") else adapt_goal_bundle(bundle, created_at_ms=created_at_ms)
         canonical_identity = canonical_bundle_identity(bundle)
         canonical_task_cid = str(adapted.get("canonical_task_cid") or canonical_identity.canonical_task_cid)
         task_spec_cid = str(adapted.get("task_spec_cid") or adapted.get("task_cid") or "")
@@ -1719,15 +1769,7 @@ class LeaseCoordinator:
                 if row is None:
                     connection.commit()
                     return False
-                exhausted = self._attempt_budget_exhausted(
-                    row,
-                    int(row["attempt"] or 0),
-                    release_reason=(
-                        str(row["release_reason"])
-                        if row["release_reason"]
-                        else None
-                    ),
-                )
+                exhausted = int(row["attempt"] or 0) >= self._max_attempts(row)
                 blocked_receipt = str(row["release_reason"] or "").startswith("receipt:") and str(
                     row["release_reason"] or ""
                 ).endswith(":blocked")
@@ -1998,40 +2040,7 @@ class LeaseCoordinator:
     @staticmethod
     def _max_attempts(task: _DuckRow | Mapping[str, Any]) -> int:
         bundle = json.loads(task["bundle_json"])
-        raw_limit = (
-            bundle["max_attempts"]
-            if bundle.get("max_attempts") not in (None, "")
-            else 3
-        )
-        return profile_g_task_attempt_limit(raw_limit)
-
-    @classmethod
-    def _attempt_budget_exhausted(
-        cls,
-        task: _DuckRow | Mapping[str, Any],
-        attempt: int,
-        *,
-        release_reason: str | None = None,
-    ) -> bool:
-        """Return whether admission is exhausted for the latest outcome.
-
-        Zero leaves retryable implementation failures unlimited. An
-        authoritative terminal-block receipt is different: allowing it to
-        re-enter forever would churn scheduler capacity without any source
-        change, so it retains the historical three-admission safety cap.
-        """
-
-        max_attempts = cls._max_attempts(task)
-        if max_attempts > 0:
-            return int(attempt) >= max_attempts
-        terminal_block = (
-            str(release_reason or "").startswith("receipt:")
-            and str(release_reason or "").endswith(":blocked")
-        )
-        return (
-            terminal_block
-            and int(attempt) >= UNLIMITED_TASK_TERMINAL_BLOCK_ATTEMPT_CAP
-        )
+        return max(1, int(bundle.get("max_attempts") or 3))
 
     @staticmethod
     def _execution_scope(task: _DuckRow) -> str:
@@ -2082,18 +2091,7 @@ class LeaseCoordinator:
             state = "accepted"
         elif lease_state == "completed":
             state = "completed"
-        elif (
-            self._attempt_budget_exhausted(
-                task,
-                attempt,
-                release_reason=(
-                    str(lease["release_reason"])
-                    if lease is not None and lease["release_reason"]
-                    else None
-                ),
-            )
-            or retry_not_before > now
-        ):
+        elif attempt >= max_attempts or retry_not_before > now:
             state = "blocked"
         else:
             state = "ready"
@@ -2129,6 +2127,18 @@ class LeaseCoordinator:
         result["bundle_key"] = str(state.bundle.get("bundle_key") or state.task_id)
         # Common spelling used by the lane manifest.
         result["expires_at_ms"] = state.lease_expires_at_ms
+        release_reason = str(state.release_reason or "")
+        if release_reason.startswith("deferred:pending_acceptance:"):
+            result.update(
+                {
+                    "acceptance_pending": True,
+                    "resumable": True,
+                    "deferred_reason": "pending_acceptance",
+                    "pending_gate": release_reason.rsplit(":", 1)[-1],
+                }
+            )
+            if state.state == "blocked":
+                result["blocked_reason"] = "acceptance_pending_cooldown"
         return result
 
     def _projection_with_claimability(
@@ -2398,21 +2408,9 @@ class LeaseCoordinator:
                     # A finite attempt budget prevents a permanently failing
                     # task from monopolizing newly idle lanes.
                     lease = connection.execute(
-                        "SELECT attempt, release_reason FROM leases WHERE task_cid=?",
-                        (task["task_cid"],),
+                        "SELECT attempt FROM leases WHERE task_cid=?", (task["task_cid"],)
                     ).fetchone()
-                    if (
-                        lease is not None
-                        and self._attempt_budget_exhausted(
-                            task,
-                            int(lease["attempt"]),
-                            release_reason=(
-                                str(lease["release_reason"])
-                                if lease["release_reason"]
-                                else None
-                            ),
-                        )
-                    ):
+                    if lease is not None and int(lease["attempt"]) >= self._max_attempts(task):
                         continue
                     if self._active_execution_scope_conflict(
                         connection, task, now=now
@@ -2512,18 +2510,7 @@ class LeaseCoordinator:
         ).fetchone()
         if prior is not None and prior["state"] == "completed":
             raise LeaseConflictError("task already has a successful terminal receipt")
-        if (
-            prior is not None
-            and self._attempt_budget_exhausted(
-                task,
-                int(prior["attempt"] or 0),
-                release_reason=(
-                    str(prior["release_reason"])
-                    if prior["release_reason"]
-                    else None
-                ),
-            )
-        ):
+        if prior is not None and int(prior["attempt"] or 0) >= self._max_attempts(task):
             raise LeaseConflictError("task attempt budget is exhausted")
         retry_not_before = int(prior["retry_not_before_ms"] or 0) if prior is not None else 0
         if retry_not_before > now:
@@ -3051,6 +3038,216 @@ class LeaseCoordinator:
                 )
                 conn.commit()
                 return cid
+            except Exception:
+                conn.rollback()
+                raise
+
+    @_coordinator_operation
+    def defer_pending_acceptance(
+        self,
+        grant: LeaseGrant,
+        *,
+        evidence: Mapping[str, Any],
+        retry_delay_ms: int = 30_000,
+        now_ms: int | None = None,
+    ) -> dict[str, Any]:
+        """Return provider-review-pending work without publishing a receipt.
+
+        This transition is deliberately narrower than :meth:`release`.  It
+        accepts only exact, non-authoritative provider-review-pending evidence,
+        rolls back the coordination attempt charged by the current claim, and
+        applies a bounded cooldown before the task becomes claimable again.
+        The resulting ``ClaimResolution`` is resumability evidence, never task
+        completion authority.
+        """
+
+        if not isinstance(evidence, Mapping):
+            raise ValueError("pending acceptance evidence must be a mapping")
+
+        def exact_text_sequence(value: Any) -> tuple[str, ...]:
+            if not isinstance(value, (list, tuple)):
+                return ()
+            if not value or any(
+                not isinstance(item, str)
+                or not item
+                or item != item.strip()
+                for item in value
+            ):
+                return ()
+            return tuple(value)
+
+        pending_gates = exact_text_sequence(evidence.get("pending_gates"))
+        task_ids = exact_text_sequence(evidence.get("task_ids"))
+        task_cids = exact_text_sequence(evidence.get("task_cids"))
+        event_ids = exact_text_sequence(evidence.get("acceptance_event_ids"))
+        raw_task_cids_by_id = evidence.get("task_cids_by_id")
+        exact_task_cids_by_id = bool(
+            isinstance(raw_task_cids_by_id, Mapping)
+            and raw_task_cids_by_id
+            and all(
+                isinstance(task_id, str)
+                and task_id == task_id.strip()
+                and bool(task_id)
+                and isinstance(task_cid, str)
+                and task_cid == task_cid.strip()
+                and _is_profile_g_cid(task_cid)
+                for task_id, task_cid in raw_task_cids_by_id.items()
+            )
+        )
+        task_cids_by_id = (
+            {
+                str(task_id).strip(): str(task_cid).strip()
+                for task_id, task_cid in raw_task_cids_by_id.items()
+            }
+            if isinstance(raw_task_cids_by_id, Mapping)
+            else {}
+        )
+        terminal_event_id = str(evidence.get("terminal_event_id") or "").strip()
+        if (
+            evidence.get("schema")
+            != "ipfs_accelerate_py/agent-supervisor/pending-acceptance@1"
+            or evidence.get("acceptance_pending") is not True
+            or evidence.get("completion_authoritative") is not False
+            or evidence.get("admitted") is not False
+            or pending_gates != ("provider_review",)
+            or not task_ids
+            or len(set(task_ids)) != len(task_ids)
+            or len(task_ids) != len(task_cids)
+            or len(set(task_cids)) != len(task_cids)
+            or any(not _is_profile_g_cid(task_cid) for task_cid in task_cids)
+            or not exact_task_cids_by_id
+            or set(task_cids_by_id) != set(task_ids)
+            or any(
+                not task_cid or task_cids_by_id.get(task_id) != task_cid
+                for task_id, task_cid in zip(task_ids, task_cids)
+            )
+            or len(event_ids) != len(task_ids)
+            or len(set(event_ids)) != len(event_ids)
+            or not terminal_event_id
+            or terminal_event_id in event_ids
+        ):
+            raise ValueError(
+                "pending acceptance deferral requires exact, durable, "
+                "provider-review-only evidence"
+            )
+        delay = int(retry_delay_ms)
+        if not 1 <= delay <= MAX_LEASE_MS:
+            raise ValueError(
+                f"retry_delay_ms must be in [1, {MAX_LEASE_MS}]"
+            )
+        normalized_evidence = _canonical_mapping(
+            dict(evidence),
+            "pending acceptance evidence",
+        )
+        now = self._clock_ms() if now_ms is None else int(now_ms)
+        retry_not_before = now + delay
+        with self._lock:
+            conn = self._connection
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                row = self._current(conn, grant, now)
+                task = conn.execute(
+                    "SELECT bundle_json FROM tasks WHERE task_cid=?",
+                    (grant.task_cid,),
+                ).fetchone()
+                if task is None:
+                    raise LeaseError("leased task registration is missing")
+                bundle = json.loads(str(task["bundle_json"]))
+                registered_slice_ids = exact_text_sequence(
+                    bundle.get("execution_slice_task_ids")
+                )
+                registered_slice_cids = exact_text_sequence(
+                    bundle.get("execution_slice_task_cids")
+                )
+                members = bundle.get("tasks")
+                member_pairs = [
+                    (
+                        str(member.get("task_id") or "").strip(),
+                        str(
+                            member.get("canonical_task_cid")
+                            or member.get("task_cid")
+                            or ""
+                        ).strip(),
+                    )
+                    for member in (
+                        members if isinstance(members, (list, tuple)) else ()
+                    )
+                    if isinstance(member, Mapping)
+                ]
+                selected_id_set = set(registered_slice_ids)
+                selected_cid_set = set(registered_slice_cids)
+                selected_pairs = [
+                    (task_id, task_cid)
+                    for task_id, task_cid in member_pairs
+                    if task_id in selected_id_set and task_cid in selected_cid_set
+                ]
+                registered_task_cids_by_id = dict(selected_pairs)
+                if (
+                    not registered_slice_ids
+                    or len(set(registered_slice_ids)) != len(registered_slice_ids)
+                    or len(registered_slice_ids) != len(registered_slice_cids)
+                    or len(set(registered_slice_cids)) != len(registered_slice_cids)
+                    or any(
+                        not _is_profile_g_cid(task_cid)
+                        for task_cid in registered_slice_cids
+                    )
+                    or not registered_task_cids_by_id
+                    or len(selected_pairs) != len(registered_task_cids_by_id)
+                    or any(
+                        not task_id or not task_cid
+                        for task_id, task_cid in registered_task_cids_by_id.items()
+                    )
+                    or set(registered_task_cids_by_id) != selected_id_set
+                    or set(registered_task_cids_by_id.values()) != selected_cid_set
+                    or task_cids_by_id != registered_task_cids_by_id
+                ):
+                    raise ValueError(
+                        "pending acceptance evidence is not bound to the "
+                        "leased execution slice"
+                    )
+                resolution = self._resolution_payload(
+                    row,
+                    outcome="released",
+                    now=now,
+                )
+                resolution.update(
+                    {
+                        "retry_not_before_ms": retry_not_before,
+                        "deferred_reason": "pending_acceptance",
+                        "pending_acceptance": normalized_evidence,
+                    }
+                )
+                resolution_cid = self._put_artifact(
+                    conn,
+                    "ClaimResolution",
+                    resolution,
+                )
+                prior_attempt = max(0, int(row["attempt"] or 0) - 1)
+                conn.execute(
+                    """UPDATE leases
+                       SET state='released', resolution_cid=?, attempt=?,
+                           release_reason=?, retry_not_before_ms=?
+                       WHERE task_cid=? AND claim_cid=? AND fencing_token=?""",
+                    (
+                        resolution_cid,
+                        prior_attempt,
+                        "deferred:pending_acceptance:provider_review",
+                        retry_not_before,
+                        grant.task_cid,
+                        grant.claim_cid,
+                        grant.fencing_token,
+                    ),
+                )
+                conn.commit()
+                return {
+                    "resolution_cid": resolution_cid,
+                    "task_cid": grant.task_cid,
+                    "attempt": prior_attempt,
+                    "retry_not_before_ms": retry_not_before,
+                    "acceptance_pending": True,
+                    "resumable": True,
+                    "completion_authoritative": False,
+                }
             except Exception:
                 conn.rollback()
                 raise
@@ -5631,8 +5828,7 @@ class LeaseQueueBridge:
 
     Queue ownership alone is never execution authority.  A bridge claim is
     returned only after the embedded canonical TaskSpec has an accepted lease;
-    retryable lease conflicts are persisted with backoff, while malformed
-    Profile-G work is terminally quarantined so neither can starve later work.
+    a conflicting queue claim is immediately returned to the queue.
     """
 
     def __init__(
@@ -5643,107 +5839,29 @@ class LeaseQueueBridge:
         worker_id: str,
         claimant_did: str,
         lease_ms: int = 60_000,
-        rejection_backoff_seconds: float = 1.0,
-        max_rejections_per_claim: int = 32,
     ) -> None:
         self.queue = queue
         self.coordinator = coordinator
         self.worker_id = worker_id
         self.claimant_did = claimant_did
         self.lease_ms = lease_ms
-        self.rejection_backoff_seconds = max(
-            0.001,
-            float(rejection_backoff_seconds),
-        )
-        self.max_rejections_per_claim = max(1, int(max_rejections_per_claim))
-
-    def _terminally_reject_registration(self, task: Any, error: Exception) -> None:
-        detail = str(error)[:1_000]
-        reason = (
-            f"profile-g registration rejected: {type(error).__name__}: {detail}"
-        )
-        accepted = self.queue.complete(
-            task_id=task.task_id,
-            worker_id=self.worker_id,
-            status="failed",
-            result={
-                "profile_g_registration_rejected": {
-                    "error_type": type(error).__name__,
-                    "reason": detail,
-                }
-            },
-            error=reason,
-        )
-        if not accepted:
-            self.queue.release(
-                task_id=task.task_id,
-                worker_id=self.worker_id,
-                reason=reason,
-            )
-            raise LeaseError(
-                f"queue refused terminal Profile-G rejection for {task.task_id}"
-            ) from error
-
-    def _retry_rejected_lease(self, task: Any, error: LeaseError) -> bool:
-        retry = getattr(self.queue, "retry", None)
-        if not callable(retry):
-            self.queue.release(
-                task_id=task.task_id,
-                worker_id=self.worker_id,
-                reason="profile-g lease not accepted",
-            )
-            return False
-        accepted = retry(
-            task_id=task.task_id,
-            worker_id=self.worker_id,
-            delay_seconds=self.rejection_backoff_seconds,
-            error=f"profile-g lease not accepted: {type(error).__name__}: {error}",
-        )
-        if not accepted:
-            raise LeaseError(
-                f"queue refused retry backoff for {task.task_id}"
-            ) from error
-        return True
 
     def claim_next(self, *, supported_task_types: list[str] | None = None) -> LeasedQueuedTask | None:
-        for _ in range(self.max_rejections_per_claim):
-            task = self.queue.claim_next(
-                worker_id=self.worker_id,
-                supported_task_types=supported_task_types,
+        task = self.queue.claim_next(worker_id=self.worker_id, supported_task_types=supported_task_types)
+        if task is None:
+            return None
+        payload = task.payload if isinstance(task.payload, Mapping) else {}
+        try:
+            adapted = self.coordinator.register_bundle(payload)
+            grant = self.coordinator.claim(
+                adapted["task_cid"],
+                self.claimant_did,
+                requested_lease_ms=self.lease_ms,
             )
-            if task is None:
-                return None
-            if not isinstance(task.payload, Mapping):
-                self._terminally_reject_registration(
-                    task,
-                    TypeError("queued Profile-G bundle payload must be a mapping"),
-                )
-                continue
-            payload = task.payload
-            try:
-                adapted = self.coordinator.register_bundle(payload)
-            except (KeyError, TypeError, ValueError) as error:
-                self._terminally_reject_registration(task, error)
-                continue
-            try:
-                grant = self.coordinator.claim(
-                    adapted["task_cid"],
-                    self.claimant_did,
-                    requested_lease_ms=self.lease_ms,
-                )
-            except LeaseError as error:
-                if not self._retry_rejected_lease(task, error):
-                    raise
-                continue
-            except Exception:
-                self.queue.release(
-                    task_id=task.task_id,
-                    worker_id=self.worker_id,
-                    reason="profile-g lease coordination failed",
-                )
-                raise
-            return LeasedQueuedTask(task=task, grant=grant)
-        return None
+        except Exception:
+            self.queue.release(task_id=task.task_id, worker_id=self.worker_id, reason="profile-g lease not accepted")
+            raise
+        return LeasedQueuedTask(task=task, grant=grant)
 
     def renew(self, leased: LeasedQueuedTask) -> LeasedQueuedTask:
         return LeasedQueuedTask(
