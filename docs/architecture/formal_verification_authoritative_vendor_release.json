@@ -6,7 +6,7 @@
   "goal_id": "FVT-G221",
   "task_id": "FVT-089",
   "program": "formal-verification-tactician/authoritative-vendor-release",
-  "observed_at": "2026-08-04T18:18:34Z",
+  "observed_at": "2026-08-04T18:32:37Z",
   "status": "authoritative_vendor_release_blocked",
   "deployment_ready": false,
   "assessment_complete": true,
@@ -90,10 +90,10 @@
       "freshness": {
         "valid": true,
         "timestamp": "2026-08-04T18:17:30Z",
-        "age_seconds": 64.0,
-        "wall_clock_age_seconds": 64.982621,
-        "release_wall_clock_age_seconds": 0.982621,
-        "wall_clock_observed_at": "2026-08-04T18:18:34.982621Z",
+        "age_seconds": 907.0,
+        "wall_clock_age_seconds": 907.848812,
+        "release_wall_clock_age_seconds": 0.848812,
+        "wall_clock_observed_at": "2026-08-04T18:32:37.848812Z",
         "max_age_seconds": 86400,
         "clock_skew_seconds": 300,
         "failures": []
@@ -136,10 +136,10 @@
       "freshness": {
         "valid": true,
         "timestamp": "2026-08-04T17:03:16Z",
-        "age_seconds": 4518.0,
-        "wall_clock_age_seconds": 4518.982621,
-        "release_wall_clock_age_seconds": 0.982621,
-        "wall_clock_observed_at": "2026-08-04T18:18:34.982621Z",
+        "age_seconds": 5361.0,
+        "wall_clock_age_seconds": 5361.848812,
+        "release_wall_clock_age_seconds": 0.848812,
+        "wall_clock_observed_at": "2026-08-04T18:32:37.848812Z",
         "max_age_seconds": 86400,
         "clock_skew_seconds": 300,
         "failures": []
@@ -153,55 +153,50 @@
       "binding_valid": true
     },
     "ergoai_managed_vendor_live": {
-      "path": "docs/architecture/formal_verification_ergoai_java_api_live_receipt.json",
+      "path": "docs/architecture/formal_verification_ergoai_live_receipt.json",
       "source_kind": "checked_file",
-      "fallback_used": true,
+      "fallback_used": false,
       "present": true,
       "reachable": true,
       "file_present": true,
-      "file_sha256": "sha256:edd5ead441507d18dc60ec7bf2633b3c712ecb4b3d4c39d9052b697bb6df4fea",
+      "file_sha256": "sha256:8978a918d316bcb5000d4c669794ac12cc220135ecc4a0f740f0e47b7d0e5975",
       "repository_body_matches": true,
-      "repository_head_blob": "28b33cad1ff37c2301f72bec1c719d238f7f3439",
-      "repository_working_blob": "28b33cad1ff37c2301f72bec1c719d238f7f3439",
+      "repository_head_blob": "3db3adbf806544871a4b9874d22c60a29537e458",
+      "repository_working_blob": "3db3adbf806544871a4b9874d22c60a29537e458",
       "repository_file_committed_at_head": true,
       "repository_content_bound": true,
-      "interface": "ErgoAIJavaAPILiveCertification@1",
-      "schema_version": "ergoai-java-api-live-certification/v1",
-      "goal_id": "FVT-G223",
-      "task_id": "FVT-091",
+      "interface": "LiveErgoAIAdvisorCertification@1",
+      "schema_version": "live-ergoai-advisor-certification/v1",
+      "goal_id": "FVT-G160",
+      "task_id": "FVT-050",
       "status": null,
       "declared_identity_field": "receipt_digest_sha256",
-      "declared_identity": "5e66e5152d7d9b60c194e51cc71209be8727063d61ffa822abb039cdb712df59",
-      "payload_content_identity": "sha256:1d8a77fda03326e04e81e5d06f8545475fa558814cd671d49357f13a3f548f8a",
+      "declared_identity": "f35b3f77b5e4b6639962ca002e0f5c9c7fd0bb909d8475335841f010b7a54490",
+      "payload_content_identity": "sha256:417a17e2240ca7bea9a76102fbad62a62a61f7cd0dda0caf71ff91e3e4aa37bb",
       "identity_valid": true,
-      "interface_valid": false,
-      "interface_contract_valid": false,
+      "interface_valid": true,
+      "interface_contract_valid": true,
       "interface_contract_failures": [],
-      "fresh": false,
+      "fresh": true,
       "public_safe": true,
       "freshness": {
-        "valid": false,
-        "timestamp": null,
-        "age_seconds": null,
-        "wall_clock_age_seconds": null,
-        "release_wall_clock_age_seconds": 0.982621,
-        "wall_clock_observed_at": "2026-08-04T18:18:34.982621Z",
+        "valid": true,
+        "timestamp": "2026-08-04T18:25:51Z",
+        "age_seconds": 406.0,
+        "wall_clock_age_seconds": 406.848812,
+        "release_wall_clock_age_seconds": 0.848812,
+        "wall_clock_observed_at": "2026-08-04T18:32:37.848812Z",
         "max_age_seconds": 86400,
         "clock_skew_seconds": 300,
-        "failures": [
-          "freshness_timestamp_missing_or_invalid"
-        ]
+        "failures": []
       },
       "public_evidence_audit": {
         "satisfied": true,
         "failure_count": 0,
         "failures": []
       },
-      "binding_failures": [
-        "interface_contract_mismatch:interface",
-        "interface_not_accepted_for_dependency"
-      ],
-      "binding_valid": false
+      "binding_failures": [],
+      "binding_valid": true
     },
     "role_aware_release_candidate": {
       "path": "docs/architecture/formal_verification_role_aware_release_candidate.json",
@@ -233,10 +228,10 @@
       "freshness": {
         "valid": false,
         "timestamp": "2026-08-03T04:19:06Z",
-        "age_seconds": 136768.0,
-        "wall_clock_age_seconds": 136768.982621,
-        "release_wall_clock_age_seconds": 0.982621,
-        "wall_clock_observed_at": "2026-08-04T18:18:34.982621Z",
+        "age_seconds": 137611.0,
+        "wall_clock_age_seconds": 137611.848812,
+        "release_wall_clock_age_seconds": 0.848812,
+        "wall_clock_observed_at": "2026-08-04T18:32:37.848812Z",
         "max_age_seconds": 86400,
         "clock_skew_seconds": 300,
         "failures": [
@@ -282,10 +277,10 @@
       "freshness": {
         "valid": false,
         "timestamp": "2026-08-03T04:17:46Z",
-        "age_seconds": 136848.0,
-        "wall_clock_age_seconds": 136848.982621,
-        "release_wall_clock_age_seconds": 0.982621,
-        "wall_clock_observed_at": "2026-08-04T18:18:34.982621Z",
+        "age_seconds": 137691.0,
+        "wall_clock_age_seconds": 137691.848812,
+        "release_wall_clock_age_seconds": 0.848812,
+        "wall_clock_observed_at": "2026-08-04T18:32:37.848812Z",
         "max_age_seconds": 86400,
         "clock_skew_seconds": 300,
         "failures": [
@@ -308,10 +303,10 @@
       "present": true,
       "reachable": true,
       "file_present": true,
-      "file_sha256": "sha256:abd29e6cf636d8e3a3b7fa94e86e2b5649bf07e212ef1c2db4080ab8a5edc600",
+      "file_sha256": "sha256:587355dfd93ef864d38d2297a973604ec09cdb22d3d8f88ddf86cbb147c1ac5c",
       "repository_body_matches": true,
-      "repository_head_blob": "bf53bb8e74402decb7e38d99bbd7a665757f96ba",
-      "repository_working_blob": "bf53bb8e74402decb7e38d99bbd7a665757f96ba",
+      "repository_head_blob": "7d437634f98fd10a7cd88ddd25e6b2b32f7f5e85",
+      "repository_working_blob": "7d437634f98fd10a7cd88ddd25e6b2b32f7f5e85",
       "repository_file_committed_at_head": true,
       "repository_content_bound": true,
       "interface": "FormalVerificationTacticianCompletionReceipt@1",
@@ -320,27 +315,24 @@
       "task_id": "FVT-036",
       "status": null,
       "declared_identity_field": "receipt_identity",
-      "declared_identity": "sha256:918919cc8afab079ece15e5520fd7d6b7788d89a0262ff9c5f33d197e701a314",
-      "payload_content_identity": "sha256:2303d64e444d503dd37c9f9574e5644b930fa642827f2d864ae2064cf256df77",
+      "declared_identity": "sha256:686c58836e0497664a306804579740d14cff64ac00a506f7020203a373cafe71",
+      "payload_content_identity": "sha256:1cfc201187b651116cad62e981b3e7cd8bcb837196f4b007e06ce3a7fa017979",
       "identity_valid": true,
       "interface_valid": true,
       "interface_contract_valid": true,
       "interface_contract_failures": [],
-      "fresh": false,
+      "fresh": true,
       "public_safe": true,
       "freshness": {
-        "valid": false,
-        "timestamp": "2026-08-03T04:19:06Z",
-        "age_seconds": 136768.0,
-        "wall_clock_age_seconds": 136768.982621,
-        "release_wall_clock_age_seconds": 0.982621,
-        "wall_clock_observed_at": "2026-08-04T18:18:34.982621Z",
+        "valid": true,
+        "timestamp": "2026-08-04T18:31:05Z",
+        "age_seconds": 92.0,
+        "wall_clock_age_seconds": 92.848812,
+        "release_wall_clock_age_seconds": 0.848812,
+        "wall_clock_observed_at": "2026-08-04T18:32:37.848812Z",
         "max_age_seconds": 86400,
         "clock_skew_seconds": 300,
-        "failures": [
-          "evidence_age_exceeds_policy",
-          "evidence_wall_clock_age_exceeds_policy"
-        ]
+        "failures": []
       },
       "public_evidence_audit": {
         "satisfied": true,
@@ -1240,7 +1232,7 @@
     },
     "ergoai": {
       "valid": false,
-      "repository_receipt_bound": false,
+      "repository_receipt_bound": true,
       "managed_vendor_live_evidence": false,
       "vendor_certified_for_advisor_role": false,
       "managed_vendor_provenance_bound": false,
@@ -1249,15 +1241,15 @@
       "managed_runtime_tool_identity_bound": false,
       "platform_identity_bound": false,
       "raw_checks_digest_bound": false,
-      "claimed_raw_checks_digest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "claimed_raw_checks_digest_sha256": "59fc1ae3cf3c75dde4ed3243bbb950f582c8d73953b6eb80fc528952fcfc45d1",
       "rederived_raw_checks_digest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "independent_rederivation_succeeded": false,
-      "independent_rederivation_error": "exact_committed_ergoai_receipt_not_bound",
+      "independent_rederivation_error": "ergoai_lock_identity_not_bound",
       "rederived_interface": null,
       "rederived_receipt_digest_sha256": null,
       "authority_ceiling": "advisory",
-      "advisory_authority_ceiling_respected": false,
-      "certification_did_not_install_or_download": false,
+      "advisory_authority_ceiling_respected": true,
+      "certification_did_not_install_or_download": true,
       "claimed_semantic_cases": {
         "valid": false,
         "required": [
@@ -1270,20 +1262,22 @@
           "timeout",
           "resource_bound"
         ],
-        "passed": [
-          "replay"
-        ],
+        "passed": [],
         "missing": [
           "contradiction",
           "entailment",
           "malformed",
           "mutation",
           "non_entailment",
+          "replay",
           "resource_bound",
           "timeout"
         ],
-        "failed": [],
-        "case_count": 13
+        "failed": [
+          "mutation",
+          "replay"
+        ],
+        "case_count": 8
       },
       "semantic_cases": {
         "valid": false,
@@ -1312,19 +1306,39 @@
         "case_count": 0
       },
       "lock_identity": {
-        "valid": false
+        "valid": true,
+        "lock_sha256": "sha256:b1d1bbad034fcc8d6189fa6eaa17555783720456ee01ca860a57a68fcce29ec2",
+        "version": "3.0",
+        "artifact_sha256": "46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
+        "platform": "linux-aarch64",
+        "release_tag": "v3.0_release",
+        "authority_ceiling": "advisory",
+        "required_case_kinds": [
+          "entailment",
+          "non_entailment",
+          "contradiction",
+          "mutation",
+          "replay",
+          "malformed",
+          "timeout",
+          "resource_bound"
+        ]
       },
       "blockers": [
-        "advisory_authority_ceiling_respected",
-        "certification_did_not_install_or_download",
         "current_lock_identity_bound",
-        "exact_committed_ergoai_receipt_not_bound",
-        "exact_committed_repository_receipt_bound",
+        "ergoai_lock_identity_not_bound",
         "independent_live_rederivation_succeeded",
         "managed_runtime_tool_identity_bound",
         "managed_vendor_live_evidence",
         "platform_identity_bound",
         "raw_checks_digest_bound_to_independent_rerun",
+        "receipt:hermetic_advisor_shim_is_not_vendor",
+        "receipt:managed_vendor_provenance_unverified",
+        "receipt:mutation_semantic_check_failed",
+        "receipt:negative_semantic_check_failed",
+        "receipt:positive_semantic_check_failed",
+        "receipt:replay_semantic_check_failed",
+        "receipt:replay_semantic_invariant_failed",
         "release_artifact_identity_bound",
         "semantic_case_missing:contradiction",
         "semantic_case_missing:entailment",
@@ -1357,9 +1371,9 @@
         "mode": "160000",
         "pinned_commit": "1d932cc778a24cc0bf46fc4baad8306d4fed9c4b",
         "checkout_present": true,
-        "checkout_head": "5bfa97cddc802bf0b6e30fe0824eb9feab01f98e",
+        "checkout_head": "a047f1f9b7318cbf2d30696f72b685a934e2764d",
         "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1369,9 +1383,9 @@
         "mode": "160000",
         "pinned_commit": "1d932cc778a24cc0bf46fc4baad8306d4fed9c4b",
         "checkout_present": true,
-        "checkout_head": "5bfa97cddc802bf0b6e30fe0824eb9feab01f98e",
+        "checkout_head": "a047f1f9b7318cbf2d30696f72b685a934e2764d",
         "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1381,9 +1395,9 @@
         "mode": "160000",
         "pinned_commit": "0da9a074d09267a927d72faa58c26d828f0f8edb",
         "checkout_present": true,
-        "checkout_head": "5bfa97cddc802bf0b6e30fe0824eb9feab01f98e",
+        "checkout_head": "a047f1f9b7318cbf2d30696f72b685a934e2764d",
         "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1393,9 +1407,9 @@
         "mode": "160000",
         "pinned_commit": "0da9a074d09267a927d72faa58c26d828f0f8edb",
         "checkout_present": true,
-        "checkout_head": "5bfa97cddc802bf0b6e30fe0824eb9feab01f98e",
+        "checkout_head": "a047f1f9b7318cbf2d30696f72b685a934e2764d",
         "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1669,9 +1683,9 @@
         "mode": "160000",
         "pinned_commit": "f6a574375febbcf9a46fcd24bbc7bc5cfb551de5",
         "checkout_present": true,
-        "checkout_head": "5bfa97cddc802bf0b6e30fe0824eb9feab01f98e",
+        "checkout_head": "a047f1f9b7318cbf2d30696f72b685a934e2764d",
         "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1681,9 +1695,9 @@
         "mode": "160000",
         "pinned_commit": "f6a574375febbcf9a46fcd24bbc7bc5cfb551de5",
         "checkout_present": true,
-        "checkout_head": "5bfa97cddc802bf0b6e30fe0824eb9feab01f98e",
+        "checkout_head": "a047f1f9b7318cbf2d30696f72b685a934e2764d",
         "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1693,9 +1707,9 @@
         "mode": "160000",
         "pinned_commit": "f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
         "checkout_present": true,
-        "checkout_head": "5bfa97cddc802bf0b6e30fe0824eb9feab01f98e",
+        "checkout_head": "a047f1f9b7318cbf2d30696f72b685a934e2764d",
         "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1705,9 +1719,9 @@
         "mode": "160000",
         "pinned_commit": "f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
         "checkout_present": true,
-        "checkout_head": "5bfa97cddc802bf0b6e30fe0824eb9feab01f98e",
+        "checkout_head": "a047f1f9b7318cbf2d30696f72b685a934e2764d",
         "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1717,9 +1731,9 @@
         "mode": "160000",
         "pinned_commit": "b397988ed9e3e656475c1cf4417b84efdb95daf3",
         "checkout_present": true,
-        "checkout_head": "5bfa97cddc802bf0b6e30fe0824eb9feab01f98e",
+        "checkout_head": "a047f1f9b7318cbf2d30696f72b685a934e2764d",
         "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1729,9 +1743,9 @@
         "mode": "160000",
         "pinned_commit": "b397988ed9e3e656475c1cf4417b84efdb95daf3",
         "checkout_present": true,
-        "checkout_head": "5bfa97cddc802bf0b6e30fe0824eb9feab01f98e",
+        "checkout_head": "a047f1f9b7318cbf2d30696f72b685a934e2764d",
         "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1741,9 +1755,9 @@
         "mode": "160000",
         "pinned_commit": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
         "checkout_present": true,
-        "checkout_head": "5bfa97cddc802bf0b6e30fe0824eb9feab01f98e",
+        "checkout_head": "a047f1f9b7318cbf2d30696f72b685a934e2764d",
         "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1753,9 +1767,9 @@
         "mode": "160000",
         "pinned_commit": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
         "checkout_present": true,
-        "checkout_head": "5bfa97cddc802bf0b6e30fe0824eb9feab01f98e",
+        "checkout_head": "a047f1f9b7318cbf2d30696f72b685a934e2764d",
         "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1765,9 +1779,9 @@
         "mode": "160000",
         "pinned_commit": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
         "checkout_present": true,
-        "checkout_head": "5bfa97cddc802bf0b6e30fe0824eb9feab01f98e",
+        "checkout_head": "a047f1f9b7318cbf2d30696f72b685a934e2764d",
         "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1777,9 +1791,9 @@
         "mode": "160000",
         "pinned_commit": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
         "checkout_present": true,
-        "checkout_head": "5bfa97cddc802bf0b6e30fe0824eb9feab01f98e",
+        "checkout_head": "a047f1f9b7318cbf2d30696f72b685a934e2764d",
         "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1789,9 +1803,9 @@
         "mode": "160000",
         "pinned_commit": "44752c8dd99f3fb0da23006dc4fde4a07d9c417f",
         "checkout_present": true,
-        "checkout_head": "5bfa97cddc802bf0b6e30fe0824eb9feab01f98e",
+        "checkout_head": "a047f1f9b7318cbf2d30696f72b685a934e2764d",
         "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1801,9 +1815,9 @@
         "mode": "160000",
         "pinned_commit": "44752c8dd99f3fb0da23006dc4fde4a07d9c417f",
         "checkout_present": true,
-        "checkout_head": "5bfa97cddc802bf0b6e30fe0824eb9feab01f98e",
+        "checkout_head": "a047f1f9b7318cbf2d30696f72b685a934e2764d",
         "origin_main": "b8171a845ec6a1d76add82a4fee2a09440b03cac",
-        "working_tree_clean": true,
+        "working_tree_clean": false,
         "matches_checkout": false,
         "published_to_origin_main": false,
         "bound": false
@@ -1813,7 +1827,7 @@
     "fetch_attempted": false
   },
   "disallowed_evidence": {
-    "count": 34,
+    "count": 36,
     "by_dependency": {
       "end_to_end_assurance_matrix": [
         {
@@ -1856,7 +1870,15 @@
       "secpal_authoritative_live": [],
       "ergoai_managed_vendor_live": [
         {
-          "path": "$.cases[2].is_hermetic_advisor_shim",
+          "path": "$.checks[1].bindings.is_hermetic_advisor_shim",
+          "reason": "disallowed_boolean:is_hermetic_advisor_shim"
+        },
+        {
+          "path": "$.evidence_class",
+          "reason": "disallowed_evidence_class:unverified_or_incomplete"
+        },
+        {
+          "path": "$.managed_identity.is_hermetic_advisor_shim",
           "reason": "disallowed_boolean:is_hermetic_advisor_shim"
         }
       ],
@@ -1966,7 +1988,7 @@
   },
   "acceptance": {
     "dependencies_reachable": true,
-    "dependencies_content_identity_bound": false,
+    "dependencies_content_identity_bound": true,
     "dependencies_fresh": false,
     "clean_wheel_evidence_bound": true,
     "lazy_install_receipts_bound": true,
@@ -1976,7 +1998,7 @@
     "secpal_authoritative_live_receipt_bound": false,
     "secpal_production_use_permitted": false,
     "ergoai_managed_vendor_live_receipt_bound": false,
-    "authority_ceilings_bound": false,
+    "authority_ceilings_bound": true,
     "disagreement_quarantines_bound": true,
     "public_safe_envelopes_bound": true,
     "release_candidate_bound_and_ready": false,
@@ -1990,8 +2012,6 @@
     "current_task_future_merge_not_claimed": true
   },
   "blockers": [
-    "authority_ceilings_bound",
-    "dependencies_content_identity_bound",
     "dependencies_fresh",
     "durable_supervisor_completion_bound",
     "ergoai_managed_vendor_live_receipt_bound",
@@ -2015,16 +2035,20 @@
     "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[17].axes.capability.details.evidence_class",
     "end_to_end_assurance_matrix:disallowed_evidence_class:unavailable:$.provider_host_rows[17].axes.semantic.details.evidence_class",
     "end_to_end_assurance_matrix:disallowed_state:unsupported:$.provider_host_rows[17].axes.platform.state",
-    "ergoai:advisory_authority_ceiling_respected",
-    "ergoai:certification_did_not_install_or_download",
     "ergoai:current_lock_identity_bound",
-    "ergoai:exact_committed_ergoai_receipt_not_bound",
-    "ergoai:exact_committed_repository_receipt_bound",
+    "ergoai:ergoai_lock_identity_not_bound",
     "ergoai:independent_live_rederivation_succeeded",
     "ergoai:managed_runtime_tool_identity_bound",
     "ergoai:managed_vendor_live_evidence",
     "ergoai:platform_identity_bound",
     "ergoai:raw_checks_digest_bound_to_independent_rerun",
+    "ergoai:receipt:hermetic_advisor_shim_is_not_vendor",
+    "ergoai:receipt:managed_vendor_provenance_unverified",
+    "ergoai:receipt:mutation_semantic_check_failed",
+    "ergoai:receipt:negative_semantic_check_failed",
+    "ergoai:receipt:positive_semantic_check_failed",
+    "ergoai:receipt:replay_semantic_check_failed",
+    "ergoai:receipt:replay_semantic_invariant_failed",
     "ergoai:release_artifact_identity_bound",
     "ergoai:semantic_case_missing:contradiction",
     "ergoai:semantic_case_missing:entailment",
@@ -2036,7 +2060,9 @@
     "ergoai:semantic_case_missing:timeout",
     "ergoai:semantic_cases_complete",
     "ergoai:vendor_certified_for_advisor_role",
-    "ergoai_managed_vendor_live:disallowed_boolean:is_hermetic_advisor_shim:$.cases[2].is_hermetic_advisor_shim",
+    "ergoai_managed_vendor_live:disallowed_boolean:is_hermetic_advisor_shim:$.checks[1].bindings.is_hermetic_advisor_shim",
+    "ergoai_managed_vendor_live:disallowed_boolean:is_hermetic_advisor_shim:$.managed_identity.is_hermetic_advisor_shim",
+    "ergoai_managed_vendor_live:disallowed_evidence_class:unverified_or_incomplete:$.evidence_class",
     "matrix:datalog-authorization@linux-aarch64:installer:not_applicable",
     "matrix:ergoai@linux-aarch64:public_surface:not_applicable",
     "matrix:ergoai@linux-aarch64:semantic:not_applicable",
@@ -2169,5 +2195,5 @@
     "failure_count": 0,
     "failures": []
   },
-  "release_identity": "sha256:01f7b84b7910fd1157fa951e2b2d2bda02e5621be4ee7b3382e190d295ae6aab"
+  "release_identity": "sha256:f1c512c4115e0f3e9a928d5d502083d781d1dd93a5d55b09dcbca489dfc71496"
 }
