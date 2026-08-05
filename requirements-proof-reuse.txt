@@ -1,0 +1,17 @@
+# Non-circular dependencies for proof-backed pytest reuse.
+#
+# The ipfs_datasets_py verifier is deliberately absent from this file because
+# that distribution depends back on ipfs_accelerate_py.  When an exact lookup
+# needs it, the allowlisted resolver validates a configured repository or the
+# integration sibling, then materializes a closed exact Git-blob snapshot in
+# an owner-private content-addressed cache. It invokes no pip/VCS installer,
+# build hook, or submodule operation and never mutates global site-packages.
+# There is no remote fallback until the reviewed datasets verifier revision is
+# published. NLTK data is not a pip
+# dependency and is downloaded only through
+# the bounded first-use resource installer with explicit consent.  Groth16 is a
+# native Cargo capability, not a package named ``groth16`` on PyPI.
+pytest>=8.0.0
+multiformats>=0.3,<1
+jsonschema>=4,<5
+nltk>=3.8.1,<4
