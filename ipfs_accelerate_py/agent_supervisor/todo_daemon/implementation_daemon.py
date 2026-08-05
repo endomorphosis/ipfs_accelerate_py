@@ -32,6 +32,7 @@ from ..context.context_compiler import (
     ContextCompilationReceipt,
     ContextCompileResult,
     ContextCompiler,
+    ContextDeltaBudgetError,
     ContextDeltaResult,
     ContextExpansionCancelled,
     RequiredContextOverflowError,
@@ -44,6 +45,7 @@ from ..context.context_compiler import (
 from ..context.context_contracts import (
     ABSOLUTE_MAX_CONTEXT_BYTES,
     ContextBudget,
+    ContextBoundsError,
     ContextCapsule,
 )
 from ..proof.formal_verification_contracts import canonical_json, content_identity
@@ -163,6 +165,11 @@ from ..runtime.resource_scheduler import (
     CapacityDriftDecision,
     admit_compiled_execution_assignments,
     evaluate_capacity_drift,
+)
+from .implementation_daemon_runner import (
+    IDLE_DAEMON_PASS_LOG_INTERVAL_SECONDS,
+    daemon_pass_is_idle,
+    log_daemon_pass_result,
 )
 from ..task_sources.taskboard_store import (
     ProjectionDeltaCheckpointStore,
@@ -484,6 +491,14 @@ PROVIDER_RETRY_MONTHS = {
     "dec": 12,
 }
 IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
+# Legacy production-route toggles retained as env names for test/operator
+# cleanup only. Automatic routing is always on for supported providers.
+PRODUCTION_PROVIDER_ROUTE_ENABLED_ENV = (
+    "IPFS_ACCELERATE_AGENT_PRODUCTION_PROVIDER_ROUTE_ENABLED"
+)
+PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV = (
+    "IPFS_ACCELERATE_AGENT_PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND"
+)
 REQUIRE_TASK_EXECUTION_METADATA_ENV = (
     "IPFS_ACCELERATE_AGENT_REQUIRE_TASK_EXECUTION_METADATA"
 )
@@ -1594,10 +1609,15 @@ def _grok_cli_command(
     model_override: str | None = None,
     failure_receipt_nonce: str = "",
 ) -> list[str]:
-    """Build a Grok CLI agent command through llm_router.grok_cli.
+    """Build a Grok CLI agent command through the quota-routed runner.
 
     Prompt body is supplied on stdin by the daemon; :mod:`grok_cli_runner`
     materializes it to ``--prompt-file`` because the CLI does not take ``-``.
+
+    When a trusted system Codex install is resolvable, attach the exact
+    Terra/medium fallback argv so a single Grok invocation may fall through
+    only after independently verified hard-quota exhaustion. Codex is never
+    attached without that runner-owned authority gate.
     """
 
     if not _grok_binary():
@@ -1622,23 +1642,21 @@ def _grok_cli_command(
     # still enforces implementation_timeout as the hard wall-clock limit.
     max_turns = os.environ.get(_GROK_MAX_TURNS_ENV, "100000").strip() or "100000"
     grok = _grok_binary() or "grok"
-    runner_path = Path(__file__).resolve().parents[1] / "grok_cli_runner.py"
-    if not runner_path.is_file():
-        raise RuntimeError(f"grok_cli_runner missing at {runner_path}")
-    command = [
-        sys.executable,
-        str(runner_path),
-        "--workspace",
-        str(workspace_path.resolve()),
-        "--grok-bin",
-        grok,
-        "--model",
-        model,
-        "--max-turns",
-        max_turns,
-        "--mode",
-        "agent",
-    ]
+    from ..grok_cli_runner import build_grok_quota_routed_agent_command
+
+    command = build_grok_quota_routed_agent_command(
+        workspace=workspace_path.resolve(),
+        python_executable=sys.executable,
+        grok_bin=grok,
+        codex_bin=str(shutil.which("codex") or ""),
+        max_turns=int(max_turns) if str(max_turns).isdigit() else 100_000,
+    )
+    # Preserve explicit model override after the packaged Grok-4.5 default.
+    if model and model != "grok-4.5":
+        if "--model" in command:
+            command[command.index("--model") + 1] = model
+        else:
+            command.extend(["--model", model])
     if failure_receipt_nonce:
         command.extend(
             ["--grok-failure-receipt-nonce", failure_receipt_nonce]
@@ -3633,7 +3651,7 @@ class PortalImplementationDaemon:
         self.worktree_lifecycle_restart_recovery = []
         if _env_bool(
             WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV,
-            False,
+            True,
         ):
             self.worktree_lifecycle_restart_recovery = (
                 self.worktree_lifecycle.reclaim_dead_owners_for_controlled_restart(
@@ -8361,7 +8379,15 @@ class PortalImplementationDaemon:
             ),
             "child_process": (),
             "lease": tuple(lease_paths),
-            "validation": (Path(self.validation_cache_dir),),
+            # The shared validation cache is an optimization, not an
+            # authoritative scheduling input. SQLite journal creation and
+            # single-flight bookkeeping mutate this directory even for cache
+            # reads; watching it makes an idle pass wake itself and every peer
+            # lane, followed by a full repository reconciliation. Real work is
+            # already signalled by task-board, merge-queue, child-process, and
+            # policy events, with the bounded safety reconciliation covering a
+            # missed notification.
+            "validation": (),
             "provider_capacity": (),
             "policy": tuple(policy_paths),
             "observation_window": (),
@@ -21832,6 +21858,7 @@ class PortalImplementationDaemon:
                         recovery_key=recovery_key,
                     )
                 ),
+                reconciliation_branch_name=branch_name,
             )
             validation_result = self._run_validation_commands(
                 worktree_path,
@@ -26601,10 +26628,30 @@ class PortalImplementationDaemon:
             for protected in self.implementation_protected_paths
         )
 
-    def _link_shared_worktree_paths(self, worktree_path: Path) -> None:
+    def _is_allowed_shared_link_worktree(self, worktree_path: Path) -> bool:
+        """Return whether shared dependency links may target ``worktree_path``.
+
+        Managed worktrees under ``worktree_root`` are always allowed.  Sibling
+        worktrees next to ``repo_root`` (common pytest and ephemeral layouts
+        with ``tmp/repo`` + ``tmp/worktree``) are also allowed so validation
+        workspaces can reuse shared ``node_modules`` without disabling the
+        safety rail that blocks arbitrary system paths.
+        """
+
         try:
-            worktree_path.resolve().relative_to(self.worktree_root.resolve())
-        except (OSError, RuntimeError, ValueError):
+            worktree = worktree_path.resolve()
+            managed = self.worktree_root.resolve()
+            if worktree == managed or self._path_is_under(worktree, managed):
+                return True
+            repo = self.repo_root.resolve()
+            if worktree != repo and worktree.parent == repo.parent:
+                return True
+        except (OSError, RuntimeError, ValueError, AttributeError):
+            return False
+        return False
+
+    def _link_shared_worktree_paths(self, worktree_path: Path) -> None:
+        if not self._is_allowed_shared_link_worktree(worktree_path):
             logger.warning(
                 "Refusing to link shared dependencies outside managed worktree root: %s",
                 worktree_path,
@@ -29467,9 +29514,16 @@ class PortalImplementationDaemon:
             "allow_binary": allow_binary,
         }
 
-    def _consumed_proposal_ids(self, *, limit: int = 256) -> tuple[str, ...]:
+    @staticmethod
+    def _consumed_proposal_ids_from_events(
+        events: Sequence[Mapping[str, Any]],
+        *,
+        limit: int = 256,
+    ) -> tuple[str, ...]:
+        """Project the bounded proposal population consumed by ``events``."""
+
         consumed: list[str] = []
-        for event in reversed(list(self._iter_events())):
+        for event in reversed(events):
             if event.get("type") != "implementation_proposal_validated":
                 continue
             proposal_id = str(event.get("proposal_id") or "").strip()
@@ -29478,6 +29532,163 @@ class PortalImplementationDaemon:
                 if len(consumed) >= limit:
                     break
         return tuple(sorted(consumed))
+
+    def _consumed_proposal_ids(self, *, limit: int = 256) -> tuple[str, ...]:
+        return self._consumed_proposal_ids_from_events(
+            list(self._iter_events()),
+            limit=limit,
+        )
+
+    def _reconciliation_accepted_proposal_context(
+        self,
+        *,
+        task: PortalTask,
+        branch_name: str,
+        baseline_ref: str,
+    ) -> dict[str, Any]:
+        """Recover accepted receipts owned by one implementation branch.
+
+        Proposal events intentionally persist only compact, content-addressed
+        bindings.  The surrounding ``implementation_started`` event supplies
+        the branch and canonical task identity needed to associate those
+        receipts with a crash-recovery candidate.  Callers still rederive the
+        complete proposal, policy, and receipt and must match these bindings
+        exactly before an accepted receipt can be reused.
+        """
+
+        normalized_branch = str(branch_name or "").strip().removeprefix(
+            "refs/heads/"
+        )
+        normalized_baseline = str(baseline_ref or "").strip()
+        if not normalized_branch or not normalized_baseline:
+            return {
+                "segment_found": False,
+                "segment_mismatches": ("reconciliation_context",),
+                "accepted_receipts": (),
+            }
+
+        events = list(self._iter_events())
+        start_index = -1
+        for index, event in enumerate(events):
+            if event.get("type") != "implementation_started":
+                continue
+            event_branch = str(event.get("branch") or "").strip().removeprefix(
+                "refs/heads/"
+            )
+            if (
+                str(event.get("task_id") or "").strip() == task.task_id
+                and event_branch == normalized_branch
+            ):
+                # Branch names are attempt-unique.  Prefer the latest exact
+                # start if an imported event stream contains a duplicate.
+                start_index = index
+        if start_index < 0:
+            return {
+                "segment_found": False,
+                "segment_mismatches": (),
+                "accepted_receipts": (),
+            }
+
+        end_index = len(events)
+        for index in range(start_index + 1, len(events)):
+            if events[index].get("type") == "implementation_started":
+                end_index = index
+                break
+
+        identity = self._identity_for_task(task)
+        start = events[start_index]
+        expected_identity = {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "board_namespace": identity.board_namespace,
+        }
+        # Prefer identity bindings from the implementation_started event when
+        # they are present; proposal events historically omit them when the
+        # in-memory identity map was not yet registered.
+        start_identity = {
+            name: (
+                str(start.get(name) or "").strip()
+                or expected
+            )
+            for name, expected in expected_identity.items()
+        }
+        segment_mismatches = {
+            name
+            for name, expected in expected_identity.items()
+            if start_identity[name] != expected
+        }
+        if str(start.get("baseline_ref") or "").strip() != normalized_baseline:
+            segment_mismatches.add("repository_tree_id")
+
+        accepted_receipts: list[dict[str, Any]] = []
+        for index in range(start_index + 1, end_index):
+            event = events[index]
+            if (
+                event.get("type") != "implementation_proposal_validated"
+                or event.get("accepted") is not True
+                or str(event.get("task_id") or "").strip() != task.task_id
+            ):
+                continue
+            # Proposal events bind task_id always; other identity fields may be
+            # absent on older or map-less writers.  Inherit the segment start
+            # identity so exact receipt replay remains possible.
+            event_identity = {
+                name: (
+                    str(event.get(name) or "").strip()
+                    or start_identity[name]
+                )
+                for name in expected_identity
+            }
+            event_mismatches = {
+                name
+                for name, expected in expected_identity.items()
+                if event_identity[name] != expected
+            }
+            required_bindings = (
+                "proposal_id",
+                "policy_id",
+                "receipt_id",
+                "repository_tree_id",
+            )
+            event_mismatches.update(
+                name
+                for name in required_bindings
+                if not str(event.get(name) or "").strip()
+            )
+            raw_changed_paths = event.get("changed_paths")
+            if not isinstance(raw_changed_paths, list) or any(
+                not isinstance(path, str) or not path.strip()
+                for path in raw_changed_paths
+            ):
+                event_mismatches.add("changed_paths")
+                changed_paths: tuple[str, ...] = ()
+            else:
+                changed_paths = tuple(sorted(set(raw_changed_paths)))
+                if tuple(raw_changed_paths) != changed_paths:
+                    event_mismatches.add("changed_paths")
+            accepted_receipts.append(
+                {
+                    "event_id": str(event.get("event_id") or "").strip(),
+                    "proposal_id": str(event.get("proposal_id") or "").strip(),
+                    "policy_id": str(event.get("policy_id") or "").strip(),
+                    "receipt_id": str(event.get("receipt_id") or "").strip(),
+                    "repository_tree_id": str(
+                        event.get("repository_tree_id") or ""
+                    ).strip(),
+                    "changed_paths": changed_paths,
+                    "consumed_proposal_ids": (
+                        self._consumed_proposal_ids_from_events(events[:index])
+                    ),
+                    "mismatches": tuple(sorted(event_mismatches)),
+                }
+            )
+
+        return {
+            "segment_found": True,
+            "segment_mismatches": tuple(sorted(segment_mismatches)),
+            "accepted_receipts": tuple(accepted_receipts),
+        }
 
     @staticmethod
     def _terminal_reconciliation_security_failure(
@@ -30496,6 +30707,7 @@ class PortalImplementationDaemon:
         *,
         baseline_ref: str,
         replayable_consumed_proposal_ids: Sequence[str] = (),
+        reconciliation_branch_name: str = "",
         record_event: bool = True,
         allow_scope_adjudication: bool = True,
     ) -> Any:
@@ -30781,6 +30993,96 @@ class PortalImplementationDaemon:
             for proposal_id in replayable_consumed_proposal_ids
             if str(proposal_id).strip()
         }
+        accepted_replay_binding: Mapping[str, Any] | None = None
+        accepted_replay_receipts: tuple[Mapping[str, Any], ...] = ()
+        reconciliation_replay_mismatch_fields: set[str] = set()
+        if str(reconciliation_branch_name or "").strip():
+            replay_context = self._reconciliation_accepted_proposal_context(
+                task=task,
+                branch_name=reconciliation_branch_name,
+                baseline_ref=authority["repository_tree_id"],
+            )
+            raw_receipts = replay_context.get("accepted_receipts") or ()
+            if isinstance(raw_receipts, Sequence) and not isinstance(
+                raw_receipts,
+                (str, bytes, bytearray),
+            ):
+                accepted_replay_receipts = tuple(
+                    receipt
+                    for receipt in raw_receipts
+                    if isinstance(receipt, Mapping)
+                )
+            segment_mismatches = {
+                str(name).strip()
+                for name in (
+                    replay_context.get("segment_mismatches") or ()
+                )
+                if str(name).strip()
+            }
+            for binding in accepted_replay_receipts:
+                binding_mismatches = {
+                    *segment_mismatches,
+                    *(
+                        str(name).strip()
+                        for name in (binding.get("mismatches") or ())
+                        if str(name).strip()
+                    ),
+                }
+                if (
+                    str(binding.get("proposal_id") or "")
+                    != proposal.proposal_id
+                ):
+                    binding_mismatches.add("proposal_id")
+                if (
+                    str(binding.get("repository_tree_id") or "")
+                    != proposal.repository_tree_id
+                ):
+                    binding_mismatches.add("repository_tree_id")
+                if tuple(binding.get("changed_paths") or ()) != (
+                    proposal.changed_paths
+                ):
+                    binding_mismatches.add("changed_paths")
+                if not binding_mismatches and accepted_replay_binding is None:
+                    # Iteration order is durable event order, so this binds the
+                    # first accepted receipt for the exact proposal body.
+                    accepted_replay_binding = binding
+                reconciliation_replay_mismatch_fields.update(
+                    binding_mismatches
+                )
+
+        current_consumed_proposal_ids = self._consumed_proposal_ids()
+        if accepted_replay_binding is not None:
+            policy_consumed_proposal_ids = tuple(
+                str(proposal_id).strip()
+                for proposal_id in (
+                    accepted_replay_binding.get("consumed_proposal_ids") or ()
+                )
+                if str(proposal_id).strip()
+            )
+        elif accepted_replay_receipts:
+            # The implementation branch has an accepted receipt, but the
+            # current body/tree/task projection does not bind it exactly.  Add
+            # the current proposal identity to the consumed set so the normal
+            # validator emits the existing fail-closed replay finding rather
+            # than silently admitting a different proposal.
+            policy_consumed_proposal_ids = tuple(
+                sorted(
+                    {
+                        *current_consumed_proposal_ids,
+                        proposal.proposal_id,
+                    }
+                )
+            )
+            if not reconciliation_replay_mismatch_fields:
+                reconciliation_replay_mismatch_fields.add(
+                    "accepted_receipt_binding"
+                )
+        else:
+            policy_consumed_proposal_ids = tuple(
+                proposal_id
+                for proposal_id in current_consumed_proposal_ids
+                if proposal_id not in replayable_proposal_ids
+            )
         policy = ProposalValidationPolicy(
             allowed_paths=policy_allowed_paths,
             task_owned_paths=allowed_paths,
@@ -30792,11 +31094,7 @@ class PortalImplementationDaemon:
             expected_context_id=authority["context_id"],
             expected_baseline_id=authority["baseline_id"],
             expected_replay_nonce=replay_nonce,
-            consumed_proposal_ids=tuple(
-                proposal_id
-                for proposal_id in self._consumed_proposal_ids()
-                if proposal_id not in replayable_proposal_ids
-            ),
+            consumed_proposal_ids=policy_consumed_proposal_ids,
             symlink_paths=symlink_paths,
             submodule_paths=submodule_paths,
             protected_paths=tuple(self.implementation_protected_paths),
@@ -30811,6 +31109,51 @@ class PortalImplementationDaemon:
             result,
             expected_output_issues,
         )
+        accepted_receipt_reused = False
+        if accepted_replay_binding is not None:
+            original_policy_id = str(
+                accepted_replay_binding.get("policy_id") or ""
+            )
+            original_receipt_id = str(
+                accepted_replay_binding.get("receipt_id") or ""
+            )
+            accepted_receipt_reused = bool(
+                result.accepted
+                and result.policy.policy_id == original_policy_id
+                and result.receipt.receipt_id == original_receipt_id
+            )
+            if not accepted_receipt_reused:
+                if result.policy.policy_id != original_policy_id:
+                    reconciliation_replay_mismatch_fields.add("policy_id")
+                if result.receipt.receipt_id != original_receipt_id:
+                    reconciliation_replay_mismatch_fields.add("receipt_id")
+                if not result.accepted:
+                    reconciliation_replay_mismatch_fields.add("accepted")
+                denial_policy_payload = policy.to_dict()
+                denial_policy_payload.update(
+                    {
+                        "consumed_proposal_ids": tuple(
+                            sorted(
+                                {
+                                    *current_consumed_proposal_ids,
+                                    proposal.proposal_id,
+                                }
+                            )
+                        ),
+                        "policy_id": "",
+                    }
+                )
+                policy = ProposalValidationPolicy.from_dict(
+                    denial_policy_payload
+                )
+                result = validate_implementation_proposal(
+                    proposal,
+                    policy=policy,
+                )
+                result = self._reject_proposal_for_expected_output_issues(
+                    result,
+                    expected_output_issues,
+                )
         finding_codes = tuple(
             sorted(
                 {
@@ -30943,14 +31286,41 @@ class PortalImplementationDaemon:
                     "completion_authoritative": False,
                 },
             )
+            proposal_event_payload = {
+                "task_id": task.task_id,
+                **compact,
+            }
+            if accepted_receipt_reused:
+                proposal_event_payload.update(
+                    {
+                        "original_event_id": str(
+                            accepted_replay_binding.get("event_id") or ""
+                        ),
+                        "original_policy_id": str(
+                            accepted_replay_binding.get("policy_id") or ""
+                        ),
+                        "original_receipt_id": str(
+                            accepted_replay_binding.get("receipt_id") or ""
+                        ),
+                        "idempotent_reconciliation_replay": True,
+                    }
+                )
+                proposal_event_type = (
+                    "implementation_proposal_receipt_reused"
+                )
+            else:
+                if accepted_replay_receipts:
+                    proposal_event_payload[
+                        "reconciliation_replay_mismatch_fields"
+                    ] = sorted(reconciliation_replay_mismatch_fields)
+                proposal_event_type = (
+                    "implementation_proposal_validated"
+                    if result.accepted
+                    else "implementation_proposal_rejected"
+                )
             self._record_event(
-                "implementation_proposal_validated"
-                if result.accepted
-                else "implementation_proposal_rejected",
-                {
-                    "task_id": task.task_id,
-                    **compact,
-                },
+                proposal_event_type,
+                proposal_event_payload,
             )
         return result
 
@@ -34293,11 +34663,35 @@ class PortalImplementationDaemon:
                     return result
                 self._run_git(["worktree", "remove", "--force", str(checked_out_path)], cwd=self.repo_root)
                 continue
+            # Target is checked out outside the managed merge-worktree root
+            # (common for shared agent/main worktrees). Reuse a clean checkout
+            # so parallel lanes can merge instead of looping on
+            # main_branch_checked_out_elsewhere (SCA-615 / SCA-632).
+            dirty_paths = sorted(self._dirty_worktree_paths(checked_out_path))
+            generated_restore = self._restore_generated_dirty_paths(
+                checked_out_path,
+                dirty_paths,
+                reason="main_external_checkout_dirty",
+            )
+            if generated_restore:
+                dirty_paths = sorted(self._dirty_worktree_paths(checked_out_path))
+            if dirty_paths:
+                result = {
+                    "available": False,
+                    "reason": "main_branch_checked_out_elsewhere",
+                    "target_branch": target_branch,
+                    "worktree_path": str(checked_out_path),
+                    "dirty_paths": dirty_paths,
+                }
+                if generated_restore:
+                    result["generated_dirty_restore"] = generated_restore
+                return result
             return {
-                "available": False,
-                "reason": "main_branch_checked_out_elsewhere",
+                "available": True,
+                "path": str(checked_out_path),
+                "ephemeral": False,
                 "target_branch": target_branch,
-                "worktree_path": str(checked_out_path),
+                "reused_external_checkout": True,
             }
 
         merge_root.mkdir(parents=True, exist_ok=True)
@@ -41699,6 +42093,21 @@ class PortalImplementationDaemon:
                     == "stale_failed_merge_candidate"
                 ):
                     abandoned_candidates.add(candidate_key)
+                elif (
+                    implementation_commit
+                    and candidate_key
+                    not in persistence_recovery_candidate_keys
+                    and merge_reason
+                    in {
+                        "main_checkout_dirty_conflict",
+                        "main_checkout_dirty",
+                        "dirty_worktree",
+                    }
+                ):
+                    # An attempted merge that failed because the main checkout
+                    # was dirty is not a useful reconciliation candidate; the
+                    # operator must clean the target before retrying.
+                    abandoned_candidates.add(candidate_key)
                 continue
             if str(event.get("type") or "") != "implementation_finished":
                 continue
@@ -45898,6 +46307,74 @@ class PortalImplementationDaemon:
             )
         return byte_count
 
+    def _implementation_prompt_token_usage(
+        self,
+        task: PortalTask,
+        rendered: str,
+    ) -> tuple[int, int]:
+        """Measure final provider text against every authoritative ceiling.
+
+        Context compilation accounts for the canonical capsule.  Retry
+        guidance is appended later, so final dispatch must be remeasured with
+        the same tokenizer and negotiated provider window.  A retained parent
+        may be stricter than current configuration; its effective capsule
+        budget remains an upper bound.
+        """
+
+        provider_window, configured_budget, prompt_byte_limit = (
+            self._implementation_provider_context_window_for_task(task)
+        )
+        compiler = ContextCompiler(
+            configured_budget,
+            tokenizer=self.implementation_context_tokenizer,
+            provider_context_window=provider_window,
+            provider_max_input_tokens=(
+                self.implementation_provider_max_input_tokens
+            ),
+            provider_max_input_bytes=prompt_byte_limit,
+        )
+        token_count = compiler.estimator.estimate(rendered)
+        effective_limit = compiler.effective_input_limit
+        context = self._last_implementation_context
+        if isinstance(context, ContextCompileResult):
+            effective_limit = min(
+                effective_limit,
+                context.capsule.budget.max_input_tokens,
+            )
+            base_prompt = render_context_capsule(context.capsule)
+            if rendered.startswith(base_prompt):
+                suffix = rendered[len(base_prompt) :]
+                token_count = max(
+                    token_count,
+                    context.capsule.input_tokens
+                    + (
+                        compiler.estimator.estimate(suffix)
+                        if suffix
+                        else 0
+                    ),
+                )
+        elif isinstance(context, ContextDeltaResult):
+            effective_limit = min(
+                effective_limit,
+                context.parent_capsule.budget.max_input_tokens,
+            )
+        return token_count, effective_limit
+
+    def _require_implementation_prompt_token_budget(
+        self,
+        task: PortalTask,
+        rendered: str,
+    ) -> int:
+        token_count, effective_limit = self._implementation_prompt_token_usage(
+            task,
+            rendered,
+        )
+        if token_count > effective_limit:
+            raise ImplementationRetryDeferred(
+                "implementation context token budget exhausted"
+            )
+        return token_count
+
     def _resolve_context_path(self, value: Any) -> Path | None:
         text = str(value or "").strip()
         if not text:
@@ -46736,6 +47213,7 @@ class PortalImplementationDaemon:
         return observe
 
     @staticmethod
+    @staticmethod
     def _normalize_implementation_failure(
         failure: Mapping[str, Any],
     ) -> dict[str, Any]:
@@ -46811,9 +47289,559 @@ class PortalImplementationDaemon:
         if not selected:
             selected = {"kind": "implementation_failure", "reason": "unknown"}
         encoded = canonical_json(selected).encode("utf-8")
-        if len(encoded) > 16_384:
-            raise ValueError("normalized implementation failure exceeds 16 KiB")
-        return selected
+        maximum_bytes = 16_384
+        if len(encoded) <= maximum_bytes:
+            return selected
+
+        # Reviewed failures can repeat the same bounded prompt addendum at the
+        # top level, in ``failure_review``, and again below ``validation``.
+        # Raising here loses the useful diagnosis and turns an ordinary retry
+        # into a supervisor failure.  Project verbose evidence deterministically
+        # instead: retain authority/identity fields and actionable paths,
+        # commands, and head/tail guidance while bounding every variable-width
+        # field.  The source identity makes truncation explicit and auditable.
+        truncated_fields: set[str] = set()
+
+        def bounded_text(value: Any, *, limit: int, field: str) -> str:
+            if isinstance(value, (set, frozenset)):
+                text = canonical_json(
+                    sorted(value, key=lambda item: canonical_json(item))
+                ).strip()
+            elif isinstance(value, (Mapping, Sequence)) and not isinstance(
+                value,
+                (str, bytes, bytearray),
+            ):
+                # Structured values in a nominal scalar field are malformed,
+                # but still project them canonically so insertion order cannot
+                # change the diagnostic identity.
+                text = canonical_json(value).strip()
+            else:
+                text = str(value or "").strip()
+            if len(canonical_json(text).encode("utf-8")) <= limit:
+                return text
+            truncated_fields.add(field)
+            marker = " ...<truncated>... "
+
+            def candidate(kept_characters: int) -> str:
+                head_characters = (kept_characters * 2) // 3
+                tail_characters = kept_characters - head_characters
+                head = text[:head_characters]
+                tail = text[-tail_characters:] if tail_characters else ""
+                return head.rstrip() + marker + tail.lstrip()
+
+            # Budget the canonical JSON representation, not raw UTF-8: control
+            # characters may expand sixfold as ``\u0000`` escapes.
+            low = 0
+            high = len(text)
+            result = marker.strip()
+            while low <= high:
+                midpoint = (low + high) // 2
+                projected = candidate(midpoint)
+                if len(canonical_json(projected).encode("utf-8")) <= limit:
+                    result = projected
+                    low = midpoint + 1
+                else:
+                    high = midpoint - 1
+            return result
+
+        def bounded_scalar(value: Any, *, limit: int, field: str) -> Any:
+            if value is None or isinstance(value, (bool, float)):
+                return value
+            if isinstance(value, int):
+                if len(canonical_json(value).encode("utf-8")) <= limit:
+                    return value
+                truncated_fields.add(field)
+                return bounded_text(value, limit=limit, field=field)
+            return bounded_text(value, limit=limit, field=field)
+
+        def bounded_strings(
+            value: Any,
+            *,
+            count: int,
+            width: int,
+            field: str,
+        ) -> list[str]:
+            if isinstance(value, Sequence) and not isinstance(
+                value,
+                (str, bytes, bytearray),
+            ):
+                candidates = value
+            elif value not in (None, ""):
+                candidates = (value,)
+            else:
+                candidates = ()
+            if len(candidates) > count:
+                truncated_fields.add(field)
+            result: list[str] = []
+            for index, item in enumerate(candidates[:count]):
+                bounded = bounded_text(
+                    item,
+                    limit=width,
+                    field=f"{field}[{index}]",
+                )
+                if bounded:
+                    result.append(bounded)
+            return result
+
+        def project_review(
+            value: Any,
+            *,
+            field: str,
+            include_guidance: bool,
+            minimal: bool = False,
+        ) -> dict[str, Any]:
+            if not isinstance(value, Mapping):
+                return {}
+            result: dict[str, Any] = {}
+            for name in (
+                "receipt_id",
+                "task_id",
+                "attempt",
+                "decision",
+                "accepted",
+                "policy_version",
+                "proof_authoritative",
+                "completion_authoritative",
+            ):
+                item = value.get(name)
+                if item not in (None, "", (), [], {}):
+                    result[name] = bounded_scalar(
+                        item,
+                        limit=192,
+                        field=f"{field}.{name}",
+                    )
+            sequence_limits = {
+                "reason_codes": (4 if minimal else 6, 96),
+                "finding_codes": (4 if minimal else 6, 96),
+                "missing_expected_outputs": (2 if minimal else 4, 192),
+                "out_of_scope_paths": (1 if minimal else 2, 192),
+                "justified_paths": (1 if minimal else 2, 192),
+                "denied_paths": (2, 192),
+                "contract_gap_paths": (2, 192),
+                "failed_commands": (1, 256),
+            }
+            for name, (count, width) in sequence_limits.items():
+                items = bounded_strings(
+                    value.get(name),
+                    count=count,
+                    width=width,
+                    field=f"{field}.{name}",
+                )
+                if items:
+                    result[name] = items
+            addendum = value.get("next_attempt_prompt_addendum")
+            if include_guidance and addendum not in (None, ""):
+                result["next_attempt_prompt_addendum"] = bounded_text(
+                    addendum,
+                    limit=1_536 if minimal else 2_048,
+                    field=f"{field}.next_attempt_prompt_addendum",
+                )
+            elif addendum not in (None, ""):
+                truncated_fields.add(
+                    f"{field}.next_attempt_prompt_addendum"
+                )
+            return result
+
+        bounded: dict[str, Any] = {}
+        for name in (
+            "kind",
+            "reason",
+            "returncode",
+            "exception_type",
+            "phase",
+            "counterexample_id",
+            "timeout_reason",
+        ):
+            value = selected.get(name)
+            if value not in (None, "", (), [], {}):
+                bounded[name] = bounded_scalar(
+                    value,
+                    limit=192,
+                    field=name,
+                )
+        for name, count, width in (
+            ("counterexample_ids", 2, 128),
+            ("reason_codes", 6, 96),
+            ("failed_commands", 2, 256),
+            ("failing_checks", 2, 192),
+            ("missing_outputs", 4, 192),
+        ):
+            values = bounded_strings(
+                selected.get(name),
+                count=count,
+                width=width,
+                field=name,
+            )
+            if values:
+                bounded[name] = values
+
+        root_addendum = selected.get("next_attempt_prompt_addendum")
+        if root_addendum not in (None, ""):
+            bounded["next_attempt_prompt_addendum"] = bounded_text(
+                root_addendum,
+                limit=2_048,
+                field="next_attempt_prompt_addendum",
+            )
+        environment_guidance = selected.get(
+            "validation_environment_guidance"
+        )
+        if environment_guidance not in (None, ""):
+            bounded["validation_environment_guidance"] = bounded_text(
+                environment_guidance,
+                limit=512,
+                field="validation_environment_guidance",
+            )
+
+        review_source = selected.get("failure_review")
+        review_addendum = (
+            review_source.get("next_attempt_prompt_addendum")
+            if isinstance(review_source, Mapping)
+            else None
+        )
+        review = project_review(
+            review_source,
+            field="failure_review",
+            include_guidance=(
+                review_addendum not in (None, "", root_addendum)
+            ),
+        )
+        if review:
+            bounded["failure_review"] = review
+
+        validation = selected.get("validation")
+        if isinstance(validation, Mapping):
+            compact_validation: dict[str, Any] = {}
+            for name in ("passed", "returncode", "reason"):
+                value = validation.get(name)
+                if value not in (None, "", (), [], {}):
+                    compact_validation[name] = bounded_scalar(
+                        value,
+                        limit=192,
+                        field=f"validation.{name}",
+                    )
+            for name, count, width in (
+                ("reason_codes", 4, 96),
+                ("failed_commands", 1, 256),
+            ):
+                values = bounded_strings(
+                    validation.get(name),
+                    count=count,
+                    width=width,
+                    field=f"validation.{name}",
+                )
+                if values:
+                    compact_validation[name] = values
+            nested_review = project_review(
+                validation.get("failure_review"),
+                field="validation.failure_review",
+                include_guidance=(
+                    validation.get("failure_review", {}).get(
+                        "next_attempt_prompt_addendum"
+                    )
+                    not in (None, "", root_addendum, review_addendum)
+                    if isinstance(validation.get("failure_review"), Mapping)
+                    else False
+                ),
+                minimal=True,
+            )
+            if nested_review:
+                compact_validation["failure_review"] = nested_review
+            if compact_validation:
+                bounded["validation"] = compact_validation
+
+        proposal = selected.get("proposal_gate")
+        if isinstance(proposal, Mapping):
+            compact_proposal: dict[str, Any] = {}
+            for name in (
+                "proposal_id",
+                "policy_id",
+                "receipt_id",
+                "repository_tree_id",
+            ):
+                value = proposal.get(name)
+                if value not in (None, "", (), [], {}):
+                    compact_proposal[name] = bounded_scalar(
+                        value,
+                        limit=192,
+                        field=f"proposal_gate.{name}",
+                    )
+            reason_codes = bounded_strings(
+                proposal.get("reason_codes"),
+                count=4,
+                width=96,
+                field="proposal_gate.reason_codes",
+            )
+            if reason_codes:
+                compact_proposal["reason_codes"] = reason_codes
+            if compact_proposal:
+                bounded["proposal_gate"] = compact_proposal
+
+        scope = selected.get("scope_adjudication")
+        if isinstance(scope, Mapping):
+            compact_scope: dict[str, Any] = {}
+            for name in ("accepted", "receipt_id", "proposal_id"):
+                value = scope.get(name)
+                if value not in (None, "", (), [], {}):
+                    compact_scope[name] = bounded_scalar(
+                        value,
+                        limit=192,
+                        field=f"scope_adjudication.{name}",
+                    )
+            for name in ("authorized_paths", "denied_paths"):
+                values = bounded_strings(
+                    scope.get(name),
+                    count=2,
+                    width=192,
+                    field=f"scope_adjudication.{name}",
+                )
+                if values:
+                    compact_scope[name] = values
+            if scope.get("decisions") not in (None, "", (), [], {}):
+                truncated_fields.add("scope_adjudication.decisions")
+            if compact_scope:
+                bounded["scope_adjudication"] = compact_scope
+
+        timeout_policy = selected.get("timeout_policy")
+        if isinstance(timeout_policy, Mapping):
+            compact_timeout: dict[str, Any] = {}
+            for name in (
+                "configured_timeout_seconds",
+                "progress_timeout_seconds",
+                "max_timeout_seconds",
+                "progress_aware",
+                "source",
+            ):
+                value = timeout_policy.get(name)
+                if value not in (None, "", (), [], {}):
+                    compact_timeout[name] = bounded_scalar(
+                        value,
+                        limit=128,
+                        field=f"timeout_policy.{name}",
+                    )
+            if compact_timeout:
+                bounded["timeout_policy"] = compact_timeout
+
+        checkpoint = selected.get("checkpoint_manifest")
+        if isinstance(checkpoint, Mapping):
+            compact_checkpoint: dict[str, Any] = {}
+            for name in (
+                "schema",
+                "task_id",
+                "canonical_task_cid",
+                "file_count",
+                "total_size_bytes",
+                "truncated",
+                "manifest_cid",
+            ):
+                value = checkpoint.get(name)
+                if value not in (None, "", (), [], {}):
+                    compact_checkpoint[name] = bounded_scalar(
+                        value,
+                        limit=192,
+                        field=f"checkpoint_manifest.{name}",
+                    )
+            if checkpoint.get("files") not in (None, "", (), [], {}):
+                truncated_fields.add("checkpoint_manifest.files")
+            if compact_checkpoint:
+                bounded["checkpoint_manifest"] = compact_checkpoint
+
+        source_failure_id = content_identity(selected)
+
+        def normalization_metadata(projection: str) -> dict[str, Any]:
+            fields = sorted(truncated_fields)
+            return {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "bounded-implementation-failure@1"
+                ),
+                "projection": projection,
+                "source_failure_id": source_failure_id,
+                "source_bytes": len(encoded),
+                "maximum_bytes": maximum_bytes,
+                "truncated_field_count": len(fields),
+                "truncated_fields": [
+                    bounded_text(
+                        field,
+                        limit=96,
+                        field="normalization.truncated_fields",
+                    )
+                    for field in fields[:12]
+                ],
+            }
+
+        bounded["normalization"] = normalization_metadata("bounded")
+        if len(canonical_json(bounded).encode("utf-8")) <= maximum_bytes:
+            return bounded
+
+        # A hostile or unusually broad reviewed failure can still contain many
+        # individually useful fields.  The minimal projection keeps the retry
+        # decision, reasons, paths, commands, and guidance plus the immutable
+        # source identity, while dropping lower-priority duplicated context.
+        minimal: dict[str, Any] = {
+            name: bounded[name]
+            for name in (
+                "kind",
+                "reason",
+                "returncode",
+                "exception_type",
+                "phase",
+                "timeout_reason",
+            )
+            if name in bounded
+        }
+        minimal_review = project_review(
+            review_source,
+            field="failure_review",
+            include_guidance=(
+                review_addendum not in (None, "", root_addendum)
+            ),
+            minimal=True,
+        )
+        if minimal_review:
+            minimal["failure_review"] = minimal_review
+        for output_name, sources in (
+            (
+                "reason_codes",
+                (
+                    selected.get("reason_codes"),
+                    (
+                        selected.get("failure_review", {}).get("reason_codes")
+                        if isinstance(selected.get("failure_review"), Mapping)
+                        else ()
+                    ),
+                ),
+            ),
+            (
+                "missing_outputs",
+                (
+                    selected.get("missing_outputs"),
+                    (
+                        selected.get("failure_review", {}).get(
+                            "missing_expected_outputs"
+                        )
+                        if isinstance(selected.get("failure_review"), Mapping)
+                        else ()
+                    ),
+                ),
+            ),
+            (
+                "failed_commands",
+                (
+                    selected.get("failed_commands"),
+                    (
+                        selected.get("failure_review", {}).get("failed_commands")
+                        if isinstance(selected.get("failure_review"), Mapping)
+                        else ()
+                    ),
+                ),
+            ),
+        ):
+            merged: list[Any] = []
+            for source in sources:
+                if isinstance(source, Sequence) and not isinstance(
+                    source,
+                    (str, bytes, bytearray),
+                ):
+                    merged.extend(source)
+                elif source not in (None, ""):
+                    merged.append(source)
+            values = bounded_strings(
+                merged,
+                count=4 if output_name != "failed_commands" else 2,
+                width=192 if output_name != "failed_commands" else 256,
+                field=output_name,
+            )
+            if values:
+                minimal[output_name] = list(dict.fromkeys(values))
+        retry_guidance = root_addendum
+        if retry_guidance in (None, "") and isinstance(
+            selected.get("failure_review"), Mapping
+        ):
+            retry_guidance = selected["failure_review"].get(
+                "next_attempt_prompt_addendum"
+            )
+        if retry_guidance not in (None, ""):
+            minimal["next_attempt_prompt_addendum"] = bounded_text(
+                retry_guidance,
+                limit=1_536,
+                field="next_attempt_prompt_addendum",
+            )
+        if isinstance(validation, Mapping):
+            minimal_validation = {
+                name: bounded_scalar(
+                    validation[name],
+                    limit=128,
+                    field=f"validation.{name}",
+                )
+                for name in ("passed", "returncode", "reason")
+                if validation.get(name) not in (None, "", (), [], {})
+            }
+            if minimal_validation:
+                minimal["validation"] = minimal_validation
+        minimal["normalization"] = normalization_metadata("minimal")
+        minimal_encoded = canonical_json(minimal).encode("utf-8")
+        if len(minimal_encoded) <= maximum_bytes:
+            return minimal
+
+        # Last-resort projection has a fixed small shape and therefore cannot
+        # turn valid diagnostic input into a supervisor exception. It retains
+        # the reviewed action, its source identity, and bounded retry guidance.
+        source_review = (
+            selected.get("failure_review")
+            if isinstance(selected.get("failure_review"), Mapping)
+            else {}
+        )
+        emergency_review: dict[str, Any] = {}
+        for name in ("receipt_id", "decision", "accepted", "policy_version"):
+            value = source_review.get(name)
+            if value not in (None, "", (), [], {}):
+                emergency_review[name] = bounded_scalar(
+                    value,
+                    limit=128,
+                    field=f"failure_review.{name}",
+                )
+        for name, count, width in (
+            ("reason_codes", 4, 96),
+            ("missing_expected_outputs", 2, 160),
+            ("denied_paths", 2, 160),
+            ("failed_commands", 1, 192),
+        ):
+            values = bounded_strings(
+                source_review.get(name),
+                count=count,
+                width=width,
+                field=f"failure_review.{name}",
+            )
+            if values:
+                emergency_review[name] = values
+        emergency: dict[str, Any] = {}
+        for name in ("kind", "reason", "returncode", "exception_type", "phase"):
+            value = selected.get(name)
+            if value not in (None, "", (), [], {}):
+                emergency[name] = bounded_scalar(
+                    value,
+                    limit=128,
+                    field=name,
+                )
+        if emergency_review:
+            emergency["failure_review"] = emergency_review
+        if retry_guidance not in (None, ""):
+            emergency["next_attempt_prompt_addendum"] = bounded_text(
+                retry_guidance,
+                limit=512,
+                field="next_attempt_prompt_addendum",
+            )
+        emergency["normalization"] = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "bounded-implementation-failure@1"
+            ),
+            "projection": "emergency",
+            "source_failure_id": source_failure_id,
+            "source_bytes": len(encoded),
+            "maximum_bytes": maximum_bytes,
+        }
+        return emergency
 
     @staticmethod
     def _implementation_context_file_stem(task: PortalTask) -> str:
@@ -46853,10 +47881,14 @@ class PortalImplementationDaemon:
                         raise ValueError(
                             "persisted base context is not receipt-bound"
                         )
-                    self._implementation_loaded_parents[key] = (
-                        parent,
-                        receipt.receipt_id,
+                    self._implementation_base_contexts[key] = (
+                        ContextCompileResult(
+                            parent,
+                            receipt,
+                            receipt.decisions,
+                        )
                     )
+                    self._implementation_loaded_parents.pop(key, None)
                 except (TypeError, ValueError):
                     # A malformed/stale sidecar is an invalidation, never an
                     # excuse to dispatch unverified inherited context.
@@ -46913,6 +47945,58 @@ class PortalImplementationDaemon:
             return base.capsule, base.receipt.receipt_id
         return self._implementation_loaded_parents.get(key)
 
+    def _persist_implementation_diagnostic_sidecars(
+        self,
+        task: PortalTask,
+        receipt: ImplementationDiagnosticReceipt,
+    ) -> None:
+        """Persist one diagnostic and its matching retry-state projection."""
+
+        key = self._canonical_ref(task)
+        self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
+        path = self.implementation_log_dir / (
+            self._implementation_context_file_stem(task)
+            + "-diagnostic-receipt.json"
+        )
+        _shared_atomic_write_json(path, receipt.to_record())
+        state_path = self.implementation_log_dir / (
+            self._implementation_context_file_stem(task)
+            + "-diagnostic-state.json"
+        )
+        _shared_atomic_write_json(
+            state_path,
+            {
+                "schema": "implementation-diagnostic-state.v1",
+                "diagnostic_receipt_id": receipt.receipt_id,
+                "repeat_count": self._implementation_diagnostic_repeats.get(
+                    key,
+                    1,
+                ),
+                "not_before": self._implementation_retry_not_before.get(
+                    key,
+                    0.0,
+                ),
+            },
+        )
+
+    @staticmethod
+    def _fresh_retry_context_matches_diagnostic(
+        capsule: ContextCapsule,
+        diagnostic: ImplementationDiagnosticReceipt,
+        *,
+        repair_round: int,
+    ) -> bool:
+        """Return whether a full parent already carries this exact retry."""
+
+        prefix = f"retry-fresh-{int(repair_round)}:"
+        return any(
+            item.required
+            and item.kind == "implementation-fresh-retry-context"
+            and item.reference_id.startswith(prefix)
+            and diagnostic.failure_id in item.coverage_ids
+            for item in capsule.evidence
+        )
+
     def record_implementation_failure_context(
         self,
         task: PortalTask,
@@ -46954,27 +48038,7 @@ class PortalImplementationDaemon:
             self._implementation_diagnostic_repeats[key] = 1
             self._implementation_retry_not_before.pop(key, None)
         self._implementation_diagnostics[key] = receipt
-        self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
-        path = self.implementation_log_dir / (
-            re.sub(r"[^a-z0-9._-]+", "-", task.task_id.lower()).strip("-")
-            + "-diagnostic-receipt.json"
-        )
-        _shared_atomic_write_json(path, receipt.to_record())
-        state_path = self.implementation_log_dir / (
-            self._implementation_context_file_stem(task)
-            + "-diagnostic-state.json"
-        )
-        _shared_atomic_write_json(
-            state_path,
-            {
-                "schema": "implementation-diagnostic-state.v1",
-                "diagnostic_receipt_id": receipt.receipt_id,
-                "repeat_count": self._implementation_diagnostic_repeats[key],
-                "not_before": self._implementation_retry_not_before.get(
-                    key, 0.0
-                ),
-            },
-        )
+        self._persist_implementation_diagnostic_sidecars(task, receipt)
         return receipt
 
     def _record_failed_attempt_retry_context(
@@ -47089,12 +48153,271 @@ class PortalImplementationDaemon:
             unresolved_requirements=unresolved,
         )
 
+    @staticmethod
+    def _implementation_retry_diagnostic_projections(
+        diagnostic: ImplementationDiagnosticReceipt,
+    ) -> tuple[tuple[str, dict[str, Any]], ...]:
+        """Return progressively smaller, receipt-bound retry evidence.
+
+        The durable diagnostic remains complete and content addressed on disk.
+        A provider retry only needs a bounded semantic projection because the
+        retry capsule separately binds the exact diagnostic receipt, changed
+        paths/symbols, and unresolved requirements.  Progressive projections
+        prevent a verbose validation transcript from making an otherwise
+        valid retry impossible while retaining a minimal actionable failure.
+        """
+
+        failure = dict(diagnostic.failure)
+
+        def bounded_text(value: Any, *, limit: int) -> str:
+            text = str(value or "").strip()
+            if len(text) <= limit:
+                return text
+            marker = "...<truncated>"
+            return text[: max(0, limit - len(marker))].rstrip() + marker
+
+        def bounded_strings(
+            value: Any,
+            *,
+            count: int,
+            width: int,
+        ) -> list[str]:
+            if isinstance(value, Sequence) and not isinstance(
+                value,
+                (str, bytes, bytearray),
+            ):
+                candidates = value
+            elif value not in (None, ""):
+                candidates = (value,)
+            else:
+                candidates = ()
+            return [
+                bounded_text(item, limit=width)
+                for item in candidates[:count]
+                if bounded_text(item, limit=width)
+            ]
+
+        def selected_scalar_fields(
+            source: Mapping[str, Any],
+            names: Sequence[str],
+        ) -> dict[str, Any]:
+            return {
+                name: source[name]
+                for name in names
+                if source.get(name) not in (None, "", (), [], {})
+            }
+
+        compact_failure = selected_scalar_fields(
+            failure,
+            (
+                "kind",
+                "reason",
+                "returncode",
+                "exception_type",
+                "phase",
+                "counterexample_id",
+                "timeout_reason",
+                "timeout_policy",
+            ),
+        )
+        for name in (
+            "counterexample_ids",
+            "reason_codes",
+            "failed_commands",
+            "failing_checks",
+            "missing_outputs",
+        ):
+            values = bounded_strings(
+                failure.get(name),
+                count=16,
+                width=1_024,
+            )
+            if values:
+                compact_failure[name] = values
+        addendum = bounded_text(
+            failure.get("next_attempt_prompt_addendum"),
+            limit=2_048,
+        )
+        if addendum:
+            compact_failure["next_attempt_prompt_addendum"] = addendum
+
+        review = failure.get("failure_review")
+        if isinstance(review, Mapping):
+            compact_review = selected_scalar_fields(
+                review,
+                (
+                    "receipt_id",
+                    "decision",
+                    "accepted",
+                    "policy_version",
+                ),
+            )
+            for name in (
+                "reason_codes",
+                "finding_codes",
+                "missing_expected_outputs",
+                "out_of_scope_paths",
+                "justified_paths",
+                "denied_paths",
+                "failed_commands",
+            ):
+                values = bounded_strings(
+                    review.get(name),
+                    count=16,
+                    width=1_024,
+                )
+                if values:
+                    compact_review[name] = values
+            review_addendum = bounded_text(
+                review.get("next_attempt_prompt_addendum"),
+                limit=2_048,
+            )
+            if review_addendum:
+                compact_review["next_attempt_prompt_addendum"] = (
+                    review_addendum
+                )
+            if compact_review:
+                compact_failure["failure_review"] = compact_review
+
+        validation = failure.get("validation")
+        if isinstance(validation, Mapping):
+            compact_validation = selected_scalar_fields(
+                validation,
+                ("passed", "returncode", "reason"),
+            )
+            for name in ("reason_codes", "failed_commands"):
+                values = bounded_strings(
+                    validation.get(name),
+                    count=16,
+                    width=1_024,
+                )
+                if values:
+                    compact_validation[name] = values
+            if compact_validation:
+                compact_failure["validation"] = compact_validation
+
+        for field_name in ("proposal_gate", "scope_adjudication"):
+            source = failure.get(field_name)
+            if not isinstance(source, Mapping):
+                continue
+            compact = selected_scalar_fields(
+                source,
+                (
+                    "accepted",
+                    "proposal_id",
+                    "policy_id",
+                    "receipt_id",
+                    "repository_tree_id",
+                ),
+            )
+            for name in (
+                "reason_codes",
+                "authorized_paths",
+                "denied_paths",
+            ):
+                values = bounded_strings(
+                    source.get(name),
+                    count=16,
+                    width=1_024,
+                )
+                if values:
+                    compact[name] = values
+            if compact:
+                compact_failure[field_name] = compact
+
+        minimal_failure = selected_scalar_fields(
+            failure,
+            (
+                "kind",
+                "reason",
+                "returncode",
+                "exception_type",
+                "phase",
+                "timeout_reason",
+            ),
+        )
+        minimal_review = review if isinstance(review, Mapping) else {}
+        for output_name, sources in (
+            (
+                "reason_codes",
+                (failure.get("reason_codes"), minimal_review.get("reason_codes")),
+            ),
+            (
+                "missing_outputs",
+                (
+                    failure.get("missing_outputs"),
+                    minimal_review.get("missing_expected_outputs"),
+                ),
+            ),
+            (
+                "denied_paths",
+                (
+                    minimal_review.get("denied_paths"),
+                    (
+                        failure.get("scope_adjudication", {}).get(
+                            "denied_paths"
+                        )
+                        if isinstance(
+                            failure.get("scope_adjudication"),
+                            Mapping,
+                        )
+                        else ()
+                    ),
+                ),
+            ),
+            (
+                "failed_commands",
+                (
+                    failure.get("failed_commands"),
+                    minimal_review.get("failed_commands"),
+                ),
+            ),
+        ):
+            values: list[str] = []
+            for source in sources:
+                values.extend(
+                    bounded_strings(source, count=4, width=256)
+                )
+            values = list(dict.fromkeys(values))[:4]
+            if values:
+                minimal_failure[output_name] = values
+        minimal_addendum = bounded_text(
+            failure.get("next_attempt_prompt_addendum")
+            or minimal_review.get("next_attempt_prompt_addendum"),
+            limit=512,
+        )
+        if minimal_addendum:
+            minimal_failure["next_attempt_prompt_addendum"] = minimal_addendum
+
+        binding = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "implementation-retry-diagnostic-projection@1"
+            ),
+            "diagnostic_receipt_id": diagnostic.receipt_id,
+            "failure_id": diagnostic.failure_id,
+        }
+        candidates = (
+            ("full", diagnostic.to_record()),
+            ("compact", {**binding, "failure": compact_failure}),
+            ("minimal", {**binding, "failure": minimal_failure}),
+        )
+        projections: list[tuple[str, dict[str, Any]]] = []
+        seen: set[str] = set()
+        for name, payload in candidates:
+            encoded = canonical_json(payload)
+            if encoded in seen:
+                continue
+            seen.add(encoded)
+            projections.append((name, payload))
+        return tuple(projections)
+
     def _compile_implementation_retry_context(
         self,
         task: PortalTask,
         attempt: int,
         diagnostic: ImplementationDiagnosticReceipt,
-    ) -> RetryContextResult:
+    ) -> RetryContextResult | ContextCompileResult:
         """Compile one bounded semantic delta from the retained base context."""
 
         parent = self._implementation_parent(task)
@@ -47180,25 +48503,74 @@ class PortalImplementationDaemon:
             provider_max_input_tokens=self.implementation_provider_max_input_tokens,
             provider_max_input_bytes=prompt_byte_limit,
         )
+        result: RetryContextResult | None = None
+        projection_name = ""
+        attempted_projections: list[str] = []
+        last_budget_error: Exception | None = None
+        rescue_projection_name = ""
+        rescue_projection: dict[str, Any] | None = None
         try:
-            result = compile_retry_context(
-                compiler,
-                parent_capsule,
-                prior_decision_id=prior_decision_id,
-                diagnostic_receipt_id=diagnostic.receipt_id,
-                evidence=(*parent_capsule.evidence, *failure_references),
-                failure_evidence_ids=tuple(
-                    item.reference_id for item in failure_references
-                ),
-                changed_files=diagnostic.changed_files,
-                changed_symbols=diagnostic.changed_symbols,
-                unresolved_requirement_ids=diagnostic.unresolved_requirements,
-                repair_round=repair_round,
-                max_repair_rounds=self.implementation_max_repair_rounds,
-                repository_id=repository_id,
-                tree_id=tree_id,
-                cancelled=self.implementation_cancelled,
-            )
+            for (
+                candidate_name,
+                diagnostic_projection,
+            ) in self._implementation_retry_diagnostic_projections(
+                diagnostic
+            ):
+                attempted_projections.append(candidate_name)
+                # Retain only the smallest candidate reached.  If the exact
+                # parent is already at its immutable ceiling, every valid
+                # delta can fail because compile_delta remeasures the complete
+                # parent plus new evidence.  A single fresh-context rescue
+                # below may replace optional parent evidence with this exact,
+                # receipt-bound projection; it never retries unboundedly or
+                # changes the task's authority-bearing core.
+                rescue_projection_name = candidate_name
+                rescue_projection = diagnostic_projection
+                failure_references = build_text_context_references(
+                    canonical_json(diagnostic_projection),
+                    reference_prefix=f"retry-failure-{repair_round}",
+                    kind="implementation-failure",
+                    repository_id=repository_id,
+                    tree_id=tree_id,
+                    priority=1_000,
+                    chunk_bytes=8_192,
+                    coverage_ids=diagnostic.unresolved_requirements,
+                )
+                try:
+                    result = compile_retry_context(
+                        compiler,
+                        parent_capsule,
+                        prior_decision_id=prior_decision_id,
+                        diagnostic_receipt_id=diagnostic.receipt_id,
+                        evidence=(
+                            *parent_capsule.evidence,
+                            *failure_references,
+                        ),
+                        failure_evidence_ids=tuple(
+                            item.reference_id
+                            for item in failure_references
+                        ),
+                        changed_files=diagnostic.changed_files,
+                        changed_symbols=diagnostic.changed_symbols,
+                        unresolved_requirement_ids=(
+                            diagnostic.unresolved_requirements
+                        ),
+                        repair_round=repair_round,
+                        max_repair_rounds=(
+                            self.implementation_max_repair_rounds
+                        ),
+                        repository_id=repository_id,
+                        tree_id=tree_id,
+                        cancelled=self.implementation_cancelled,
+                    )
+                except (
+                    ContextBoundsError,
+                    ContextDeltaBudgetError,
+                ) as exc:
+                    last_budget_error = exc
+                    continue
+                projection_name = candidate_name
+                break
         except ContextExpansionCancelled as exc:
             raise ImplementationRetryDeferred(
                 "implementation retry cancelled during compilation"
@@ -47209,6 +48581,415 @@ class PortalImplementationDaemon:
             raise ImplementationRetryDeferred(
                 "implementation context byte budget exhausted"
             ) from exc
+        if result is None:
+            # A delta's full-reconstruction check can be impossible even when
+            # the immutable core plus the minimum failure diagnosis fits: the
+            # prior compiler was allowed to fill all remaining budget with
+            # optional evidence.  Recompile exactly once as a full provider
+            # context under the stricter parent/configured budget.  The fresh
+            # capsule preserves every authority-bearing identity and required
+            # parent reference, while ordinary optional evidence competes for
+            # space after one bounded sequence of content-addressed retry
+            # binding projections.
+            if rescue_projection is None:
+                raise ImplementationRetryDeferred(
+                    "implementation retry context budget exhausted",
+                    backoff_seconds=300,
+                ) from last_budget_error
+
+            def bounded_retry_values(
+                values: Sequence[str],
+                *,
+                count: int = 16,
+                width: int = 256,
+            ) -> list[str]:
+                marker = "...<truncated>"
+                bounded: list[str] = []
+                for value in values[:count]:
+                    text = str(value)
+                    if len(text) > width:
+                        text = text[: width - len(marker)].rstrip() + marker
+                    bounded.append(text)
+                return bounded
+
+            detailed_rescue_binding = {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "implementation-fresh-retry-context@1"
+                ),
+                "mode": "bounded_fresh_context_rescue",
+                "parent_capsule_id": parent_capsule.capsule_id,
+                "parent_invariant_core_id": (
+                    parent_capsule.invariant_core_id
+                ),
+                "prior_decision_id": prior_decision_id,
+                "diagnostic_receipt_id": diagnostic.receipt_id,
+                "diagnostic_failure_id": diagnostic.failure_id,
+                "diagnostic_projection": rescue_projection_name,
+                "failure": rescue_projection,
+                "repair_round": repair_round,
+                "max_repair_rounds": self.implementation_max_repair_rounds,
+                # The receipt ID binds the complete sequences.  Include a
+                # bounded actionable prefix and an identity for each complete
+                # sequence so large diagnostics cannot regain unbounded input
+                # authority through this rescue path.
+                "changed_files": bounded_retry_values(
+                    diagnostic.changed_files
+                ),
+                "changed_files_id": content_identity(
+                    list(diagnostic.changed_files)
+                ),
+                "changed_symbols": bounded_retry_values(
+                    diagnostic.changed_symbols
+                ),
+                "changed_symbols_id": content_identity(
+                    list(diagnostic.changed_symbols)
+                ),
+                "unresolved_requirement_ids": bounded_retry_values(
+                    diagnostic.unresolved_requirements
+                ),
+                "unresolved_requirements_id": content_identity(
+                    list(diagnostic.unresolved_requirements)
+                ),
+            }
+
+            # The detailed v1 binding predates content-addressed diagnostic
+            # receipts and repeats the projection envelope plus literal
+            # changed-file/symbol/requirement prefixes.  Keep it as the first
+            # candidate for compatibility, but let a receipt-bound projection
+            # remove only those duplicates when an immutable task core leaves
+            # insufficient room.  The exact diagnostic receipt transitively
+            # binds every omitted literal; the independent sequence identities
+            # below make that relationship directly auditable.
+            rescue_binding_candidates: list[
+                tuple[str, dict[str, Any]]
+            ] = [("detailed", detailed_rescue_binding)]
+            projected_failure = rescue_projection.get("failure")
+            projection_is_bound = (
+                rescue_projection.get("schema")
+                == (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "implementation-retry-diagnostic-projection@1"
+                )
+                and rescue_projection.get("diagnostic_receipt_id")
+                == diagnostic.receipt_id
+                and rescue_projection.get("failure_id")
+                == diagnostic.failure_id
+                and isinstance(projected_failure, Mapping)
+            )
+            if projection_is_bound:
+                receipt_bound_core = {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "implementation-fresh-retry-context@2"
+                    ),
+                    "mode": "bounded_fresh_context_rescue",
+                    "parent_capsule_id": parent_capsule.capsule_id,
+                    "parent_invariant_core_id": (
+                        parent_capsule.invariant_core_id
+                    ),
+                    "prior_decision_id": prior_decision_id,
+                    "diagnostic_receipt_id": diagnostic.receipt_id,
+                    "diagnostic_failure_id": diagnostic.failure_id,
+                    "diagnostic_projection": rescue_projection_name,
+                    "repair_round": repair_round,
+                    "max_repair_rounds": (
+                        self.implementation_max_repair_rounds
+                    ),
+                    "changed_files_id": content_identity(
+                        list(diagnostic.changed_files)
+                    ),
+                    "changed_symbols_id": content_identity(
+                        list(diagnostic.changed_symbols)
+                    ),
+                    "unresolved_requirements_id": content_identity(
+                        list(diagnostic.unresolved_requirements)
+                    ),
+                }
+                receipt_bound_failure = dict(projected_failure)
+                rescue_binding_candidates.append(
+                    (
+                        "receipt_bound_actionable",
+                        {
+                            **receipt_bound_core,
+                            "failure": receipt_bound_failure,
+                        },
+                    )
+                )
+
+                def compact_rescue_failure(
+                    source: Mapping[str, Any],
+                    *,
+                    addendum_limit: int,
+                ) -> dict[str, Any]:
+                    compact = {
+                        name: source[name]
+                        for name in (
+                            "kind",
+                            "reason",
+                            "returncode",
+                            "exception_type",
+                            "phase",
+                            "timeout_reason",
+                        )
+                        if source.get(name) not in (
+                            None,
+                            "",
+                            (),
+                            [],
+                            {},
+                        )
+                    }
+                    for name in (
+                        "reason_codes",
+                        "missing_outputs",
+                        "denied_paths",
+                        "failed_commands",
+                    ):
+                        raw_values = source.get(name)
+                        values = (
+                            raw_values
+                            if isinstance(raw_values, Sequence)
+                            and not isinstance(
+                                raw_values,
+                                (str, bytes, bytearray),
+                            )
+                            else ()
+                        )
+                        bounded = bounded_retry_values(
+                            values,
+                            count=2,
+                            width=256,
+                        )
+                        if bounded:
+                            compact[name] = bounded
+                    addendum = str(
+                        source.get("next_attempt_prompt_addendum") or ""
+                    ).strip()
+                    if addendum and addendum_limit > 0:
+                        marker = "...<truncated>"
+                        if len(addendum) > addendum_limit:
+                            addendum = (
+                                addendum[
+                                    : addendum_limit - len(marker)
+                                ].rstrip()
+                                + marker
+                            )
+                        compact["next_attempt_prompt_addendum"] = addendum
+                    return compact
+
+                rescue_binding_candidates.extend(
+                    (
+                        (
+                            "receipt_bound_compact",
+                            {
+                                **receipt_bound_core,
+                                "failure": compact_rescue_failure(
+                                    receipt_bound_failure,
+                                    addendum_limit=256,
+                                ),
+                            },
+                        ),
+                        (
+                            "receipt_bound_minimal",
+                            {
+                                **receipt_bound_core,
+                                "failure": compact_rescue_failure(
+                                    receipt_bound_failure,
+                                    addendum_limit=0,
+                                ),
+                            },
+                        ),
+                    )
+                )
+
+            unique_rescue_bindings: list[
+                tuple[str, dict[str, Any]]
+            ] = []
+            seen_rescue_bindings: set[str] = set()
+            for candidate_name, candidate_binding in (
+                rescue_binding_candidates
+            ):
+                encoded = canonical_json(candidate_binding)
+                if encoded in seen_rescue_bindings:
+                    continue
+                seen_rescue_bindings.add(encoded)
+                unique_rescue_bindings.append(
+                    (candidate_name, candidate_binding)
+                )
+
+            fresh_result: ContextCompileResult | None = None
+            rescue_references = ()
+            selected_rescue_binding = ""
+            attempted_rescue_bindings: list[str] = []
+            rescue_budget_error: Exception | None = last_budget_error
+            for candidate_name, candidate_binding in unique_rescue_bindings:
+                attempted_rescue_bindings.append(candidate_name)
+                try:
+                    candidate_references = build_text_context_references(
+                        canonical_json(candidate_binding),
+                        reference_prefix=f"retry-fresh-{repair_round}",
+                        kind="implementation-fresh-retry-context",
+                        repository_id=repository_id,
+                        tree_id=tree_id,
+                        priority=1_000,
+                        required=True,
+                        chunk_bytes=8_192,
+                        coverage_ids=(
+                            diagnostic.failure_id,
+                            *diagnostic.unresolved_requirements[:15],
+                        ),
+                    )
+                    candidate_result = compiler.compile(
+                        repository_id=parent_capsule.repository_id,
+                        tree_id=parent_capsule.tree_id,
+                        objective_id=parent_capsule.objective_id,
+                        objective_revision=(
+                            parent_capsule.objective_revision
+                        ),
+                        policy_id=parent_capsule.policy_id,
+                        policy_revision=parent_capsule.policy_revision,
+                        caller=parent_capsule.caller,
+                        stage=parent_capsule.stage,
+                        goal=parent_capsule.goal,
+                        authority=parent_capsule.authority,
+                        scope=parent_capsule.scope,
+                        acceptance=parent_capsule.acceptance,
+                        evidence=(
+                            *parent_capsule.evidence,
+                            *candidate_references,
+                        ),
+                    )
+                except (
+                    ContextBoundsError,
+                    RequiredContextOverflowError,
+                ) as exc:
+                    rescue_budget_error = exc
+                    continue
+                fresh_result = candidate_result
+                rescue_references = candidate_references
+                selected_rescue_binding = candidate_name
+                break
+            if fresh_result is None:
+                raise ImplementationRetryDeferred(
+                    "implementation retry context budget exhausted",
+                    backoff_seconds=300,
+                ) from rescue_budget_error
+
+            identity_fields = (
+                "repository_id",
+                "tree_id",
+                "objective_id",
+                "objective_revision",
+                "policy_id",
+                "policy_revision",
+                "caller",
+                "stage",
+            )
+            if any(
+                getattr(fresh_result.capsule, name)
+                != getattr(parent_capsule, name)
+                for name in identity_fields
+            ):
+                raise RuntimeError(
+                    "fresh retry context changed an immutable context identity"
+                )
+            if (
+                fresh_result.capsule.invariant_core_id
+                != parent_capsule.invariant_core_id
+                or fresh_result.capsule.invariant_core
+                != parent_capsule.invariant_core
+            ):
+                raise RuntimeError(
+                    "fresh retry context changed the authority-bearing core"
+                )
+            parent_budget = parent_capsule.budget
+            rescue_budget = fresh_result.capsule.budget
+            if (
+                rescue_budget.max_input_tokens
+                > parent_budget.max_input_tokens
+                or rescue_budget.max_items > parent_budget.max_items
+                or rescue_budget.max_item_bytes
+                > parent_budget.max_item_bytes
+                or rescue_budget.max_serialized_bytes
+                > parent_budget.max_serialized_bytes
+                or rescue_budget.max_depth > parent_budget.max_depth
+                or rescue_budget.max_text_bytes
+                > parent_budget.max_text_bytes
+                or rescue_budget.reserved_output_tokens
+                < parent_budget.reserved_output_tokens
+                or rescue_budget.reserved_tool_tokens
+                < parent_budget.reserved_tool_tokens
+            ):
+                raise RuntimeError(
+                    "fresh retry context widened its immutable parent budget"
+                )
+            selected_ids = {
+                item.reference_id for item in fresh_result.capsule.evidence
+            }
+            rescue_ids = {
+                item.reference_id for item in rescue_references
+            }
+            parent_required_ids = {
+                item.reference_id
+                for item in parent_capsule.evidence
+                if item.required
+            }
+            if (
+                not rescue_ids.issubset(selected_ids)
+                or not parent_required_ids.issubset(selected_ids)
+            ):
+                raise RuntimeError(
+                    "fresh retry context lost required retry evidence"
+                )
+            allowed_ids = {
+                item.reference_id for item in parent_capsule.evidence
+            } | rescue_ids
+            if not selected_ids.issubset(allowed_ids):
+                raise RuntimeError(
+                    "fresh retry context introduced unauthorized evidence"
+                )
+
+            self._last_implementation_context = fresh_result
+            self._last_implementation_retry = None
+            key = self._canonical_ref(task)
+            self._implementation_base_contexts[key] = fresh_result
+            self._implementation_loaded_parents.pop(key, None)
+            rebound_diagnostic = replace(
+                diagnostic,
+                prior_decision_id=fresh_result.receipt.receipt_id,
+            )
+            self._implementation_diagnostics[key] = rebound_diagnostic
+            self._decision_runtime_route(
+                "retry",
+                {
+                    "task_id": task.task_id,
+                    "attempt": int(attempt),
+                    "mode": "bounded_fresh_context_rescue",
+                    "repair_round": int(repair_round),
+                    "prior_decision_id": prior_decision_id,
+                    "diagnostic_receipt_id": diagnostic.receipt_id,
+                    "rebound_diagnostic_receipt_id": (
+                        rebound_diagnostic.receipt_id
+                    ),
+                    "parent_capsule_id": parent_capsule.capsule_id,
+                    "parent_invariant_core_id": (
+                        parent_capsule.invariant_core_id
+                    ),
+                    "context_receipt_id": (
+                        fresh_result.receipt.receipt_id
+                    ),
+                    "fresh_capsule_id": fresh_result.capsule.capsule_id,
+                    "diagnostic_projection": rescue_projection_name,
+                    "diagnostic_projection_attempts": attempted_projections,
+                    "rescue_binding_projection": selected_rescue_binding,
+                    "rescue_binding_projection_attempts": (
+                        attempted_rescue_bindings
+                    ),
+                    "reason": "delta_full_reconstruction_budget",
+                },
+            )
+            return fresh_result
         self._last_implementation_context = result.delta_result
         self._last_implementation_retry = result
         self._decision_runtime_route(
@@ -47611,6 +49392,28 @@ class PortalImplementationDaemon:
             _shared_atomic_write_json(
                 base_receipt_path, result.receipt.to_dict()
             )
+            diagnostic = self._implementation_diagnostics.get(
+                self._canonical_ref(task)
+            )
+            if (
+                attempt > 1
+                and diagnostic is not None
+                and diagnostic.prior_decision_id
+                == result.receipt.receipt_id
+                and self._fresh_retry_context_matches_diagnostic(
+                    result.capsule,
+                    diagnostic,
+                    repair_round=attempt - 1,
+                )
+            ):
+                # Publish the rebound diagnosis only after its new base
+                # capsule and receipt are durable.  A crash before this point
+                # leaves the previous base/diagnostic pair fail-closed rather
+                # than a diagnosis naming an unpublished parent.
+                self._persist_implementation_diagnostic_sidecars(
+                    task,
+                    diagnostic,
+                )
         if self._last_implementation_retry is not None:
             retry_path = (
                 self.implementation_log_dir
@@ -47710,6 +49513,7 @@ class PortalImplementationDaemon:
                 backoff_seconds=300,
             )
         rendered = ""
+        fresh_retry_context = False
         if attempt > 1:
             if attempt - 1 > self.implementation_max_repair_rounds:
                 raise ImplementationRetryDeferred(
@@ -47735,24 +49539,73 @@ class PortalImplementationDaemon:
                     result = self._compile_implementation_context(task, attempt)
                     rendered = render_context_capsule(result.capsule)
                 else:
-                    repeats = self._implementation_diagnostic_repeats.get(key, 1)
-                    if repeats >= self.implementation_max_repair_rounds:
-                        raise ImplementationRetryDeferred(
-                            "identical implementation failure escalated"
+                    repair_round = attempt - 1
+                    if self._fresh_retry_context_matches_diagnostic(
+                        parent[0],
+                        diagnostic,
+                        repair_round=repair_round,
+                    ):
+                        result = self._implementation_base_contexts.get(key)
+                        if not isinstance(result, ContextCompileResult):
+                            raise ImplementationRetryDeferred(
+                                "fresh retry base receipt is unavailable",
+                                backoff_seconds=300,
+                            )
+                        self._last_implementation_context = result
+                        self._last_implementation_retry = None
+                        rendered = render_context_capsule(result.capsule)
+                        fresh_retry_context = True
+                        self._decision_runtime_route(
+                            "retry",
+                            {
+                                "task_id": task.task_id,
+                                "attempt": int(attempt),
+                                "mode": "bounded_fresh_context_reuse",
+                                "repair_round": int(repair_round),
+                                "diagnostic_receipt_id": (
+                                    diagnostic.receipt_id
+                                ),
+                                "context_receipt_id": (
+                                    result.receipt.receipt_id
+                                ),
+                                "fresh_capsule_id": (
+                                    result.capsule.capsule_id
+                                ),
+                            },
                         )
-                    not_before = self._implementation_retry_not_before.get(key, 0.0)
-                    if not_before > time.time():
-                        raise ImplementationRetryDeferred(
-                            "identical implementation failure backoff",
-                            backoff_seconds=max(
-                                1,
-                                int(not_before - time.time() + 0.999),
-                            ),
+                    else:
+                        repeats = self._implementation_diagnostic_repeats.get(
+                            key,
+                            1,
                         )
-                    result = self._compile_implementation_retry_context(
-                        task, attempt, diagnostic
-                    )
-                    rendered = render_retry_context(result.capsule)
+                        if repeats >= self.implementation_max_repair_rounds:
+                            raise ImplementationRetryDeferred(
+                                "identical implementation failure escalated"
+                            )
+                        not_before = self._implementation_retry_not_before.get(
+                            key,
+                            0.0,
+                        )
+                        if not_before > time.time():
+                            raise ImplementationRetryDeferred(
+                                "identical implementation failure backoff",
+                                backoff_seconds=max(
+                                    1,
+                                    int(not_before - time.time() + 0.999),
+                                ),
+                            )
+                        result = self._compile_implementation_retry_context(
+                            task, attempt, diagnostic
+                        )
+                        fresh_retry_context = isinstance(
+                            result,
+                            ContextCompileResult,
+                        )
+                        rendered = (
+                            render_retry_context(result.capsule)
+                            if isinstance(result, RetryContextResult)
+                            else render_context_capsule(result.capsule)
+                        )
         if not rendered:
             result = self._compile_implementation_context(task, attempt)
             rendered = render_context_capsule(result.capsule)
@@ -47777,22 +49630,42 @@ class PortalImplementationDaemon:
                     f"{addendum}\n"
                 )
                 byte_limit = self._task_llm_context_budget_bytes(task)
+                candidate_bytes = len(candidate.encode("utf-8"))
+                candidate_tokens, candidate_token_limit = (
+                    self._implementation_prompt_token_usage(task, candidate)
+                )
                 if (
-                    byte_limit is None
-                    or len(candidate.encode("utf-8")) <= byte_limit
+                    not fresh_retry_context
+                    and (
+                        byte_limit is None
+                        or candidate_bytes <= byte_limit
+                    )
+                    and candidate_tokens <= candidate_token_limit
                 ):
                     rendered = candidate
                 else:
                     self._decision_runtime_route(
-                        "implementation_context_addendum_omitted",
+                        "implementation_context",
                         {
                             "task_id": task.task_id,
                             "attempt": int(attempt),
-                            "reason": "provider_input_byte_budget",
-                            "provider_input_byte_limit": byte_limit,
-                            "candidate_input_bytes": len(
-                                candidate.encode("utf-8")
+                            "mode": "deterministic_addendum_omitted",
+                            "reason": (
+                                "receipt_bound_fresh_retry_context"
+                                if fresh_retry_context
+                                else "provider_input_byte_budget"
+                                if (
+                                    byte_limit is not None
+                                    and candidate_bytes > byte_limit
+                                )
+                                else "provider_input_token_budget"
                             ),
+                            "provider_input_byte_limit": byte_limit,
+                            "candidate_input_bytes": candidate_bytes,
+                            "provider_input_token_limit": (
+                                candidate_token_limit
+                            ),
+                            "candidate_input_tokens": candidate_tokens,
                         },
                     )
             seed_guidance = str(
@@ -47805,6 +49678,7 @@ class PortalImplementationDaemon:
                     f"{seed_guidance}\n"
                 )
         self._require_implementation_prompt_byte_budget(task, rendered)
+        self._require_implementation_prompt_token_budget(task, rendered)
         if attempt > 1 and seed_guidance:
             # One-shot after the bounded prompt is accepted; failed budget
             # admission must retain the recovery guidance for diagnosis.
@@ -49170,9 +51044,23 @@ def main(argv: list[str] | None = None) -> None:
             if not result.get("cleared") and not result.get("already_clear"):
                 raise SystemExit(2)
             return
+        last_idle_info_at: float | None = None
         while True:
             result = daemon.run_once()
-            logger.info("Portal implementation daemon pass complete: %s", result)
+            now = time.monotonic()
+            emit_idle_info = (
+                bool(args.once)
+                or last_idle_info_at is None
+                or now - last_idle_info_at >= IDLE_DAEMON_PASS_LOG_INTERVAL_SECONDS
+            )
+            log_daemon_pass_result(
+                logger,
+                "Portal implementation daemon pass complete: %s",
+                result,
+                emit_idle_info=emit_idle_info,
+            )
+            if daemon_pass_is_idle(result) and emit_idle_info:
+                last_idle_info_at = now
             if args.once:
                 break
             daemon.wait_for_wake(timeout=args.interval)

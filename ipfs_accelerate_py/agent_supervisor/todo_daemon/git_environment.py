@@ -11,10 +11,11 @@ def sanitized_git_environment(
 ) -> dict[str, str]:
     """Remove every ambient ``GIT_*`` input and add only safe controls.
 
-    Repository routing, alternate object stores, replacement refs, indexes,
-    diff drivers, and indexed config injection are all attacker-controlled
-    inputs when inherited from a long-running supervisor.  Trust-boundary Git
-    calls therefore inherit ordinary process variables but no Git variable.
+    Repository routing, alternate object stores, replacement refs, legacy
+    grafts, indexes, diff drivers, and indexed config injection are all
+    attacker-controlled inputs when inherited from a long-running supervisor.
+    Trust-boundary Git calls therefore inherit ordinary process variables but
+    no Git variable.
     """
 
     inherited = os.environ if source is None else source
@@ -30,6 +31,7 @@ def sanitized_git_environment(
             "GIT_CONFIG_GLOBAL": os.devnull,
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_CONFIG_SYSTEM": os.devnull,
+            "GIT_GRAFT_FILE": os.devnull,
             "GIT_NO_REPLACE_OBJECTS": "1",
             "GIT_OPTIONAL_LOCKS": "0",
             "GIT_TERMINAL_PROMPT": "0",

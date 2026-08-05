@@ -694,6 +694,66 @@ def test_run_portal_implementation_daemon_loop_suppresses_hooks_for_revalidation
 
     assert calls == ["run_once"]
 
+def test_idle_daemon_pass_logging_is_compact_and_throttled(caplog):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
+        log_daemon_pass_result,
+    )
+
+    result = {
+        "task_count": 51,
+        "completed_count": 41,
+        "ready_count": 0,
+        "blocked_count": 10,
+        "selection_idle_reason": "no_shard_selectable_ready_tasks",
+        "unchanged": True,
+        "write_count": 0,
+        "implementation_result": None,
+        "merge_reconciliation": [],
+        "completion_receipt_writes": [],
+        "retry_budget_resets": [],
+        "large_diagnostic": "x" * 10_000,
+    }
+    logger = logging.getLogger("test-idle-daemon-pass-logging")
+    with caplog.at_level(logging.INFO, logger=logger.name):
+        log_daemon_pass_result(
+            logger,
+            "pass complete: %s",
+            result,
+            emit_idle_info=True,
+        )
+        log_daemon_pass_result(
+            logger,
+            "pass complete: %s",
+            result,
+            emit_idle_info=False,
+        )
+
+    assert caplog.text.count("pass complete:") == 1
+    assert "no_shard_selectable_ready_tasks" in caplog.text
+    assert "large_diagnostic" not in caplog.text
+
+
+def test_changed_daemon_pass_logging_keeps_full_diagnostics(caplog):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
+        log_daemon_pass_result,
+    )
+
+    result = {
+        "unchanged": False,
+        "write_count": 1,
+        "implementation_result": {"task_id": "KGP-001"},
+    }
+    logger = logging.getLogger("test-changed-daemon-pass-logging")
+    with caplog.at_level(logging.INFO, logger=logger.name):
+        log_daemon_pass_result(
+            logger,
+            "pass complete: %s",
+            result,
+            emit_idle_info=False,
+        )
+
+    assert "KGP-001" in caplog.text
+
 
 def test_run_configured_portal_implementation_daemon_builds_and_runs_once(tmp_path: Path):
     board = tmp_path / "tasks.todo.md"

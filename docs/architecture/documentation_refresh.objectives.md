@@ -38,7 +38,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G000 Accurate, rationale-rich documentation
 
-- Status: active
+- Status: completed
 - Parent:
 - Parent goal IDs JSON: []
 - Depends on:
@@ -67,7 +67,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G010 Evidence baseline and documentation governance
 
-- Status: active
+- Status: completed
 - Parent: DOC-G000
 - Parent goal IDs JSON: ["DOC-G000"]
 - Depends on:
@@ -93,7 +93,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G011 Reproducible drift inventory
 
-- Status: active
+- Status: completed
 - Parent: DOC-G010
 - Parent goal IDs JSON: ["DOC-G010"]
 - Depends on:
@@ -119,7 +119,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G012 Lifecycle, status and source-of-truth policy
 
-- Status: active
+- Status: completed
 - Parent: DOC-G010
 - Parent goal IDs JSON: ["DOC-G010"]
 - Depends on:
@@ -145,7 +145,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G013 Architecture-writing and decision-record conventions
 
-- Status: active
+- Status: completed
 - Parent: DOC-G010
 - Parent goal IDs JSON: ["DOC-G010"]
 - Depends on:
@@ -171,7 +171,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G020 Maintained product architecture guides
 
-- Status: active
+- Status: completed
 - Parent: DOC-G000
 - Parent goal IDs JSON: ["DOC-G000"]
 - Depends on: DOC-G010
@@ -197,7 +197,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G021 System context and inference runtime
 
-- Status: active
+- Status: completed
 - Parent: DOC-G020
 - Parent goal IDs JSON: ["DOC-G020"]
 - Depends on: DOC-G011, DOC-G013
@@ -223,7 +223,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G022 Model/service and MCP control surfaces
 
-- Status: active
+- Status: completed
 - Parent: DOC-G020
 - Parent goal IDs JSON: ["DOC-G020"]
 - Depends on: DOC-G011, DOC-G013
@@ -249,7 +249,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G023 IPFS/P2P and cross-repository boundaries
 
-- Status: active
+- Status: completed
 - Parent: DOC-G020
 - Parent goal IDs JSON: ["DOC-G020"]
 - Depends on: DOC-G011, DOC-G013
@@ -275,7 +275,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G030 Agent-supervisor architecture guides
 
-- Status: active
+- Status: completed
 - Parent: DOC-G000
 - Parent goal IDs JSON: ["DOC-G000"]
 - Depends on: DOC-G010
@@ -301,7 +301,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G031 Intent, control and authority
 
-- Status: active
+- Status: completed
 - Parent: DOC-G030
 - Parent goal IDs JSON: ["DOC-G030"]
 - Depends on: DOC-G011, DOC-G013
@@ -327,7 +327,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G032 Planning, context, analysis and proof
 
-- Status: active
+- Status: completed
 - Parent: DOC-G030
 - Parent goal IDs JSON: ["DOC-G030"]
 - Depends on: DOC-G011, DOC-G013
@@ -353,7 +353,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G033 Scheduling, execution, merge and recovery
 
-- Status: active
+- Status: completed
 - Parent: DOC-G030
 - Parent goal IDs JSON: ["DOC-G030"]
 - Depends on: DOC-G011, DOC-G013
@@ -379,7 +379,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G034 Prompt-first runtime, state and steering
 
-- Status: active
+- Status: completed
 - Parent: DOC-G030
 - Parent goal IDs JSON: ["DOC-G030"]
 - Depends on: DOC-G011, DOC-G013
@@ -405,7 +405,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G040 Architectural decision records
 
-- Status: active
+- Status: completed
 - Parent: DOC-G000
 - Parent goal IDs JSON: ["DOC-G000"]
 - Depends on: DOC-G013
@@ -431,7 +431,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G041 Intent, trust and evidence decisions
 
-- Status: active
+- Status: completed
 - Parent: DOC-G040
 - Parent goal IDs JSON: ["DOC-G040"]
 - Depends on: DOC-G031, DOC-G032
@@ -457,7 +457,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G042 Capability and isolation decisions
 
-- Status: active
+- Status: completed
 - Parent: DOC-G040
 - Parent goal IDs JSON: ["DOC-G040"]
 - Depends on: DOC-G022, DOC-G033
@@ -483,7 +483,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G043 Persistence, package and compatibility decisions
 
-- Status: active
+- Status: completed
 - Parent: DOC-G040
 - Parent goal IDs JSON: ["DOC-G040"]
 - Depends on: DOC-G023, DOC-G034
@@ -509,7 +509,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G050 Current user, developer and operator journeys
 
-- Status: active
+- Status: completed
 - Parent: DOC-G000
 - Parent goal IDs JSON: ["DOC-G000"]
 - Depends on: DOC-G020, DOC-G030
@@ -535,7 +535,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G051 Installation, quickstart, Python and CLI
 
-- Status: active
+- Status: completed
 - Parent: DOC-G050
 - Parent goal IDs JSON: ["DOC-G050"]
 - Depends on: DOC-G021, DOC-G022
@@ -561,7 +561,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G052 MCP and supervisor operation
 
-- Status: active
+- Status: completed
 - Parent: DOC-G050
 - Parent goal IDs JSON: ["DOC-G050"]
 - Depends on: DOC-G022, DOC-G031, DOC-G032, DOC-G033, DOC-G034
@@ -587,7 +587,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G053 Deployment, hardware, P2P, testing and troubleshooting
 
-- Status: active
+- Status: completed
 - Parent: DOC-G050
 - Parent goal IDs JSON: ["DOC-G050"]
 - Depends on: DOC-G021, DOC-G023
@@ -613,7 +613,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G060 Navigation, verification and sustainable closeout
 
-- Status: active
+- Status: completed
 - Parent: DOC-G000
 - Parent goal IDs JSON: ["DOC-G000"]
 - Depends on: DOC-G010, DOC-G020, DOC-G030, DOC-G040, DOC-G050
@@ -639,7 +639,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G061 Glossary, audience routes and archive taxonomy
 
-- Status: active
+- Status: completed
 - Parent: DOC-G060
 - Parent goal IDs JSON: ["DOC-G060"]
 - Depends on: DOC-G012, DOC-G020, DOC-G030, DOC-G040
@@ -665,7 +665,7 @@ DOC-G000  Accurate, rationale-rich documentation
 
 ## DOC-G062 Link/example verification and freshness publication
 
-- Status: active
+- Status: completed
 - Parent: DOC-G060
 - Parent goal IDs JSON: ["DOC-G060"]
 - Depends on: DOC-G050, DOC-G061

@@ -16,12 +16,14 @@ do not exist.
 [DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md](DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md);
 [DOCUMENTATION_VALIDATION_2026_08.md](DOCUMENTATION_VALIDATION_2026_08.md);
 `docs/README.md`; `docs/INDEX.md`; `pyproject.toml`; live package layout.
-**Last verified:** 2026-08-04; navigation and maintained-surface inventory
-revalidated after integrating `origin/main`, plus post-closeout revalidation of
-the AI Service Catalog and HF model-server Reference pages, CLI help and
-version-pin fixes, and an allowlisted offline link checker for maintained
-surfaces. Exact merge identity for the earlier integrated matrix:
+**Last verified:** 2026-08-05 against `6c564578af0b0361741483e80ebcaf405efa1064`
+(`origin/main`); offline documentation gates revalidated (supervisor vocabulary,
+allowlisted relative links, packaging version pin `0.0.45`, closeout navigation
+markers). Earlier 2026-08-04 revalidation covered AI Service Catalog and HF
+model-server Reference pages, CLI help, and version-pin fixes. Exact integrated
+matrix for the original DOC-028 merge:
 [DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md](DOCUMENTATION_VALIDATION_POST_MERGE_2026_08_03.md).
+The sealed documentation-refresh board (`DOC-001`–`DOC-028`) is completed.
 **Freshness triggers:** new Current guide; ADR accept/supersede; package or
 entrypoint renames; top-level navigation changes; packaging version
 reconciliation; new doc checkers under `scripts/docs/`.
