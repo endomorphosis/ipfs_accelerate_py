@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import socket
+import sys
 import time
 import hashlib
 import base64
@@ -23,26 +24,45 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Set
 from threading import Lock
 
-try:
-    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
-except ImportError:
-    try:
-        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
-    except ImportError:
+
+# Compatibility injection point.  The production storage implementation is
+# imported only when a GitHubAPICache instance is explicitly constructed.
+storage_wrapper = None
+HAVE_STORAGE_WRAPPER = False
+_STORAGE_WRAPPER_IMPORT_ATTEMPTED = False
+_STORAGE_WRAPPER_IMPORT_LOCK = Lock()
+
+
+def _resolve_storage_wrapper():
+    global HAVE_STORAGE_WRAPPER
+    global _STORAGE_WRAPPER_IMPORT_ATTEMPTED
+    global storage_wrapper
+
+    if callable(storage_wrapper):
+        HAVE_STORAGE_WRAPPER = True
+        return storage_wrapper
+    if _STORAGE_WRAPPER_IMPORT_ATTEMPTED:
+        return None
+    with _STORAGE_WRAPPER_IMPORT_LOCK:
+        if callable(storage_wrapper):
+            HAVE_STORAGE_WRAPPER = True
+            return storage_wrapper
+        if _STORAGE_WRAPPER_IMPORT_ATTEMPTED:
+            return None
         try:
-            from test.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+            from ..common.storage_wrapper import (
+                HAVE_STORAGE_WRAPPER as available,
+                get_storage_wrapper,
+            )
         except ImportError:
-            HAVE_STORAGE_WRAPPER = False
-
-storage_wrapper = get_storage_wrapper if HAVE_STORAGE_WRAPPER else None
-
-if HAVE_STORAGE_WRAPPER:
-    try:
-        _storage = get_storage_wrapper(auto_detect_ci=True)
-    except Exception:
-        _storage = None
-else:
-    _storage = None
+            available = False
+            get_storage_wrapper = None
+        _STORAGE_WRAPPER_IMPORT_ATTEMPTED = True
+        HAVE_STORAGE_WRAPPER = bool(available and get_storage_wrapper)
+        storage_wrapper = (
+            get_storage_wrapper if HAVE_STORAGE_WRAPPER else None
+        )
+        return storage_wrapper
 
 # Try to import cryptography for message encryption
 try:
@@ -58,16 +78,76 @@ except ImportError:
     hashes = None
     default_backend = None
 
-# Try to import multiformats for content-addressed caching
-# Note: multiformats provides its own multihash submodule, separate from pymultihash
-try:
-    from multiformats import CID
-    from multiformats import multihash as multiformats_multihash
+# Resolve multiformats only when content addressing is actually requested.
+#
+# Importing ``ipfs_accelerate_py.testing.proof_reuse.plugin`` first imports the
+# package root, which reaches this module through optional GitHub/voice
+# integrations.  A module-level multiformats probe therefore made the otherwise
+# cold pytest bootstrap depend on an unrelated optional cache dependency.
+# Keep that bootstrap side-effect free while preserving the SHA-256 fallback
+# when multiformats is genuinely unavailable.
+_loaded_multiformats = sys.modules.get("multiformats")
+CID = getattr(_loaded_multiformats, "CID", None)
+multiformats_multihash = getattr(_loaded_multiformats, "multihash", None)
+HAVE_MULTIFORMATS = CID is not None and multiformats_multihash is not None
+_MULTIFORMATS_IMPORT_ATTEMPTED = HAVE_MULTIFORMATS
+_MULTIFORMATS_IMPORT_LOCK = Lock()
+
+
+def _adopt_loaded_multiformats() -> bool:
+    """Adopt a provider loaded by an authorized installer in this process."""
+
+    global CID
+    global HAVE_MULTIFORMATS
+    global multiformats_multihash
+
+    loaded = sys.modules.get("multiformats")
+    cid_type = getattr(loaded, "CID", None)
+    multihash_module = getattr(loaded, "multihash", None)
+    if cid_type is None or multihash_module is None:
+        return False
+    CID = cid_type
+    multiformats_multihash = multihash_module
     HAVE_MULTIFORMATS = True
-except ImportError:
-    HAVE_MULTIFORMATS = False
-    CID = None
-    multiformats_multihash = None
+    return True
+
+
+def _ensure_multiformats() -> bool:
+    """Load the optional content-addressing provider at first real use."""
+
+    global CID
+    global HAVE_MULTIFORMATS
+    global multiformats_multihash
+    global _MULTIFORMATS_IMPORT_ATTEMPTED
+
+    if HAVE_MULTIFORMATS:
+        return True
+    # A controlled proof-reuse installer may make the provider available after
+    # an earlier negative probe. Positive capability is stable, while cached
+    # absence must not mask that explicit in-process transition.
+    if _adopt_loaded_multiformats():
+        return True
+    if _MULTIFORMATS_IMPORT_ATTEMPTED:
+        return HAVE_MULTIFORMATS
+
+    with _MULTIFORMATS_IMPORT_LOCK:
+        if HAVE_MULTIFORMATS or _adopt_loaded_multiformats():
+            return True
+        if _MULTIFORMATS_IMPORT_ATTEMPTED:
+            return HAVE_MULTIFORMATS
+        try:
+            from multiformats import CID as cid_type
+            from multiformats import multihash as multihash_module
+        except ImportError:
+            HAVE_MULTIFORMATS = False
+        else:
+            CID = cid_type
+            multiformats_multihash = multihash_module
+            HAVE_MULTIFORMATS = True
+        finally:
+            _MULTIFORMATS_IMPORT_ATTEMPTED = True
+
+    return HAVE_MULTIFORMATS
 
 # Legacy raw cache P2P is disabled. Distributed cache sharing is handled by
 # ipfs_accelerate_py.p2p_tasks through the MCP++ TaskQueue cache tools.
@@ -154,9 +234,10 @@ class GitHubAPICache:
             enable_universal_connectivity: Whether to enable universal connectivity patterns
         """
         # Initialize storage wrapper
-        if storage_wrapper:
+        storage_factory = _resolve_storage_wrapper()
+        if storage_factory:
             try:
-                self.storage = storage_wrapper()
+                self.storage = storage_factory()
             except:
                 self.storage = None
         else:
@@ -459,7 +540,7 @@ class GitHubAPICache:
         # Sort fields for deterministic hashing
         sorted_fields = json.dumps(validation_fields, sort_keys=True)
 
-        if HAVE_MULTIFORMATS:
+        if _ensure_multiformats():
             # Use multiformats for content-addressed hashing
             content_bytes = sorted_fields.encode('utf-8')
             hasher = hashlib.sha256()
@@ -1142,7 +1223,7 @@ class GitHubAPICache:
                 "raw_p2p_cache_requested": bool(getattr(self, "raw_p2p_cache_requested", False)),
                 "p2p_transport": "mcpplusplus-taskqueue-cache" if getattr(self, "enable_task_p2p_cache", False) else "local-only",
                 "task_p2p_cache_enabled": bool(getattr(self, "enable_task_p2p_cache", False)),
-                "content_addressing_available": HAVE_MULTIFORMATS,
+                "content_addressing_available": _ensure_multiformats(),
                 "cache_dir": str(self.cache_dir) if self.enable_persistence else "",
             }
 
