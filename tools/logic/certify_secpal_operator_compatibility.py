@@ -609,16 +609,26 @@ def validate_receipt(receipt: Mapping[str, Any]) -> list[str]:
         if receipt.get(field) is not False:
             failures.append(f"{field}:must_be_false")
 
+    if (
+        receipt.get("status")
+        != "operator_compatibility_observed_non_authoritative"
+    ):
+        failures.append("status")
+
     scope = receipt.get("scope")
     if not isinstance(scope, Mapping):
         failures.append("scope")
     else:
         if scope.get("operator_compatibility_only") is not True:
             failures.append("scope.operator_compatibility_only")
+        # FVT-G217 live-engine completion (task FVT-086) and FVT-G219 remain
+        # structurally unsatisfied by operator-compatibility evidence alone.
         if scope.get("completes_fvt_086") is not False:
             failures.append("scope.completes_fvt_086")
         if scope.get("completes_fvt_g219") is not False:
             failures.append("scope.completes_fvt_g219")
+        if scope.get("vendor_sample_suite_only") is not True:
+            failures.append("scope.vendor_sample_suite_only")
 
     inputs = receipt.get("verified_inputs")
     if not isinstance(inputs, Mapping):
@@ -653,6 +663,33 @@ def validate_receipt(receipt: Mapping[str, Any]) -> list[str]:
             }
             if license_evidence.get(field) is not expected:
                 failures.append(f"license_evidence.{field}")
+
+    execution_contract = receipt.get("execution_contract")
+    if not isinstance(execution_contract, Mapping):
+        failures.append("execution_contract")
+    else:
+        # Offline operator-compatibility only: no network, install, or raw
+        # payload retention that could leak restricted bytes.
+        for field in (
+            "network_or_download_requested",
+            "installer_invoked",
+            "raw_output_retained",
+        ):
+            if execution_contract.get(field) is not False:
+                failures.append(f"execution_contract.{field}")
+        if execution_contract.get("attempts_per_scenario") != 2:
+            failures.append("execution_contract.attempts_per_scenario")
+        if execution_contract.get("temporary_working_directories") is not True:
+            failures.append("execution_contract.temporary_working_directories")
+
+    operator_runtime = receipt.get("operator_runtime")
+    if not isinstance(operator_runtime, Mapping):
+        failures.append("operator_runtime")
+    else:
+        if operator_runtime.get("vendor_supported_runtime") is not False:
+            failures.append("operator_runtime.vendor_supported_runtime")
+        if operator_runtime.get("runtime_identity_recorded") is not True:
+            failures.append("operator_runtime.runtime_identity_recorded")
 
     scenarios = receipt.get("scenarios")
     if not isinstance(scenarios, list):
@@ -707,6 +744,22 @@ def validate_receipt(receipt: Mapping[str, Any]) -> list[str]:
     missing_cases = receipt.get("missing_comprehensive_cases")
     if missing_cases != list(MISSING_COMPREHENSIVE_CASES):
         failures.append("missing_comprehensive_cases")
+    # Nondeterministic temporal-boundary behavior is an explicit missing case
+    # and must never be silently dropped from the public receipt.
+    temporal_boundary_case = (
+        "deterministic temporal-boundary behavior for DateTime.UtcNow sample facts"
+    )
+    if (
+        not isinstance(missing_cases, list)
+        or temporal_boundary_case not in missing_cases
+    ):
+        failures.append("missing_comprehensive_cases:temporal_boundary")
+
+    if (
+        receipt.get("authority_ceiling")
+        != "operator_compatibility_only_no_live_or_production_elevation"
+    ):
+        failures.append("authority_ceiling")
 
     receipt_sha256 = str(receipt.get("receipt_sha256", ""))
     if not _HEX_64_RE.fullmatch(receipt_sha256):
@@ -924,6 +977,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
+    # Certification runs to completion before any output path is touched.
+    # Failure therefore preserves a prior valid receipt and performs no
+    # download, installation, redistribution, or network access.
     try:
         receipt = certify_secpal_operator_compatibility(
             msi=args.msi,
@@ -937,15 +993,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             timeout_seconds=args.timeout_seconds,
             observed_at=args.observed_at,
         )
-        if args.output is not None:
-            _write_json(args.output, receipt)
-        print(json.dumps(receipt, indent=2, sort_keys=False))
     except SecPALOperatorCompatibilityError as exc:
         print(
             f"SecPAL operator compatibility certification refused: {exc}",
             file=sys.stderr,
         )
         return 2
+    if args.output is not None:
+        _write_json(args.output, receipt)
+    print(json.dumps(receipt, indent=2, sort_keys=False))
     return 0
 
 
