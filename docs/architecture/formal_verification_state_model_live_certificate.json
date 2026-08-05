@@ -115,7 +115,7 @@
     },
     "live_cases": [
       {
-        "artifact_digest": "c9d6387335ec8d8161ddc6f512a8955d4ae15ccd3273f9f8eeaa06d19fdfe265",
+        "artifact_digest": "6397ef45f8f920d008292f9562d42d4f3242e156d85d0a589b433a7743b35b2c",
         "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
         "bounds": {
           "length": 5,
@@ -138,14 +138,14 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-        "output_digest": "b322306f61aec89da3ae78091ce10e70f5c808b105e0597be96726cb9c481dbd",
+        "output_digest": "1982d3320e2075d6b20d030e19e74232f137c19bbd5c57ffcd2c1cc285ed5ca0",
         "property": "Inv",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "status": "passed",
         "tool_id": "tlc"
       },
       {
-        "artifact_digest": "e9ee9fb542034cea09d679ec7e1718600c30c20fad249c477e8858496f35d1cc",
+        "artifact_digest": "f615f4844174404876e7dabc11d59c0e5d6279a31fe6568a7a50e4cfe36cbff5",
         "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
         "bounds": {
           "length": 5,
@@ -168,14 +168,14 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "91217164e89c45ce784052b467a68ceeb8b8fe748cff6757bef315866d2737d5",
-        "output_digest": "91466a8edb9fb2e871b22412da887fda3bc6fc16cfe6b83ed248ecda45667e6f",
+        "output_digest": "c0e460cfe01d4009a76fe6a7dc7edac2c7c42f84a44135e933f3e1fce2f12d7f",
         "property": "Inv",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "status": "counterexample",
         "tool_id": "tlc"
       },
       {
-        "artifact_digest": "f63bc5022d0feff6f7bd44bf71bef5df70f26cdd8cdff181f714b440dc38d8e6",
+        "artifact_digest": "9bf958321e94b2bb325e16d083c376051463af82e943c5baabb5f2964a49c026",
         "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
         "bounds": {
           "length": 5,
@@ -198,14 +198,14 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "ffbf48f3e4ff06d66c7c7a4aacb76bb5798d49795caca4a55722c7caa3f1037b",
-        "output_digest": "e2ea261a9ecdf6d6251b731b8c6759d4be9c2c7fc858796766339438e68d5635",
+        "output_digest": "8468c090368b4b1e0e408d499d746bc0ff1403e1ab48dfb3b97fda657d87b510",
         "property": "Inv",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "status": "counterexample",
         "tool_id": "tlc"
       },
       {
-        "artifact_digest": "eb8282975bbdb8b7b52122ab68daf054cea315ae50f9941ebf430a6ee6f702dd",
+        "artifact_digest": "4d9417f3a758a5e13984c6a3b211b9c7cf2e3fa91f7d21e204c99bab3759455f",
         "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
         "bounds": {
           "length": 5,
@@ -228,14 +228,14 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "a597e01b6f5042ca5546a80426802423bd4075f018930f0148b4d45cbe756493",
-        "output_digest": "7bd57521a30db43bca0968aefb55d5265e5a9ef758f0b608a06e564f716cafbc",
+        "output_digest": "520f35ae1f85a4a5d6c596c3d995f14fe2888131137f7f11e6bf0f46addbc2d0",
         "property": "Inv",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "status": "counterexample",
         "tool_id": "tlc"
       },
       {
-        "artifact_digest": "88cd9290c427ab408812d82b3078770a4b989c86b316b5b6e842d899f27951ea",
+        "artifact_digest": "7baec014c543996c7dde1581bbdbd299a8adadb92d28e948316dd468c8f9c4b7",
         "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
         "bounds": {
           "length": 5,
@@ -258,14 +258,14 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-        "output_digest": "cf43839ae7a7c9f8cc6cada6c7599e913df4aa1bc132f8738e1987e5b4016492",
+        "output_digest": "59359758910dd9d351e715c32f4715161c42ea97965b7e18c327cef53cc874b3",
         "property": "Inv",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "status": "passed",
         "tool_id": "tlc"
       },
       {
-        "artifact_digest": "08f79ceaffc4130fa627e31434e4732712ba8a180832d161881d23fc18f85b46",
+        "artifact_digest": "7a325b34948c68da53a9509b1ed02132de075da7b9ded15d90076989d697be4f",
         "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
         "bounds": {
           "length": 1,
@@ -288,7 +288,7 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "5fbfc3e586c3b35e4f0090fbe82ca54e5b7f32c256042f7839a988b5e62a52fc",
-        "output_digest": "5e89f12afd851672c91ac3c3442d27ee164a26b8778680b28501fa241c2c2fb4",
+        "output_digest": "b5a9bb2aa88eaf8aabcce3cc0d42832174f7e459faa30f0e1bd3d827d1b087ed",
         "property": "Inv",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "status": "malformed",
@@ -326,7 +326,7 @@
         "tool_id": "tlc"
       },
       {
-        "artifact_digest": "70c86a899240cce36cbddce5bd6b3ec81bd2ada3ebbad1b03e67f7a97ae4d387",
+        "artifact_digest": "357edfc3732672a63928b403811b7bd36eb505c1448a2d612c722a02e0201af3",
         "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
         "bounds": {
           "finite_trace_only": true,
@@ -350,14 +350,14 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-        "output_digest": "3ec22a71ef01bd475e12673d1c4540b37dfa3f995b0c801e73abcf47c13acd74",
+        "output_digest": "9928c269c41f23683b49fa3b6c6e364acf83ceb85209b81de3831a716d0e990d",
         "property": "Inv",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "status": "passed",
         "tool_id": "tlc"
       },
       {
-        "artifact_digest": "1e3ec192a9a8cd178020befabac20678bb2bc2573ecd3bcfed7575335c915137",
+        "artifact_digest": "228ebb971d3ed1974f5a06c7d63439b608bf4c6fd98a2feafe20df6fd16b52de",
         "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
         "bounds": {
           "length": 5,
@@ -380,14 +380,14 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-        "output_digest": "3dd805902400bdf70ba00d19dab75dc295078fd1391323570ab544f90942b289",
+        "output_digest": "099a5c33f992f7ee2dc87b8f83b7ce59d3291f03ec483409d711442c3dc78511",
         "property": "Inv",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "status": "passed",
         "tool_id": "apalache"
       },
       {
-        "artifact_digest": "aef3bb39ede031202337b5634b8e0230357c0d255364633c62f35cb17a8b0341",
+        "artifact_digest": "beff0e133094556c2b75ed22c8b5cb55bf46753037e7623cb005a3de891c0920",
         "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
         "bounds": {
           "length": 5,
@@ -410,14 +410,14 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "91217164e89c45ce784052b467a68ceeb8b8fe748cff6757bef315866d2737d5",
-        "output_digest": "a04db7fa3bb46fff16fbc4e6f685d5e1ea1a1c35ced1600f8243afc9bc1a2652",
+        "output_digest": "4bf3ed14338f8febea12b12289561805477df17a20941f6d4e269c91857d04d0",
         "property": "Inv",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "status": "counterexample",
         "tool_id": "apalache"
       },
       {
-        "artifact_digest": "34566fda88ad32cdae341bc5c1ff865b6b4cb46c4916a3b369119eb4a05f021e",
+        "artifact_digest": "9522c8929da1d76c304a580f4b4a685e3fe7e7172aa4be9ed00742f2d5f1c869",
         "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
         "bounds": {
           "length": 5,
@@ -440,14 +440,14 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "ffbf48f3e4ff06d66c7c7a4aacb76bb5798d49795caca4a55722c7caa3f1037b",
-        "output_digest": "29911948c3b8fc977ae8c953f27a2a93af3d9329f632d197d8c85959e2dd5e41",
+        "output_digest": "be92ec6f46f1917094c739910e2839c34a565451d825c8236a53f5b4480d5d0e",
         "property": "Inv",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "status": "counterexample",
         "tool_id": "apalache"
       },
       {
-        "artifact_digest": "0f646ca1594f113881795ba37ac6d8caebc87ab69648db165555f5b71ec2c1c5",
+        "artifact_digest": "dff30445e10c3f7e2ac216b297ccf6a617c38bf1657c5b9c1ae9092a97add4c6",
         "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
         "bounds": {
           "length": 5,
@@ -470,14 +470,14 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "a597e01b6f5042ca5546a80426802423bd4075f018930f0148b4d45cbe756493",
-        "output_digest": "54ab14647ee076b6f820a004c70fedae759851985d3c582506cb986d8c354ace",
+        "output_digest": "570b9ad1e221c3d813fe436fc4652ec39087ab5992c135de1b847aa821b7c697",
         "property": "Inv",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "status": "counterexample",
         "tool_id": "apalache"
       },
       {
-        "artifact_digest": "e1ea1977e6c8e44231db6d911805b6cf211d9798694101896275c78fd942e80a",
+        "artifact_digest": "9562eb03bd9279d981e683f260db5a74d86f9dc837d6f6537b5dad6dbb354d58",
         "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
         "bounds": {
           "length": 5,
@@ -500,14 +500,14 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-        "output_digest": "83504db634e8cfcc28d544154211595bdf37aa8944a33d35c72336ef71aaf092",
+        "output_digest": "b262823cd51d6fc5aad4ff7b90f812cbe14fd33e0cc80b3f521686bbb27b8668",
         "property": "Inv",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "status": "passed",
         "tool_id": "apalache"
       },
       {
-        "artifact_digest": "6d03e8a7ea3fb2846117a629c63e8a6cae626611db2e576028d1ad92005eb9b3",
+        "artifact_digest": "a05d1997b06c7fa008af50ab4a33ccbb654cee0061025efda917b1877dd5d3c9",
         "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
         "bounds": {
           "length": 1,
@@ -530,7 +530,7 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "5fbfc3e586c3b35e4f0090fbe82ca54e5b7f32c256042f7839a988b5e62a52fc",
-        "output_digest": "eecf90b4da234d1d9a38c37813f474eab5a6d990e5643a3f88f8f3d65c8982db",
+        "output_digest": "1882526a1f3a25cffd5ca3a72236056e342576cd1238c297ee37741dfe3b448f",
         "property": "Inv",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "status": "malformed",
@@ -568,7 +568,7 @@
         "tool_id": "apalache"
       },
       {
-        "artifact_digest": "0db0ccfb3eede309d8bf11aeaefc163cfb773bd4bf1392d783df77a5f80a3a92",
+        "artifact_digest": "5c701e06d19e67a46abec42f3b8a7bf8976526bf056a15021b9722ef0002c1df",
         "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
         "bounds": {
           "finite_trace_only": true,
@@ -592,7 +592,7 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-        "output_digest": "a509d7a1138060a260c49e4462b810b672b7ed0fa43776f8e095bf503f936545",
+        "output_digest": "abaa19e3c0dd0603fab9fdb4e78ccf7e9acd1347d94c3133a58827f0d9005e91",
         "property": "Inv",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "status": "passed",
@@ -624,7 +624,7 @@
   "bounded_model_checking_only": true,
   "cases": [
     {
-      "artifact_digest": "c9d6387335ec8d8161ddc6f512a8955d4ae15ccd3273f9f8eeaa06d19fdfe265",
+      "artifact_digest": "6397ef45f8f920d008292f9562d42d4f3242e156d85d0a589b433a7743b35b2c",
       "authority": "bounded",
       "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
       "bounds": {
@@ -653,8 +653,8 @@
       },
       "matched": true,
       "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-      "output_digest": "b322306f61aec89da3ae78091ce10e70f5c808b105e0597be96726cb9c481dbd",
-      "output_preview": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)\nWarning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the \"-XX:+UseParallelGC\" property.\n(Use the -nowarning option to disable this warning.)\nRunning breadth-first search Model-Checking with fp 116 and seed 3252176841119090634 with 1 worker on 20 cores with 30208MB heap and 64MB offheap memory [pi",
+      "output_digest": "1982d3320e2075d6b20d030e19e74232f137c19bbd5c57ffcd2c1cc285ed5ca0",
+      "output_preview": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)\nWarning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the \"-XX:+UseParallelGC\" property.\n(Use the -nowarning option to disable this warning.)\nRunning breadth-first search Model-Checking with fp 101 and seed -2842185735341892845 with 1 worker on 20 cores with 30208MB heap and 64MB offheap memory [p",
       "property": "Inv",
       "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
       "reason_codes": [
@@ -666,7 +666,7 @@
       "tool_id": "tlc"
     },
     {
-      "artifact_digest": "e9ee9fb542034cea09d679ec7e1718600c30c20fad249c477e8858496f35d1cc",
+      "artifact_digest": "f615f4844174404876e7dabc11d59c0e5d6279a31fe6568a7a50e4cfe36cbff5",
       "authority": "bounded",
       "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
       "bounds": {
@@ -676,7 +676,7 @@
       "case_id": "tlc.violation_trace",
       "config_digest": "7f1b201aff42a6d76bd001a6c8957df2a6380e984fffcf475f951bd1e37f9308",
       "counterexample": {
-        "raw_preview": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)\nWarning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the \"-XX:+UseParallelGC\" property.\n(Use the -nowarning option to disable this warning.)\nRunning breadth-first search Model-Checking with fp 3 and seed -4898872033084016030 with 1 worker on 20 cores with 30208MB heap and 64MB offheap memory [pid",
+        "raw_preview": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)\nWarning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the \"-XX:+UseParallelGC\" property.\n(Use the -nowarning option to disable this warning.)\nRunning breadth-first search Model-Checking with fp 71 and seed 2971862277452097832 with 1 worker on 20 cores with 30208MB heap and 64MB offheap memory [pid",
         "replay_notes": [],
         "replayed": false,
         "schema_version": "tla-counterexample/v1",
@@ -706,7 +706,7 @@
             },
             "index": 3,
             "label": "Next line 7, col 9 to line 7, col 18 of module LiveModel",
-            "raw": "State 3: <Next line 7, col 9 to line 7, col 18 of module LiveModel>\nx = 2\n\n3 states generated, 3 distinct states found, 0 states left on queue.\nThe depth of the complete state graph search is 3.\nFinished in 00s at (2026-08-03 04:10:28)\nTrace exploration spec path: ./LiveModel_TTrace_1785730228.tla",
+            "raw": "State 3: <Next line 7, col 9 to line 7, col 18 of module LiveModel>\nx = 2\n\n3 states generated, 3 distinct states found, 0 states left on queue.\nThe depth of the complete state graph search is 3.\nFinished in 00s at (2026-08-05 04:12:54)\nTrace exploration spec path: ./LiveModel_TTrace_1785903174.tla",
             "schema_version": "tla-counterexample/v1"
           }
         ]
@@ -730,8 +730,8 @@
       },
       "matched": true,
       "model_digest": "91217164e89c45ce784052b467a68ceeb8b8fe748cff6757bef315866d2737d5",
-      "output_digest": "91466a8edb9fb2e871b22412da887fda3bc6fc16cfe6b83ed248ecda45667e6f",
-      "output_preview": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)\nWarning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the \"-XX:+UseParallelGC\" property.\n(Use the -nowarning option to disable this warning.)\nRunning breadth-first search Model-Checking with fp 3 and seed -4898872033084016030 with 1 worker on 20 cores with 30208MB heap and 64MB offheap memory [pid",
+      "output_digest": "c0e460cfe01d4009a76fe6a7dc7edac2c7c42f84a44135e933f3e1fce2f12d7f",
+      "output_preview": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)\nWarning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the \"-XX:+UseParallelGC\" property.\n(Use the -nowarning option to disable this warning.)\nRunning breadth-first search Model-Checking with fp 71 and seed 2971862277452097832 with 1 worker on 20 cores with 30208MB heap and 64MB offheap memory [pid",
       "property": "Inv",
       "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
       "reason_codes": [
@@ -743,7 +743,7 @@
       "tool_id": "tlc"
     },
     {
-      "artifact_digest": "f63bc5022d0feff6f7bd44bf71bef5df70f26cdd8cdff181f714b440dc38d8e6",
+      "artifact_digest": "9bf958321e94b2bb325e16d083c376051463af82e943c5baabb5f2964a49c026",
       "authority": "bounded",
       "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
       "bounds": {
@@ -753,7 +753,7 @@
       "case_id": "tlc.mutated_next",
       "config_digest": "7f1b201aff42a6d76bd001a6c8957df2a6380e984fffcf475f951bd1e37f9308",
       "counterexample": {
-        "raw_preview": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)\nWarning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the \"-XX:+UseParallelGC\" property.\n(Use the -nowarning option to disable this warning.)\nRunning breadth-first search Model-Checking with fp 8 and seed 5457245838563465861 with 1 worker on 20 cores with 30208MB heap and 64MB offheap memory [pid:",
+        "raw_preview": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)\nWarning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the \"-XX:+UseParallelGC\" property.\n(Use the -nowarning option to disable this warning.)\nRunning breadth-first search Model-Checking with fp 83 and seed 2339970774386146415 with 1 worker on 20 cores with 30208MB heap and 64MB offheap memory [pid",
         "replay_notes": [],
         "replayed": false,
         "schema_version": "tla-counterexample/v1",
@@ -774,7 +774,7 @@
             },
             "index": 2,
             "label": "Next line 7, col 9 to line 7, col 19 of module LiveModel",
-            "raw": "State 2: <Next line 7, col 9 to line 7, col 19 of module LiveModel>\nx = 10\n\n2 states generated, 2 distinct states found, 0 states left on queue.\nThe depth of the complete state graph search is 2.\nFinished in 00s at (2026-08-03 04:10:29)\nTrace exploration spec path: ./LiveModel_TTrace_1785730228.tla",
+            "raw": "State 2: <Next line 7, col 9 to line 7, col 19 of module LiveModel>\nx = 10\n\n2 states generated, 2 distinct states found, 0 states left on queue.\nThe depth of the complete state graph search is 2.\nFinished in 00s at (2026-08-05 04:12:55)\nTrace exploration spec path: ./LiveModel_TTrace_1785903175.tla",
             "schema_version": "tla-counterexample/v1"
           }
         ]
@@ -798,8 +798,8 @@
       },
       "matched": true,
       "model_digest": "ffbf48f3e4ff06d66c7c7a4aacb76bb5798d49795caca4a55722c7caa3f1037b",
-      "output_digest": "e2ea261a9ecdf6d6251b731b8c6759d4be9c2c7fc858796766339438e68d5635",
-      "output_preview": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)\nWarning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the \"-XX:+UseParallelGC\" property.\n(Use the -nowarning option to disable this warning.)\nRunning breadth-first search Model-Checking with fp 8 and seed 5457245838563465861 with 1 worker on 20 cores with 30208MB heap and 64MB offheap memory [pid:",
+      "output_digest": "8468c090368b4b1e0e408d499d746bc0ff1403e1ab48dfb3b97fda657d87b510",
+      "output_preview": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)\nWarning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the \"-XX:+UseParallelGC\" property.\n(Use the -nowarning option to disable this warning.)\nRunning breadth-first search Model-Checking with fp 83 and seed 2339970774386146415 with 1 worker on 20 cores with 30208MB heap and 64MB offheap memory [pid",
       "property": "Inv",
       "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
       "reason_codes": [
@@ -811,7 +811,7 @@
       "tool_id": "tlc"
     },
     {
-      "artifact_digest": "eb8282975bbdb8b7b52122ab68daf054cea315ae50f9941ebf430a6ee6f702dd",
+      "artifact_digest": "4d9417f3a758a5e13984c6a3b211b9c7cf2e3fa91f7d21e204c99bab3759455f",
       "authority": "bounded",
       "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
       "bounds": {
@@ -821,7 +821,7 @@
       "case_id": "tlc.mutated_invariant",
       "config_digest": "7f1b201aff42a6d76bd001a6c8957df2a6380e984fffcf475f951bd1e37f9308",
       "counterexample": {
-        "raw_preview": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)\nWarning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the \"-XX:+UseParallelGC\" property.\n(Use the -nowarning option to disable this warning.)\nRunning breadth-first search Model-Checking with fp 12 and seed -1843435844187131924 with 1 worker on 20 cores with 30208MB heap and 64MB offheap memory [pi",
+        "raw_preview": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)\nWarning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the \"-XX:+UseParallelGC\" property.\n(Use the -nowarning option to disable this warning.)\nRunning breadth-first search Model-Checking with fp 3 and seed 108498667832440278 with 1 worker on 20 cores with 30208MB heap and 64MB offheap memory [pid: ",
         "replay_notes": [],
         "replayed": false,
         "schema_version": "tla-counterexample/v1",
@@ -842,7 +842,7 @@
             },
             "index": 2,
             "label": "Next line 7, col 9 to line 7, col 39 of module LiveModel",
-            "raw": "State 2: <Next line 7, col 9 to line 7, col 39 of module LiveModel>\nx = 1\n\n2 states generated, 2 distinct states found, 0 states left on queue.\nThe depth of the complete state graph search is 2.\nFinished in 00s at (2026-08-03 04:10:29)\nTrace exploration spec path: ./LiveModel_TTrace_1785730229.tla",
+            "raw": "State 2: <Next line 7, col 9 to line 7, col 39 of module LiveModel>\nx = 1\n\n2 states generated, 2 distinct states found, 0 states left on queue.\nThe depth of the complete state graph search is 2.\nFinished in 00s at (2026-08-05 04:12:55)\nTrace exploration spec path: ./LiveModel_TTrace_1785903175.tla",
             "schema_version": "tla-counterexample/v1"
           }
         ]
@@ -866,8 +866,8 @@
       },
       "matched": true,
       "model_digest": "a597e01b6f5042ca5546a80426802423bd4075f018930f0148b4d45cbe756493",
-      "output_digest": "7bd57521a30db43bca0968aefb55d5265e5a9ef758f0b608a06e564f716cafbc",
-      "output_preview": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)\nWarning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the \"-XX:+UseParallelGC\" property.\n(Use the -nowarning option to disable this warning.)\nRunning breadth-first search Model-Checking with fp 12 and seed -1843435844187131924 with 1 worker on 20 cores with 30208MB heap and 64MB offheap memory [pi",
+      "output_digest": "520f35ae1f85a4a5d6c596c3d995f14fe2888131137f7f11e6bf0f46addbc2d0",
+      "output_preview": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)\nWarning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the \"-XX:+UseParallelGC\" property.\n(Use the -nowarning option to disable this warning.)\nRunning breadth-first search Model-Checking with fp 3 and seed 108498667832440278 with 1 worker on 20 cores with 30208MB heap and 64MB offheap memory [pid: ",
       "property": "Inv",
       "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
       "reason_codes": [
@@ -879,7 +879,7 @@
       "tool_id": "tlc"
     },
     {
-      "artifact_digest": "88cd9290c427ab408812d82b3078770a4b989c86b316b5b6e842d899f27951ea",
+      "artifact_digest": "7baec014c543996c7dde1581bbdbd299a8adadb92d28e948316dd468c8f9c4b7",
       "authority": "bounded",
       "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
       "bounds": {
@@ -908,8 +908,8 @@
       },
       "matched": true,
       "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-      "output_digest": "cf43839ae7a7c9f8cc6cada6c7599e913df4aa1bc132f8738e1987e5b4016492",
-      "output_preview": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)\nWarning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the \"-XX:+UseParallelGC\" property.\n(Use the -nowarning option to disable this warning.)\nRunning breadth-first search Model-Checking with fp 8 and seed 3863201697281316220 with 1 worker on 20 cores with 30208MB heap and 64MB offheap memory [pid:",
+      "output_digest": "59359758910dd9d351e715c32f4715161c42ea97965b7e18c327cef53cc874b3",
+      "output_preview": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)\nWarning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the \"-XX:+UseParallelGC\" property.\n(Use the -nowarning option to disable this warning.)\nRunning breadth-first search Model-Checking with fp 124 and seed -2806322029786651498 with 1 worker on 20 cores with 30208MB heap and 64MB offheap memory [p",
       "property": "Inv",
       "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
       "reason_codes": [
@@ -921,7 +921,7 @@
       "tool_id": "tlc"
     },
     {
-      "artifact_digest": "08f79ceaffc4130fa627e31434e4732712ba8a180832d161881d23fc18f85b46",
+      "artifact_digest": "7a325b34948c68da53a9509b1ed02132de075da7b9ded15d90076989d697be4f",
       "authority": "bounded",
       "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
       "bounds": {
@@ -950,8 +950,8 @@
       },
       "matched": true,
       "model_digest": "5fbfc3e586c3b35e4f0090fbe82ca54e5b7f32c256042f7839a988b5e62a52fc",
-      "output_digest": "5e89f12afd851672c91ac3c3442d27ee164a26b8778680b28501fa241c2c2fb4",
-      "output_preview": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)\nWarning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the \"-XX:+UseParallelGC\" property.\n(Use the -nowarning option to disable this warning.)\nRunning breadth-first search Model-Checking with fp 73 and seed 7345211583386907748 with 1 worker on 20 cores with 30208MB heap and 64MB offheap memory [pid",
+      "output_digest": "b5a9bb2aa88eaf8aabcce3cc0d42832174f7e459faa30f0e1bd3d827d1b087ed",
+      "output_preview": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)\nWarning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the \"-XX:+UseParallelGC\" property.\n(Use the -nowarning option to disable this warning.)\nRunning breadth-first search Model-Checking with fp 20 and seed -566681856945038773 with 1 worker on 20 cores with 30208MB heap and 64MB offheap memory [pid",
       "property": "Inv",
       "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
       "reason_codes": [
@@ -1006,7 +1006,7 @@
       "tool_id": "tlc"
     },
     {
-      "artifact_digest": "70c86a899240cce36cbddce5bd6b3ec81bd2ada3ebbad1b03e67f7a97ae4d387",
+      "artifact_digest": "357edfc3732672a63928b403811b7bd36eb505c1448a2d612c722a02e0201af3",
       "authority": "bounded",
       "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
       "bounds": {
@@ -1036,8 +1036,8 @@
       },
       "matched": true,
       "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-      "output_digest": "3ec22a71ef01bd475e12673d1c4540b37dfa3f995b0c801e73abcf47c13acd74",
-      "output_preview": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)\nWarning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the \"-XX:+UseParallelGC\" property.\n(Use the -nowarning option to disable this warning.)\nRunning breadth-first search Model-Checking with fp 27 and seed -2572701158418289673 with 1 worker on 20 cores with 30208MB heap and 64MB offheap memory [pi",
+      "output_digest": "9928c269c41f23683b49fa3b6c6e364acf83ceb85209b81de3831a716d0e990d",
+      "output_preview": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)\nWarning: Please run the Java VM, which executes TLC with a throughput optimized garbage collector, by passing the \"-XX:+UseParallelGC\" property.\n(Use the -nowarning option to disable this warning.)\nRunning breadth-first search Model-Checking with fp 65 and seed 4397683780146181454 with 1 worker on 20 cores with 30208MB heap and 64MB offheap memory [pid",
       "property": "Inv",
       "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
       "reason_codes": [
@@ -1051,7 +1051,7 @@
       "tool_id": "tlc"
     },
     {
-      "artifact_digest": "1e3ec192a9a8cd178020befabac20678bb2bc2573ecd3bcfed7575335c915137",
+      "artifact_digest": "228ebb971d3ed1974f5a06c7d63439b608bf4c6fd98a2feafe20df6fd16b52de",
       "authority": "bounded",
       "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
       "bounds": {
@@ -1080,8 +1080,8 @@
       },
       "matched": true,
       "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-      "output_digest": "3dd805902400bdf70ba00d19dab75dc295078fd1391323570ab544f90942b289",
-      "output_preview": "# Usage statistics is OFF. We care about your privacy.\n# If you want to help our project, consider enabling statistics with config --enable-stats=true.\n\nOutput directory: <host-path-redacted>/2026-08-03T04-10-30_6461675281391896659\n# APALACHE version: 0.58.3 | build: f4ac7ff                       I@04:10:30.950\n  > apalache.cfg: Loading TLC configuration      ",
+      "output_digest": "099a5c33f992f7ee2dc87b8f83b7ce59d3291f03ec483409d711442c3dc78511",
+      "output_preview": "# Usage statistics is OFF. We care about your privacy.\n# If you want to help our project, consider enabling statistics with config --enable-stats=true.\n\nOutput directory: <host-path-redacted>/2026-08-05T04-12-56_11598424421662403219\n# APALACHE version: 0.58.3 | build: f4ac7ff                       I@04:12:56.999\n  > apalache.cfg: Loading TLC configuration     ",
       "property": "Inv",
       "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
       "reason_codes": [
@@ -1094,7 +1094,7 @@
       "tool_id": "apalache"
     },
     {
-      "artifact_digest": "aef3bb39ede031202337b5634b8e0230357c0d255364633c62f35cb17a8b0341",
+      "artifact_digest": "beff0e133094556c2b75ed22c8b5cb55bf46753037e7623cb005a3de891c0920",
       "authority": "bounded",
       "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
       "bounds": {
@@ -1105,7 +1105,7 @@
       "config_digest": "269fa5a9134c343f1da3bbda27c87949edfcac71de917aa897bbd37b8334bfcf",
       "counterexample": {
         "parse_fallback": true,
-        "raw_preview": "# Usage statistics is OFF. We care about your privacy.\n# If you want to help our project, consider enabling statistics with config --enable-stats=true.\n\nOutput directory: <host-path-redacted>/2026-08-03T04-10-32_4443168749229220\n# APALACHE version: 0.58.3 | build: f4ac7ff                       I@04:10:32.207\n  > apalache.cfg: Loading TLC configuration         ",
+        "raw_preview": "# Usage statistics is OFF. We care about your privacy.\n# If you want to help our project, consider enabling statistics with config --enable-stats=true.\n\nOutput directory: <host-path-redacted>/2026-08-05T04-12-57_2632125167021176610\n# APALACHE version: 0.58.3 | build: f4ac7ff                       I@04:12:58.011\n  > apalache.cfg: Loading TLC configuration      ",
         "state_count": 6
       },
       "detail": "Violating model yields a concrete counterexample trace",
@@ -1127,8 +1127,8 @@
       },
       "matched": true,
       "model_digest": "91217164e89c45ce784052b467a68ceeb8b8fe748cff6757bef315866d2737d5",
-      "output_digest": "a04db7fa3bb46fff16fbc4e6f685d5e1ea1a1c35ced1600f8243afc9bc1a2652",
-      "output_preview": "# Usage statistics is OFF. We care about your privacy.\n# If you want to help our project, consider enabling statistics with config --enable-stats=true.\n\nOutput directory: <host-path-redacted>/2026-08-03T04-10-32_4443168749229220\n# APALACHE version: 0.58.3 | build: f4ac7ff                       I@04:10:32.207\n  > apalache.cfg: Loading TLC configuration         ",
+      "output_digest": "4bf3ed14338f8febea12b12289561805477df17a20941f6d4e269c91857d04d0",
+      "output_preview": "# Usage statistics is OFF. We care about your privacy.\n# If you want to help our project, consider enabling statistics with config --enable-stats=true.\n\nOutput directory: <host-path-redacted>/2026-08-05T04-12-57_2632125167021176610\n# APALACHE version: 0.58.3 | build: f4ac7ff                       I@04:12:58.011\n  > apalache.cfg: Loading TLC configuration      ",
       "property": "Inv",
       "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
       "reason_codes": [
@@ -1140,7 +1140,7 @@
       "tool_id": "apalache"
     },
     {
-      "artifact_digest": "34566fda88ad32cdae341bc5c1ff865b6b4cb46c4916a3b369119eb4a05f021e",
+      "artifact_digest": "9522c8929da1d76c304a580f4b4a685e3fe7e7172aa4be9ed00742f2d5f1c869",
       "authority": "bounded",
       "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
       "bounds": {
@@ -1151,7 +1151,7 @@
       "config_digest": "269fa5a9134c343f1da3bbda27c87949edfcac71de917aa897bbd37b8334bfcf",
       "counterexample": {
         "parse_fallback": true,
-        "raw_preview": "# Usage statistics is OFF. We care about your privacy.\n# If you want to help our project, consider enabling statistics with config --enable-stats=true.\n\nOutput directory: <host-path-redacted>/2026-08-03T04-10-33_15687963185571096460\n# APALACHE version: 0.58.3 | build: f4ac7ff                       I@04:10:33.740\n  > apalache.cfg: Loading TLC configuration     ",
+        "raw_preview": "# Usage statistics is OFF. We care about your privacy.\n# If you want to help our project, consider enabling statistics with config --enable-stats=true.\n\nOutput directory: <host-path-redacted>/2026-08-05T04-12-59_4653864243030182376\n# APALACHE version: 0.58.3 | build: f4ac7ff                       I@04:12:59.145\n  > apalache.cfg: Loading TLC configuration      ",
         "state_count": 4
       },
       "detail": "Next (specification) mutation never remains a pass",
@@ -1173,8 +1173,8 @@
       },
       "matched": true,
       "model_digest": "ffbf48f3e4ff06d66c7c7a4aacb76bb5798d49795caca4a55722c7caa3f1037b",
-      "output_digest": "29911948c3b8fc977ae8c953f27a2a93af3d9329f632d197d8c85959e2dd5e41",
-      "output_preview": "# Usage statistics is OFF. We care about your privacy.\n# If you want to help our project, consider enabling statistics with config --enable-stats=true.\n\nOutput directory: <host-path-redacted>/2026-08-03T04-10-33_15687963185571096460\n# APALACHE version: 0.58.3 | build: f4ac7ff                       I@04:10:33.740\n  > apalache.cfg: Loading TLC configuration     ",
+      "output_digest": "be92ec6f46f1917094c739910e2839c34a565451d825c8236a53f5b4480d5d0e",
+      "output_preview": "# Usage statistics is OFF. We care about your privacy.\n# If you want to help our project, consider enabling statistics with config --enable-stats=true.\n\nOutput directory: <host-path-redacted>/2026-08-05T04-12-59_4653864243030182376\n# APALACHE version: 0.58.3 | build: f4ac7ff                       I@04:12:59.145\n  > apalache.cfg: Loading TLC configuration      ",
       "property": "Inv",
       "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
       "reason_codes": [
@@ -1186,7 +1186,7 @@
       "tool_id": "apalache"
     },
     {
-      "artifact_digest": "0f646ca1594f113881795ba37ac6d8caebc87ab69648db165555f5b71ec2c1c5",
+      "artifact_digest": "dff30445e10c3f7e2ac216b297ccf6a617c38bf1657c5b9c1ae9092a97add4c6",
       "authority": "bounded",
       "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
       "bounds": {
@@ -1197,7 +1197,7 @@
       "config_digest": "269fa5a9134c343f1da3bbda27c87949edfcac71de917aa897bbd37b8334bfcf",
       "counterexample": {
         "parse_fallback": true,
-        "raw_preview": "# Usage statistics is OFF. We care about your privacy.\n# If you want to help our project, consider enabling statistics with config --enable-stats=true.\n\nOutput directory: <host-path-redacted>/2026-08-03T04-10-35_5043856752293249662\n# APALACHE version: 0.58.3 | build: f4ac7ff                       I@04:10:35.037\n  > apalache.cfg: Loading TLC configuration      ",
+        "raw_preview": "# Usage statistics is OFF. We care about your privacy.\n# If you want to help our project, consider enabling statistics with config --enable-stats=true.\n\nOutput directory: <host-path-redacted>/2026-08-05T04-13-00_5438779425168850236\n# APALACHE version: 0.58.3 | build: f4ac7ff                       I@04:13:00.315\n  > apalache.cfg: Loading TLC configuration      ",
         "state_count": 4
       },
       "detail": "Invariant mutation never remains a pass",
@@ -1219,8 +1219,8 @@
       },
       "matched": true,
       "model_digest": "a597e01b6f5042ca5546a80426802423bd4075f018930f0148b4d45cbe756493",
-      "output_digest": "54ab14647ee076b6f820a004c70fedae759851985d3c582506cb986d8c354ace",
-      "output_preview": "# Usage statistics is OFF. We care about your privacy.\n# If you want to help our project, consider enabling statistics with config --enable-stats=true.\n\nOutput directory: <host-path-redacted>/2026-08-03T04-10-35_5043856752293249662\n# APALACHE version: 0.58.3 | build: f4ac7ff                       I@04:10:35.037\n  > apalache.cfg: Loading TLC configuration      ",
+      "output_digest": "570b9ad1e221c3d813fe436fc4652ec39087ab5992c135de1b847aa821b7c697",
+      "output_preview": "# Usage statistics is OFF. We care about your privacy.\n# If you want to help our project, consider enabling statistics with config --enable-stats=true.\n\nOutput directory: <host-path-redacted>/2026-08-05T04-13-00_5438779425168850236\n# APALACHE version: 0.58.3 | build: f4ac7ff                       I@04:13:00.315\n  > apalache.cfg: Loading TLC configuration      ",
       "property": "Inv",
       "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
       "reason_codes": [
@@ -1232,7 +1232,7 @@
       "tool_id": "apalache"
     },
     {
-      "artifact_digest": "e1ea1977e6c8e44231db6d911805b6cf211d9798694101896275c78fd942e80a",
+      "artifact_digest": "9562eb03bd9279d981e683f260db5a74d86f9dc837d6f6537b5dad6dbb354d58",
       "authority": "bounded",
       "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
       "bounds": {
@@ -1261,8 +1261,8 @@
       },
       "matched": true,
       "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-      "output_digest": "83504db634e8cfcc28d544154211595bdf37aa8944a33d35c72336ef71aaf092",
-      "output_preview": "# Usage statistics is OFF. We care about your privacy.\n# If you want to help our project, consider enabling statistics with config --enable-stats=true.\n\nOutput directory: <host-path-redacted>/2026-08-03T04-10-36_15583591354792451264\n# APALACHE version: 0.58.3 | build: f4ac7ff                       I@04:10:36.253\n  > apalache.cfg: Loading TLC configuration     ",
+      "output_digest": "b262823cd51d6fc5aad4ff7b90f812cbe14fd33e0cc80b3f521686bbb27b8668",
+      "output_preview": "# Usage statistics is OFF. We care about your privacy.\n# If you want to help our project, consider enabling statistics with config --enable-stats=true.\n\nOutput directory: <host-path-redacted>/2026-08-05T04-13-01_7712349492980050616\n# APALACHE version: 0.58.3 | build: f4ac7ff                       I@04:13:01.498\n  > apalache.cfg: Loading TLC configuration      ",
       "property": "Inv",
       "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
       "reason_codes": [
@@ -1275,7 +1275,7 @@
       "tool_id": "apalache"
     },
     {
-      "artifact_digest": "6d03e8a7ea3fb2846117a629c63e8a6cae626611db2e576028d1ad92005eb9b3",
+      "artifact_digest": "a05d1997b06c7fa008af50ab4a33ccbb654cee0061025efda917b1877dd5d3c9",
       "authority": "bounded",
       "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
       "bounds": {
@@ -1304,8 +1304,8 @@
       },
       "matched": true,
       "model_digest": "5fbfc3e586c3b35e4f0090fbe82ca54e5b7f32c256042f7839a988b5e62a52fc",
-      "output_digest": "eecf90b4da234d1d9a38c37813f474eab5a6d990e5643a3f88f8f3d65c8982db",
-      "output_preview": "# Usage statistics is OFF. We care about your privacy.\n# If you want to help our project, consider enabling statistics with config --enable-stats=true.\n\nOutput directory: <host-path-redacted>/2026-08-03T04-10-37_4673048856334843599\n# APALACHE version: 0.58.3 | build: f4ac7ff                       I@04:10:37.414\n  > apalache.cfg: Loading TLC configuration      ",
+      "output_digest": "1882526a1f3a25cffd5ca3a72236056e342576cd1238c297ee37741dfe3b448f",
+      "output_preview": "# Usage statistics is OFF. We care about your privacy.\n# If you want to help our project, consider enabling statistics with config --enable-stats=true.\n\nOutput directory: <host-path-redacted>/2026-08-05T04-13-02_6605633656333236311\n# APALACHE version: 0.58.3 | build: f4ac7ff                       I@04:13:02.501\n  > apalache.cfg: Loading TLC configuration      ",
       "property": "Inv",
       "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
       "reason_codes": [
@@ -1360,7 +1360,7 @@
       "tool_id": "apalache"
     },
     {
-      "artifact_digest": "0db0ccfb3eede309d8bf11aeaefc163cfb773bd4bf1392d783df77a5f80a3a92",
+      "artifact_digest": "5c701e06d19e67a46abec42f3b8a7bf8976526bf056a15021b9722ef0002c1df",
       "authority": "bounded",
       "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
       "bounds": {
@@ -1390,8 +1390,8 @@
       },
       "matched": true,
       "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-      "output_digest": "a509d7a1138060a260c49e4462b810b672b7ed0fa43776f8e095bf503f936545",
-      "output_preview": "# Usage statistics is OFF. We care about your privacy.\n# If you want to help our project, consider enabling statistics with config --enable-stats=true.\n\nOutput directory: <host-path-redacted>/2026-08-03T04-10-38_5651743322665569332\n# APALACHE version: 0.58.3 | build: f4ac7ff                       I@04:10:38.098\n  > apalache.cfg: Loading TLC configuration      ",
+      "output_digest": "abaa19e3c0dd0603fab9fdb4e78ccf7e9acd1347d94c3133a58827f0d9005e91",
+      "output_preview": "# Usage statistics is OFF. We care about your privacy.\n# If you want to help our project, consider enabling statistics with config --enable-stats=true.\n\nOutput directory: <host-path-redacted>/2026-08-05T04-13-03_8313656778244347929\n# APALACHE version: 0.58.3 | build: f4ac7ff                       I@04:13:03.140\n  > apalache.cfg: Loading TLC configuration      ",
       "property": "Inv",
       "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
       "reason_codes": [
@@ -1466,7 +1466,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "c9d6387335ec8d8161ddc6f512a8955d4ae15ccd3273f9f8eeaa06d19fdfe265",
+        "artifact_digest": "6397ef45f8f920d008292f9562d42d4f3242e156d85d0a589b433a7743b35b2c",
         "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
         "bounds": {
           "length": 5,
@@ -1487,7 +1487,7 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-        "output_digest": "b322306f61aec89da3ae78091ce10e70f5c808b105e0597be96726cb9c481dbd",
+        "output_digest": "1982d3320e2075d6b20d030e19e74232f137c19bbd5c57ffcd2c1cc285ed5ca0",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "tool_id": "tlc"
       },
@@ -1503,7 +1503,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "e9ee9fb542034cea09d679ec7e1718600c30c20fad249c477e8858496f35d1cc",
+        "artifact_digest": "f615f4844174404876e7dabc11d59c0e5d6279a31fe6568a7a50e4cfe36cbff5",
         "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
         "bounds": {
           "length": 5,
@@ -1524,7 +1524,7 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "91217164e89c45ce784052b467a68ceeb8b8fe748cff6757bef315866d2737d5",
-        "output_digest": "91466a8edb9fb2e871b22412da887fda3bc6fc16cfe6b83ed248ecda45667e6f",
+        "output_digest": "c0e460cfe01d4009a76fe6a7dc7edac2c7c42f84a44135e933f3e1fce2f12d7f",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "tool_id": "tlc"
       },
@@ -1540,7 +1540,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "f63bc5022d0feff6f7bd44bf71bef5df70f26cdd8cdff181f714b440dc38d8e6",
+        "artifact_digest": "9bf958321e94b2bb325e16d083c376051463af82e943c5baabb5f2964a49c026",
         "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
         "bounds": {
           "length": 5,
@@ -1561,7 +1561,7 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "ffbf48f3e4ff06d66c7c7a4aacb76bb5798d49795caca4a55722c7caa3f1037b",
-        "output_digest": "e2ea261a9ecdf6d6251b731b8c6759d4be9c2c7fc858796766339438e68d5635",
+        "output_digest": "8468c090368b4b1e0e408d499d746bc0ff1403e1ab48dfb3b97fda657d87b510",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "tool_id": "tlc"
       },
@@ -1577,7 +1577,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "eb8282975bbdb8b7b52122ab68daf054cea315ae50f9941ebf430a6ee6f702dd",
+        "artifact_digest": "4d9417f3a758a5e13984c6a3b211b9c7cf2e3fa91f7d21e204c99bab3759455f",
         "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
         "bounds": {
           "length": 5,
@@ -1598,7 +1598,7 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "a597e01b6f5042ca5546a80426802423bd4075f018930f0148b4d45cbe756493",
-        "output_digest": "7bd57521a30db43bca0968aefb55d5265e5a9ef758f0b608a06e564f716cafbc",
+        "output_digest": "520f35ae1f85a4a5d6c596c3d995f14fe2888131137f7f11e6bf0f46addbc2d0",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "tool_id": "tlc"
       },
@@ -1614,7 +1614,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "88cd9290c427ab408812d82b3078770a4b989c86b316b5b6e842d899f27951ea",
+        "artifact_digest": "7baec014c543996c7dde1581bbdbd299a8adadb92d28e948316dd468c8f9c4b7",
         "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
         "bounds": {
           "length": 5,
@@ -1635,7 +1635,7 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-        "output_digest": "cf43839ae7a7c9f8cc6cada6c7599e913df4aa1bc132f8738e1987e5b4016492",
+        "output_digest": "59359758910dd9d351e715c32f4715161c42ea97965b7e18c327cef53cc874b3",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "tool_id": "tlc"
       },
@@ -1651,7 +1651,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "08f79ceaffc4130fa627e31434e4732712ba8a180832d161881d23fc18f85b46",
+        "artifact_digest": "7a325b34948c68da53a9509b1ed02132de075da7b9ded15d90076989d697be4f",
         "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
         "bounds": {
           "length": 1,
@@ -1672,7 +1672,7 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "5fbfc3e586c3b35e4f0090fbe82ca54e5b7f32c256042f7839a988b5e62a52fc",
-        "output_digest": "5e89f12afd851672c91ac3c3442d27ee164a26b8778680b28501fa241c2c2fb4",
+        "output_digest": "b5a9bb2aa88eaf8aabcce3cc0d42832174f7e459faa30f0e1bd3d827d1b087ed",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "tool_id": "tlc"
       },
@@ -1726,7 +1726,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "70c86a899240cce36cbddce5bd6b3ec81bd2ada3ebbad1b03e67f7a97ae4d387",
+        "artifact_digest": "357edfc3732672a63928b403811b7bd36eb505c1448a2d612c722a02e0201af3",
         "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
         "bounds": {
           "finite_trace_only": true,
@@ -1748,7 +1748,7 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-        "output_digest": "3ec22a71ef01bd475e12673d1c4540b37dfa3f995b0c801e73abcf47c13acd74",
+        "output_digest": "9928c269c41f23683b49fa3b6c6e364acf83ceb85209b81de3831a716d0e990d",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "tool_id": "tlc"
       },
@@ -1766,7 +1766,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "1e3ec192a9a8cd178020befabac20678bb2bc2573ecd3bcfed7575335c915137",
+        "artifact_digest": "228ebb971d3ed1974f5a06c7d63439b608bf4c6fd98a2feafe20df6fd16b52de",
         "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
         "bounds": {
           "length": 5,
@@ -1787,7 +1787,7 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-        "output_digest": "3dd805902400bdf70ba00d19dab75dc295078fd1391323570ab544f90942b289",
+        "output_digest": "099a5c33f992f7ee2dc87b8f83b7ce59d3291f03ec483409d711442c3dc78511",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "tool_id": "apalache"
       },
@@ -1804,7 +1804,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "aef3bb39ede031202337b5634b8e0230357c0d255364633c62f35cb17a8b0341",
+        "artifact_digest": "beff0e133094556c2b75ed22c8b5cb55bf46753037e7623cb005a3de891c0920",
         "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
         "bounds": {
           "length": 5,
@@ -1825,7 +1825,7 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "91217164e89c45ce784052b467a68ceeb8b8fe748cff6757bef315866d2737d5",
-        "output_digest": "a04db7fa3bb46fff16fbc4e6f685d5e1ea1a1c35ced1600f8243afc9bc1a2652",
+        "output_digest": "4bf3ed14338f8febea12b12289561805477df17a20941f6d4e269c91857d04d0",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "tool_id": "apalache"
       },
@@ -1841,7 +1841,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "34566fda88ad32cdae341bc5c1ff865b6b4cb46c4916a3b369119eb4a05f021e",
+        "artifact_digest": "9522c8929da1d76c304a580f4b4a685e3fe7e7172aa4be9ed00742f2d5f1c869",
         "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
         "bounds": {
           "length": 5,
@@ -1862,7 +1862,7 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "ffbf48f3e4ff06d66c7c7a4aacb76bb5798d49795caca4a55722c7caa3f1037b",
-        "output_digest": "29911948c3b8fc977ae8c953f27a2a93af3d9329f632d197d8c85959e2dd5e41",
+        "output_digest": "be92ec6f46f1917094c739910e2839c34a565451d825c8236a53f5b4480d5d0e",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "tool_id": "apalache"
       },
@@ -1878,7 +1878,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "0f646ca1594f113881795ba37ac6d8caebc87ab69648db165555f5b71ec2c1c5",
+        "artifact_digest": "dff30445e10c3f7e2ac216b297ccf6a617c38bf1657c5b9c1ae9092a97add4c6",
         "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
         "bounds": {
           "length": 5,
@@ -1899,7 +1899,7 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "a597e01b6f5042ca5546a80426802423bd4075f018930f0148b4d45cbe756493",
-        "output_digest": "54ab14647ee076b6f820a004c70fedae759851985d3c582506cb986d8c354ace",
+        "output_digest": "570b9ad1e221c3d813fe436fc4652ec39087ab5992c135de1b847aa821b7c697",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "tool_id": "apalache"
       },
@@ -1915,7 +1915,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "e1ea1977e6c8e44231db6d911805b6cf211d9798694101896275c78fd942e80a",
+        "artifact_digest": "9562eb03bd9279d981e683f260db5a74d86f9dc837d6f6537b5dad6dbb354d58",
         "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
         "bounds": {
           "length": 5,
@@ -1936,7 +1936,7 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-        "output_digest": "83504db634e8cfcc28d544154211595bdf37aa8944a33d35c72336ef71aaf092",
+        "output_digest": "b262823cd51d6fc5aad4ff7b90f812cbe14fd33e0cc80b3f521686bbb27b8668",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "tool_id": "apalache"
       },
@@ -1953,7 +1953,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "6d03e8a7ea3fb2846117a629c63e8a6cae626611db2e576028d1ad92005eb9b3",
+        "artifact_digest": "a05d1997b06c7fa008af50ab4a33ccbb654cee0061025efda917b1877dd5d3c9",
         "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
         "bounds": {
           "length": 1,
@@ -1974,7 +1974,7 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "5fbfc3e586c3b35e4f0090fbe82ca54e5b7f32c256042f7839a988b5e62a52fc",
-        "output_digest": "eecf90b4da234d1d9a38c37813f474eab5a6d990e5643a3f88f8f3d65c8982db",
+        "output_digest": "1882526a1f3a25cffd5ca3a72236056e342576cd1238c297ee37741dfe3b448f",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "tool_id": "apalache"
       },
@@ -2028,7 +2028,7 @@
     },
     {
       "bindings": {
-        "artifact_digest": "0db0ccfb3eede309d8bf11aeaefc163cfb773bd4bf1392d783df77a5f80a3a92",
+        "artifact_digest": "5c701e06d19e67a46abec42f3b8a7bf8976526bf056a15021b9722ef0002c1df",
         "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
         "bounds": {
           "finite_trace_only": true,
@@ -2050,7 +2050,7 @@
           "timeout_seconds": 45.0
         },
         "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-        "output_digest": "a509d7a1138060a260c49e4462b810b672b7ed0fa43776f8e095bf503f936545",
+        "output_digest": "abaa19e3c0dd0603fab9fdb4e78ccf7e9acd1347d94c3133a58827f0d9005e91",
         "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
         "tool_id": "apalache"
       },
@@ -2273,7 +2273,7 @@
         },
         "live_cases": [
           {
-            "artifact_digest": "c9d6387335ec8d8161ddc6f512a8955d4ae15ccd3273f9f8eeaa06d19fdfe265",
+            "artifact_digest": "6397ef45f8f920d008292f9562d42d4f3242e156d85d0a589b433a7743b35b2c",
             "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
             "bounds": {
               "length": 5,
@@ -2296,14 +2296,14 @@
               "timeout_seconds": 45.0
             },
             "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-            "output_digest": "b322306f61aec89da3ae78091ce10e70f5c808b105e0597be96726cb9c481dbd",
+            "output_digest": "1982d3320e2075d6b20d030e19e74232f137c19bbd5c57ffcd2c1cc285ed5ca0",
             "property": "Inv",
             "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
             "status": "passed",
             "tool_id": "tlc"
           },
           {
-            "artifact_digest": "e9ee9fb542034cea09d679ec7e1718600c30c20fad249c477e8858496f35d1cc",
+            "artifact_digest": "f615f4844174404876e7dabc11d59c0e5d6279a31fe6568a7a50e4cfe36cbff5",
             "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
             "bounds": {
               "length": 5,
@@ -2326,14 +2326,14 @@
               "timeout_seconds": 45.0
             },
             "model_digest": "91217164e89c45ce784052b467a68ceeb8b8fe748cff6757bef315866d2737d5",
-            "output_digest": "91466a8edb9fb2e871b22412da887fda3bc6fc16cfe6b83ed248ecda45667e6f",
+            "output_digest": "c0e460cfe01d4009a76fe6a7dc7edac2c7c42f84a44135e933f3e1fce2f12d7f",
             "property": "Inv",
             "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
             "status": "counterexample",
             "tool_id": "tlc"
           },
           {
-            "artifact_digest": "f63bc5022d0feff6f7bd44bf71bef5df70f26cdd8cdff181f714b440dc38d8e6",
+            "artifact_digest": "9bf958321e94b2bb325e16d083c376051463af82e943c5baabb5f2964a49c026",
             "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
             "bounds": {
               "length": 5,
@@ -2356,14 +2356,14 @@
               "timeout_seconds": 45.0
             },
             "model_digest": "ffbf48f3e4ff06d66c7c7a4aacb76bb5798d49795caca4a55722c7caa3f1037b",
-            "output_digest": "e2ea261a9ecdf6d6251b731b8c6759d4be9c2c7fc858796766339438e68d5635",
+            "output_digest": "8468c090368b4b1e0e408d499d746bc0ff1403e1ab48dfb3b97fda657d87b510",
             "property": "Inv",
             "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
             "status": "counterexample",
             "tool_id": "tlc"
           },
           {
-            "artifact_digest": "eb8282975bbdb8b7b52122ab68daf054cea315ae50f9941ebf430a6ee6f702dd",
+            "artifact_digest": "4d9417f3a758a5e13984c6a3b211b9c7cf2e3fa91f7d21e204c99bab3759455f",
             "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
             "bounds": {
               "length": 5,
@@ -2386,14 +2386,14 @@
               "timeout_seconds": 45.0
             },
             "model_digest": "a597e01b6f5042ca5546a80426802423bd4075f018930f0148b4d45cbe756493",
-            "output_digest": "7bd57521a30db43bca0968aefb55d5265e5a9ef758f0b608a06e564f716cafbc",
+            "output_digest": "520f35ae1f85a4a5d6c596c3d995f14fe2888131137f7f11e6bf0f46addbc2d0",
             "property": "Inv",
             "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
             "status": "counterexample",
             "tool_id": "tlc"
           },
           {
-            "artifact_digest": "88cd9290c427ab408812d82b3078770a4b989c86b316b5b6e842d899f27951ea",
+            "artifact_digest": "7baec014c543996c7dde1581bbdbd299a8adadb92d28e948316dd468c8f9c4b7",
             "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
             "bounds": {
               "length": 5,
@@ -2416,14 +2416,14 @@
               "timeout_seconds": 45.0
             },
             "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-            "output_digest": "cf43839ae7a7c9f8cc6cada6c7599e913df4aa1bc132f8738e1987e5b4016492",
+            "output_digest": "59359758910dd9d351e715c32f4715161c42ea97965b7e18c327cef53cc874b3",
             "property": "Inv",
             "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
             "status": "passed",
             "tool_id": "tlc"
           },
           {
-            "artifact_digest": "08f79ceaffc4130fa627e31434e4732712ba8a180832d161881d23fc18f85b46",
+            "artifact_digest": "7a325b34948c68da53a9509b1ed02132de075da7b9ded15d90076989d697be4f",
             "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
             "bounds": {
               "length": 1,
@@ -2446,7 +2446,7 @@
               "timeout_seconds": 45.0
             },
             "model_digest": "5fbfc3e586c3b35e4f0090fbe82ca54e5b7f32c256042f7839a988b5e62a52fc",
-            "output_digest": "5e89f12afd851672c91ac3c3442d27ee164a26b8778680b28501fa241c2c2fb4",
+            "output_digest": "b5a9bb2aa88eaf8aabcce3cc0d42832174f7e459faa30f0e1bd3d827d1b087ed",
             "property": "Inv",
             "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
             "status": "malformed",
@@ -2484,7 +2484,7 @@
             "tool_id": "tlc"
           },
           {
-            "artifact_digest": "70c86a899240cce36cbddce5bd6b3ec81bd2ada3ebbad1b03e67f7a97ae4d387",
+            "artifact_digest": "357edfc3732672a63928b403811b7bd36eb505c1448a2d612c722a02e0201af3",
             "binary_digest": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
             "bounds": {
               "finite_trace_only": true,
@@ -2508,14 +2508,14 @@
               "timeout_seconds": 45.0
             },
             "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-            "output_digest": "3ec22a71ef01bd475e12673d1c4540b37dfa3f995b0c801e73abcf47c13acd74",
+            "output_digest": "9928c269c41f23683b49fa3b6c6e364acf83ceb85209b81de3831a716d0e990d",
             "property": "Inv",
             "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
             "status": "passed",
             "tool_id": "tlc"
           },
           {
-            "artifact_digest": "1e3ec192a9a8cd178020befabac20678bb2bc2573ecd3bcfed7575335c915137",
+            "artifact_digest": "228ebb971d3ed1974f5a06c7d63439b608bf4c6fd98a2feafe20df6fd16b52de",
             "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
             "bounds": {
               "length": 5,
@@ -2538,14 +2538,14 @@
               "timeout_seconds": 45.0
             },
             "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-            "output_digest": "3dd805902400bdf70ba00d19dab75dc295078fd1391323570ab544f90942b289",
+            "output_digest": "099a5c33f992f7ee2dc87b8f83b7ce59d3291f03ec483409d711442c3dc78511",
             "property": "Inv",
             "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
             "status": "passed",
             "tool_id": "apalache"
           },
           {
-            "artifact_digest": "aef3bb39ede031202337b5634b8e0230357c0d255364633c62f35cb17a8b0341",
+            "artifact_digest": "beff0e133094556c2b75ed22c8b5cb55bf46753037e7623cb005a3de891c0920",
             "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
             "bounds": {
               "length": 5,
@@ -2568,14 +2568,14 @@
               "timeout_seconds": 45.0
             },
             "model_digest": "91217164e89c45ce784052b467a68ceeb8b8fe748cff6757bef315866d2737d5",
-            "output_digest": "a04db7fa3bb46fff16fbc4e6f685d5e1ea1a1c35ced1600f8243afc9bc1a2652",
+            "output_digest": "4bf3ed14338f8febea12b12289561805477df17a20941f6d4e269c91857d04d0",
             "property": "Inv",
             "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
             "status": "counterexample",
             "tool_id": "apalache"
           },
           {
-            "artifact_digest": "34566fda88ad32cdae341bc5c1ff865b6b4cb46c4916a3b369119eb4a05f021e",
+            "artifact_digest": "9522c8929da1d76c304a580f4b4a685e3fe7e7172aa4be9ed00742f2d5f1c869",
             "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
             "bounds": {
               "length": 5,
@@ -2598,14 +2598,14 @@
               "timeout_seconds": 45.0
             },
             "model_digest": "ffbf48f3e4ff06d66c7c7a4aacb76bb5798d49795caca4a55722c7caa3f1037b",
-            "output_digest": "29911948c3b8fc977ae8c953f27a2a93af3d9329f632d197d8c85959e2dd5e41",
+            "output_digest": "be92ec6f46f1917094c739910e2839c34a565451d825c8236a53f5b4480d5d0e",
             "property": "Inv",
             "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
             "status": "counterexample",
             "tool_id": "apalache"
           },
           {
-            "artifact_digest": "0f646ca1594f113881795ba37ac6d8caebc87ab69648db165555f5b71ec2c1c5",
+            "artifact_digest": "dff30445e10c3f7e2ac216b297ccf6a617c38bf1657c5b9c1ae9092a97add4c6",
             "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
             "bounds": {
               "length": 5,
@@ -2628,14 +2628,14 @@
               "timeout_seconds": 45.0
             },
             "model_digest": "a597e01b6f5042ca5546a80426802423bd4075f018930f0148b4d45cbe756493",
-            "output_digest": "54ab14647ee076b6f820a004c70fedae759851985d3c582506cb986d8c354ace",
+            "output_digest": "570b9ad1e221c3d813fe436fc4652ec39087ab5992c135de1b847aa821b7c697",
             "property": "Inv",
             "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
             "status": "counterexample",
             "tool_id": "apalache"
           },
           {
-            "artifact_digest": "e1ea1977e6c8e44231db6d911805b6cf211d9798694101896275c78fd942e80a",
+            "artifact_digest": "9562eb03bd9279d981e683f260db5a74d86f9dc837d6f6537b5dad6dbb354d58",
             "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
             "bounds": {
               "length": 5,
@@ -2658,14 +2658,14 @@
               "timeout_seconds": 45.0
             },
             "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-            "output_digest": "83504db634e8cfcc28d544154211595bdf37aa8944a33d35c72336ef71aaf092",
+            "output_digest": "b262823cd51d6fc5aad4ff7b90f812cbe14fd33e0cc80b3f521686bbb27b8668",
             "property": "Inv",
             "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
             "status": "passed",
             "tool_id": "apalache"
           },
           {
-            "artifact_digest": "6d03e8a7ea3fb2846117a629c63e8a6cae626611db2e576028d1ad92005eb9b3",
+            "artifact_digest": "a05d1997b06c7fa008af50ab4a33ccbb654cee0061025efda917b1877dd5d3c9",
             "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
             "bounds": {
               "length": 1,
@@ -2688,7 +2688,7 @@
               "timeout_seconds": 45.0
             },
             "model_digest": "5fbfc3e586c3b35e4f0090fbe82ca54e5b7f32c256042f7839a988b5e62a52fc",
-            "output_digest": "eecf90b4da234d1d9a38c37813f474eab5a6d990e5643a3f88f8f3d65c8982db",
+            "output_digest": "1882526a1f3a25cffd5ca3a72236056e342576cd1238c297ee37741dfe3b448f",
             "property": "Inv",
             "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
             "status": "malformed",
@@ -2726,7 +2726,7 @@
             "tool_id": "apalache"
           },
           {
-            "artifact_digest": "0db0ccfb3eede309d8bf11aeaefc163cfb773bd4bf1392d783df77a5f80a3a92",
+            "artifact_digest": "5c701e06d19e67a46abec42f3b8a7bf8976526bf056a15021b9722ef0002c1df",
             "binary_digest": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
             "bounds": {
               "finite_trace_only": true,
@@ -2750,7 +2750,7 @@
               "timeout_seconds": 45.0
             },
             "model_digest": "0bcb9b9d1fba347851fc7f3d69c748f919a3be08454aa82f6590ee577bf2d2e2",
-            "output_digest": "a509d7a1138060a260c49e4462b810b672b7ed0fa43776f8e095bf503f936545",
+            "output_digest": "abaa19e3c0dd0603fab9fdb4e78ccf7e9acd1347d94c3133a58827f0d9005e91",
             "property": "Inv",
             "property_digest": "4e89838e3d3797227f6e1279001e25bcfbcebafa859c3f50cc9e99de62bab332",
             "status": "passed",
@@ -2782,7 +2782,7 @@
       "detail": "live receipt binds source model, property, bound, JVM, executable, jar/archive, and output digests exactly",
       "expected": "model,property,bound,jvm,executable,jar_archive,output_digests",
       "kind": "binding",
-      "observed": "7667fe1d93e7e899",
+      "observed": "42f42a318321ff87",
       "reason_codes": [],
       "status": "passed"
     },
@@ -2881,7 +2881,7 @@
     "violation_count": 0,
     "violations": []
   },
-  "receipt_digest_sha256": "e74a7df3860dcb4457334571e2e00775ef048cf384b9e7b599ce04230b68d472",
+  "receipt_digest_sha256": "b9b5413cb4236da1c41a051b6d7b7633b4845e8b71300b513bcdcfe79361f651",
   "repair_task_id": "FVT-076",
   "schema_version": "state-model-live-semantic-certification/v1",
   "support_tool_id": "java",
