@@ -1,3 +1,24 @@
+"""Non-promotable SecPAL operator-compatibility receipt (FVT-092 / FVT-G224).
+
+Evidence path for objective goal FVT-G224:
+
+    test/integration/toolchains/test_secpal_operator_compatibility_receipt.py
+
+Closes the path evidence obligation for publishing offline, public-safe
+operator-compatibility evidence from the recovered Microsoft SecPAL research
+release without elevating archival sample compatibility into platform,
+semantic, license, or deployment authority.
+
+Interface: SecPALOperatorCompatibilityReceipt@1
+Outputs:
+  - tools/logic/certify_secpal_operator_compatibility.py
+  - docs/architecture/formal_verification_secpal_operator_compatibility_receipt.json
+  - test/integration/toolchains/test_secpal_operator_compatibility_receipt.py
+Validation:
+  PYTHONPATH=ipfs_datasets_py python -m pytest \\
+    test/integration/toolchains/test_secpal_operator_compatibility_receipt.py -q
+"""
+
 from __future__ import annotations
 
 import copy
@@ -14,6 +35,17 @@ RECEIPT_PATH = REPO_ROOT / (
     "docs/architecture/"
     "formal_verification_secpal_operator_compatibility_receipt.json"
 )
+CERTIFIER_PATH = REPO_ROOT / "tools/logic/certify_secpal_operator_compatibility.py"
+
+GOAL_ID = "FVT-G224"
+TASK_ID = "FVT-092"
+INTERFACE = "SecPALOperatorCompatibilityReceipt@1"
+EVIDENCE_PATH = (
+    "test/integration/toolchains/test_secpal_operator_compatibility_receipt.py"
+)
+TEMPORAL_BOUNDARY_CASE = (
+    "deterministic temporal-boundary behavior for DateTime.UtcNow sample facts"
+)
 
 
 def _checked_receipt() -> dict:
@@ -26,10 +58,23 @@ def _resign(receipt: dict) -> None:
     )
 
 
+def test_evidence_paths_and_goal_bindings_are_present() -> None:
+    """Path evidence required by the FVT-G224 objective scan."""
+
+    assert RECEIPT_PATH.is_file()
+    assert CERTIFIER_PATH.is_file()
+    assert Path(__file__).resolve().is_file()
+    assert EVIDENCE_PATH in Path(__file__).read_text(encoding="utf-8")
+    assert INTERFACE == cert.INTERFACE
+    assert GOAL_ID == "FVT-G224"
+    assert TASK_ID == "FVT-092"
+
+
 def test_checked_receipt_is_public_safe_replayable_and_strictly_nonpromotable() -> None:
     receipt = _checked_receipt()
 
     assert cert.validate_receipt(receipt) == []
+    assert receipt["interface"] == INTERFACE
     assert receipt["status"] == "operator_compatibility_observed_non_authoritative"
     assert receipt["scope"] == {
         "operator_compatibility_only": True,
@@ -48,6 +93,11 @@ def test_checked_receipt_is_public_safe_replayable_and_strictly_nonpromotable() 
     assert receipt["execution_contract"]["network_or_download_requested"] is False
     assert receipt["execution_contract"]["installer_invoked"] is False
     assert receipt["execution_contract"]["raw_output_retained"] is False
+    assert receipt["execution_contract"]["attempts_per_scenario"] == 2
+    assert receipt["operator_runtime"]["vendor_supported_runtime"] is False
+    assert receipt["authority_ceiling"] == (
+        "operator_compatibility_only_no_live_or_production_elevation"
+    )
 
     scenarios = receipt["scenarios"]
     assert [item["name"] for item in scenarios] == list(cert.SCENARIOS)
@@ -61,12 +111,31 @@ def test_checked_receipt_is_public_safe_replayable_and_strictly_nonpromotable() 
     assert receipt["missing_comprehensive_cases"] == list(
         cert.MISSING_COMPREHENSIVE_CASES
     )
+    assert TEMPORAL_BOUNDARY_CASE in receipt["missing_comprehensive_cases"]
+
+    # Exact reviewed MSI, three payload artifacts, and EULA identities.
+    for key in (
+        "msi",
+        "sample_runner",
+        "authorization_library",
+        "audit_viewer",
+        "eula",
+    ):
+        item = receipt["verified_inputs"][key]
+        expected = cert.KNOWN_ARTIFACTS[key]
+        assert item["name"] == expected["name"]
+        assert item["bytes"] == expected["bytes"]
+        assert item["sha256"] == expected["sha256"]
+        assert item["identity_verified"] is True
 
     rendered = json.dumps(receipt, sort_keys=True)
     assert "/tmp/" not in rendered
     assert "/home/" not in rendered
     assert "raw_stdout" not in rendered
     assert "raw_stderr" not in rendered
+    assert "EULA.rtf" in rendered  # identity only
+    # Restricted EULA body text must never appear in the public receipt.
+    assert r"{\rtf" not in rendered
 
 
 def test_validator_fails_closed_for_promotions_coverage_and_replay_mutations() -> None:
@@ -80,6 +149,22 @@ def test_validator_fails_closed_for_promotions_coverage_and_replay_mutations() -
         lambda value: value.__setitem__("live_authority", True),
         lambda value: value.__setitem__("deployment_ready", True),
         lambda value: value["scope"].__setitem__("completes_fvt_086", True),
+        lambda value: value["scope"].__setitem__("completes_fvt_g219", True),
+        lambda value: value["scope"].__setitem__(
+            "vendor_sample_suite_only", False
+        ),
+        lambda value: value["execution_contract"].__setitem__(
+            "network_or_download_requested", True
+        ),
+        lambda value: value["execution_contract"].__setitem__(
+            "installer_invoked", True
+        ),
+        lambda value: value["execution_contract"].__setitem__(
+            "raw_output_retained", True
+        ),
+        lambda value: value["operator_runtime"].__setitem__(
+            "vendor_supported_runtime", True
+        ),
         lambda value: value["scenarios"].pop(),
         lambda value: value["scenarios"][0].__setitem__(
             "replay_equal_after_normalization", False
@@ -88,9 +173,21 @@ def test_validator_fails_closed_for_promotions_coverage_and_replay_mutations() -
             "return_codes", [0, 1]
         ),
         lambda value: value.__setitem__("missing_comprehensive_cases", []),
+        lambda value: value.__setitem__(
+            "missing_comprehensive_cases",
+            [
+                case
+                for case in cert.MISSING_COMPREHENSIVE_CASES
+                if case != TEMPORAL_BOUNDARY_CASE
+            ],
+        ),
         lambda value: value["verified_inputs"]["msi"].__setitem__(
             "sha256", "0" * 64
         ),
+        lambda value: value.__setitem__(
+            "authority_ceiling", "production_authorization"
+        ),
+        lambda value: value.__setitem__("status", "deployment_ready"),
     )
 
     for mutate in mutations:
@@ -170,6 +267,47 @@ def test_license_acceptance_is_checked_before_any_local_input() -> None:
             mono_native_lib_dir=absent,
             license_acceptance="",
         )
+
+
+def test_failed_certification_preserves_prior_valid_receipt(
+    tmp_path: Path,
+) -> None:
+    """Failure must not overwrite, download, install, or redistribute."""
+
+    prior = _checked_receipt()
+    output = tmp_path / "formal_verification_secpal_operator_compatibility_receipt.json"
+    cert._write_json(output, prior)
+    prior_bytes = output.read_bytes()
+    prior_sha256 = hashlib.sha256(prior_bytes).hexdigest()
+
+    absent = tmp_path / "missing-operator-input"
+    exit_code = cert.main(
+        [
+            "--msi",
+            str(absent),
+            "--bin-dir",
+            str(absent),
+            "--eula",
+            str(absent),
+            "--mono",
+            str(absent),
+            "--mono-framework-dir",
+            str(absent),
+            "--mono-config-dir",
+            str(absent),
+            "--mono-native-lib-dir",
+            str(absent),
+            "--license-acceptance",
+            "NOT-ACCEPTED",
+            "--output",
+            str(output),
+        ]
+    )
+
+    assert exit_code == 2
+    assert output.read_bytes() == prior_bytes
+    assert hashlib.sha256(output.read_bytes()).hexdigest() == prior_sha256
+    assert cert.validate_receipt(json.loads(prior_bytes.decode("utf-8"))) == []
 
 
 def test_certifier_runs_every_named_sample_twice_with_explicit_local_inputs(
@@ -274,3 +412,43 @@ if scenario == "AuditLogScenario":
     )
     assert receipt["scenarios"][1]["side_effect_file_count"] == 1
     assert receipt["deployment_ready"] is False
+    assert receipt["scope"]["completes_fvt_086"] is False
+    assert receipt["scope"]["completes_fvt_g219"] is False
+    assert receipt["execution_contract"]["network_or_download_requested"] is False
+    assert TEMPORAL_BOUNDARY_CASE in receipt["missing_comprehensive_cases"]
+
+    # Successful certification may publish only after validation; a prior
+    # receipt is replaced atomically with the new public-safe document.
+    output = tmp_path / "out-receipt.json"
+    prior_marker = {"marker": "stale-prior"}
+    output.write_text(json.dumps(prior_marker), encoding="utf-8")
+    exit_code = cert.main(
+        [
+            "--msi",
+            str(payloads["msi"][0]),
+            "--bin-dir",
+            str(bin_dir),
+            "--eula",
+            str(payloads["eula"][0]),
+            "--mono",
+            str(fake_mono),
+            "--mono-framework-dir",
+            str(framework_dir),
+            "--mono-config-dir",
+            str(config_dir),
+            "--mono-native-lib-dir",
+            str(native_dir),
+            "--license-acceptance",
+            cert.LICENSE_ACCEPTANCE_PHRASE,
+            "--timeout-seconds",
+            "2.0",
+            "--observed-at",
+            "2026-08-03T00:00:00Z",
+            "--output",
+            str(output),
+        ]
+    )
+    assert exit_code == 0
+    published = json.loads(output.read_text(encoding="utf-8"))
+    assert cert.validate_receipt(published) == []
+    assert "marker" not in published
