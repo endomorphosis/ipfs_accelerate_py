@@ -1785,7 +1785,12 @@ def test_semantic_lanes_bind_canonical_receipts_and_compact_check_sets(
                 certifier.content_digest(per_tool)
             )
     assert candidate["acceptance"]["semantic_receipts_full_and_bound"] is False
-    assert "hyperltl:semantic_lane_not_run" in candidate["blockers"]
+    # Hyperproperty lane now runs; residual vendor/managed installation still
+    # blocks readiness (sealed root auth and managed pins remain incomplete).
+    assert any(
+        "hyperltl" in blocker or "autohyper" in blocker or "mchyper" in blocker
+        for blocker in candidate["blockers"]
+    )
 
 
 def test_builder_constants_align_with_goal_packet(builder) -> None:

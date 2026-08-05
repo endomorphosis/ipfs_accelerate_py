@@ -647,13 +647,22 @@ def _install_external_engine(
     *,
     install_root: Path | str | None,
     force: bool = False,
+    vendor: bool = False,
 ) -> mtl_installer.RuntimeMTLInstallBundle:
+    """Install the external Runtime MTL engine for certification.
+
+    FVT-G181 (parity lane) defaults to the hermetic parity engine.  Production
+    vendor certification uses :func:`ensure_runtime_mtl_vendor` / ``vendor=True``.
+    Callers that need live managed authority must pass ``vendor=True``.
+    """
+
     return mtl_installer.ensure_runtime_mtl_external_bundle(
         yes=True,
         strict=True,
         force=force,
         install_root=install_root,
-        hermetic_parity_engine=True,
+        hermetic_parity_engine=not vendor,
+        vendor=vendor,
         checksum_verified=True,
     )
 

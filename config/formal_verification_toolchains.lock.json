@@ -2076,6 +2076,7 @@
       "runtime": "native",
       "resource_class": "monitor",
       "executable_candidates": [
+        "runtime-mtl-external",
         "runtime-mtl",
         "mtl-monitor"
       ],
