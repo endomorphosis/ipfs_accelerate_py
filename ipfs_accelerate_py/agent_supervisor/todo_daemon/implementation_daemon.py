@@ -25815,6 +25815,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
             branch_name = str(entry.get("branch") or "").removeprefix("refs/heads/")
             detail = {"worktree_path": str(worktree_path), "branch": branch_name}
+            # Ghost worktrees (git still lists them after the checkout dir was
+            # removed) must not crash the daemon: subprocess.run(cwd=...) raises
+            # FileNotFoundError and aborts the entire pass — observed as a
+            # public-facades restart loop that permanently stalls ASE2-007.
+            if not worktree_path.is_dir():
+                skipped.append({**detail, "reason": "worktree_missing"})
+                continue
             if active_resolved is not None and worktree_resolved == active_resolved:
                 skipped.append({**detail, "reason": "active_state_worktree"})
                 continue
@@ -25847,13 +25854,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 skipped.append({**detail, "reason": "branch_not_merged"})
                 continue
 
-            status = subprocess.run(
-                ["git", "status", "--porcelain", "--untracked-files=all"],
-                cwd=worktree_path,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
+            try:
+                status = subprocess.run(
+                    ["git", "status", "--porcelain", "--untracked-files=all"],
+                    cwd=worktree_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            except FileNotFoundError:
+                skipped.append({**detail, "reason": "worktree_missing"})
+                continue
             if status.returncode != 0:
                 skipped.append(
                     {
