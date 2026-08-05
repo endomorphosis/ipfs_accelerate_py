@@ -83,6 +83,10 @@ DEFAULT_SINGLE_FLIGHT_LEASE_SECONDS = 30.0
 DEFAULT_SINGLE_FLIGHT_OUTCOME_TTL_SECONDS = 60.0
 DEFAULT_SINGLE_FLIGHT_POLL_SECONDS = 0.02
 DEFAULT_SINGLE_FLIGHT_MAX_OUTCOME_BYTES = 256 * 1024
+# Profile-G v1 TaskSpec attempt ceiling (schema range [1, 100]); supervisor
+# policy may still use 0 as the unlimited sentinel, mapped to this ceiling
+# only when projecting immutable TaskSpecs.
+PROFILE_G_MAX_TASK_ATTEMPTS = 100
 
 
 def _is_transient_duckdb_lock_error(exc: Exception) -> bool:
