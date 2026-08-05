@@ -1,0 +1,1640 @@
+{
+  "acceptance": {
+    "digests_not_forged": true,
+    "exact_kernel_identity_bound": true,
+    "live_positive_negative_mutation_replay": true,
+    "no_install_during_certification": true,
+    "no_network_during_certification": true,
+    "opam_support_only": true,
+    "production_certified": true
+  },
+  "authority_ceiling": "kernel",
+  "authority_scope": "kernel_proof_checking_only",
+  "bindings": {
+    "assumptions": [
+      "H : n = m"
+    ],
+    "authority": {
+      "ceiling": "kernel",
+      "not_advisor": true,
+      "not_install_authority": true,
+      "opam_cannot_promote_kernel_lane": true,
+      "opam_is_support_only": true,
+      "scope": "kernel_proof_checking_only"
+    },
+    "binaries": {
+      "coq": {
+        "authority": true,
+        "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/coqc",
+        "locked_version": "9.1.1",
+        "package_identity": "rocq-prover.9.1.1",
+        "tool_id": "coq"
+      },
+      "opam": {
+        "can_promote_kernel_lane": false,
+        "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/opam",
+        "locked_version": "2.5.2",
+        "support_only": true,
+        "tool_id": "opam"
+      }
+    },
+    "imports": [],
+    "isolated_opam_root": {
+      "error": null,
+      "global_home_opam_forbidden": true,
+      "global_switch_mutation_forbidden": true,
+      "isolated_opam_root": "<isolated-opam-root-redacted>",
+      "segment": "rocq",
+      "serialized_with_proverif": true,
+      "validated": true
+    },
+    "kernel_identity": {
+      "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/coqc",
+      "locked_version": "9.1.1",
+      "opam_repository": "https://rocq-prover.org/opam/released",
+      "package_identity": "rocq-prover.9.1.1",
+      "tool_id": "coq",
+      "version_match": true,
+      "version_string": "The Rocq Prover, version 9.1.1"
+    },
+    "output": {
+      "output_digest": "2becfd3d66ab849ae3e52567995c7612491f27efed94af9ea4ddc8e61864f5c0",
+      "returncode": 0
+    },
+    "source": {
+      "format": "rocq",
+      "primary_path": "Goal.v",
+      "source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72"
+    },
+    "theorem": {
+      "assumptions": [
+        "H : n = m"
+      ],
+      "name": "from_eq"
+    }
+  },
+  "block_reasons": [],
+  "cases": [
+    {
+      "accepted": true,
+      "assumptions": [
+        "H : n = m"
+      ],
+      "case_id": "true_theorem",
+      "detail": "Exact true theorem accepted by the pinned Rocq/Coq kernel",
+      "expect": "accepted",
+      "imports": [],
+      "kind": "positive",
+      "matched": true,
+      "output_digest": "2becfd3d66ab849ae3e52567995c7612491f27efed94af9ea4ddc8e61864f5c0",
+      "reason_codes": [],
+      "returncode": 0,
+      "source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72",
+      "status": "accepted",
+      "stderr": {
+        "byte_length": 2,
+        "reason": "raw_process_output_forbidden",
+        "redacted": true,
+        "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+      },
+      "stdout": {
+        "byte_length": 2,
+        "reason": "raw_process_output_forbidden",
+        "redacted": true,
+        "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+      },
+      "theorem_name": "from_eq",
+      "timed_out": false
+    },
+    {
+      "accepted": false,
+      "assumptions": [],
+      "case_id": "false_proof",
+      "detail": "False proof rejected by the kernel",
+      "expect": "rejected",
+      "imports": [],
+      "kind": "negative",
+      "matched": true,
+      "output_digest": "f9385cd4f83f8d10c251fa8d726a5e34a5e964ebf01746f37fc10a507945bd00",
+      "reason_codes": [
+        "error_marker",
+        "non_zero_exit"
+      ],
+      "returncode": 1,
+      "source_digest": "803ef0ab8e0d02f10ebf946afab1db1da7bd2ca08c90006a77be57ce0ed6b570",
+      "status": "rejected",
+      "stderr": {
+        "byte_length": 88,
+        "reason": "raw_process_output_forbidden",
+        "redacted": true,
+        "sha256": "2d0c957df035e98ec5c255d43a1674cf7841f9a54149da043acde1f6b582ba06"
+      },
+      "stdout": {
+        "byte_length": 2,
+        "reason": "raw_process_output_forbidden",
+        "redacted": true,
+        "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+      },
+      "theorem_name": "false_claim",
+      "timed_out": false
+    },
+    {
+      "accepted": false,
+      "assumptions": [
+        "H : n = n"
+      ],
+      "case_id": "hypothesis_mutation",
+      "detail": "Hypothesis mutation of the true theorem is rejected",
+      "expect": "rejected",
+      "imports": [],
+      "kind": "mutation",
+      "matched": true,
+      "output_digest": "a2da92c2e55df8c6c34063d6cb0527451708dd3faef6724d4052adad313b807b",
+      "reason_codes": [
+        "error_marker",
+        "non_zero_exit"
+      ],
+      "returncode": 1,
+      "source_digest": "28a3a89ef7520a61b20e854507ec7b77e48ec029b70c5bf97078a6aefa1b4bbc",
+      "status": "rejected",
+      "stderr": {
+        "byte_length": 128,
+        "reason": "raw_process_output_forbidden",
+        "redacted": true,
+        "sha256": "b9eadd61fb36c99474681ececf3ade80e5d01d86933fb54ba948092f580dca46"
+      },
+      "stdout": {
+        "byte_length": 2,
+        "reason": "raw_process_output_forbidden",
+        "redacted": true,
+        "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+      },
+      "theorem_name": "from_eq",
+      "timed_out": false
+    },
+    {
+      "accepted": false,
+      "assumptions": [
+        "H : n = m"
+      ],
+      "case_id": "conclusion_mutation",
+      "detail": "Conclusion mutation of the true theorem is rejected",
+      "expect": "rejected",
+      "imports": [],
+      "kind": "mutation",
+      "matched": true,
+      "output_digest": "22c49f5da32eed3bdd66b97b3685943e898106b4d9b4d541581468b5319db9c3",
+      "reason_codes": [
+        "error_marker",
+        "non_zero_exit"
+      ],
+      "returncode": 1,
+      "source_digest": "64772bc2b349ccfe3b13d235a55a6b1ccf87f23486e5faa864c613d866f9da54",
+      "status": "rejected",
+      "stderr": {
+        "byte_length": 128,
+        "reason": "raw_process_output_forbidden",
+        "redacted": true,
+        "sha256": "a8282157096a3e99d0c73f4b7a5a84f68f4021d7e40266fc149ade4076040dd0"
+      },
+      "stdout": {
+        "byte_length": 2,
+        "reason": "raw_process_output_forbidden",
+        "redacted": true,
+        "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+      },
+      "theorem_name": "from_eq",
+      "timed_out": false
+    },
+    {
+      "accepted": true,
+      "assumptions": [
+        "H : n = m"
+      ],
+      "case_id": "deterministic_replay",
+      "detail": "Positive case replays with identical acceptance and digests",
+      "expect": "accepted",
+      "imports": [],
+      "kind": "replay",
+      "matched": true,
+      "output_digest": "2becfd3d66ab849ae3e52567995c7612491f27efed94af9ea4ddc8e61864f5c0",
+      "reason_codes": [],
+      "returncode": 0,
+      "source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72",
+      "status": "accepted",
+      "stderr": {
+        "byte_length": 2,
+        "reason": "raw_process_output_forbidden",
+        "redacted": true,
+        "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+      },
+      "stdout": {
+        "byte_length": 2,
+        "reason": "raw_process_output_forbidden",
+        "redacted": true,
+        "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+      },
+      "theorem_name": "from_eq",
+      "timed_out": false
+    },
+    {
+      "accepted": false,
+      "assumptions": [],
+      "case_id": "admit_escape",
+      "detail": "admit fails closed even when coqc may exit 0",
+      "expect": "rejected",
+      "imports": [],
+      "kind": "fail_closed",
+      "matched": true,
+      "output_digest": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+      "reason_codes": [
+        "admit_or_admitted"
+      ],
+      "returncode": 0,
+      "source_digest": "34ae5bb0387f3316014b42ec7d48f2f2f1041a5330adf5af8703013f43536e46",
+      "status": "rejected",
+      "stderr": {
+        "byte_length": 2,
+        "reason": "raw_process_output_forbidden",
+        "redacted": true,
+        "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+      },
+      "stdout": {
+        "byte_length": 2,
+        "reason": "raw_process_output_forbidden",
+        "redacted": true,
+        "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+      },
+      "theorem_name": "hole_admit",
+      "timed_out": false
+    },
+    {
+      "accepted": false,
+      "assumptions": [],
+      "case_id": "admitted_escape",
+      "detail": "Admitted fails closed",
+      "expect": "rejected",
+      "imports": [],
+      "kind": "fail_closed",
+      "matched": true,
+      "output_digest": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+      "reason_codes": [
+        "admit_or_admitted"
+      ],
+      "returncode": 0,
+      "source_digest": "40e3712436d6b4d2b52136f825bf13a009dba8e5765385b588dd22917c68c219",
+      "status": "rejected",
+      "stderr": {
+        "byte_length": 2,
+        "reason": "raw_process_output_forbidden",
+        "redacted": true,
+        "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+      },
+      "stdout": {
+        "byte_length": 2,
+        "reason": "raw_process_output_forbidden",
+        "redacted": true,
+        "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+      },
+      "theorem_name": "hole_admitted",
+      "timed_out": false
+    },
+    {
+      "accepted": false,
+      "assumptions": [],
+      "case_id": "axiom_escape",
+      "detail": "unreviewed Axiom escapes fail closed",
+      "expect": "rejected",
+      "imports": [],
+      "kind": "fail_closed",
+      "matched": true,
+      "output_digest": "31cd4e954e10005a9da07b6411413bfcb042c4af0fcf9b81d2cc65b03d0f4b6b",
+      "reason_codes": [
+        "unreviewed_axiom",
+        "open_assumptions_or_axioms"
+      ],
+      "returncode": 0,
+      "source_digest": "5d4bfccaadd0cdc7c106fe94d77a970c0b5ebd6c93121c9d660965b389763bce",
+      "status": "rejected",
+      "stderr": {
+        "byte_length": 2,
+        "reason": "raw_process_output_forbidden",
+        "redacted": true,
+        "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+      },
+      "stdout": {
+        "byte_length": 2,
+        "reason": "raw_process_output_forbidden",
+        "redacted": true,
+        "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+      },
+      "theorem_name": "uses_axiom",
+      "timed_out": false
+    },
+    {
+      "accepted": false,
+      "assumptions": [],
+      "case_id": "malformed_input",
+      "detail": "Malformed Gallina never reports acceptance",
+      "expect": "rejected",
+      "imports": [],
+      "kind": "malformed",
+      "matched": true,
+      "output_digest": "a588de34838a7aa56f9c97b3f96002276663bf0f79112e8f2e4784c5e1c26c10",
+      "reason_codes": [
+        "error_marker",
+        "non_zero_exit"
+      ],
+      "returncode": 1,
+      "source_digest": "2f9c84f0fa2f82d940edfa063391a4e9f7b5aca3d2e5606bcad1210792f2d1f7",
+      "status": "rejected",
+      "stderr": {
+        "byte_length": 23,
+        "reason": "raw_process_output_forbidden",
+        "redacted": true,
+        "sha256": "b0b6e7cef3dd3f3ab681dbca2e032dfae9b6f1e534460673881bda1635373931"
+      },
+      "stdout": {
+        "byte_length": 2,
+        "reason": "raw_process_output_forbidden",
+        "redacted": true,
+        "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+      },
+      "theorem_name": "broken",
+      "timed_out": false
+    },
+    {
+      "accepted": false,
+      "assumptions": [],
+      "case_id": "version_mismatch",
+      "detail": "observed='8.18.0' locked='9.1.1'",
+      "expect": "blocked",
+      "imports": [],
+      "kind": "version_mismatch",
+      "matched": true,
+      "output_digest": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+      "reason_codes": [
+        "locked_version_mismatch"
+      ],
+      "returncode": null,
+      "source_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "status": "blocked",
+      "stderr": {
+        "byte_length": 2,
+        "reason": "raw_process_output_forbidden",
+        "redacted": true,
+        "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+      },
+      "stdout": {
+        "byte_length": 2,
+        "reason": "raw_process_output_forbidden",
+        "redacted": true,
+        "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+      },
+      "theorem_name": "",
+      "timed_out": false
+    }
+  ],
+  "certification_surface": "tools.logic.certification.rocq",
+  "certified": true,
+  "check_summary": {
+    "failed": 0,
+    "kinds_present": [
+      "binding",
+      "fail_closed",
+      "identity",
+      "malformed",
+      "mutation",
+      "negative",
+      "policy",
+      "positive",
+      "replay",
+      "version_mismatch"
+    ],
+    "passed": 16,
+    "positive_negative_mutation_replay_present": true,
+    "required_kinds": [
+      "mutation",
+      "negative",
+      "positive",
+      "replay"
+    ],
+    "required_kinds_satisfied": true,
+    "total": 16
+  },
+  "checks": [
+    {
+      "bindings": {},
+      "check_id": "rocq.offline_policy",
+      "detail": "certification never installs, downloads, or opens the network",
+      "expected": "no_install_no_download_no_network",
+      "kind": "policy",
+      "observed": "install=False,download=False,network=False,FORMAL_VERIFICATION_CERTIFY_OFFLINE=1",
+      "reason_codes": [],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/coqc",
+        "locked_version": "9.1.1",
+        "package_identity": "rocq-prover.9.1.1",
+        "version_string": "The Rocq Prover, version 9.1.1"
+      },
+      "check_id": "rocq.identity",
+      "detail": "exact offline pin identity",
+      "expected": "9.1.1",
+      "kind": "identity",
+      "observed": "The Rocq Prover, version 9.1.1",
+      "reason_codes": [],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "error": null,
+        "global_home_opam_forbidden": true,
+        "global_switch_mutation_forbidden": true,
+        "isolated_opam_root": "<isolated-opam-root-redacted>",
+        "segment": "rocq",
+        "serialized_with_proverif": true,
+        "validated": true
+      },
+      "check_id": "rocq.isolated_opam_root",
+      "detail": "Rocq OPAM root is repository-local and never ~/.opam",
+      "expected": "isolated_opam_root_never_global",
+      "kind": "policy",
+      "observed": "<isolated-opam-root-redacted>",
+      "reason_codes": [],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "authority_ceiling": "none",
+        "blocks_alone": true,
+        "can_promote_kernel_lane": false,
+        "can_satisfy_kernel_requirement": false,
+        "locked_authority_version": "9.1.1",
+        "locked_opam_version": "2.5.2",
+        "package_identity": "rocq-prover.9.1.1",
+        "promotion_allowed": false,
+        "requires_authority_tool": "coq",
+        "role": "support",
+        "support_only": true,
+        "tool_id": "opam"
+      },
+      "check_id": "opam.support_only_boundary",
+      "detail": "OPAM presence alone never promotes the kernel lane",
+      "expected": "opam_support_only_no_kernel_promotion",
+      "kind": "policy",
+      "observed": "{\"authority_ceiling\": \"none\", \"blocks_alone\": true, \"can_promote_kernel_lane\": false, \"can_satisfy_kernel_requirement\": false, \"locked_authority_version\": \"9.1.1\", \"locked_opam_version\": \"2.5.2\", \"package_identity\": \"rocq-prover.9.1.1\", \"promotion_allowed\": false, \"requires_authority_tool\": \"coq\", \"role\": \"support\", \"support_only\": true, \"tool_id\": \"opam\"}",
+      "reason_codes": [],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "assumptions": [
+          "H : n = m"
+        ],
+        "imports": [],
+        "output_digest": "2becfd3d66ab849ae3e52567995c7612491f27efed94af9ea4ddc8e61864f5c0",
+        "returncode": 0,
+        "source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72",
+        "theorem_name": "from_eq"
+      },
+      "check_id": "rocq.true_theorem",
+      "detail": "Exact true theorem accepted by the pinned Rocq/Coq kernel",
+      "expected": "accepted",
+      "kind": "positive",
+      "observed": "accepted",
+      "reason_codes": [],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "assumptions": [],
+        "imports": [],
+        "output_digest": "f9385cd4f83f8d10c251fa8d726a5e34a5e964ebf01746f37fc10a507945bd00",
+        "returncode": 1,
+        "source_digest": "803ef0ab8e0d02f10ebf946afab1db1da7bd2ca08c90006a77be57ce0ed6b570",
+        "theorem_name": "false_claim"
+      },
+      "check_id": "rocq.false_proof",
+      "detail": "False proof rejected by the kernel",
+      "expected": "rejected",
+      "kind": "negative",
+      "observed": "rejected",
+      "reason_codes": [
+        "error_marker",
+        "non_zero_exit"
+      ],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "assumptions": [
+          "H : n = n"
+        ],
+        "imports": [],
+        "output_digest": "a2da92c2e55df8c6c34063d6cb0527451708dd3faef6724d4052adad313b807b",
+        "returncode": 1,
+        "source_digest": "28a3a89ef7520a61b20e854507ec7b77e48ec029b70c5bf97078a6aefa1b4bbc",
+        "theorem_name": "from_eq"
+      },
+      "check_id": "rocq.hypothesis_mutation",
+      "detail": "Hypothesis mutation of the true theorem is rejected",
+      "expected": "rejected",
+      "kind": "mutation",
+      "observed": "rejected",
+      "reason_codes": [
+        "error_marker",
+        "non_zero_exit"
+      ],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "assumptions": [
+          "H : n = m"
+        ],
+        "imports": [],
+        "output_digest": "22c49f5da32eed3bdd66b97b3685943e898106b4d9b4d541581468b5319db9c3",
+        "returncode": 1,
+        "source_digest": "64772bc2b349ccfe3b13d235a55a6b1ccf87f23486e5faa864c613d866f9da54",
+        "theorem_name": "from_eq"
+      },
+      "check_id": "rocq.conclusion_mutation",
+      "detail": "Conclusion mutation of the true theorem is rejected",
+      "expected": "rejected",
+      "kind": "mutation",
+      "observed": "rejected",
+      "reason_codes": [
+        "error_marker",
+        "non_zero_exit"
+      ],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "assumptions": [
+          "H : n = m"
+        ],
+        "imports": [],
+        "output_digest": "2becfd3d66ab849ae3e52567995c7612491f27efed94af9ea4ddc8e61864f5c0",
+        "returncode": 0,
+        "source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72",
+        "theorem_name": "from_eq"
+      },
+      "check_id": "rocq.deterministic_replay",
+      "detail": "Positive case replays with identical acceptance and digests",
+      "expected": "accepted",
+      "kind": "replay",
+      "observed": "accepted",
+      "reason_codes": [],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "assumptions": [],
+        "imports": [],
+        "output_digest": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+        "returncode": 0,
+        "source_digest": "34ae5bb0387f3316014b42ec7d48f2f2f1041a5330adf5af8703013f43536e46",
+        "theorem_name": "hole_admit"
+      },
+      "check_id": "rocq.admit_escape",
+      "detail": "admit fails closed even when coqc may exit 0",
+      "expected": "rejected",
+      "kind": "fail_closed",
+      "observed": "rejected",
+      "reason_codes": [
+        "admit_or_admitted"
+      ],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "assumptions": [],
+        "imports": [],
+        "output_digest": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+        "returncode": 0,
+        "source_digest": "40e3712436d6b4d2b52136f825bf13a009dba8e5765385b588dd22917c68c219",
+        "theorem_name": "hole_admitted"
+      },
+      "check_id": "rocq.admitted_escape",
+      "detail": "Admitted fails closed",
+      "expected": "rejected",
+      "kind": "fail_closed",
+      "observed": "rejected",
+      "reason_codes": [
+        "admit_or_admitted"
+      ],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "assumptions": [],
+        "imports": [],
+        "output_digest": "31cd4e954e10005a9da07b6411413bfcb042c4af0fcf9b81d2cc65b03d0f4b6b",
+        "returncode": 0,
+        "source_digest": "5d4bfccaadd0cdc7c106fe94d77a970c0b5ebd6c93121c9d660965b389763bce",
+        "theorem_name": "uses_axiom"
+      },
+      "check_id": "rocq.axiom_escape",
+      "detail": "unreviewed Axiom escapes fail closed",
+      "expected": "rejected",
+      "kind": "fail_closed",
+      "observed": "rejected",
+      "reason_codes": [
+        "unreviewed_axiom",
+        "open_assumptions_or_axioms"
+      ],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "assumptions": [],
+        "imports": [],
+        "output_digest": "a588de34838a7aa56f9c97b3f96002276663bf0f79112e8f2e4784c5e1c26c10",
+        "returncode": 1,
+        "source_digest": "2f9c84f0fa2f82d940edfa063391a4e9f7b5aca3d2e5606bcad1210792f2d1f7",
+        "theorem_name": "broken"
+      },
+      "check_id": "rocq.malformed_input",
+      "detail": "Malformed Gallina never reports acceptance",
+      "expected": "rejected",
+      "kind": "malformed",
+      "observed": "rejected",
+      "reason_codes": [
+        "error_marker",
+        "non_zero_exit"
+      ],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "assumptions": [],
+        "imports": [],
+        "output_digest": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+        "returncode": null,
+        "source_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "theorem_name": ""
+      },
+      "check_id": "rocq.version_mismatch",
+      "detail": "observed='8.18.0' locked='9.1.1'",
+      "expected": "blocked",
+      "kind": "version_mismatch",
+      "observed": "blocked",
+      "reason_codes": [
+        "locked_version_mismatch"
+      ],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "positive_output_digest": "2becfd3d66ab849ae3e52567995c7612491f27efed94af9ea4ddc8e61864f5c0",
+        "positive_source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72",
+        "replay_output_digest": "2becfd3d66ab849ae3e52567995c7612491f27efed94af9ea4ddc8e61864f5c0",
+        "replay_source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72"
+      },
+      "check_id": "rocq.deterministic_replay_binding",
+      "detail": "positive case must replay deterministically under the same pin",
+      "expected": "identical acceptance and digests",
+      "kind": "replay",
+      "observed": "pos=True/f5339ee28294,replay=True/f5339ee28294",
+      "reason_codes": [],
+      "status": "passed"
+    },
+    {
+      "bindings": {
+        "assumptions": [
+          "H : n = m"
+        ],
+        "authority": {
+          "ceiling": "kernel",
+          "not_advisor": true,
+          "not_install_authority": true,
+          "opam_cannot_promote_kernel_lane": true,
+          "opam_is_support_only": true,
+          "scope": "kernel_proof_checking_only"
+        },
+        "binaries": {
+          "coq": {
+            "authority": true,
+            "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/coqc",
+            "locked_version": "9.1.1",
+            "package_identity": "rocq-prover.9.1.1",
+            "tool_id": "coq"
+          },
+          "opam": {
+            "can_promote_kernel_lane": false,
+            "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/opam",
+            "locked_version": "2.5.2",
+            "support_only": true,
+            "tool_id": "opam"
+          }
+        },
+        "imports": [],
+        "isolated_opam_root": {
+          "error": null,
+          "global_home_opam_forbidden": true,
+          "global_switch_mutation_forbidden": true,
+          "isolated_opam_root": "<isolated-opam-root-redacted>",
+          "segment": "rocq",
+          "serialized_with_proverif": true,
+          "validated": true
+        },
+        "kernel_identity": {
+          "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/coqc",
+          "locked_version": "9.1.1",
+          "opam_repository": "https://rocq-prover.org/opam/released",
+          "package_identity": "rocq-prover.9.1.1",
+          "tool_id": "coq",
+          "version_match": true,
+          "version_string": "The Rocq Prover, version 9.1.1"
+        },
+        "output": {
+          "output_digest": "2becfd3d66ab849ae3e52567995c7612491f27efed94af9ea4ddc8e61864f5c0",
+          "returncode": 0
+        },
+        "source": {
+          "format": "rocq",
+          "primary_path": "Goal.v",
+          "source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72"
+        },
+        "theorem": {
+          "assumptions": [
+            "H : n = m"
+          ],
+          "name": "from_eq"
+        }
+      },
+      "check_id": "rocq.bindings",
+      "detail": "receipt binds every trust-relevant kernel check input",
+      "expected": "imports,source,theorem,assumptions,kernel_identity",
+      "kind": "binding",
+      "observed": "b79c9386b78ec1b6",
+      "reason_codes": [],
+      "status": "passed"
+    }
+  ],
+  "download_attempted": false,
+  "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/coqc",
+  "goal_id": "FVT-G239",
+  "handler_id": "managed_rocq_coq_residual_certification@1",
+  "host_platform": "linux-aarch64",
+  "identity_probed": true,
+  "install_attempted": false,
+  "interface": "ManagedCapabilityResidualCertification@1",
+  "lane": "managed-rocq-coq",
+  "lock_digest_sha256": "sha256:b1d1bbad034fcc8d6189fa6eaa17555783720456ee01ca860a57a68fcce29ec2",
+  "lock_path": "config/formal_verification_toolchains.lock.json",
+  "locked_version": "9.1.1",
+  "managed_root": "<managed-tool-path-redacted>/fvt083-20260801-01/provers",
+  "managed_root_approved_immutable": true,
+  "managed_root_present": true,
+  "network_used": false,
+  "notes": "Pinned Rocq/Coq 9.1.1 kernel semantics certified: true theorem accepted; false proof, mutations, admit/Admitted/Axiom escapes, malformed input, and version mismatch fail closed; bindings complete; OPAM is support only under an isolated root.",
+  "observed_at": "2026-08-05T16:16:50Z",
+  "opam_executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/opam",
+  "package_identity": "rocq-prover.9.1.1",
+  "policy": {
+    "does_not_edit_central_certificate": true,
+    "does_not_edit_deployment_receipt": true,
+    "does_not_edit_shared_lock": true,
+    "never_greenwash_missing_sealed_roots": true,
+    "never_mark_deployment_ready_here": true,
+    "no_download": true,
+    "no_install": true,
+    "no_network": true,
+    "opam_cannot_promote_kernel_lane": true
+  },
+  "primary_tool_id": "coq",
+  "production_certified": true,
+  "program": "formal-verification-tactician/managed-rocq-coq",
+  "promotion_blocked": false,
+  "receipt_digest_sha256": "5027623a4fcde9f5c2dcc9ce297f067a594a9504fee677609b62d18ee76a6590",
+  "residual_clearance": {
+    "elevation_gaps_cleared": [
+      "coq"
+    ],
+    "forged_digests": false,
+    "honest_certification_status": "certified",
+    "managed_blockers_cleared": [
+      "managed:coq:full_semantic_check_set_missing_or_failed",
+      "managed:coq:supported_managed_installation_missing_or_shim_only"
+    ],
+    "tools_cleared": [
+      "coq",
+      "rocq"
+    ]
+  },
+  "schema_version": "formal-verification-managed-residual-certification-receipt/v1",
+  "semantic_corpus_passed": true,
+  "source_certification": {
+    "args_received": true,
+    "authority_ceiling": "kernel",
+    "authority_scope": "kernel_proof_checking_only",
+    "bindings": {
+      "assumptions": [
+        "H : n = m"
+      ],
+      "authority": {
+        "ceiling": "kernel",
+        "not_advisor": true,
+        "not_install_authority": true,
+        "opam_cannot_promote_kernel_lane": true,
+        "opam_is_support_only": true,
+        "scope": "kernel_proof_checking_only"
+      },
+      "binaries": {
+        "coq": {
+          "authority": true,
+          "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/coqc",
+          "locked_version": "9.1.1",
+          "package_identity": "rocq-prover.9.1.1",
+          "tool_id": "coq"
+        },
+        "opam": {
+          "can_promote_kernel_lane": false,
+          "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/opam",
+          "locked_version": "2.5.2",
+          "support_only": true,
+          "tool_id": "opam"
+        }
+      },
+      "imports": [],
+      "isolated_opam_root": {
+        "error": null,
+        "global_home_opam_forbidden": true,
+        "global_switch_mutation_forbidden": true,
+        "isolated_opam_root": "<isolated-opam-root-redacted>",
+        "segment": "rocq",
+        "serialized_with_proverif": true,
+        "validated": true
+      },
+      "kernel_identity": {
+        "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/coqc",
+        "locked_version": "9.1.1",
+        "opam_repository": "https://rocq-prover.org/opam/released",
+        "package_identity": "rocq-prover.9.1.1",
+        "tool_id": "coq",
+        "version_match": true,
+        "version_string": "The Rocq Prover, version 9.1.1"
+      },
+      "output": {
+        "output_digest": "2becfd3d66ab849ae3e52567995c7612491f27efed94af9ea4ddc8e61864f5c0",
+        "returncode": 0
+      },
+      "source": {
+        "format": "rocq",
+        "primary_path": "Goal.v",
+        "source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72"
+      },
+      "theorem": {
+        "assumptions": [
+          "H : n = m"
+        ],
+        "name": "from_eq"
+      }
+    },
+    "block_reasons": [],
+    "cases": [
+      {
+        "accepted": true,
+        "assumptions": [
+          "H : n = m"
+        ],
+        "case_id": "true_theorem",
+        "detail": "Exact true theorem accepted by the pinned Rocq/Coq kernel",
+        "expect": "accepted",
+        "imports": [],
+        "kind": "positive",
+        "matched": true,
+        "output_digest": "2becfd3d66ab849ae3e52567995c7612491f27efed94af9ea4ddc8e61864f5c0",
+        "reason_codes": [],
+        "returncode": 0,
+        "source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72",
+        "status": "accepted",
+        "stderr": {
+          "byte_length": 2,
+          "reason": "raw_process_output_forbidden",
+          "redacted": true,
+          "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+        },
+        "stdout": {
+          "byte_length": 2,
+          "reason": "raw_process_output_forbidden",
+          "redacted": true,
+          "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+        },
+        "theorem_name": "from_eq",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [],
+        "case_id": "false_proof",
+        "detail": "False proof rejected by the kernel",
+        "expect": "rejected",
+        "imports": [],
+        "kind": "negative",
+        "matched": true,
+        "output_digest": "f9385cd4f83f8d10c251fa8d726a5e34a5e964ebf01746f37fc10a507945bd00",
+        "reason_codes": [
+          "error_marker",
+          "non_zero_exit"
+        ],
+        "returncode": 1,
+        "source_digest": "803ef0ab8e0d02f10ebf946afab1db1da7bd2ca08c90006a77be57ce0ed6b570",
+        "status": "rejected",
+        "stderr": {
+          "byte_length": 88,
+          "reason": "raw_process_output_forbidden",
+          "redacted": true,
+          "sha256": "2d0c957df035e98ec5c255d43a1674cf7841f9a54149da043acde1f6b582ba06"
+        },
+        "stdout": {
+          "byte_length": 2,
+          "reason": "raw_process_output_forbidden",
+          "redacted": true,
+          "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+        },
+        "theorem_name": "false_claim",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [
+          "H : n = n"
+        ],
+        "case_id": "hypothesis_mutation",
+        "detail": "Hypothesis mutation of the true theorem is rejected",
+        "expect": "rejected",
+        "imports": [],
+        "kind": "mutation",
+        "matched": true,
+        "output_digest": "a2da92c2e55df8c6c34063d6cb0527451708dd3faef6724d4052adad313b807b",
+        "reason_codes": [
+          "error_marker",
+          "non_zero_exit"
+        ],
+        "returncode": 1,
+        "source_digest": "28a3a89ef7520a61b20e854507ec7b77e48ec029b70c5bf97078a6aefa1b4bbc",
+        "status": "rejected",
+        "stderr": {
+          "byte_length": 128,
+          "reason": "raw_process_output_forbidden",
+          "redacted": true,
+          "sha256": "b9eadd61fb36c99474681ececf3ade80e5d01d86933fb54ba948092f580dca46"
+        },
+        "stdout": {
+          "byte_length": 2,
+          "reason": "raw_process_output_forbidden",
+          "redacted": true,
+          "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+        },
+        "theorem_name": "from_eq",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [
+          "H : n = m"
+        ],
+        "case_id": "conclusion_mutation",
+        "detail": "Conclusion mutation of the true theorem is rejected",
+        "expect": "rejected",
+        "imports": [],
+        "kind": "mutation",
+        "matched": true,
+        "output_digest": "22c49f5da32eed3bdd66b97b3685943e898106b4d9b4d541581468b5319db9c3",
+        "reason_codes": [
+          "error_marker",
+          "non_zero_exit"
+        ],
+        "returncode": 1,
+        "source_digest": "64772bc2b349ccfe3b13d235a55a6b1ccf87f23486e5faa864c613d866f9da54",
+        "status": "rejected",
+        "stderr": {
+          "byte_length": 128,
+          "reason": "raw_process_output_forbidden",
+          "redacted": true,
+          "sha256": "a8282157096a3e99d0c73f4b7a5a84f68f4021d7e40266fc149ade4076040dd0"
+        },
+        "stdout": {
+          "byte_length": 2,
+          "reason": "raw_process_output_forbidden",
+          "redacted": true,
+          "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+        },
+        "theorem_name": "from_eq",
+        "timed_out": false
+      },
+      {
+        "accepted": true,
+        "assumptions": [
+          "H : n = m"
+        ],
+        "case_id": "deterministic_replay",
+        "detail": "Positive case replays with identical acceptance and digests",
+        "expect": "accepted",
+        "imports": [],
+        "kind": "replay",
+        "matched": true,
+        "output_digest": "2becfd3d66ab849ae3e52567995c7612491f27efed94af9ea4ddc8e61864f5c0",
+        "reason_codes": [],
+        "returncode": 0,
+        "source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72",
+        "status": "accepted",
+        "stderr": {
+          "byte_length": 2,
+          "reason": "raw_process_output_forbidden",
+          "redacted": true,
+          "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+        },
+        "stdout": {
+          "byte_length": 2,
+          "reason": "raw_process_output_forbidden",
+          "redacted": true,
+          "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+        },
+        "theorem_name": "from_eq",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [],
+        "case_id": "admit_escape",
+        "detail": "admit fails closed even when coqc may exit 0",
+        "expect": "rejected",
+        "imports": [],
+        "kind": "fail_closed",
+        "matched": true,
+        "output_digest": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+        "reason_codes": [
+          "admit_or_admitted"
+        ],
+        "returncode": 0,
+        "source_digest": "34ae5bb0387f3316014b42ec7d48f2f2f1041a5330adf5af8703013f43536e46",
+        "status": "rejected",
+        "stderr": {
+          "byte_length": 2,
+          "reason": "raw_process_output_forbidden",
+          "redacted": true,
+          "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+        },
+        "stdout": {
+          "byte_length": 2,
+          "reason": "raw_process_output_forbidden",
+          "redacted": true,
+          "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+        },
+        "theorem_name": "hole_admit",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [],
+        "case_id": "admitted_escape",
+        "detail": "Admitted fails closed",
+        "expect": "rejected",
+        "imports": [],
+        "kind": "fail_closed",
+        "matched": true,
+        "output_digest": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+        "reason_codes": [
+          "admit_or_admitted"
+        ],
+        "returncode": 0,
+        "source_digest": "40e3712436d6b4d2b52136f825bf13a009dba8e5765385b588dd22917c68c219",
+        "status": "rejected",
+        "stderr": {
+          "byte_length": 2,
+          "reason": "raw_process_output_forbidden",
+          "redacted": true,
+          "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+        },
+        "stdout": {
+          "byte_length": 2,
+          "reason": "raw_process_output_forbidden",
+          "redacted": true,
+          "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+        },
+        "theorem_name": "hole_admitted",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [],
+        "case_id": "axiom_escape",
+        "detail": "unreviewed Axiom escapes fail closed",
+        "expect": "rejected",
+        "imports": [],
+        "kind": "fail_closed",
+        "matched": true,
+        "output_digest": "31cd4e954e10005a9da07b6411413bfcb042c4af0fcf9b81d2cc65b03d0f4b6b",
+        "reason_codes": [
+          "unreviewed_axiom",
+          "open_assumptions_or_axioms"
+        ],
+        "returncode": 0,
+        "source_digest": "5d4bfccaadd0cdc7c106fe94d77a970c0b5ebd6c93121c9d660965b389763bce",
+        "status": "rejected",
+        "stderr": {
+          "byte_length": 2,
+          "reason": "raw_process_output_forbidden",
+          "redacted": true,
+          "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+        },
+        "stdout": {
+          "byte_length": 2,
+          "reason": "raw_process_output_forbidden",
+          "redacted": true,
+          "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+        },
+        "theorem_name": "uses_axiom",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [],
+        "case_id": "malformed_input",
+        "detail": "Malformed Gallina never reports acceptance",
+        "expect": "rejected",
+        "imports": [],
+        "kind": "malformed",
+        "matched": true,
+        "output_digest": "a588de34838a7aa56f9c97b3f96002276663bf0f79112e8f2e4784c5e1c26c10",
+        "reason_codes": [
+          "error_marker",
+          "non_zero_exit"
+        ],
+        "returncode": 1,
+        "source_digest": "2f9c84f0fa2f82d940edfa063391a4e9f7b5aca3d2e5606bcad1210792f2d1f7",
+        "status": "rejected",
+        "stderr": {
+          "byte_length": 23,
+          "reason": "raw_process_output_forbidden",
+          "redacted": true,
+          "sha256": "b0b6e7cef3dd3f3ab681dbca2e032dfae9b6f1e534460673881bda1635373931"
+        },
+        "stdout": {
+          "byte_length": 2,
+          "reason": "raw_process_output_forbidden",
+          "redacted": true,
+          "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+        },
+        "theorem_name": "broken",
+        "timed_out": false
+      },
+      {
+        "accepted": false,
+        "assumptions": [],
+        "case_id": "version_mismatch",
+        "detail": "observed='8.18.0' locked='9.1.1'",
+        "expect": "blocked",
+        "imports": [],
+        "kind": "version_mismatch",
+        "matched": true,
+        "output_digest": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+        "reason_codes": [
+          "locked_version_mismatch"
+        ],
+        "returncode": null,
+        "source_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status": "blocked",
+        "stderr": {
+          "byte_length": 2,
+          "reason": "raw_process_output_forbidden",
+          "redacted": true,
+          "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+        },
+        "stdout": {
+          "byte_length": 2,
+          "reason": "raw_process_output_forbidden",
+          "redacted": true,
+          "sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+        },
+        "theorem_name": "",
+        "timed_out": false
+      }
+    ],
+    "certification_surface": "tools.logic.certification.rocq",
+    "certified": true,
+    "checks": [
+      {
+        "bindings": {},
+        "check_id": "rocq.offline_policy",
+        "detail": "certification never installs, downloads, or opens the network",
+        "expected": "no_install_no_download_no_network",
+        "kind": "policy",
+        "observed": "install=False,download=False,network=False,FORMAL_VERIFICATION_CERTIFY_OFFLINE=1",
+        "reason_codes": [],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/coqc",
+          "locked_version": "9.1.1",
+          "package_identity": "rocq-prover.9.1.1",
+          "version_string": "The Rocq Prover, version 9.1.1"
+        },
+        "check_id": "rocq.identity",
+        "detail": "exact offline pin identity",
+        "expected": "9.1.1",
+        "kind": "identity",
+        "observed": "The Rocq Prover, version 9.1.1",
+        "reason_codes": [],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "error": null,
+          "global_home_opam_forbidden": true,
+          "global_switch_mutation_forbidden": true,
+          "isolated_opam_root": "<isolated-opam-root-redacted>",
+          "segment": "rocq",
+          "serialized_with_proverif": true,
+          "validated": true
+        },
+        "check_id": "rocq.isolated_opam_root",
+        "detail": "Rocq OPAM root is repository-local and never ~/.opam",
+        "expected": "isolated_opam_root_never_global",
+        "kind": "policy",
+        "observed": "<isolated-opam-root-redacted>",
+        "reason_codes": [],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "authority_ceiling": "none",
+          "blocks_alone": true,
+          "can_promote_kernel_lane": false,
+          "can_satisfy_kernel_requirement": false,
+          "locked_authority_version": "9.1.1",
+          "locked_opam_version": "2.5.2",
+          "package_identity": "rocq-prover.9.1.1",
+          "promotion_allowed": false,
+          "requires_authority_tool": "coq",
+          "role": "support",
+          "support_only": true,
+          "tool_id": "opam"
+        },
+        "check_id": "opam.support_only_boundary",
+        "detail": "OPAM presence alone never promotes the kernel lane",
+        "expected": "opam_support_only_no_kernel_promotion",
+        "kind": "policy",
+        "observed": "{\"authority_ceiling\": \"none\", \"blocks_alone\": true, \"can_promote_kernel_lane\": false, \"can_satisfy_kernel_requirement\": false, \"locked_authority_version\": \"9.1.1\", \"locked_opam_version\": \"2.5.2\", \"package_identity\": \"rocq-prover.9.1.1\", \"promotion_allowed\": false, \"requires_authority_tool\": \"coq\", \"role\": \"support\", \"support_only\": true, \"tool_id\": \"opam\"}",
+        "reason_codes": [],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [
+            "H : n = m"
+          ],
+          "imports": [],
+          "output_digest": "2becfd3d66ab849ae3e52567995c7612491f27efed94af9ea4ddc8e61864f5c0",
+          "returncode": 0,
+          "source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72",
+          "theorem_name": "from_eq"
+        },
+        "check_id": "rocq.true_theorem",
+        "detail": "Exact true theorem accepted by the pinned Rocq/Coq kernel",
+        "expected": "accepted",
+        "kind": "positive",
+        "observed": "accepted",
+        "reason_codes": [],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [],
+          "imports": [],
+          "output_digest": "f9385cd4f83f8d10c251fa8d726a5e34a5e964ebf01746f37fc10a507945bd00",
+          "returncode": 1,
+          "source_digest": "803ef0ab8e0d02f10ebf946afab1db1da7bd2ca08c90006a77be57ce0ed6b570",
+          "theorem_name": "false_claim"
+        },
+        "check_id": "rocq.false_proof",
+        "detail": "False proof rejected by the kernel",
+        "expected": "rejected",
+        "kind": "negative",
+        "observed": "rejected",
+        "reason_codes": [
+          "error_marker",
+          "non_zero_exit"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [
+            "H : n = n"
+          ],
+          "imports": [],
+          "output_digest": "a2da92c2e55df8c6c34063d6cb0527451708dd3faef6724d4052adad313b807b",
+          "returncode": 1,
+          "source_digest": "28a3a89ef7520a61b20e854507ec7b77e48ec029b70c5bf97078a6aefa1b4bbc",
+          "theorem_name": "from_eq"
+        },
+        "check_id": "rocq.hypothesis_mutation",
+        "detail": "Hypothesis mutation of the true theorem is rejected",
+        "expected": "rejected",
+        "kind": "mutation",
+        "observed": "rejected",
+        "reason_codes": [
+          "error_marker",
+          "non_zero_exit"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [
+            "H : n = m"
+          ],
+          "imports": [],
+          "output_digest": "22c49f5da32eed3bdd66b97b3685943e898106b4d9b4d541581468b5319db9c3",
+          "returncode": 1,
+          "source_digest": "64772bc2b349ccfe3b13d235a55a6b1ccf87f23486e5faa864c613d866f9da54",
+          "theorem_name": "from_eq"
+        },
+        "check_id": "rocq.conclusion_mutation",
+        "detail": "Conclusion mutation of the true theorem is rejected",
+        "expected": "rejected",
+        "kind": "mutation",
+        "observed": "rejected",
+        "reason_codes": [
+          "error_marker",
+          "non_zero_exit"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [
+            "H : n = m"
+          ],
+          "imports": [],
+          "output_digest": "2becfd3d66ab849ae3e52567995c7612491f27efed94af9ea4ddc8e61864f5c0",
+          "returncode": 0,
+          "source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72",
+          "theorem_name": "from_eq"
+        },
+        "check_id": "rocq.deterministic_replay",
+        "detail": "Positive case replays with identical acceptance and digests",
+        "expected": "accepted",
+        "kind": "replay",
+        "observed": "accepted",
+        "reason_codes": [],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [],
+          "imports": [],
+          "output_digest": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+          "returncode": 0,
+          "source_digest": "34ae5bb0387f3316014b42ec7d48f2f2f1041a5330adf5af8703013f43536e46",
+          "theorem_name": "hole_admit"
+        },
+        "check_id": "rocq.admit_escape",
+        "detail": "admit fails closed even when coqc may exit 0",
+        "expected": "rejected",
+        "kind": "fail_closed",
+        "observed": "rejected",
+        "reason_codes": [
+          "admit_or_admitted"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [],
+          "imports": [],
+          "output_digest": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+          "returncode": 0,
+          "source_digest": "40e3712436d6b4d2b52136f825bf13a009dba8e5765385b588dd22917c68c219",
+          "theorem_name": "hole_admitted"
+        },
+        "check_id": "rocq.admitted_escape",
+        "detail": "Admitted fails closed",
+        "expected": "rejected",
+        "kind": "fail_closed",
+        "observed": "rejected",
+        "reason_codes": [
+          "admit_or_admitted"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [],
+          "imports": [],
+          "output_digest": "31cd4e954e10005a9da07b6411413bfcb042c4af0fcf9b81d2cc65b03d0f4b6b",
+          "returncode": 0,
+          "source_digest": "5d4bfccaadd0cdc7c106fe94d77a970c0b5ebd6c93121c9d660965b389763bce",
+          "theorem_name": "uses_axiom"
+        },
+        "check_id": "rocq.axiom_escape",
+        "detail": "unreviewed Axiom escapes fail closed",
+        "expected": "rejected",
+        "kind": "fail_closed",
+        "observed": "rejected",
+        "reason_codes": [
+          "unreviewed_axiom",
+          "open_assumptions_or_axioms"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [],
+          "imports": [],
+          "output_digest": "a588de34838a7aa56f9c97b3f96002276663bf0f79112e8f2e4784c5e1c26c10",
+          "returncode": 1,
+          "source_digest": "2f9c84f0fa2f82d940edfa063391a4e9f7b5aca3d2e5606bcad1210792f2d1f7",
+          "theorem_name": "broken"
+        },
+        "check_id": "rocq.malformed_input",
+        "detail": "Malformed Gallina never reports acceptance",
+        "expected": "rejected",
+        "kind": "malformed",
+        "observed": "rejected",
+        "reason_codes": [
+          "error_marker",
+          "non_zero_exit"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [],
+          "imports": [],
+          "output_digest": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070",
+          "returncode": null,
+          "source_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "theorem_name": ""
+        },
+        "check_id": "rocq.version_mismatch",
+        "detail": "observed='8.18.0' locked='9.1.1'",
+        "expected": "blocked",
+        "kind": "version_mismatch",
+        "observed": "blocked",
+        "reason_codes": [
+          "locked_version_mismatch"
+        ],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "positive_output_digest": "2becfd3d66ab849ae3e52567995c7612491f27efed94af9ea4ddc8e61864f5c0",
+          "positive_source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72",
+          "replay_output_digest": "2becfd3d66ab849ae3e52567995c7612491f27efed94af9ea4ddc8e61864f5c0",
+          "replay_source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72"
+        },
+        "check_id": "rocq.deterministic_replay_binding",
+        "detail": "positive case must replay deterministically under the same pin",
+        "expected": "identical acceptance and digests",
+        "kind": "replay",
+        "observed": "pos=True/f5339ee28294,replay=True/f5339ee28294",
+        "reason_codes": [],
+        "status": "passed"
+      },
+      {
+        "bindings": {
+          "assumptions": [
+            "H : n = m"
+          ],
+          "authority": {
+            "ceiling": "kernel",
+            "not_advisor": true,
+            "not_install_authority": true,
+            "opam_cannot_promote_kernel_lane": true,
+            "opam_is_support_only": true,
+            "scope": "kernel_proof_checking_only"
+          },
+          "binaries": {
+            "coq": {
+              "authority": true,
+              "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/coqc",
+              "locked_version": "9.1.1",
+              "package_identity": "rocq-prover.9.1.1",
+              "tool_id": "coq"
+            },
+            "opam": {
+              "can_promote_kernel_lane": false,
+              "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/opam",
+              "locked_version": "2.5.2",
+              "support_only": true,
+              "tool_id": "opam"
+            }
+          },
+          "imports": [],
+          "isolated_opam_root": {
+            "error": null,
+            "global_home_opam_forbidden": true,
+            "global_switch_mutation_forbidden": true,
+            "isolated_opam_root": "<isolated-opam-root-redacted>",
+            "segment": "rocq",
+            "serialized_with_proverif": true,
+            "validated": true
+          },
+          "kernel_identity": {
+            "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/coqc",
+            "locked_version": "9.1.1",
+            "opam_repository": "https://rocq-prover.org/opam/released",
+            "package_identity": "rocq-prover.9.1.1",
+            "tool_id": "coq",
+            "version_match": true,
+            "version_string": "The Rocq Prover, version 9.1.1"
+          },
+          "output": {
+            "output_digest": "2becfd3d66ab849ae3e52567995c7612491f27efed94af9ea4ddc8e61864f5c0",
+            "returncode": 0
+          },
+          "source": {
+            "format": "rocq",
+            "primary_path": "Goal.v",
+            "source_digest": "f5339ee282942c65dd97c44cfea0c1dc7f7d0b2c469d15075745702c2a720c72"
+          },
+          "theorem": {
+            "assumptions": [
+              "H : n = m"
+            ],
+            "name": "from_eq"
+          }
+        },
+        "check_id": "rocq.bindings",
+        "detail": "receipt binds every trust-relevant kernel check input",
+        "expected": "imports,source,theorem,assumptions,kernel_identity",
+        "kind": "binding",
+        "observed": "b79c9386b78ec1b6",
+        "reason_codes": [],
+        "status": "passed"
+      }
+    ],
+    "download_attempted": false,
+    "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/coqc",
+    "global_opam_mutation_attempted": false,
+    "goal_id": "FVT-G150",
+    "handler_id": "rocq_toolchain_certifier",
+    "identity_probed": true,
+    "install_attempted": false,
+    "installed": true,
+    "interface": "RocqToolchainCertification@1",
+    "isolated_root_validated": true,
+    "lane_id": "kernel",
+    "locked_opam_version": "2.5.2",
+    "locked_version": "9.1.1",
+    "network_used": false,
+    "notes": "Pinned Rocq/Coq 9.1.1 kernel semantics certified: true theorem accepted; false proof, mutations, admit/Admitted/Axiom escapes, malformed input, and version mismatch fail closed; bindings complete; OPAM is support only under an isolated root.",
+    "opam_executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/opam",
+    "opam_identity_probed": true,
+    "opam_usable": true,
+    "opam_version_match": true,
+    "opam_version_string": "2.5.2",
+    "owner_module": "tools.logic.certification.rocq",
+    "package_identity": "rocq-prover.9.1.1",
+    "policy": {
+      "admit_admitted_axiom_fail_closed": true,
+      "authority_is_kernel_proof_checking_only": true,
+      "does_not_edit_central_certificate": true,
+      "does_not_edit_shared_lock": true,
+      "exact_tool_identity_required": true,
+      "isolated_opam_root_required": true,
+      "never_mutate_global_opam_switch": true,
+      "no_download": true,
+      "no_install": true,
+      "no_network": true,
+      "opam_cannot_promote_kernel_lane": true,
+      "opam_is_support_only": true
+    },
+    "production_certified": true,
+    "program": "formal-verification-tactician/rocq-toolchain",
+    "promotion_blocked": false,
+    "receipt_digest_sha256": "acb1039537660bbfbe1a35cb286ca9471087fe5c09d2f79e751c037b3b359698",
+    "schema_version": "rocq-toolchain-certification/v1",
+    "semantic_corpus_passed": true,
+    "status": "certified",
+    "support_tool_id": "opam",
+    "task_id": "FVT-045",
+    "tool_id": "coq",
+    "usable": true,
+    "version_match": true,
+    "version_string": "The Rocq Prover, version 9.1.1"
+  },
+  "source_interface": "RocqToolchainCertification@1",
+  "source_schema_version": "rocq-toolchain-certification/v1",
+  "status": "certified",
+  "support_tool_id": "opam",
+  "task_id": "FVT-107",
+  "tool_id": "coq",
+  "tool_ids": [
+    "coq",
+    "rocq"
+  ],
+  "usable": true,
+  "version_match": true,
+  "version_string": "The Rocq Prover, version 9.1.1"
+}
