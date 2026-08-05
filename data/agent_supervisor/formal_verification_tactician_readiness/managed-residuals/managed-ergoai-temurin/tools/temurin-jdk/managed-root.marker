@@ -1,0 +1,43 @@
+{
+  "ambient_java_home_trusted": false,
+  "authority_ceiling": "advisory",
+  "authority_tool": false,
+  "certification_status": "certified",
+  "deployment_ready_claimed": false,
+  "goal_id": "FVT-G242",
+  "grants_proof_authority": false,
+  "grants_theorem_authority": false,
+  "identities": {
+    "identity_manifest_sha256": "d83d83cb40f4260a899968b418985e6b153b9f65aca1c9364808f7ffd0e3d1b2",
+    "jar_sha256": "9f177b34c4c997a01eef55faf57721c8d74d5a26e7a1e5ba150182cf49794f4c",
+    "java_sha256": "0cd543f9949605b5eccb1d2b98c2b8637bb0953f0b5087208393b4b7ded73c1a",
+    "javac_sha256": "ce9c03b06d4ab7ad92fd426087b0309c8b33d1e99a810c8dcb31d8ecde3754a3",
+    "lock_pin_sha256": "d143936f473a4cb24e3b0e247d6d0775769d55ec9775c339540e753059a8d77a",
+    "publisher": "Eclipse Adoptium",
+    "release_artifact_sha256": "d143936f473a4cb24e3b0e247d6d0775769d55ec9775c339540e753059a8d77a",
+    "release_name": "jdk-17.0.20+8"
+  },
+  "install_status": "available",
+  "interface": "ManagedRootMarker@1",
+  "lane_id": "managed-ergoai-temurin",
+  "locked_version": "17.0.20+8",
+  "managed_root_kind": "user_local",
+  "notes": "Marker binds lock-matching Eclipse Temurin 17.0.20+8 under the user-local managed root. Ambient JAVA_HOME is never trusted. Sealed root lacks this pin.",
+  "observed_at": "2026-08-05T16:18:08Z",
+  "optional_capability": "ergoai-java-api",
+  "program": "formal-verification-tactician/managed-ergoai-temurin",
+  "relative_paths": {
+    "identity_manifest": "advisors/temurin-jdk/17.0.20+8/identity.json",
+    "jar": "advisors/temurin-jdk/17.0.20+8/jdk/bin/jar",
+    "java": "advisors/temurin-jdk/17.0.20+8/jdk/bin/java",
+    "java_home": "advisors/temurin-jdk/17.0.20+8/jdk",
+    "javac": "advisors/temurin-jdk/17.0.20+8/jdk/bin/javac"
+  },
+  "role": "advisor",
+  "schema_version": "formal-verification-managed-root-marker/v1",
+  "sealed_root_lock_matching": false,
+  "support_only": true,
+  "task_id": "FVT-110",
+  "tool_id": "temurin-jdk",
+  "marker_digest_sha256": "sha256:22bb4c7aea698c2567bc9aa3057a670b61b7bb5d26a1cebee560f4572d2c7064"
+}
