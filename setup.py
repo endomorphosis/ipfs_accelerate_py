@@ -9,6 +9,10 @@ from pathlib import Path
 
 from setuptools import find_packages, setup
 
+# FormalVerificationDistributionContract@1 (FVT-G215 / FVT-084): proof-gated
+# contract-repair Python toolchain.  Must stay aligned with requirements.txt and
+# [tool.ipfs-accelerate-py.dependency-inventory] in pyproject.toml.  Native /
+# external provers are never mandatory pip dependencies.
 CONTRACT_REPAIR_DISTRIBUTIONS = frozenset(
     {"z3-solver", "cvc5", "mypy", "ruff"}
 )

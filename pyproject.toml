@@ -56,6 +56,22 @@ package-dir = {"" = "."}
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
+# Machine-checked formal-verification / contract-repair dependency inventory.
+# Shared with FormalVerificationDistributionContract@1 (FVT-G215 / FVT-084).
+# Heavyweight native provers remain optional installers and are never listed here.
+[tool.ipfs-accelerate-py.dependency-inventory]
+schema-version = "ipfs-accelerate-dependency-inventory/v1"
+runtime-authority = "requirements.txt"
+requirements-txt-role = "core-runtime-and-contract-repair-python-toolchain"
+parity-scope = "proof-gated-contract-repair-python-bindings"
+shared-contract-repair-bindings = [
+    "z3-solver",
+    "cvc5",
+    "mypy",
+    "ruff",
+]
+external-native-tools-policy = "explicit-transactional-lazy-installer-only"
+
 [project.optional-dependencies]
 dev = [
   # test runner + core test deps

@@ -344,6 +344,35 @@ def test_root_and_datasets_dependency_inventory_is_machine_checked() -> None:
     # Root packaging still surfaces optional-dependencies from pyproject.
     assert "optional-dependencies" in root_pyproject.get("project", {})
 
+    # Root machine-readable inventory must name the same contract-repair pins
+    # and keep native provers out of the mandatory Python toolchain surface.
+    root_inventory = root_pyproject["tool"]["ipfs-accelerate-py"][
+        "dependency-inventory"
+    ]
+    assert root_inventory == {
+        "schema-version": "ipfs-accelerate-dependency-inventory/v1",
+        "runtime-authority": "requirements.txt",
+        "requirements-txt-role": "core-runtime-and-contract-repair-python-toolchain",
+        "parity-scope": "proof-gated-contract-repair-python-bindings",
+        "shared-contract-repair-bindings": [
+            "z3-solver",
+            "cvc5",
+            "mypy",
+            "ruff",
+        ],
+        "external-native-tools-policy": (
+            "explicit-transactional-lazy-installer-only"
+        ),
+    }
+    assert (
+        set(root_inventory["shared-contract-repair-bindings"])
+        == ROOT_CONTRACT_REPAIR_DISTRIBUTIONS
+    )
+    assert ROOT_CONTRACT_REPAIR_DISTRIBUTIONS <= root_requirements
+    assert root_inventory["external-native-tools-policy"] == (
+        "explicit-transactional-lazy-installer-only"
+    )
+
     datasets_req = _parse_requirement_names(
         _read_text(DATASETS_ROOT / "requirements.txt")
     )
@@ -396,6 +425,13 @@ def test_root_and_datasets_dependency_inventory_is_machine_checked() -> None:
             "jsonschema",
             *THEOREM_PYTHON_BINDINGS,
         }
+
+    # Solver Python bindings shared across root contract-repair and datasets
+    # formal-verification inventories must stay co-declared.
+    shared_solver_bindings = THEOREM_PYTHON_BINDINGS & ROOT_CONTRACT_REPAIR_DISTRIBUTIONS
+    assert shared_solver_bindings == frozenset({"z3-solver", "cvc5"})
+    assert shared_solver_bindings <= root_requirements
+    assert shared_solver_bindings <= datasets_req
 
 
 def test_datasets_dependency_inventory_roles_are_machine_readable() -> None:

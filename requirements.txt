@@ -34,11 +34,14 @@ werkzeug>=3.0.0
 # GitHub integration (provides the `github` module)
 PyGithub>=2.3.0
 
-# Proof-gated contract-repair Python toolchain.
+# Proof-gated contract-repair Python toolchain
+# (FormalVerificationDistributionContract@1 / FVT-G215).
 # These are also available through the explicit first-use loader in
 # ipfs_accelerate_py.agent_supervisor.integrations.contract_repair_dependencies.
 # TypeScript is intentionally absent: it is an npm package and the same loader
 # provisions the reviewed compiler API into a versioned user-local directory.
+# Heavyweight native provers (Lean, Tamarin, ProVerif, Rocq, …) remain optional
+# lazy installers and must never appear as mandatory pip requirements here.
 z3-solver>=4.12.0,<5.0.0
 cvc5==1.3.3
 mypy>=1.8.0,<2.0.0
