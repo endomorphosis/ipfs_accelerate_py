@@ -65,6 +65,20 @@ PROBE_TIMEOUT_SECONDS: Final = 5.0
 CHECK_TIMEOUT_SECONDS: Final = 20.0
 MANAGED_TOOL_PATH_MARKER: Final = "<managed-tool-path-redacted>"
 
+# Sealed validation PATH excludes operator toolchains; bind digest-approved
+# deployments via these roots (same contract as ATP/state-model lanes).
+MANAGED_PROVER_ROOT_ENV: Final = "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT"
+MANAGED_INSTALL_ROOT_ENV_VARS: Final[tuple[str, ...]] = (
+    "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
+    "IPFS_ACCELERATE_FORMAL_VERIFICATION_TOOLCHAINS_ROOT",
+    "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT",
+    "FORMAL_VERIFICATION_LEAN_INSTALL_ROOT",
+)
+DEFAULT_MANAGED_INSTALL_ROOT: Final = (
+    "~/.local/share/ipfs_datasets_py/theorem-provers"
+)
+LOCKED_LEAN_MANAGED_DIR: Final = "lean-v4.31.0"
+
 DEFAULT_MANIFEST_RELATIVE: Final = Path(
     "test/fixtures/formal_verification/toolchains/lean/manifest.json"
 )
@@ -320,18 +334,96 @@ def bounded_run(
         return None
 
 
-def resolve_lean_executable(candidates: Sequence[str] | None = None) -> str | None:
+def managed_install_roots(
+    env: Mapping[str, str] | None = None,
+) -> list[Path]:
+    """Ordered managed theorem-prover roots (env override, then defaults)."""
+
+    mapping = env if env is not None else os.environ
+    roots: list[Path] = []
+    seen: set[str] = set()
+
+    def _add(path: Path) -> None:
+        try:
+            resolved = path.expanduser().resolve()
+        except OSError:
+            resolved = path.expanduser()
+        key = str(resolved)
+        if key in seen:
+            return
+        seen.add(key)
+        roots.append(resolved)
+
+    for variable in MANAGED_INSTALL_ROOT_ENV_VARS:
+        raw = str(mapping.get(variable) or "").strip()
+        if raw:
+            _add(Path(raw))
+
+    xdg_data = str(mapping.get("XDG_DATA_HOME") or "").strip()
+    if xdg_data:
+        _add(Path(xdg_data) / "ipfs_datasets_py" / "theorem-provers")
+
+    _add(Path(DEFAULT_MANAGED_INSTALL_ROOT))
+    return roots
+
+
+def _managed_lean_candidates(root: Path) -> list[Path]:
+    """Candidate Lean binaries under a managed install / deployment root."""
+
+    candidates = [
+        root / "bin" / "lean",
+        root / LOCKED_LEAN_MANAGED_DIR / "bin" / "lean",
+    ]
+    # Deployment layout: .../formal-toolchains/<id>/provers + sibling lean-v4.31.0
+    if root.name == "provers":
+        candidates.append(root.parent / LOCKED_LEAN_MANAGED_DIR / "bin" / "lean")
+    # Deployment layout: .../formal-toolchains/<id>
+    candidates.append(root / "provers" / "bin" / "lean")
+    return candidates
+
+
+def resolve_lean_executable(
+    candidates: Sequence[str] | None = None,
+    *,
+    env: Mapping[str, str] | None = None,
+) -> str | None:
+    """Locate Lean preferring absolute paths and managed install bins."""
+
     names = list(candidates) if candidates else ["lean"]
+    search_path = None if env is None else str(env.get("PATH") or "")
     for name in names:
         if not name:
             continue
         path = Path(name)
         if path.is_file() and os.access(path, os.X_OK):
             return str(path.resolve())
-        found = shutil.which(name)
+        if os.path.isabs(name) or os.sep in name:
+            continue
+        for root in managed_install_roots(env):
+            for managed in _managed_lean_candidates(root):
+                if managed.is_file() and os.access(managed, os.X_OK):
+                    return str(managed.resolve())
+        found = shutil.which(name, path=search_path)
         if found:
             return found
     return None
+
+
+def _invoke_resolve_lean_executable(
+    *,
+    env: Mapping[str, str] | None = None,
+    candidates: Sequence[str] | None = None,
+) -> str | None:
+    """Call resolve_lean_executable; tolerate test stubs without env kwargs."""
+
+    try:
+        if candidates is None:
+            return resolve_lean_executable(env=env)
+        return resolve_lean_executable(candidates, env=env)
+    except TypeError:
+        if candidates is None:
+            return resolve_lean_executable()
+        return resolve_lean_executable(candidates)
 
 
 def list_elan_installed_toolchains(
@@ -607,7 +699,7 @@ def probe_lean_identity(
         result["probe_error"] = "shim_toolchain_mismatch"
         return result
 
-    lean_bin = executable or resolve_lean_executable()
+    lean_bin = executable or _invoke_resolve_lean_executable(env=probe_env)
     if lean_bin is None:
         result["probe_error"] = "executable_not_on_path"
         return result
@@ -1857,6 +1949,7 @@ __all__ = [
     "content_digest",
     "offline_env",
     "bounded_run",
+    "managed_install_roots",
     "resolve_lean_executable",
     "list_elan_installed_toolchains",
     "detect_lean_shim_toolchain_mismatch",

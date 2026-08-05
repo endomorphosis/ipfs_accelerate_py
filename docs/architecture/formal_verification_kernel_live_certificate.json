@@ -20,7 +20,7 @@
         "assumptions": [],
         "executable_path": "<managed-tool-path-redacted>/isabelle",
         "imports": [],
-        "output_digest": "64b293c0e6318fbadde9dca2fb2524a2f3cdeeb79037435f2c10c2ce24934665",
+        "output_digest": "beb3bba81638bdbe0357371277b1b3ffb508c08993e49e55ea7b7882af832a64",
         "session": {
           "name": "HOL",
           "process_command_template": "{isabelle} build -d {session_dir} -v FaninLive"
@@ -116,7 +116,7 @@
         "locked_version": "Isabelle2025-2",
         "managed_executable": true,
         "output": {
-          "output_digest": "64b293c0e6318fbadde9dca2fb2524a2f3cdeeb79037435f2c10c2ce24934665",
+          "output_digest": "beb3bba81638bdbe0357371277b1b3ffb508c08993e49e55ea7b7882af832a64",
           "returncode": 0
         },
         "session": {
@@ -146,7 +146,7 @@
           "imports": [],
           "kind": "positive",
           "matched": true,
-          "output_digest": "64b293c0e6318fbadde9dca2fb2524a2f3cdeeb79037435f2c10c2ce24934665",
+          "output_digest": "beb3bba81638bdbe0357371277b1b3ffb508c08993e49e55ea7b7882af832a64",
           "property": "",
           "reason_codes": [],
           "returncode": 0,
@@ -166,7 +166,7 @@
           "imports": [],
           "kind": "negative",
           "matched": true,
-          "output_digest": "e7aab7033d5203831105cc1f2d8ae83633ec1ec01c7c49e3ca190fe10d451905",
+          "output_digest": "310209716ff8a9b7ca203596c442b1dab655e0c09bb6cc8d294c81f9e4e1c7b1",
           "property": "",
           "reason_codes": [
             "error_marker",
@@ -190,7 +190,7 @@
           "imports": [],
           "kind": "mutation",
           "matched": true,
-          "output_digest": "9e0f695b4f8273f7b66568160c7bfa78c06fb4bf43f79e39b70cba937c0ebf8c",
+          "output_digest": "97c9b2a75a704327969bcb468bfe7e911f7e450764e2c6944df92450aeb19985",
           "property": "",
           "reason_codes": [
             "error_marker",
@@ -214,7 +214,7 @@
           "imports": [],
           "kind": "mutation",
           "matched": true,
-          "output_digest": "00a7393d501c92c2bd0c29e3acceb82fabcea828da84f21ee989bcc4fcf02c1f",
+          "output_digest": "8d1c80d2f39678c3fddb228fdf9ddb8f149ca971b609a4e98fd8cce08c38f40e",
           "property": "",
           "reason_codes": [
             "error_marker",
@@ -238,7 +238,7 @@
           "imports": [],
           "kind": "replay",
           "matched": true,
-          "output_digest": "b0e241616c822b7a7955ca0aff3e4f2bf73a79fc80857218486baec6a1dbc10a",
+          "output_digest": "233d80fa717beb17aac1141a0f54e7ccee61e98751788ec133ad15ada3687709",
           "property": "",
           "reason_codes": [],
           "returncode": 0,
@@ -258,7 +258,7 @@
           "imports": [],
           "kind": "malformed",
           "matched": true,
-          "output_digest": "f42c6c4f3348d3095c885b6fda19dd65d123f689c025af2a5ad5264146c90230",
+          "output_digest": "f28f3b41b0b0251857e926fc94dc802ffcadb4abb83b17468a912d8a67233f5c",
           "property": "",
           "reason_codes": [
             "error_marker",
@@ -346,7 +346,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "64b293c0e6318fbadde9dca2fb2524a2f3cdeeb79037435f2c10c2ce24934665",
+            "output_digest": "beb3bba81638bdbe0357371277b1b3ffb508c08993e49e55ea7b7882af832a64",
             "returncode": 0,
             "session": "HOL",
             "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
@@ -364,7 +364,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "e7aab7033d5203831105cc1f2d8ae83633ec1ec01c7c49e3ca190fe10d451905",
+            "output_digest": "310209716ff8a9b7ca203596c442b1dab655e0c09bb6cc8d294c81f9e4e1c7b1",
             "returncode": 1,
             "session": "HOL",
             "source_digest": "14ce88591c070c0f5ce905cf28b29891558fa28ffc02af7f11ac1704539b4220",
@@ -386,7 +386,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "9e0f695b4f8273f7b66568160c7bfa78c06fb4bf43f79e39b70cba937c0ebf8c",
+            "output_digest": "97c9b2a75a704327969bcb468bfe7e911f7e450764e2c6944df92450aeb19985",
             "returncode": 1,
             "session": "HOL",
             "source_digest": "4b8685c536a317a6b4c23a4f834a04d594be7c2ac7e8dc3b9314d2b4562716c3",
@@ -408,7 +408,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "00a7393d501c92c2bd0c29e3acceb82fabcea828da84f21ee989bcc4fcf02c1f",
+            "output_digest": "8d1c80d2f39678c3fddb228fdf9ddb8f149ca971b609a4e98fd8cce08c38f40e",
             "returncode": 1,
             "session": "HOL",
             "source_digest": "a13b10e51b3ed2c57df27e0678a89bc31ae735fe058606dbcc6c4bd49b3a524d",
@@ -430,7 +430,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "b0e241616c822b7a7955ca0aff3e4f2bf73a79fc80857218486baec6a1dbc10a",
+            "output_digest": "233d80fa717beb17aac1141a0f54e7ccee61e98751788ec133ad15ada3687709",
             "returncode": 0,
             "session": "HOL",
             "source_digest": "b65f5bff0386bd0acc8ac314cb76f338a79960b1c3bdb7673ddbd9abcf71972b",
@@ -448,7 +448,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "f42c6c4f3348d3095c885b6fda19dd65d123f689c025af2a5ad5264146c90230",
+            "output_digest": "f28f3b41b0b0251857e926fc94dc802ffcadb4abb83b17468a912d8a67233f5c",
             "returncode": 1,
             "session": "HOL",
             "source_digest": "050b5f52402f900dec1d9fc540482a54077a96251fed74de4be6cbcc825c25c2",
@@ -528,7 +528,7 @@
           "status": "passed"
         }
       ],
-      "contribution_digest_sha256": "7de239c594d1b1b12074e248180fd5a969268bd9830c3a9f7b6bfec35ea2daad",
+      "contribution_digest_sha256": "17df6a9b581486f83858078587d80d4a94efc64d891402a4754fbd6eaa3c36de",
       "download_attempted": false,
       "evidence": {
         "certification_surface": "tools.logic.certification.isabelle",
@@ -596,15 +596,7 @@
         },
         "dependency_digests": {
           "elan_toolchain": "leanprover/lean4:v4.31.0",
-          "installed_toolchains": [
-            "leanprover/lean4:v4.29.0",
-            "leanprover/lean4:v4.29.1",
-            "leanprover/lean4:v4.30.0",
-            "leanprover/lean4:v4.31.0",
-            "leanprover/lean4:v4.32.0",
-            "leanprover/lean4:v4.32.1",
-            "leanprover/lean4:v4.32.2"
-          ],
+          "installed_toolchains": [],
           "selected_toolchain": "leanprover/lean4:v4.31.0"
         },
         "executable_basename": "lean",
@@ -658,7 +650,7 @@
           "expect": "rejected",
           "imports": [],
           "kind": "negative",
-          "output_digest": "2ecf92b172643f84afc052c2f712f33aa20da492c3673fa31df53d37d5fc9d35",
+          "output_digest": "949946b42decc093d9dcc6dbc1fb28861d55f6674d6d1ef20a956a6c3c54a9d3",
           "reason_codes": [
             "kernel_rejected"
           ],
@@ -676,7 +668,7 @@
           "expect": "rejected",
           "imports": [],
           "kind": "mutation",
-          "output_digest": "2c5c7de018394b6b9ad1c5927b95e59c6fbe28bf63e4d1a1cfa86726c8285e15",
+          "output_digest": "43265cb0d3f4f9e37eae39bfcf8d0311c51640a6063fb881c31bb01ef1487661",
           "reason_codes": [
             "kernel_rejected"
           ],
@@ -694,7 +686,7 @@
           "expect": "rejected",
           "imports": [],
           "kind": "mutation",
-          "output_digest": "58d33081eb8d1202f1c0cb00ff49387eb81fd91d42f4d3e838c6b2c927234d03",
+          "output_digest": "e0627e085a154e80247e11b5a35d4884422e5ee678431a22e6f7ebb25949e662",
           "reason_codes": [
             "kernel_rejected"
           ],
@@ -726,7 +718,7 @@
           "expect": "rejected",
           "imports": [],
           "kind": "malformed",
-          "output_digest": "c69b11b623df33771ff0f4cd9070a70425f3ad1189ad275582bdbc118be07511",
+          "output_digest": "c80d3434406df3c12f66b65cd9431e155522b89059803d4dbc7bb421e855da61",
           "reason_codes": [
             "kernel_rejected"
           ],
@@ -808,7 +800,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "2ecf92b172643f84afc052c2f712f33aa20da492c3673fa31df53d37d5fc9d35",
+            "output_digest": "949946b42decc093d9dcc6dbc1fb28861d55f6674d6d1ef20a956a6c3c54a9d3",
             "returncode": 1,
             "source_digest": "9e11f3ad08604700b4d05b5440927c264b5e87b955dabb1594e1c54de2b9c316",
             "theorem_name": "false_claim"
@@ -828,7 +820,7 @@
               "h : n = n"
             ],
             "imports": [],
-            "output_digest": "2c5c7de018394b6b9ad1c5927b95e59c6fbe28bf63e4d1a1cfa86726c8285e15",
+            "output_digest": "43265cb0d3f4f9e37eae39bfcf8d0311c51640a6063fb881c31bb01ef1487661",
             "returncode": 1,
             "source_digest": "ef6dbd7cee06a0cdcff851790842f7a9e8d7b970dacdc87390dcfedd71e2389f",
             "theorem_name": "from_eq"
@@ -848,7 +840,7 @@
               "h : n = m"
             ],
             "imports": [],
-            "output_digest": "58d33081eb8d1202f1c0cb00ff49387eb81fd91d42f4d3e838c6b2c927234d03",
+            "output_digest": "e0627e085a154e80247e11b5a35d4884422e5ee678431a22e6f7ebb25949e662",
             "returncode": 1,
             "source_digest": "33ca5222eb44e2cf3a3a41bee0d820868bce4f41d30acd1ab634e87f19291705",
             "theorem_name": "from_eq"
@@ -884,7 +876,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "c69b11b623df33771ff0f4cd9070a70425f3ad1189ad275582bdbc118be07511",
+            "output_digest": "c80d3434406df3c12f66b65cd9431e155522b89059803d4dbc7bb421e855da61",
             "returncode": 1,
             "source_digest": "2f26262d12bdd4f94bdacb26b0f2370514fe808ab10ee14bef8185628949263a",
             "theorem_name": "broken"
@@ -955,7 +947,7 @@
           "status": "passed"
         }
       ],
-      "contribution_digest_sha256": "9a07dbf7fd3631d998f52448f59c1ffd83f274e926524a612d8cdae7288ce21f",
+      "contribution_digest_sha256": "b6d3790d58bc43f8ccc9ae0e6243f4bad301e7ee36b53c3e56ef07321f153a52",
       "download_attempted": false,
       "evidence": {
         "certification_surface": "tools.logic.certification.lean",
@@ -1082,7 +1074,7 @@
           "imports": [],
           "kind": "negative",
           "matched": true,
-          "output_digest": "3f83f4e928a5429e84d7d9bb0bea7a965a82851652feb903fb78fa002ad0815c",
+          "output_digest": "c8e1a66f307e91047c93c9e6d32126733c3767258a53166a9c0445e26eba6465",
           "reason_codes": [
             "error_marker",
             "non_zero_exit"
@@ -1102,7 +1094,7 @@
           "imports": [],
           "kind": "mutation",
           "matched": true,
-          "output_digest": "ac1994b569e717f9fdd04c1bd00656ac4c71fecc11c6962aa1650f5b3d1a791d",
+          "output_digest": "2b705909dbaab3c05e8b58ca35a9f69374c5aac26d0c16ac2b35a126cea3eff2",
           "reason_codes": [
             "error_marker",
             "non_zero_exit"
@@ -1122,7 +1114,7 @@
           "imports": [],
           "kind": "mutation",
           "matched": true,
-          "output_digest": "e3afb1926d407398451e10c27034dd02b7a17b0ad8e07ac3f520845a9f7eeef9",
+          "output_digest": "427f3e06ea32b8ea9a519c3c5dcfe7f232aeb0eb24ea96e91f4bc5ebe667f329",
           "reason_codes": [
             "error_marker",
             "non_zero_exit"
@@ -1159,7 +1151,7 @@
           "imports": [],
           "kind": "malformed",
           "matched": true,
-          "output_digest": "85fc27131ced7fd7a31a280a1a83cc4151afd136404afa5e8dcb918d10b35d53",
+          "output_digest": "feb335d638ebae18d5dfb5e07e5eaa41906868f72353bc0273115604694128df",
           "reason_codes": [
             "error_marker",
             "non_zero_exit"
@@ -1251,7 +1243,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "3f83f4e928a5429e84d7d9bb0bea7a965a82851652feb903fb78fa002ad0815c",
+            "output_digest": "c8e1a66f307e91047c93c9e6d32126733c3767258a53166a9c0445e26eba6465",
             "returncode": 1,
             "source_digest": "803ef0ab8e0d02f10ebf946afab1db1da7bd2ca08c90006a77be57ce0ed6b570",
             "theorem_name": "false_claim"
@@ -1270,7 +1262,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "ac1994b569e717f9fdd04c1bd00656ac4c71fecc11c6962aa1650f5b3d1a791d",
+            "output_digest": "2b705909dbaab3c05e8b58ca35a9f69374c5aac26d0c16ac2b35a126cea3eff2",
             "returncode": 1,
             "source_digest": "28a3a89ef7520a61b20e854507ec7b77e48ec029b70c5bf97078a6aefa1b4bbc",
             "theorem_name": "from_eq"
@@ -1289,7 +1281,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "e3afb1926d407398451e10c27034dd02b7a17b0ad8e07ac3f520845a9f7eeef9",
+            "output_digest": "427f3e06ea32b8ea9a519c3c5dcfe7f232aeb0eb24ea96e91f4bc5ebe667f329",
             "returncode": 1,
             "source_digest": "64772bc2b349ccfe3b13d235a55a6b1ccf87f23486e5faa864c613d866f9da54",
             "theorem_name": "from_eq"
@@ -1324,7 +1316,7 @@
           "bindings": {
             "assumptions": [],
             "imports": [],
-            "output_digest": "85fc27131ced7fd7a31a280a1a83cc4151afd136404afa5e8dcb918d10b35d53",
+            "output_digest": "feb335d638ebae18d5dfb5e07e5eaa41906868f72353bc0273115604694128df",
             "returncode": 1,
             "source_digest": "2f9c84f0fa2f82d940edfa063391a4e9f7b5aca3d2e5606bcad1210792f2d1f7",
             "theorem_name": "broken"
@@ -1396,7 +1388,7 @@
           "status": "passed"
         }
       ],
-      "contribution_digest_sha256": "a54cb4cb2d8b7f86190255044eec539987671f7d867dbed18d5edb8745ec4ace",
+      "contribution_digest_sha256": "53bc212687da31d052af5cea1bb42a66e7fecfbec5519e2af7839c7af913acdc",
       "download_attempted": false,
       "evidence": {
         "certification_surface": "tools.logic.certification.rocq",
@@ -1475,7 +1467,7 @@
   "production_certified": true,
   "program": "formal-verification-tactician/kernel-live-semantics",
   "promotion_blocked": false,
-  "receipt_digest_sha256": "7cdae906eaafd2f227d1c22bab74234012b8c8ede897a4d48f8bf581725c5dd8",
+  "receipt_digest_sha256": "f8bfd7249ad2720cf7c95d4710ee148dc98039b9ef42875cd26264d6079b8348",
   "repo_root": "<repo-root>",
   "schema_version": "kernel-live-semantic-fanin/v1",
   "task_id": "FVT-057",

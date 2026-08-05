@@ -78,6 +78,19 @@ PROBE_TIMEOUT_SECONDS: Final = 10.0
 CHECK_TIMEOUT_SECONDS: Final = 60.0
 MANAGED_TOOL_PATH_MARKER: Final = "<managed-tool-path-redacted>"
 
+# Sealed validation PATH excludes operator toolchains; bind digest-approved
+# deployments via these roots (same contract as ATP/state-model lanes).
+MANAGED_PROVER_ROOT_ENV: Final = "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT"
+MANAGED_INSTALL_ROOT_ENV_VARS: Final[tuple[str, ...]] = (
+    "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
+    "IPFS_ACCELERATE_FORMAL_VERIFICATION_TOOLCHAINS_ROOT",
+    "IPFS_DATASETS_PY_THEOREM_PROVERS_ROOT",
+    "FORMAL_VERIFICATION_ISABELLE_INSTALL_ROOT",
+)
+DEFAULT_MANAGED_INSTALL_ROOT: Final = (
+    "~/.local/share/ipfs_datasets_py/theorem-provers"
+)
+
 DEFAULT_LOCK_RELATIVE: Final = Path("config/formal_verification_toolchains.lock.json")
 
 _SORRY = re.compile(r"(?<![A-Za-z0-9_'])(?:sorry|oops)(?![A-Za-z0-9_'])")
@@ -429,18 +442,84 @@ def bounded_run(
         return None
 
 
-def resolve_isabelle_executable(candidates: Sequence[str] | None = None) -> str | None:
+def managed_install_roots(
+    env: Mapping[str, str] | None = None,
+) -> list[Path]:
+    """Ordered managed theorem-prover roots (env override, then defaults)."""
+
+    mapping = env if env is not None else os.environ
+    roots: list[Path] = []
+    seen: set[str] = set()
+
+    def _add(path: Path) -> None:
+        try:
+            resolved = path.expanduser().resolve()
+        except OSError:
+            resolved = path.expanduser()
+        key = str(resolved)
+        if key in seen:
+            return
+        seen.add(key)
+        roots.append(resolved)
+
+    for variable in MANAGED_INSTALL_ROOT_ENV_VARS:
+        raw = str(mapping.get(variable) or "").strip()
+        if raw:
+            _add(Path(raw))
+
+    xdg_data = str(mapping.get("XDG_DATA_HOME") or "").strip()
+    if xdg_data:
+        _add(Path(xdg_data) / "ipfs_datasets_py" / "theorem-provers")
+
+    _add(Path(DEFAULT_MANAGED_INSTALL_ROOT))
+    return roots
+
+
+def resolve_isabelle_executable(
+    candidates: Sequence[str] | None = None,
+    *,
+    env: Mapping[str, str] | None = None,
+) -> str | None:
+    """Locate isabelle preferring absolute paths and managed install bins."""
+
     names = list(candidates) if candidates else [LOCKED_EXECUTABLE, "isabelle"]
+    search_path = None if env is None else str(env.get("PATH") or "")
     for name in names:
         if not name:
             continue
         path = Path(name)
         if path.is_file() and os.access(path, os.X_OK):
             return str(path.resolve())
-        found = shutil.which(name)
+        if os.path.isabs(name) or os.sep in name:
+            continue
+        for root in managed_install_roots(env):
+            for managed in (
+                root / "bin" / name,
+                root / "provers" / "bin" / name,
+            ):
+                if managed.is_file() and os.access(managed, os.X_OK):
+                    return str(managed.resolve())
+        found = shutil.which(name, path=search_path)
         if found:
             return found
     return None
+
+
+def _invoke_resolve_isabelle_executable(
+    *,
+    env: Mapping[str, str] | None = None,
+    candidates: Sequence[str] | None = None,
+) -> str | None:
+    """Call resolve_isabelle_executable; tolerate test stubs without env kwargs."""
+
+    try:
+        if candidates is None:
+            return resolve_isabelle_executable(env=env)
+        return resolve_isabelle_executable(candidates, env=env)
+    except TypeError:
+        if candidates is None:
+            return resolve_isabelle_executable()
+        return resolve_isabelle_executable(candidates)
 
 
 def first_nonempty_line(text: str) -> str:
@@ -734,7 +813,7 @@ def probe_isabelle_identity(
         "download_attempted": False,
         "probe_error": None,
     }
-    binary = executable or resolve_isabelle_executable()
+    binary = executable or _invoke_resolve_isabelle_executable(env=probe_env)
     if binary is None:
         result["probe_error"] = "executable_not_on_path"
         return result
@@ -2073,6 +2152,7 @@ __all__ = [
     "content_digest",
     "offline_env",
     "bounded_run",
+    "managed_install_roots",
     "resolve_isabelle_executable",
     "extract_isabelle_version_token",
     "extract_isabelle_theory_name",
