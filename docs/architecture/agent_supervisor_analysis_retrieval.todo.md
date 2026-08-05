@@ -6,7 +6,7 @@ tranche.
 
 ## ANALYSIS-GRAPH-001 Add bounded multi-signal GraphRAG retrieval
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: analysis-retrieval

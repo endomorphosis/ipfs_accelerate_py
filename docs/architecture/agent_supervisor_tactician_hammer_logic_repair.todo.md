@@ -63,7 +63,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-000 Bootstrap and seal the Tactician-Hammer logic-repair control plane
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -94,7 +94,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-001 Define bounded program-logic prediction contracts
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -125,7 +125,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-002 Probe exact Tactician, Hammer, and static-analysis capabilities
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -156,7 +156,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-003 Add a domain-neutral versioned datasets Logic Tactician
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -187,7 +187,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-004 Build the adversarial live logic-repair fixture corpus
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -218,7 +218,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-005 Build an independent content-addressed program premise corpus
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -249,7 +249,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-006 Compile task and repair evidence into finite program-logic goals
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -280,7 +280,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-007 Slice logic gaps and required information conservatively
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -311,7 +311,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-008 Adapt the generic datasets Tactician for program repair
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -342,7 +342,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-009 Nominate bounded program-logic hypotheses
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -373,7 +373,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-010 Gate Tactician plans against axiom smuggling and stale evidence
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -404,7 +404,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-011 Lower admitted tactic plans to exact existing proof obligations
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -435,7 +435,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-012 Coordinate bounded production Hammer proof and reconstruction
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -466,7 +466,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-013 Implement bounded counterexample-guided tactic refinement
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -497,7 +497,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-014 Admit only reconstructed and unique logic predictions
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -528,7 +528,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-015 Bridge predictions into existing behavior and value synthesis
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -559,7 +559,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-016 Materialize analytical-first, context-rich repair packets
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -590,7 +590,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-017 Integrate a live logic-repair controller into the RPR pipelines
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -621,7 +621,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-018 Re-plan and re-prove logic to a post-edit fixed point
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -652,7 +652,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-019 Benchmark adversarial logic prediction and all-caller repair
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -683,7 +683,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-020 Add rollout controls, operations, validation, and supervisor launch
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -714,7 +714,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-021 Pin the VFS source baseline and generalize repository surface inventory
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -745,7 +745,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-022 Generalize the evidence-bound program contract profile
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -776,7 +776,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-023 Generalize the hermetic differential contract harness
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -807,7 +807,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-024 Generalize interface, manifest, SDK, MCP, and transport parity
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -838,7 +838,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-025 Generalize symbolic-efficiency benchmark and replay gates
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -869,7 +869,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-026 Generalize frozen multi-repository assurance pilot orchestration
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -900,7 +900,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-027 Generalize rollout control and add the thin IPFS Kit VFS job adapter
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -931,7 +931,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-028 Prove equivalence, propagate every caller, and enforce the root-layout cutover
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -962,7 +962,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-029 Define deterministic-doctor contracts, policy, and receipts
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -993,7 +993,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-030 Compile a real-checkout AST and contract diagnostic snapshot
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1024,7 +1024,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-031 Retrieve refactor and value candidates through exact graphs and advisory KG/vector embeddings
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1055,7 +1055,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-032 Federate exact proof caches and lazy datasets Logic capabilities
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1086,7 +1086,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-033 Register allowlisted deterministic AST repair transforms
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1117,7 +1117,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-034 Compile findings into independent goals and gated Tactician plans
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1148,7 +1148,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-035 Verify candidate repairs through cache-first isolated Hammer and CEGIS
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1179,7 +1179,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-036 Materialize only proof-admitted deterministic repair overlays
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1210,7 +1210,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-037 Close all callers and compile one atomic deterministic repair plan
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1241,7 +1241,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-038 Apply in isolation and re-prove to a deterministic fixed point
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1272,7 +1272,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-039 Expose deterministic doctor operations through a thin service and CLI
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1303,7 +1303,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-040 Benchmark adversarial no-LLM diagnosis and repair
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1334,7 +1334,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-041 Add report-only through narrow-auto rollout controls and operator validation
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1365,7 +1365,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-042 Release the joined VFS and deterministic-doctor fixed point
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1396,7 +1396,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-043 Resolve validation retry-budget failure for LPR-029
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -1411,7 +1411,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-044 Resolve validation retry-budget failure for LPR-028
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -1425,7 +1425,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-045 Resolve 1 dirty backlogged worktrees blocked by unsupported_status
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: false
 - Review only: true
