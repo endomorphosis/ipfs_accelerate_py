@@ -22569,20 +22569,25 @@ class PortalImplementationDaemon:
                                     for item in operator_prepared_outputs
                                 ]
                         else:
-                            proposal_validation = self._validate_implementation_patch(
-                                worktree_path,
-                                task,
-                                baseline_ref=baseline_ref,
-                                replayable_consumed_proposal_ids=(
-                                    seed_replayable_proposal_ids
-                                ),
+                            # Prefer clean/no-change candidate validation when
+                            # the provider left an empty worktree (already-
+                            # satisfied residual). Only fall through to the
+                            # strict empty-patch proposal gate when dirty.
+                            validation_result = (
+                                self._run_validation_with_candidate_binding(
+                                    worktree_path,
+                                    task,
+                                    log_path,
+                                    state=state,
+                                    baseline_ref=baseline_ref,
+                                    proposal_validation=None,
+                                    replayable_consumed_proposal_ids=(
+                                        seed_replayable_proposal_ids
+                                    ),
+                                )
                             )
-                            validation_result = self._run_validation_commands(
-                                worktree_path,
-                                task,
-                                log_path,
-                                state=state,
-                                proposal_validation=proposal_validation,
+                            proposal_validation = validation_result.get(
+                                "proposal_validation"
                             )
                             validation_result = (
                                 self._apply_implementation_failure_review(
@@ -22599,7 +22604,10 @@ class PortalImplementationDaemon:
                         if (
                             not deterministic_only
                             and validation_result.get("passed", False)
+                            and proposal_validation is not None
                         ):
+                            # Clean candidates already rebound inside
+                            # _run_validation_with_candidate_binding.
                             validation_result = (
                                 self._restore_and_verify_post_validation_candidate(
                                     worktree_path,
@@ -22902,6 +22910,7 @@ class PortalImplementationDaemon:
                         worktree_path=worktree_path,
                         branch_name=branch_name,
                     )
+                    proposal_validation = None
                     try:
                         self._prepare_worktree_for_validation(
                             worktree_path,
@@ -22915,22 +22924,23 @@ class PortalImplementationDaemon:
                             )
                         )
                     else:
-                        proposal_validation = (
-                            self._validate_implementation_patch(
+                        # Timeout salvage must also prefer clean/no-change
+                        # candidates so already-satisfied residuals can finish.
+                        validation_result = (
+                            self._run_validation_with_candidate_binding(
                                 worktree_path,
                                 task,
+                                log_path,
+                                state=state,
                                 baseline_ref=baseline_ref,
+                                proposal_validation=None,
                                 replayable_consumed_proposal_ids=(
                                     seed_replayable_proposal_ids
                                 ),
                             )
                         )
-                        validation_result = self._run_validation_commands(
-                            worktree_path,
-                            task,
-                            log_path,
-                            state=state,
-                            proposal_validation=proposal_validation,
+                        proposal_validation = validation_result.get(
+                            "proposal_validation"
                         )
                         validation_result = (
                             self._apply_implementation_failure_review(
@@ -22962,7 +22972,10 @@ class PortalImplementationDaemon:
                                 protected_path_violation
                             ),
                         }
-                    elif validation_result.get("passed", False):
+                    elif (
+                        validation_result.get("passed", False)
+                        and proposal_validation is not None
+                    ):
                         validation_result = (
                             self._restore_and_verify_post_validation_candidate(
                                 worktree_path,
@@ -31723,12 +31736,17 @@ class PortalImplementationDaemon:
         state: PortalTaskState | None = None,
         baseline_ref: str,
         proposal_validation: Any = None,
+        replayable_consumed_proposal_ids: Sequence[str] = (),
     ) -> dict[str, Any]:
         """Validate the exact final candidate, including generated outputs.
 
         A declared validation command may materialize task-owned evidence.
         Rebind that candidate once and rerun validation so only a stable,
         proposal-authorized fixed point can proceed to commit.
+
+        When ``proposal_validation`` is omitted, try the clean/no-change
+        candidate path first so already-satisfied residuals can finish
+        without being rejected by the empty-patch proposal gate.
         """
 
         result: dict[str, Any] | None = None
@@ -31750,6 +31768,9 @@ class PortalImplementationDaemon:
                     workspace_path,
                     task,
                     baseline_ref=baseline_ref,
+                    replayable_consumed_proposal_ids=(
+                        replayable_consumed_proposal_ids
+                    ),
                 )
             result = self._run_validation_commands(
                 workspace_path,
@@ -31773,6 +31794,9 @@ class PortalImplementationDaemon:
             workspace_path,
             task,
             baseline_ref=baseline_ref,
+            replayable_consumed_proposal_ids=(
+                replayable_consumed_proposal_ids
+            ),
         )
         compact_rebound = self._compact_proposal_validation(
             rebound_validation,
