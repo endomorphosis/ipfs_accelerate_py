@@ -26,7 +26,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-001 Create branch and freeze inventory move map
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -51,7 +51,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-002 Seed multi-lane launch recipe for Grok 4.6
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -76,7 +76,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-003 Create core package and move shared modules
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -101,7 +101,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-004 Create control package and update CLI entry surfaces
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -126,7 +126,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-005 Create task_sources package
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -151,7 +151,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-006 Monorepo root hygiene pass
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -176,7 +176,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-007 Final public API README and no-old-import cutover gate
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: false
 - Review only: false
@@ -201,7 +201,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-008 Close objective gap: Clear agent_supervisor package layout and monorepo root hygiene
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -266,7 +266,7 @@ do not delete protected headers or rewrite completed history.
 - Operator note: Removed protected plan/todo/objectives from Outputs/Predicted files so the implementation fence can select this gap task. Dual-layout cutover for first 36 packaged modules already applied on branch.
 ## ASREF-009 Close objective gap: Branch bootstrap inventory and frozen move map
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -331,7 +331,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-010 Close objective gap: Autonomous supervisor execution with Grok 4.6
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -396,7 +396,7 @@ do not delete protected headers or rewrite completed history.
 - Operator note: Removed protected plan/todo/objectives from Outputs/Predicted files so the implementation fence can select this gap task. Dual-layout cutover for first 36 packaged modules already applied on branch.
 ## ASREF-011 Close objective gap: Objectives planning validation merge rescue runtime packages
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -461,7 +461,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-012 Close objective gap: Public API package README root hygiene and cutover
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -526,7 +526,7 @@ do not delete protected headers or rewrite completed history.
 - Operator note: Removed protected plan/todo/objectives from Outputs/Predicted files so the implementation fence can select this gap task. Dual-layout cutover for first 36 packaged modules already applied on branch.
 ## ASREF-013 Close objective gap: Public API package README root hygiene and cutover
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -591,7 +591,7 @@ do not delete protected headers or rewrite completed history.
 - Operator note: Removed protected plan/todo/objectives from Outputs/Predicted files so the implementation fence can select this gap task. Dual-layout cutover for first 36 packaged modules already applied on branch.
 ## ASREF-014 Close objective gap: Public API package README root hygiene and cutover
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -656,7 +656,7 @@ do not delete protected headers or rewrite completed history.
 - Operator note: Removed protected plan/todo/objectives from Outputs/Predicted files so the implementation fence can select this gap task. Dual-layout cutover for first 36 packaged modules already applied on branch.
 ## ASREF-015 Resolve validation retry-budget failure for ASREF-003
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -667,7 +667,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-016 Resolve validation retry-budget failure for ASREF-006
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -678,7 +678,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-017 Resolve validation retry-budget failure for ASREF-011
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -689,7 +689,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-018 Resolve dirty main checkout blocking 1 worktree merges
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: false
 - Review only: true
@@ -705,7 +705,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-019 Resolve implementation retry-budget failure for ASREF-003
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -716,7 +716,7 @@ do not delete protected headers or rewrite completed history.
 - Operator note (2026-07-27T17:14:11.357411+00:00): Attempt budgets for source + this repair were reset after fixing invalid default model grok-4.6 -> grok-4.5; repair treated complete.
 ## ASREF-020 Resolve implementation retry-budget failure for ASREF-006
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -727,7 +727,7 @@ do not delete protected headers or rewrite completed history.
 - Operator note (2026-07-27T17:14:11.357411+00:00): Attempt budgets for source + this repair were reset after fixing invalid default model grok-4.6 -> grok-4.5; repair treated complete.
 ## ASREF-021 Resolve implementation retry-budget failure for ASREF-011
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -739,7 +739,7 @@ do not delete protected headers or rewrite completed history.
 
 ## ASREF-022 Resolve implementation retry-budget failure for ASREF-013
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -750,7 +750,7 @@ do not delete protected headers or rewrite completed history.
 - Operator note (2026-07-28T04:07:21.275361+00:00): Marked completed after provider recovery. Import resolution and Grok 402 capacity handling are on branch; source retry budgets reset so implementation can resume.
 ## ASREF-023 Resolve implementation retry-budget failure for ASREF-008
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -761,7 +761,7 @@ do not delete protected headers or rewrite completed history.
 - Operator note (2026-07-28T04:07:21.275361+00:00): Marked completed after provider recovery. Import resolution and Grok 402 capacity handling are on branch; source retry budgets reset so implementation can resume.
 ## ASREF-024 Resolve implementation retry-budget failure for ASREF-012
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -772,7 +772,7 @@ do not delete protected headers or rewrite completed history.
 - Operator note (2026-07-28T04:07:21.275361+00:00): Marked completed after provider recovery. Import resolution and Grok 402 capacity handling are on branch; source retry budgets reset so implementation can resume.
 ## ASREF-025 Resolve implementation retry-budget failure for ASREF-010
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -783,7 +783,7 @@ do not delete protected headers or rewrite completed history.
 - Operator note (2026-07-28T04:07:21.275361+00:00): Marked completed after provider recovery. Import resolution and Grok 402 capacity handling are on branch; source retry budgets reset so implementation can resume.
 ## ASREF-026 Resolve implementation retry-budget failure for ASREF-014
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: ops
