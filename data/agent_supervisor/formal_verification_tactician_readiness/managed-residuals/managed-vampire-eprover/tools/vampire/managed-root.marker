@@ -1,0 +1,38 @@
+{
+  "schema_version": "formal-verification-managed-root-marker/v1",
+  "interface": "ManagedRootMarker@1",
+  "kind": "managed_root_marker",
+  "goal_id": "FVT-G236",
+  "task_id": "FVT-104",
+  "lane_id": "managed-vampire-eprover",
+  "tool_id": "vampire",
+  "version": "5.0.1",
+  "host_platform": "linux-aarch64",
+  "observed_at": "2026-08-05T16:16:29Z",
+  "managed_root": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers",
+  "managed_root_kind": "approved_sealed_immutable_deployment",
+  "managed_root_relative_bin": "bin/vampire",
+  "executable_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/bin/vampire",
+  "executable_sha256": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+  "target_binary_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/vampire-5.0.1-linux-aarch64/vampire",
+  "target_binary_sha256": "765c5aa84bf7333e3ed6e7936a5f44eec832777c00ac0ab5ee3b0aadf65c44de",
+  "pin": {
+    "tool_id": "vampire",
+    "version": "5.0.1",
+    "platform": "linux-aarch64",
+    "artifact_url": "https://github.com/vprover/vampire/releases/download/v5.0.1/vampire-Linux-ARM64.zip",
+    "sha256": "2fc419d3ac1eb075b4ceb6ce770242247507afd8c64f897799e479643f4b2c6b",
+    "identity_kind": "release_archive",
+    "is_checksummed": true
+  },
+  "under_managed_root": true,
+  "sealed_immutable": true,
+  "writable": false,
+  "status": "bound",
+  "policy": {
+    "path_presence_is_not_usability": true,
+    "requires_live_certification_for_usability": true,
+    "does_not_claim_deployment_ready": true
+  },
+  "marker_digest_sha256": "afec6934b640007d5229e9619fefeaf0dae31fb851d104a684e5a52840b1a521"
+}

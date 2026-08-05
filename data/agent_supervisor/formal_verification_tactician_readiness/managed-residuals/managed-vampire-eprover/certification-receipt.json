@@ -1,0 +1,107 @@
+{
+  "schema_version": "formal-verification-managed-residual-certification-receipt/v1",
+  "interface": "ManagedCapabilityResidualCertification@1",
+  "kind": "managed_capability_residual_certification",
+  "goal_id": "FVT-G236",
+  "task_id": "FVT-104",
+  "program": "formal-verification-tactician/managed-vampire-eprover",
+  "lane_id": "managed-vampire-eprover",
+  "tool_ids": [
+    "vampire",
+    "eprover"
+  ],
+  "observed_at": "2026-08-05T16:16:29Z",
+  "host_platform": "linux-aarch64",
+  "managed_root": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers",
+  "managed_root_kind": "approved_sealed_immutable_deployment",
+  "policy": {
+    "no_install": true,
+    "no_download": true,
+    "no_network": true,
+    "exact_binary_binding_required": true,
+    "live_positive_negative_mutation_replay_required": true,
+    "results_are_candidates_without_reconstruction": true,
+    "kernel_reconstruction_required_for_theorem_authority": true,
+    "does_not_edit_central_certificate": true,
+    "does_not_edit_deployment_receipt": true,
+    "does_not_claim_deployment_ready": true,
+    "never_greenwash_missing_sealed_roots": true
+  },
+  "install_receipt_binding": {
+    "path": "data/agent_supervisor/formal_verification_tactician_readiness/managed-residuals/managed-vampire-eprover/install-receipt.json",
+    "receipt_digest_sha256": "27342b36b2e2bea09bee4794014053ec057341c5994d08dc4f0077e43f15fb13"
+  },
+  "atp_toolchain_certification": {
+    "interface": "ATPToolchainCertification@1",
+    "schema_version": "atp-toolchain-certification/v1",
+    "production_certified": true,
+    "promotion_blocked": false,
+    "block_reasons": [],
+    "vampire_usable": true,
+    "eprover_usable": true,
+    "receipt_digest_sha256": "d37fb5b63be0d98e2789d92a3aea563f7a0adb9440c214f9bb6f57f3146a6276",
+    "semantic_corpus_passed": true,
+    "check_count": 17,
+    "case_count": 10
+  },
+  "atp_live_semantic_certification": {
+    "interface": "ATPLiveSemanticCertification@1",
+    "schema_version": "atp-live-semantic-certification/v1",
+    "production_certified": true,
+    "promotion_blocked": false,
+    "block_reasons": [],
+    "vampire_usable": true,
+    "eprover_usable": true,
+    "live_execution": true,
+    "live_semantic_corpus_passed": true,
+    "receipt_digest_sha256": "f250347e71c024c9bb6cff55d1c05ccb2e0b199a3f7d33deacef7fb073b4b605",
+    "vampire_binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+    "eprover_binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+    "vampire_version_string": "Vampire 5.0.1 (Release build, commit 1b13eaf on 2026-01-18 12:14:50 +0000)",
+    "eprover_version_string": "E 3.2.5 Puttabong Moondrop (be41955555b56c9616992a99fe1643de343b212c)",
+    "locked_vampire_version": "5.0.1",
+    "locked_eprover_version": "3.2.5",
+    "check_count": 32,
+    "case_count": 20,
+    "network_used": false,
+    "install_attempted": false,
+    "download_attempted": false
+  },
+  "tools": {
+    "vampire": {
+      "tool_id": "vampire",
+      "usable": true,
+      "production_certified": true,
+      "locked_version": "5.0.1",
+      "version_match": true,
+      "launcher_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/bin/vampire",
+      "launcher_sha256": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+      "target_binary_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/vampire-5.0.1-linux-aarch64/vampire",
+      "target_binary_sha256": "765c5aa84bf7333e3ed6e7936a5f44eec832777c00ac0ab5ee3b0aadf65c44de",
+      "live_binary_digest": "76e633fa15f7be3bfe1103bf16fe75c0c751a8f2ebb0eb1d9985fa15dc9ac43c",
+      "version_string": "Vampire 5.0.1 (Release build, commit 1b13eaf on 2026-01-18 12:14:50 +0000)"
+    },
+    "eprover": {
+      "tool_id": "eprover",
+      "usable": true,
+      "production_certified": true,
+      "locked_version": "3.2.5",
+      "version_match": true,
+      "launcher_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/bin/eprover",
+      "launcher_sha256": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+      "target_binary_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/eprover-3.2.5/bin/eprover",
+      "target_binary_sha256": "a5748ba4a6421b5b0198fa008fb58d1410292d52b302e9d5ab48c5961f3834c1",
+      "live_binary_digest": "4cee7b2cb419fe58b77538961d9cb0053199bd548e663dd237786ef223b0a53d",
+      "version_string": "E 3.2.5 Puttabong Moondrop (be41955555b56c9616992a99fe1643de343b212c)"
+    }
+  },
+  "status": "certified",
+  "summary": {
+    "lane_certified": true,
+    "managed_blockers_cleared_for_lane": true,
+    "deployment_ready_claimed": false,
+    "honest_residual_scope": "Clears managed residual for {vampire,eprover} only; FVT-113 owns deployment receipt reseal and remaining blockers."
+  },
+  "notes": "Live positive/negative/mutation/replay certification for sealed Vampire/E. ATP results remain reconstruction-ceiling candidates without kernel receipts. Does not claim RoleAwareFormalVerificationRelease@1 deployment_ready.",
+  "receipt_digest_sha256": "99d062279c5a0525fa9ad141ddc9af98466d7fa4b5e4cac6a30966db6057895f"
+}
