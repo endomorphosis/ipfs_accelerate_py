@@ -11653,6 +11653,45 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 merged_status_repair["pending_task_ids"] = still_pending
             elif still_pending:
                 merged_status_repair["pending_task_ids"] = still_pending
+            # Reload board after durable completion so the same pass cannot
+            # reselect a just-completed repair (VOICE-ACTION-037 re-entry race)
+            # and so pending_retry fences drop for released sources.
+            just_completed = set(
+                merged_status_repair.get("completed_task_ids") or []
+            )
+            if just_completed:
+                board_completed_task_ids |= just_completed
+                status_completed_task_ids |= just_completed
+                try:
+                    tasks = self._load_tasks()
+                    previous = PortalTaskState.load(self.state_path)
+                    strategy = self.load_strategy()
+                    pending_retry_repair_source_ids = (
+                        pending_retry_budget_repair_sources(
+                            tasks,
+                            completed_task_ids=tuple(
+                                status_completed_task_ids
+                            ),
+                        )
+                    )
+                    # Completing a repair also frees its source fence.
+                    for task in tasks:
+                        if task.task_id not in just_completed:
+                            continue
+                        src, _kind = retry_budget_repair_source(task)
+                        if src:
+                            pending_retry_repair_source_ids.discard(src)
+                    strategy_blocked_task_ids = {
+                        str(task_id)
+                        for task_id in strategy.get("blocked_tasks", [])
+                        if str(task_id) not in just_completed
+                    } | pending_retry_repair_source_ids
+                except Exception as exc:
+                    logger.warning(
+                        "Reload after merged pending-acceptance completion "
+                        "failed: %s",
+                        exc,
+                    )
         pending_acceptance_task_ids = {
             task_id
             for task_id in stale_merged_completed_task_ids
