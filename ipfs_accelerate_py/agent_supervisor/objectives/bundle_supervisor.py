@@ -10,6 +10,7 @@ import json
 import logging
 import math
 import os
+import re
 import shlex
 import signal
 import subprocess
@@ -968,6 +969,8 @@ def stale_bundle_lane_input_binding(
     This read-only preflight recognizes that one actionable mismatch without
     rewriting either the binding or the runtime taskboard. Other malformed
     binding conditions continue through the existing fail-closed materializer.
+    Callers that can safely rematerialize should use
+    :func:`refresh_stale_bundle_lane_input_binding`.
     """
 
     planned_digest = str(lane.source_todo_sha256 or "").strip().lower()
@@ -990,6 +993,64 @@ def stale_bundle_lane_input_binding(
         "binding_path": repo_relative_path(repo_root, binding_path),
         "bound_source_todo_sha256": bound_digest,
         "planned_source_todo_sha256": planned_digest,
+    }
+
+
+def refresh_stale_bundle_lane_input_binding(
+    lane: BundleLaneSpec,
+    *,
+    repo_root: Path,
+) -> dict[str, Any] | None:
+    """Archive a stale binding/runtime pair and rematerialize from the plan.
+
+    Used when the source board advanced (e.g. operator or soft-complete status
+    flips) while the lane state directory still points at the previous digest.
+    Safe only when the lane has no live worker holding the runtime board.
+    Returns ``None`` when the binding is not stale; otherwise a report of the
+    refresh (``refreshed`` true on success).
+    """
+
+    diagnosis = stale_bundle_lane_input_binding(lane, repo_root=repo_root)
+    if diagnosis is None:
+        return None
+    binding_path = bundle_taskboard_input_binding_path(lane)
+    runtime_path = lane.runtime_todo_path
+    stamp = utc_now().replace(":", "").replace("+", "_")
+    archived: list[str] = []
+    try:
+        if binding_path.is_file():
+            archive = binding_path.with_name(f"{binding_path.name}.stale-{stamp}")
+            os.replace(binding_path, archive)
+            archived.append(str(archive))
+        if runtime_path is not None and Path(runtime_path).is_file():
+            runtime = Path(runtime_path)
+            archive = runtime.with_name(f"{runtime.name}.stale-{stamp}")
+            os.replace(runtime, archive)
+            archived.append(str(archive))
+        binding = materialize_bundle_lane_taskboard(lane, repo_root=repo_root)
+    except (OSError, ValueError) as exc:
+        logger.warning(
+            "Failed to refresh stale input binding for %s: %s",
+            lane.bundle_key,
+            exc,
+        )
+        return {
+            **diagnosis,
+            "refreshed": False,
+            "error": str(exc)[-1000:],
+            "archived": archived,
+        }
+    logger.info(
+        "Refreshed stale input binding for %s (bound %s → planned %s)",
+        lane.bundle_key,
+        diagnosis.get("bound_source_todo_sha256", "")[:12],
+        diagnosis.get("planned_source_todo_sha256", "")[:12],
+    )
+    return {
+        **diagnosis,
+        "refreshed": True,
+        "archived": archived,
+        "binding": binding,
     }
 
 
@@ -3554,13 +3615,32 @@ def launch_bundle_lanes(
         id(lane): _lane_launch_policy_error(lane)
         for lane in lanes
     }
-    stale_input_bindings = {
-        id(lane): stale_bundle_lane_input_binding(
+    stale_input_bindings: dict[int, dict[str, Any] | None] = {}
+    for lane in lanes:
+        diagnosis = stale_bundle_lane_input_binding(
             lane,
             repo_root=repo_root,
         )
-        for lane in lanes
-    }
+        if diagnosis is None:
+            stale_input_bindings[id(lane)] = None
+            continue
+        refreshed = refresh_stale_bundle_lane_input_binding(
+            lane,
+            repo_root=repo_root,
+        )
+        if refreshed and refreshed.get("refreshed"):
+            logger.info(
+                "Auto-refreshed stale taskboard binding for %s before launch",
+                lane.bundle_key,
+            )
+            stale_input_bindings[id(lane)] = None
+            continue
+        if refreshed is not None and not refreshed.get("refreshed"):
+            diagnosis = {
+                **diagnosis,
+                "refresh_error": str(refreshed.get("error") or "refresh_failed"),
+            }
+        stale_input_bindings[id(lane)] = diagnosis
     if lanes and all(policy_errors[id(lane)] for lane in lanes):
         return [
             {
@@ -4596,6 +4676,36 @@ class DynamicBundleScheduler:
                 statuses.get(task_id, board_statuses.get(task_id, ""))
                 for task_id in lane.task_ids
             ]
+            # Authoritative shard board open work always wins over a newer
+            # runtime/portal projection that still says completed. Lease
+            # requeue leaves runtime todos + task_state completed while the
+            # bundle shard remains todo; treating the runtime snapshot as
+            # terminal permanently starves relaunch even when capacity is free.
+            shard_open = False
+            try:
+                if lane.todo_path.is_file():
+                    from ..todo_daemon.implementation_daemon import parse_task_file as _parse_shard
+
+                    shard_prefix = str(
+                        self.lane_options.get("task_prefix") or DEFAULT_TASK_PREFIX
+                    )
+                    shard_tasks = _parse_shard(lane.todo_path, shard_prefix)
+                    selected = {str(task_id) for task_id in lane.task_ids}
+                    shard_open = any(
+                        str(task.task_id) in selected
+                        and str(task.status).strip().lower()
+                        not in {"complete", "completed", "blocked", "on_hold", "done"}
+                        for task in shard_tasks
+                    )
+            except OSError:
+                shard_open = False
+            board_has_open_work = shard_open or any(
+                board_statuses.get(str(task_id), "todo")
+                not in {"complete", "completed", "blocked", "on_hold", "done"}
+                for task_id in lane.task_ids
+            )
+            if board_has_open_work and not active:
+                return ""
             if (
                 state_matches_board
                 and not active
@@ -4688,6 +4798,110 @@ class DynamicBundleScheduler:
             str(task.status).strip().lower() not in {"complete", "completed", "blocked", "on_hold"}
             for task in selected
         )
+
+    @staticmethod
+    def _reopen_portal_task_state_for_board(lane: BundleLaneSpec) -> bool:
+        """Reset stale portal completion so a reopened board can relaunch.
+
+        Returns True when the portal projection was rewritten.
+        """
+
+        if not lane.task_ids:
+            return False
+        state_path = lane.state_dir / f"{lane.state_prefix}_task_state.json"
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return False
+        if not isinstance(state, dict):
+            return False
+        statuses = state.get("task_statuses")
+        if not isinstance(statuses, dict):
+            return False
+        changed = False
+        completed_ids = {
+            str(item)
+            for item in (state.get("completed_task_ids") or [])
+            if str(item).strip()
+        }
+        for task_id in lane.task_ids:
+            key = str(task_id)
+            current = str(statuses.get(key) or "").strip().lower()
+            if current in {"complete", "completed"}:
+                statuses[key] = "ready"
+                completed_ids.discard(key)
+                changed = True
+        if not changed:
+            return False
+        state["task_statuses"] = statuses
+        state["completed_task_ids"] = sorted(completed_ids)
+        state["completed_count"] = len(completed_ids)
+        ready_ids = [
+            str(task_id)
+            for task_id, status in statuses.items()
+            if str(status).strip().lower() in {"ready", "todo", "pending", "open"}
+        ]
+        state["ready_count"] = len(ready_ids)
+        state["eligible_ready_count"] = len(ready_ids)
+        state["eligible_ready_task_ids"] = ready_ids
+        state["selection_idle_reason"] = ""
+        state["implementation_in_progress"] = False
+        state["active_task_id"] = ""
+        state["active_task_cid"] = ""
+        try:
+            lane.state_dir.mkdir(parents=True, exist_ok=True)
+            state_path.write_text(
+                json.dumps(state, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            return False
+        return True
+
+    def _reopen_runtime_todo_statuses(self, lane: BundleLaneSpec) -> bool:
+        """Rewrite runtime/shard todo Status:completed → todo for open residual work."""
+
+        if not lane.task_ids:
+            return False
+        paths: list[Path] = []
+        if lane.todo_path:
+            paths.append(Path(lane.todo_path))
+        runtime_todo = lane.state_dir / f"{lane.state_prefix}_runtime.todo.md"
+        paths.append(runtime_todo)
+        # Also reopen operational portal copy if present.
+        for candidate in lane.state_dir.glob("*runtime*.todo.md"):
+            paths.append(candidate)
+        selected = {str(task_id) for task_id in lane.task_ids}
+        changed_any = False
+        for path in paths:
+            if not path.is_file():
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            original = text
+            for task_id in selected:
+                # Only flip Status under the matching task header.
+                pattern = (
+                    rf"(^## {re.escape(task_id)}\b.*?\n(?:.*\n)*?^- Status:\s*)"
+                    rf"(complete|completed)\s*$"
+                )
+                text, count = re.subn(
+                    pattern,
+                    r"\1todo",
+                    text,
+                    count=1,
+                    flags=re.IGNORECASE | re.MULTILINE,
+                )
+                if count:
+                    changed_any = True
+            if text != original:
+                try:
+                    path.write_text(text, encoding="utf-8")
+                except OSError:
+                    continue
+        return changed_any
 
     @staticmethod
     def _receipt_backed_attempt_limit_disposition(
@@ -5339,6 +5553,24 @@ class DynamicBundleScheduler:
                 for lane in registered:
                     if lane.task_cid in self._running:
                         continue
+                    # Board reopen must run *before* disposition. Runtime
+                    # portal todos often still say completed after residual
+                    # requeue; disposition then short-circuits and never
+                    # relaunches install lanes that the shard still marks todo.
+                    if self._authoritative_lane_has_open_work(lane):
+                        coordinator.requeue_completed(
+                            lane.task_cid,
+                            reason="bundle_board_reopened",
+                        )
+                        # Attempt budgets burned by supervisor restarts must
+                        # also clear so residual FVT install/packaging lanes
+                        # become claimable again without operator SQL.
+                        coordinator.requeue_exhausted_blocked(
+                            lane.task_cid,
+                            reason="bundle_board_reopened",
+                        )
+                        self._reopen_portal_task_state_for_board(lane)
+                        self._reopen_runtime_todo_statuses(lane)
                     disposition = self._disposition(lane)
                     if disposition:
                         if (
@@ -5350,13 +5582,29 @@ class DynamicBundleScheduler:
                                 lane.task_cid,
                                 reason="receipt_drained_completion",
                             )
-                        continue
-                    if self._authoritative_lane_has_open_work(lane):
+                        # Even with a completed disposition, keep residual
+                        # board-open lanes launchable after the reopen above.
+                        if not self._authoritative_lane_has_open_work(lane):
+                            continue
+                    current_projection = coordinator.task_state(lane.task_cid) or {}
+                    if (
+                        self._authoritative_lane_has_open_work(lane)
+                        and str(
+                            current_projection.get("state")
+                            or current_projection.get("lease_state")
+                            or ""
+                        )
+                        == "completed"
+                    ):
                         coordinator.requeue_completed(
                             lane.task_cid,
-                            reason="bundle_board_reopened",
+                            reason="bundle_board_reopened_stale_completion",
                         )
-                    current_projection = coordinator.task_state(lane.task_cid) or {}
+                        self._reopen_portal_task_state_for_board(lane)
+                        self._reopen_runtime_todo_statuses(lane)
+                        current_projection = (
+                            coordinator.task_state(lane.task_cid) or {}
+                        )
                     if not self._receipt_backed_attempt_limit_disposition(
                         lane,
                         current_projection,
@@ -5379,17 +5627,45 @@ class DynamicBundleScheduler:
                     for item in decision_projection
                     if self._projection_state(item) == "ready"
                 }
-                stale_input_bindings = {
-                    lane.task_cid: diagnosis
-                    for lane in registered
-                    if lane.task_cid in ready_input_binding_task_cids
-                    if (
-                        diagnosis := stale_bundle_lane_input_binding(
+                stale_input_bindings: dict[str, dict[str, Any]] = {}
+                for lane in registered:
+                    if lane.task_cid not in ready_input_binding_task_cids:
+                        continue
+                    # Skip rematerialization while a worker is already holding
+                    # the runtime board; still surface the diagnosis so the
+                    # lane is not re-launched under a mismatched plan digest.
+                    if lane.task_cid in self._running:
+                        diagnosis = stale_bundle_lane_input_binding(
                             lane,
                             repo_root=self.repo_root,
                         )
+                        if diagnosis is not None:
+                            stale_input_bindings[lane.task_cid] = diagnosis
+                        continue
+                    diagnosis = stale_bundle_lane_input_binding(
+                        lane,
+                        repo_root=self.repo_root,
                     )
-                }
+                    if diagnosis is None:
+                        continue
+                    refreshed = refresh_stale_bundle_lane_input_binding(
+                        lane,
+                        repo_root=self.repo_root,
+                    )
+                    if refreshed and refreshed.get("refreshed"):
+                        logger.info(
+                            "Auto-refreshed stale taskboard binding for %s during reconcile",
+                            lane.bundle_key,
+                        )
+                        continue
+                    if refreshed is not None and not refreshed.get("refreshed"):
+                        diagnosis = {
+                            **diagnosis,
+                            "refresh_error": str(
+                                refreshed.get("error") or "refresh_failed"
+                            ),
+                        }
+                    stale_input_bindings[lane.task_cid] = diagnosis
                 for item in decision_projection:
                     task_cid = str(item.get("task_cid") or "")
                     diagnosis = stale_input_bindings.get(task_cid)

@@ -2786,7 +2786,22 @@ class ResourceScheduler:
                 requirement.resource_class in GENERIC_BUNDLE_RESOURCE_CLASSES
                 and "cpu" in host.capabilities
             )
-            if not (legacy_compatible or generic_bundle_compatible):
+            # Objective plans often label work with workload-oriented classes
+            # (e.g. exclusive-jvm-toolchain) that are not physical host classes.
+            # Those still execute on general CPU capacity; provider/capability
+            # and stage headroom checks enforce specialization separately.
+            # Keep model-pool and GPU-prefixed classes fail-closed so they do
+            # not silently admit without matching host resources.
+            unregistered_cpu_workload_compatible = (
+                "cpu" in host.capabilities
+                and resource_pool(requirement.resource_class) == "cpu-proof"
+                and not str(requirement.resource_class).startswith("gpu")
+            )
+            if not (
+                legacy_compatible
+                or generic_bundle_compatible
+                or unregistered_cpu_workload_compatible
+            ):
                 reasons.append("resource_class_mismatch")
         if requirement.provider_required:
             host_required = {

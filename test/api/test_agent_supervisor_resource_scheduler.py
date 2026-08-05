@@ -204,6 +204,53 @@ def test_default_cpu_host_admits_prompt_plan_resource_classes(
 
 
 @pytest.mark.parametrize(
+    "resource_class",
+    (
+        "exclusive-jvm-toolchain",
+        "large-kernel-toolchain",
+        "cpu-install-test",
+        "unknown",
+    ),
+)
+def test_default_cpu_host_admits_unregistered_cpu_workload_classes(
+    resource_class: str,
+) -> None:
+    """Objective-plan workload labels must not stall residual FVT installs."""
+
+    scheduler = ResourceScheduler(ResourcePolicy(max_lanes=4))
+    decision = scheduler.evaluate(
+        LaneResourceRequirements(
+            lane_id=f"workload-{resource_class}",
+            resource_class=resource_class,
+        ),
+        host=_host(
+            resource_classes=(ProofResourceClass.SOLVER.value,),
+            capabilities=("cpu",),
+        ),
+    )
+
+    assert decision.admitted is True
+    assert "resource_class_mismatch" not in decision.reasons
+
+
+def test_gpu_prefixed_workload_class_still_mismatches_cpu_host() -> None:
+    scheduler = ResourceScheduler(ResourcePolicy(max_lanes=4))
+    decision = scheduler.evaluate(
+        LaneResourceRequirements(
+            lane_id="gpu-only",
+            resource_class="gpu-a100",
+        ),
+        host=_host(
+            resource_classes=(ProofResourceClass.SOLVER.value,),
+            capabilities=("cpu",),
+        ),
+    )
+
+    assert decision.admitted is False
+    assert "resource_class_mismatch" in decision.reasons
+
+
+@pytest.mark.parametrize(
     ("provider_overrides", "requirement_overrides", "policy_overrides", "reason"),
     [
         ({"healthy": False}, {}, {}, "provider_unhealthy"),
