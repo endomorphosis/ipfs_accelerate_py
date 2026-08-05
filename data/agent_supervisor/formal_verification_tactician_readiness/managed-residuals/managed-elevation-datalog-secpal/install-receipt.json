@@ -1,0 +1,174 @@
+{
+  "bundle": "formal-verification-tactician/managed-elevation-datalog-secpal",
+  "claims": {
+    "deployment": false,
+    "install": true,
+    "lock_match": true,
+    "merge": false,
+    "production_elevation_complete_after_reseal_only": true
+  },
+  "description": "Lock-matching managed residual install evidence for in-process datalog-authorization and secpal-authorization production elevation. Roots are in-process modules (not native executables); Soufflé vendor is bound only as a differential witness required by the elevation join.",
+  "discovery": {
+    "missing_required_elevations_observed": [
+      "datalog-authorization",
+      "secpal-authorization"
+    ],
+    "relative_path": "data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md"
+  },
+  "goal_id": "FVT-G244",
+  "interface": "ManagedCapabilityResidualInstall@1",
+  "lane_id": "managed-elevation-datalog-secpal",
+  "lock": {
+    "all_tools_present": true,
+    "lock_digest_sha256": "8ff368c7cec3d39315b87feefb19ff757f573d1ab98b3e7cf3fc080a1e893462",
+    "relative_path": "config/formal_verification_toolchains.lock.json",
+    "tools_present": {
+      "datalog-authorization": true,
+      "secpal-authorization": true
+    }
+  },
+  "managed_roots": {
+    "datalog-authorization": {
+      "kind": "in_process_module",
+      "marker_relative": "data/agent_supervisor/formal_verification_tactician_readiness/managed-residuals/managed-elevation-datalog-secpal/tools/datalog-authorization/managed-root.marker",
+      "present": true,
+      "tool_id": "datalog-authorization"
+    },
+    "secpal-authorization": {
+      "kind": "in_process_module",
+      "marker_relative": "data/agent_supervisor/formal_verification_tactician_readiness/managed-residuals/managed-elevation-datalog-secpal/tools/secpal-authorization/managed-root.marker",
+      "present": true,
+      "tool_id": "secpal-authorization"
+    }
+  },
+  "observed_at": "2026-08-05T16:17:14Z",
+  "policy": {
+    "external_shadows_never_grant_authorization_authority": true,
+    "in_process_tools_use_module_root": true,
+    "live_certification_required": true,
+    "never_claim_deployment_ready": true,
+    "never_greenwash_missing_sealed_roots": true,
+    "no_download": true,
+    "no_forge_digests": true,
+    "no_network": true,
+    "public_surfaces_only": true,
+    "skip_install_reuse_sealed_vendor": true,
+    "vendor_witness_required_for_production_elevation": true
+  },
+  "program_interface": "RoleAwareFormalVerificationRelease@1",
+  "receipt_identity": "52bc22c223d4a9095c866b40bda7e05ca9fcce1437841ede0821e17f4715134c",
+  "residual_closure": {
+    "deployment_ready_claimed": false,
+    "elevation_gaps_addressed": [
+      "datalog-authorization",
+      "secpal-authorization"
+    ],
+    "install_bound": true,
+    "lane_tools": [
+      "datalog-authorization",
+      "secpal-authorization"
+    ],
+    "lock_matching": true,
+    "managed_deployment_blockers_for_lane_tools": [],
+    "notes": "In-process authorization engines have no managed:* host executable blockers; residual closes production-elevation install/evidence gap for FVT-113 reseal. External secpal/souffle blockers remain owned by FVT-109.",
+    "reseal_deferred_to": "FVT-113"
+  },
+  "schema_version": "formal-verification-managed-capability-residual-install-receipt/v1",
+  "status": "managed_residual_install_bound",
+  "task_id": "FVT-112",
+  "tool_ids": [
+    "datalog-authorization",
+    "secpal-authorization"
+  ],
+  "tools": {
+    "datalog-authorization": {
+      "availability": "in_process",
+      "backend_version": "DatalogAuthorizationBackend@1",
+      "display_name": "In-process Datalog authorization engine",
+      "executable_candidates": [],
+      "identity_kind": "in_process",
+      "install_scope": "user_local",
+      "interface_version": "DatalogAuthorizationBackend@1",
+      "license": "Apache-2.0",
+      "lock_entry_present": true,
+      "lock_match": true,
+      "managed_root_kind": "in_process_module",
+      "managed_root_marker_relative": "data/agent_supervisor/formal_verification_tactician_readiness/managed-residuals/managed-elevation-datalog-secpal/tools/datalog-authorization/managed-root.marker",
+      "managed_root_present": true,
+      "module_relative": "ipfs_datasets_py/ipfs_datasets_py/logic/backends/datalog/adapters.py",
+      "module_sha256": "3db311b5aad452cfeef8c9a1c70e10c2137447d8ecb4b40bb0ebfa6c3a91270d",
+      "no_external_executable_required": true,
+      "pins": [],
+      "production_elevation_join": {
+        "evidence_class": "reference_plus_checked_souffle_vendor",
+        "reference_certified": true,
+        "reference_lane": "datalog_secpal",
+        "vendor_witness_certified": true,
+        "vendor_witness_tool_id": "souffle"
+      },
+      "requires_explicit_opt_in": true,
+      "resource_class": "authorization",
+      "runtime": "in_process",
+      "source": "ipfs_datasets_py.logic.backends.datalog",
+      "tool_id": "datalog-authorization"
+    },
+    "secpal-authorization": {
+      "availability": "in_process",
+      "backend_version": "SecPALAuthorizationBackend@1",
+      "display_name": "In-process SecPAL-style authorization engine",
+      "executable_candidates": [],
+      "identity_kind": "in_process",
+      "install_scope": "user_local",
+      "interface_version": "SecPALAuthorizationBackend@1",
+      "license": "Apache-2.0",
+      "lock_entry_present": true,
+      "lock_match": true,
+      "managed_root_kind": "in_process_module",
+      "managed_root_marker_relative": "data/agent_supervisor/formal_verification_tactician_readiness/managed-residuals/managed-elevation-datalog-secpal/tools/secpal-authorization/managed-root.marker",
+      "managed_root_present": true,
+      "module_relative": "ipfs_datasets_py/ipfs_datasets_py/logic/backends/datalog/adapters.py",
+      "module_sha256": "3db311b5aad452cfeef8c9a1c70e10c2137447d8ecb4b40bb0ebfa6c3a91270d",
+      "no_external_executable_required": true,
+      "pins": [],
+      "production_elevation_join": {
+        "evidence_class": "reference_plus_checked_souffle_vendor",
+        "reference_certified": true,
+        "reference_lane": "datalog_secpal",
+        "vendor_witness_certified": true,
+        "vendor_witness_tool_id": "souffle"
+      },
+      "requires_explicit_opt_in": true,
+      "resource_class": "authorization",
+      "runtime": "in_process",
+      "source": "ipfs_datasets_py.logic.backends.datalog",
+      "tool_id": "secpal-authorization"
+    }
+  },
+  "track": "managed-capability-residual",
+  "vendor_witness": {
+    "artifact_kind": "native_compiled_executable",
+    "artifact_sha256": "064e4309de40862e484461e078a586acfa9b55a31d79e7b330e4b5b3d3e18e67",
+    "certificate_digest_sha256": "881006ad30f796ede5176d17909c638ce7e1a88501ad411a2da98cc9b379ca97",
+    "checked_in_vendor_receipt_relative": "docs/architecture/formal_verification_authorization_vendor_install_receipt.json",
+    "checks_passed": 32,
+    "checks_total": 32,
+    "dependency_prefix_relative": "build-dependencies/souffle/ubuntu-noble-arm64/root",
+    "executable_redacted": "<managed-tool-path-redacted>",
+    "host_platform": "linux-aarch64",
+    "identity_manifest_sha256": "c4d14408013b0f8e745ecc4d9837b031b0eae2a1419cc373d2399b2e36e27119",
+    "install_receipt_digest_sha256": "0fd9723e5e24b334667ec8e981b3e43ff5a8723ff3383f7d3d1db169168eb6b7",
+    "install_receipt_schema": "formal-verification-authorization-vendor-install-receipt/v1",
+    "install_root_relative": "souffle-vendor",
+    "interface": "ExternalAuthorizationVendorCertification@1",
+    "never_grants_authorization_authority": true,
+    "role": "differential_shadow_witness",
+    "schema_version": "external-authorization-vendor-certification/v1",
+    "sealed_prover_root_env": "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
+    "secpal_platform_exception": true,
+    "secpal_vendor_certified": false,
+    "souffle_vendor_certified": true,
+    "source_archive_sha256": "08d9b19cb4a8f570ac75dea73016b6a326d87ac28fccd4afeba217ace2071587",
+    "tool_id": "souffle",
+    "version": "2.4.1"
+  }
+}
