@@ -31,7 +31,7 @@ import uuid
 from collections.abc import Sequence
 from contextlib import ExitStack
 from pathlib import Path
-from typing import TextIO
+from typing import Mapping, TextIO, Sequence
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 if str(_PACKAGE_ROOT) not in sys.path:
@@ -3014,74 +3014,73 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             return 2
 
         os.chdir(workspace)
-        child_returncode, error_bytes, error_size, error_overflow = (
-            _run_grok_with_bounded_stderr(cmd, env=env)
-        )
-        if error_bytes:
-            sys.stderr.buffer.write(error_bytes)
-            if not error_bytes.endswith(b"\n"):
-                sys.stderr.buffer.write(b"\n")
-            sys.stderr.buffer.flush()
-        if error_overflow:
-            print(
-                "grok stderr exceeded the trusted quota-envelope limit "
-                f"({error_size} > {MAX_GROK_ERROR_BYTES} bytes); "
-                "quota fallback forbidden",
-                file=sys.stderr,
+        # Without an authorized Codex fallback, project typed quota receipts and
+        # exit. With a fallback, take the workspace-fenced + independent-verify
+        # path so Terra/medium may run only after verified hard-quota evidence.
+        if not codex_fallback_command:
+            child_returncode, error_bytes, error_size, error_overflow = (
+                _run_grok_with_bounded_stderr(cmd, env=env)
             )
+            if error_bytes:
+                sys.stderr.buffer.write(error_bytes)
+                if not error_bytes.endswith(b"\n"):
+                    sys.stderr.buffer.write(b"\n")
+                sys.stderr.buffer.flush()
+            if error_overflow:
+                print(
+                    "grok stderr exceeded the trusted quota-envelope limit "
+                    f"({error_size} > {MAX_GROK_ERROR_BYTES} bytes); "
+                    "quota fallback forbidden",
+                    file=sys.stderr,
+                )
+                return (
+                    1
+                    if child_returncode == GROK_QUOTA_EXHAUSTED_EXIT_CODE
+                    else child_returncode
+                )
+            quota_error = parse_grok_quota_error(
+                error_bytes.decode("utf-8", errors="replace")
+            )
+            if child_returncode != 0 and quota_error:
+                receipt = {
+                    "schema": GROK_QUOTA_RECEIPT_SCHEMA,
+                    "provider": "grok_cli",
+                    "model": model,
+                    "failure_kind": "quota_or_balance_exhausted",
+                    "message": "Grok Build usage balance exhausted",
+                    "raw_error_sha256": hashlib.sha256(error_bytes).hexdigest(),
+                    "raw_error_size": len(error_bytes),
+                    **quota_error,
+                }
+                print(
+                    json.dumps(receipt, sort_keys=True, separators=(",", ":")),
+                    file=sys.stderr,
+                )
+                return GROK_QUOTA_EXHAUSTED_EXIT_CODE
             return (
                 1
                 if child_returncode == GROK_QUOTA_EXHAUSTED_EXIT_CODE
                 else child_returncode
             )
-        quota_error = parse_grok_quota_error(
-            error_bytes.decode("utf-8", errors="replace")
-        )
-        if child_returncode != 0 and quota_error:
-            receipt = {
-                "schema": GROK_QUOTA_RECEIPT_SCHEMA,
-                "provider": "grok_cli",
-                "model": model,
-                "failure_kind": "quota_or_balance_exhausted",
-                "message": "Grok Build usage balance exhausted",
-                "raw_error_sha256": hashlib.sha256(error_bytes).hexdigest(),
-                "raw_error_size": len(error_bytes),
-                **quota_error,
-            }
-            print(
-                json.dumps(receipt, sort_keys=True, separators=(",", ":")),
-                file=sys.stderr,
-            )
-            return GROK_QUOTA_EXHAUSTED_EXIT_CODE
-        return (
-            1
-            if child_returncode == GROK_QUOTA_EXHAUSTED_EXIT_CODE
-            else child_returncode
-        )
-        if codex_fallback_command:
-            try:
-                workspace_baseline = _workspace_content_fingerprint(workspace)
-            except ValueError as exc:
-                print(str(exc), file=sys.stderr)
-                return 2
+
+        try:
+            workspace_baseline = _workspace_content_fingerprint(workspace)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
         failure_type = ""
-        if codex_fallback_command:
-            output_index = cmd.index("--output-format") + 1
-            cmd[output_index] = "streaming-json"
-            try:
-                primary_returncode = _run_grok_with_typed_failure_capture(
-                    cmd,
-                    env=grok_launch_env,
-                )
-                docker_run_finished = True
-            except OSError as exc:
-                print(f"unable to launch Grok CLI: {exc}", file=sys.stderr)
-                return 127
-        else:
-            completed = subprocess.run(cmd, env=grok_launch_env, check=False)
+        output_index = cmd.index("--output-format") + 1
+        cmd[output_index] = "streaming-json"
+        try:
+            primary_returncode = _run_grok_with_typed_failure_capture(
+                cmd,
+                env=grok_launch_env,
+            )
             docker_run_finished = True
-            primary_returncode = int(completed.returncode)
-        if primary_returncode == 0 or not codex_fallback_command:
+        except OSError as exc:
+            print(f"unable to launch Grok CLI: {exc}", file=sys.stderr)
+            return 127
+        if primary_returncode == 0:
             return primary_returncode
 
         try:
@@ -3169,6 +3168,23 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 pass
 
 
+
+def _run_grok_streaming(
+    command: Sequence[str],
+    *,
+    env: Mapping[str, str] | None = None,
+    **_kwargs: object,
+) -> tuple[int, str]:
+    """Compatibility alias for regression tests (stderr/stdout probe path)."""
+
+    return _run_grok_with_stderr_probe(list(command), env=dict(env or {}))
+
+
+def _grok_quota_exhausted(transcript: str) -> bool:
+    """Return True only for complete, typed hard-quota diagnostic envelopes."""
+
+    return bool(parse_grok_quota_error(str(transcript or "")))
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Authorized Grok CLI agent entry (llm_router.grok_cli)."
@@ -3223,163 +3239,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     receipt_fd = _receipt_fd_from_environment()
 
+    # Delegate to the full isolation/fallback implementation. Terra/medium is
+    # only dispatched after terminal quota correlation + independent verify.
     try:
-        codex_fallback_command = _parse_codex_fallback_command(
-            str(args.codex_fallback_command_json)
-        )
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-    except NameError:
-        # Compatibility: some builds only accept the JSON field.
-        codex_fallback_command = []
-
-    failure_receipt_nonce = str(
-        getattr(args, "grok_failure_receipt_nonce", "") or ""
-    ).strip()
-    if failure_receipt_nonce and not re.fullmatch(
-        r"[0-9a-f]{64}",
-        failure_receipt_nonce,
-    ):
-        print(
-            "Grok failure receipt nonce must be 64 lowercase hex digits",
-            file=sys.stderr,
-        )
-        return 2
-
-    from ipfs_accelerate_py.llm_router import (
-        LLMRouterError,
-        build_grok_cli_command,
-        build_grok_cli_env,
-        find_grok_cli,
-    )
-
-    workspace = args.workspace.expanduser().resolve()
-    if not workspace.is_dir():
-        print(f"workspace is not a directory: {workspace}", file=sys.stderr)
-        return 2
-
-    grok_bin = str(args.grok_bin).strip() or find_grok_cli() or ""
-    if not grok_bin:
-        print("grok CLI not found on PATH", file=sys.stderr)
-        return 127
-
-    model = (
-        str(args.model).strip()
-        or os.environ.get("IPFS_ACCELERATE_AGENT_GROK_MODEL", "").strip()
-        or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
-        or os.environ.get("GROK_CLI_MODEL", "").strip()
-        or DEFAULT_GROK_MODEL
-    )
-    max_turns_raw = (
-        str(args.max_turns).strip()
-        or os.environ.get("IPFS_ACCELERATE_AGENT_GROK_MAX_TURNS", "").strip()
-        or os.environ.get("ipfs_accelerate_py_GROK_CLI_MAX_TURNS", "").strip()
-        or str(DEFAULT_GROK_MAX_TURNS)
-    )
-    try:
-        max_turns = max(1, min(DEFAULT_GROK_MAX_TURNS, int(max_turns_raw)))
-    except ValueError:
-        max_turns = DEFAULT_GROK_MAX_TURNS
-    permission_mode = (
-        str(args.permission_mode).strip()
-        or os.environ.get("IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE", "").strip()
-        or os.environ.get("ipfs_accelerate_py_GROK_CLI_PERMISSION_MODE", "").strip()
-        or "bypassPermissions"
-    )
-
-    prompt = sys.stdin.read()
-    if not prompt.strip():
-        print("empty implementation prompt on stdin", file=sys.stderr)
-        return 2
-
-    prompt_path = ""
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            prefix="asref-grok-prompt-",
-            suffix=".txt",
-            delete=False,
-        ) as handle:
-            handle.write(prompt)
-            prompt_path = handle.name
-
-        try:
-            cmd = build_grok_cli_command(
-                mode=str(args.mode),
-                workspace=workspace,
-                model_name=model,
-                max_turns=max_turns,
-                grok_bin=grok_bin,
-                prompt_file=prompt_path,
-                permission_mode=permission_mode,
-            )
-            env = build_grok_cli_env()
-        except LLMRouterError as exc:
-            print(str(exc), file=sys.stderr)
-            return 2
-
-        os.chdir(workspace)
-        if failure_receipt_nonce:
-            with tempfile.TemporaryDirectory(
-                prefix="ipfs-accelerate-grok-quota-probe-"
-            ) as probe_directory:
-                probe_root = Path(probe_directory)
-                probe_prompt_path = probe_root / "prompt.txt"
-                probe_prompt_path.write_text(
-                    GROK_QUOTA_PROBE_PROMPT,
-                    encoding="utf-8",
-                )
-                try:
-                    probe_command = build_grok_cli_command(
-                        mode="chat",
-                        workspace=probe_root,
-                        model_name=model,
-                        max_turns=1,
-                        grok_bin=grok_bin,
-                        prompt_file=probe_prompt_path,
-                        permission_mode="dontAsk",
-                        tools="",
-                    )
-                except LLMRouterError as exc:
-                    print(str(exc), file=sys.stderr)
-                    return 2
-                probe_returncode, probe_stderr = _run_isolated_grok_quota_probe(
-                    probe_command,
-                    env=env,
-                )
-            if probe_returncode != 0:
-                receipt = build_grok_failure_receipt(
-                    probe_stderr_text=probe_stderr,
-                    nonce=failure_receipt_nonce,
-                    model=model,
-                    probe_returncode=probe_returncode,
-                    primary_dispatched=False,
-                )
-                print(render_grok_failure_receipt(receipt), file=sys.stderr)
-                return probe_returncode
-            primary_returncode, _stderr_tail = _run_grok_with_stderr_probe(
-                cmd,
-                env=env,
-            )
-        else:
-            completed = subprocess.run(cmd, env=env, check=False)
-            primary_returncode = int(completed.returncode)
-        if primary_returncode != 0 and codex_fallback_command:
-            print(
-                "inline Codex fallback suppressed; the supervisor requires "
-                "a durable Grok quota-exhaustion latch before routing "
-                "gpt-5.6-terra",
-                file=sys.stderr,
-            )
-        return primary_returncode
+        return _run(args, receipt_fd)
     finally:
         if receipt_fd >= 3:
             try:
                 os.close(receipt_fd)
             except OSError:
                 pass
+
 
 
 if __name__ == "__main__":

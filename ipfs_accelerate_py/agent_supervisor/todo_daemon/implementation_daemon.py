@@ -490,6 +490,14 @@ PROVIDER_RETRY_MONTHS = {
     "dec": 12,
 }
 IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
+# Legacy production-route toggles retained as env names for test/operator
+# cleanup only. Automatic routing is always on for supported providers.
+PRODUCTION_PROVIDER_ROUTE_ENABLED_ENV = (
+    "IPFS_ACCELERATE_AGENT_PRODUCTION_PROVIDER_ROUTE_ENABLED"
+)
+PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV = (
+    "IPFS_ACCELERATE_AGENT_PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND"
+)
 REQUIRE_TASK_EXECUTION_METADATA_ENV = (
     "IPFS_ACCELERATE_AGENT_REQUIRE_TASK_EXECUTION_METADATA"
 )
@@ -1600,10 +1608,15 @@ def _grok_cli_command(
     model_override: str | None = None,
     failure_receipt_nonce: str = "",
 ) -> list[str]:
-    """Build a Grok CLI agent command through llm_router.grok_cli.
+    """Build a Grok CLI agent command through the quota-routed runner.
 
     Prompt body is supplied on stdin by the daemon; :mod:`grok_cli_runner`
     materializes it to ``--prompt-file`` because the CLI does not take ``-``.
+
+    When a trusted system Codex install is resolvable, attach the exact
+    Terra/medium fallback argv so a single Grok invocation may fall through
+    only after independently verified hard-quota exhaustion. Codex is never
+    attached without that runner-owned authority gate.
     """
 
     if not _grok_binary():
@@ -1628,23 +1641,21 @@ def _grok_cli_command(
     # still enforces implementation_timeout as the hard wall-clock limit.
     max_turns = os.environ.get(_GROK_MAX_TURNS_ENV, "100000").strip() or "100000"
     grok = _grok_binary() or "grok"
-    runner_path = Path(__file__).resolve().parents[1] / "grok_cli_runner.py"
-    if not runner_path.is_file():
-        raise RuntimeError(f"grok_cli_runner missing at {runner_path}")
-    command = [
-        sys.executable,
-        str(runner_path),
-        "--workspace",
-        str(workspace_path.resolve()),
-        "--grok-bin",
-        grok,
-        "--model",
-        model,
-        "--max-turns",
-        max_turns,
-        "--mode",
-        "agent",
-    ]
+    from ..grok_cli_runner import build_grok_quota_routed_agent_command
+
+    command = build_grok_quota_routed_agent_command(
+        workspace=workspace_path.resolve(),
+        python_executable=sys.executable,
+        grok_bin=grok,
+        codex_bin=str(shutil.which("codex") or ""),
+        max_turns=int(max_turns) if str(max_turns).isdigit() else 100_000,
+    )
+    # Preserve explicit model override after the packaged Grok-4.5 default.
+    if model and model != "grok-4.5":
+        if "--model" in command:
+            command[command.index("--model") + 1] = model
+        else:
+            command.extend(["--model", model])
     if failure_receipt_nonce:
         command.extend(
             ["--grok-failure-receipt-nonce", failure_receipt_nonce]
