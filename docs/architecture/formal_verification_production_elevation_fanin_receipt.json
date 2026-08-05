@@ -6,7 +6,7 @@
   "goal_id": "FVT-G213",
   "task_id": "FVT-081",
   "program": "formal-verification-tactician/toolchain-release-candidate",
-  "observed_at": "2026-08-05T19:46:57Z",
+  "observed_at": "2026-08-05T19:48:40Z",
   "description": "Fail-closed production-semantic elevation fan-in. Each required tool is independently reconstructed from its canonical PNMR receipt and exact compact binding before production elevation.",
   "policy": {
     "required_check_kinds": [
@@ -394,8 +394,8 @@
   "certificate_identity": {
     "valid": true,
     "digest_valid": true,
-    "stored_digest_sha256": "792b4477c004e8c317d0f402d1735384a4c52251bda3227753f62d0b82274e45",
-    "computed_digest_sha256": "792b4477c004e8c317d0f402d1735384a4c52251bda3227753f62d0b82274e45",
+    "stored_digest_sha256": "de97a815b39b96da273948163180bd9eaea7e8e445266558e02edb2926d9b798",
+    "computed_digest_sha256": "de97a815b39b96da273948163180bd9eaea7e8e445266558e02edb2926d9b798",
     "interface_valid": true,
     "role_aware_identity_valid": true,
     "public_evidence_valid": true,
@@ -517,7 +517,7 @@
     "failures": []
   },
   "role_aware_certificate": {
-    "digest_sha256": "792b4477c004e8c317d0f402d1735384a4c52251bda3227753f62d0b82274e45",
+    "digest_sha256": "de97a815b39b96da273948163180bd9eaea7e8e445266558e02edb2926d9b798",
     "interface": "FormalVerificationToolchainCertificate@1",
     "projection_model": "digest_bound_compact_projection/v1",
     "raw_certificate_embedded": false
@@ -568,5 +568,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_digest_sha256": "sha256:3fb8b1efe1b8aec9ae2650026f4e3df6d86f876b01c2750c0df69d42d4697e1d"
+  "receipt_digest_sha256": "sha256:80f211408575c1d72282fd5f0f0b49357b374e23097a6b1221ffef973913bc4a"
 }
