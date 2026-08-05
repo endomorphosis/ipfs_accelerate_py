@@ -1750,8 +1750,13 @@ class LeaseCoordinator:
         """Reset a blocked attempt budget after authoritative work is reopened.
 
         This operation is deliberately narrow: it cannot disturb accepted or
-        completed leases, and only resets an exhausted lease whose last
-        terminal receipt classified the work as blocked.
+        completed leases. It resets an exhausted released/expired lease when:
+
+        * the last terminal receipt classified the work as blocked, or
+        * the lease was abandoned mid-flight (``scheduler stopped`` / drain) or
+          previously requeued while the authoritative board still has open
+          work — otherwise a full attempt budget is burned by supervisor
+          restarts and residual FVT lanes never relaunch.
         """
 
         normalized_reason = str(reason or "authoritative_source_reopened").strip().replace(" ", "_")
@@ -1774,10 +1779,21 @@ class LeaseCoordinator:
                     connection.commit()
                     return False
                 exhausted = int(row["attempt"] or 0) >= self._max_attempts(row)
-                blocked_receipt = str(row["release_reason"] or "").startswith("receipt:") and str(
-                    row["release_reason"] or ""
-                ).endswith(":blocked")
-                if row["state"] not in {"released", "expired"} or not exhausted or not blocked_receipt:
+                release_reason = str(row["release_reason"] or "")
+                blocked_receipt = release_reason.startswith("receipt:") and release_reason.endswith(
+                    ":blocked"
+                )
+                abandoned_or_requeued = (
+                    release_reason == "scheduler stopped"
+                    or release_reason.startswith("requeued:")
+                    or release_reason.startswith("worker drained")
+                    or "drained or exited" in release_reason
+                )
+                if (
+                    row["state"] not in {"released", "expired"}
+                    or not exhausted
+                    or not (blocked_receipt or abandoned_or_requeued)
+                ):
                     connection.commit()
                     return False
                 connection.execute(

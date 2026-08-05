@@ -122,6 +122,79 @@ def _run_grok_with_bounded_stderr(
     process.stderr.close()
     returncode = int(process.wait())
     return returncode, bytes(retained), total, total > MAX_GROK_ERROR_BYTES
+
+
+def _run_grok_with_stderr_probe(
+    command: Sequence[str],
+    *,
+    env: dict[str, str],
+) -> tuple[int, str]:
+    """Run task Grok while escaping receipt-like child output.
+
+    The runner's own receipt line is a control-plane record. Child stdout and
+    stderr share this filtered data path so neither can imitate that prefix.
+    """
+
+    process = subprocess.Popen(
+        list(command),
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    tail = bytearray()
+    assert process.stdout is not None
+    receipt_prefix = GROK_FAILURE_RECEIPT_PREFIX.encode("utf-8")
+    at_line_start = True
+    while True:
+        chunk = process.stdout.readline(4096)
+        if not chunk:
+            break
+        if at_line_start and chunk.startswith(receipt_prefix):
+            chunk = b"[grok-child-output-escaped] " + chunk
+        at_line_start = chunk.endswith(b"\n")
+        sink = getattr(sys.stdout, "buffer", None)
+        if sink is not None:
+            sink.write(chunk)
+            sink.flush()
+        else:
+            sys.stdout.write(chunk.decode("utf-8", errors="replace"))
+            sys.stdout.flush()
+        tail.extend(chunk)
+        if len(tail) > MAX_GROK_FAILURE_EVIDENCE_BYTES:
+            del tail[:-MAX_GROK_FAILURE_EVIDENCE_BYTES]
+    return int(process.wait()), tail.decode("utf-8", errors="replace")
+
+
+def _run_isolated_grok_quota_probe(
+    command: Sequence[str],
+    *,
+    env: dict[str, str],
+) -> tuple[int, str]:
+    """Run the fixed no-tools quota probe without exposing task context."""
+
+    try:
+        completed = subprocess.run(
+            list(command),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=False,
+            timeout=GROK_QUOTA_PROBE_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return 124, "isolated Grok quota probe timeout"
+    stderr = bytes(completed.stderr or b"")
+    return (
+        int(completed.returncode),
+        stderr[-MAX_GROK_FAILURE_EVIDENCE_BYTES:].decode(
+            "utf-8",
+            errors="replace",
+        ),
+    )
+
+
 MAX_CODEX_FALLBACK_ARGUMENTS = 64
 MAX_CODEX_FALLBACK_ARGUMENT_BYTES = 4_096
 MAX_GROK_STREAM_EVENT_BYTES = 64 * 1024

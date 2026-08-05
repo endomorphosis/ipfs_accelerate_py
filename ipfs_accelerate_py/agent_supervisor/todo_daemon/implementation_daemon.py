@@ -13769,17 +13769,24 @@ class PortalImplementationDaemon:
                         )
                     )
                 else:
-                    proposal_validation = self._validate_implementation_patch(
-                        workspace_path,
-                        task,
-                        baseline_ref=baseline_ref,
+                    # Prefer the clean/no-change candidate path when the
+                    # provider produced no patch (already-satisfied residual
+                    # work). _run_validation_with_candidate_binding tries
+                    # clean revalidation first and only falls back to the
+                    # strict empty-patch proposal gate when the workspace is
+                    # actually dirty.
+                    validation_result = (
+                        self._run_validation_with_candidate_binding(
+                            workspace_path,
+                            task,
+                            log_path,
+                            state=state,
+                            baseline_ref=baseline_ref,
+                            proposal_validation=None,
+                        )
                     )
-                    validation_result = self._run_validation_commands(
-                        workspace_path,
-                        task,
-                        log_path,
-                        state=state,
-                        proposal_validation=proposal_validation,
+                    proposal_validation = validation_result.get(
+                        "proposal_validation"
                     )
                 protected_path_violation = (
                     self._implementation_protected_path_violation(
@@ -13803,24 +13810,35 @@ class PortalImplementationDaemon:
                         validation_result.get("returncode") or 1
                     )
                 elif not deterministic_only:
-                    validation_result = (
-                        self._restore_and_verify_post_validation_candidate(
-                            workspace_path,
-                            task,
-                            baseline_ref=baseline_ref,
-                            proposal_validation=proposal_validation,
-                            validation_result=validation_result,
-                            log_path=log_path,
-                            state=state,
-                            attempt=attempt,
-                            allow_candidate_stabilization=True,
+                    # Clean candidates already rebound inside
+                    # _run_validation_with_candidate_binding. Only re-stabilize
+                    # when a concrete proposal was admitted for a dirty tree.
+                    if proposal_validation is not None:
+                        validation_result = (
+                            self._restore_and_verify_post_validation_candidate(
+                                workspace_path,
+                                task,
+                                baseline_ref=baseline_ref,
+                                proposal_validation=proposal_validation,
+                                validation_result=validation_result,
+                                log_path=log_path,
+                                state=state,
+                                attempt=attempt,
+                                allow_candidate_stabilization=True,
+                            )
                         )
+                        if not validation_result.get("passed", False):
+                            effective_returncode = int(
+                                validation_result.get("returncode") or 1
+                            )
+                # Never leave live ProposalValidationResult objects on the
+                # validation dict — finish/events/diagnostics JSON-encode it.
+                validation_result = (
+                    self._detach_in_process_proposal_validation(
+                        validation_result
                     )
-                    if not validation_result.get("passed", False):
-                        effective_returncode = int(
-                            validation_result.get("returncode") or 1
-                        )
-                elif validation_result.get("passed", False):
+                )
+                if validation_result.get("passed", False) and deterministic_only:
                     # The typed local plan may materialize a proposal-authorized
                     # output.  In the direct checkout that candidate must cross
                     # the same durable commit gate used by the isolated path
@@ -22561,20 +22579,25 @@ class PortalImplementationDaemon:
                                     for item in operator_prepared_outputs
                                 ]
                         else:
-                            proposal_validation = self._validate_implementation_patch(
-                                worktree_path,
-                                task,
-                                baseline_ref=baseline_ref,
-                                replayable_consumed_proposal_ids=(
-                                    seed_replayable_proposal_ids
-                                ),
+                            # Prefer clean/no-change candidate validation when
+                            # the provider left an empty worktree (already-
+                            # satisfied residual). Only fall through to the
+                            # strict empty-patch proposal gate when dirty.
+                            validation_result = (
+                                self._run_validation_with_candidate_binding(
+                                    worktree_path,
+                                    task,
+                                    log_path,
+                                    state=state,
+                                    baseline_ref=baseline_ref,
+                                    proposal_validation=None,
+                                    replayable_consumed_proposal_ids=(
+                                        seed_replayable_proposal_ids
+                                    ),
+                                )
                             )
-                            validation_result = self._run_validation_commands(
-                                worktree_path,
-                                task,
-                                log_path,
-                                state=state,
-                                proposal_validation=proposal_validation,
+                            proposal_validation = validation_result.get(
+                                "proposal_validation"
                             )
                             validation_result = (
                                 self._apply_implementation_failure_review(
@@ -22591,7 +22614,10 @@ class PortalImplementationDaemon:
                         if (
                             not deterministic_only
                             and validation_result.get("passed", False)
+                            and proposal_validation is not None
                         ):
+                            # Clean candidates already rebound inside
+                            # _run_validation_with_candidate_binding.
                             validation_result = (
                                 self._restore_and_verify_post_validation_candidate(
                                     worktree_path,
@@ -22605,6 +22631,13 @@ class PortalImplementationDaemon:
                                     allow_candidate_stabilization=True,
                                 )
                             )
+                        # Drop live ProposalValidationResult before commit/
+                        # board/events JSON persistence (FVT-092 TypeError).
+                        validation_result = (
+                            self._detach_in_process_proposal_validation(
+                                validation_result
+                            )
+                        )
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
                         task=task,
@@ -22894,6 +22927,7 @@ class PortalImplementationDaemon:
                         worktree_path=worktree_path,
                         branch_name=branch_name,
                     )
+                    proposal_validation = None
                     try:
                         self._prepare_worktree_for_validation(
                             worktree_path,
@@ -22907,22 +22941,23 @@ class PortalImplementationDaemon:
                             )
                         )
                     else:
-                        proposal_validation = (
-                            self._validate_implementation_patch(
+                        # Timeout salvage must also prefer clean/no-change
+                        # candidates so already-satisfied residuals can finish.
+                        validation_result = (
+                            self._run_validation_with_candidate_binding(
                                 worktree_path,
                                 task,
+                                log_path,
+                                state=state,
                                 baseline_ref=baseline_ref,
+                                proposal_validation=None,
                                 replayable_consumed_proposal_ids=(
                                     seed_replayable_proposal_ids
                                 ),
                             )
                         )
-                        validation_result = self._run_validation_commands(
-                            worktree_path,
-                            task,
-                            log_path,
-                            state=state,
-                            proposal_validation=proposal_validation,
+                        proposal_validation = validation_result.get(
+                            "proposal_validation"
                         )
                         validation_result = (
                             self._apply_implementation_failure_review(
@@ -22954,7 +22989,10 @@ class PortalImplementationDaemon:
                                 protected_path_violation
                             ),
                         }
-                    elif validation_result.get("passed", False):
+                    elif (
+                        validation_result.get("passed", False)
+                        and proposal_validation is not None
+                    ):
                         validation_result = (
                             self._restore_and_verify_post_validation_candidate(
                                 worktree_path,
@@ -22968,6 +23006,11 @@ class PortalImplementationDaemon:
                                 allow_candidate_stabilization=True,
                             )
                         )
+                    validation_result = (
+                        self._detach_in_process_proposal_validation(
+                            validation_result
+                        )
+                    )
                     if not protected_path_violation:
                         protected_path_violation = (
                             self._finalize_implementation_protected_path_fence(
@@ -29948,6 +29991,45 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         """Project a proposal result without source, patch, prompt, or secrets."""
 
+        if isinstance(proposal_validation, Mapping):
+            compact = {
+                key: value
+                for key, value in proposal_validation.items()
+                if key
+                in {
+                    "attempted",
+                    "accepted",
+                    "reason_codes",
+                    "proposal_id",
+                    "policy_id",
+                    "receipt_id",
+                    "repository_tree_id",
+                    "changed_paths",
+                    "proof_authoritative",
+                    "completion_authoritative",
+                    "reason",
+                    "error_code",
+                }
+            }
+            if error_code and "reason_codes" in compact:
+                codes = {
+                    str(code).strip()
+                    for code in (compact.get("reason_codes") or [])
+                    if str(code).strip()
+                }
+                codes.add(str(error_code).strip())
+                codes.discard("")
+                compact["reason_codes"] = sorted(codes)[
+                    :MAX_PERSISTED_PROPOSAL_REASON_CODES
+                ]
+            elif error_code:
+                compact["reason_codes"] = [str(error_code).strip()]
+            compact.setdefault("attempted", True)
+            compact.setdefault("accepted", bool(compact.get("accepted")))
+            compact.setdefault("proof_authoritative", False)
+            compact.setdefault("completion_authoritative", False)
+            return compact
+
         receipt = getattr(proposal_validation, "receipt", None)
         proposal = getattr(proposal_validation, "proposal", None)
         policy = getattr(proposal_validation, "policy", None)
@@ -29976,6 +30058,32 @@ class PortalImplementationDaemon:
             "proof_authoritative": False,
             "completion_authoritative": False,
         }
+
+    def _detach_in_process_proposal_validation(
+        self,
+        validation_result: Mapping[str, Any] | dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Drop live proposal objects before validation results are persisted.
+
+        ``_run_validation_with_candidate_binding`` may temporarily attach a
+        ``ProposalValidationResult`` for post-validation re-stabilize. Event
+        logs and diagnostic receipts must only keep the compact gate projection.
+        """
+
+        result = dict(validation_result or {})
+        proposal_validation = result.pop("proposal_validation", None)
+        if proposal_validation is None:
+            return result
+        if isinstance(proposal_validation, Mapping):
+            # Already JSON-safe; keep only under proposal_gate if missing.
+            if "proposal_gate" not in result:
+                result["proposal_gate"] = dict(proposal_validation)
+            return result
+        compact = self._compact_proposal_validation(proposal_validation)
+        existing_gate = result.get("proposal_gate")
+        if not isinstance(existing_gate, Mapping):
+            result["proposal_gate"] = compact
+        return result
 
     @staticmethod
     def _secret_change_scope_examination(
@@ -32058,12 +32166,17 @@ class PortalImplementationDaemon:
         state: PortalTaskState | None = None,
         baseline_ref: str,
         proposal_validation: Any = None,
+        replayable_consumed_proposal_ids: Sequence[str] = (),
     ) -> dict[str, Any]:
         """Validate the exact final candidate, including generated outputs.
 
         A declared validation command may materialize task-owned evidence.
         Rebind that candidate once and rerun validation so only a stable,
         proposal-authorized fixed point can proceed to commit.
+
+        When ``proposal_validation`` is omitted, try the clean/no-change
+        candidate path first so already-satisfied residuals can finish
+        without being rejected by the empty-patch proposal gate.
         """
 
         result: dict[str, Any] | None = None
@@ -32075,12 +32188,19 @@ class PortalImplementationDaemon:
                 state=state,
                 baseline_ref=baseline_ref,
             )
+            if result is not None:
+                # Clean path admits without a proposal object; surface that
+                # for callers that only re-stabilize dirty candidates.
+                result.setdefault("proposal_validation", None)
         if result is None:
             if proposal_validation is None:
                 proposal_validation = self._validate_implementation_patch(
                     workspace_path,
                     task,
                     baseline_ref=baseline_ref,
+                    replayable_consumed_proposal_ids=(
+                        replayable_consumed_proposal_ids
+                    ),
                 )
             result = self._run_validation_commands(
                 workspace_path,
@@ -32089,6 +32209,9 @@ class PortalImplementationDaemon:
                 state=state,
                 proposal_validation=proposal_validation,
             )
+            # Keep the live proposal object only for in-process re-stabilize.
+            # Event/log JSON cannot serialize ProposalValidationResult.
+            result["proposal_validation"] = proposal_validation
             result = self._verify_post_validation_candidate_binding(
                 workspace_path,
                 task,
@@ -32096,6 +32219,9 @@ class PortalImplementationDaemon:
                 proposal_validation=proposal_validation,
                 validation_result=result,
             )
+            # Re-attach after binding verify (it may rebuild the result dict).
+            if "proposal_validation" not in result:
+                result["proposal_validation"] = proposal_validation
         if result.get("reason") != "candidate_changed_during_validation":
             return result
 
@@ -32103,6 +32229,9 @@ class PortalImplementationDaemon:
             workspace_path,
             task,
             baseline_ref=baseline_ref,
+            replayable_consumed_proposal_ids=(
+                replayable_consumed_proposal_ids
+            ),
         )
         compact_rebound = self._compact_proposal_validation(
             rebound_validation,
@@ -35476,6 +35605,16 @@ class PortalImplementationDaemon:
                 )
                 continue
             checkout = (workspace / relative).resolve()
+            # When the parent already records this exact gitlink (common when
+            # the submodule merge was already up-to-date / ff-only no-op), the
+            # isolated child worktree may be absent from the publication
+            # workspace. Treating that as failure leaves residual FVT merges
+            # spinning on submodule_merge_retry_failed forever even though the
+            # target branch already has the correct gitlink.
+            current_gitlink = self._submodule_gitlink_ref(workspace, relative)
+            if current_gitlink == commit:
+                selected[relative] = commit
+                continue
             if not self._is_git_worktree(checkout):
                 failures.append(
                     {
@@ -35691,6 +35830,21 @@ class PortalImplementationDaemon:
         alignments: list[dict[str, Any]] = []
         for relative, commit in sorted(selected.items()):
             checkout = (workspace / relative).resolve()
+            # Parent gitlink already points at the isolated commit and the
+            # publication workspace may not materialize the child checkout.
+            if (
+                original_gitlinks.get(relative) == commit
+                and not self._is_git_worktree(checkout)
+            ):
+                alignments.append(
+                    {
+                        "path": relative,
+                        "commit": commit,
+                        "aligned": True,
+                        "reason": "parent_gitlink_already_published",
+                    }
+                )
+                continue
             current = subprocess.run(
                 ["git", "rev-parse", "HEAD"],
                 cwd=checkout,
