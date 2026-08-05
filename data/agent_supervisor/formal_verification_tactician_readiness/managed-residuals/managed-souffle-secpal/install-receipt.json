@@ -1,0 +1,165 @@
+{
+  "acceptance": {
+    "goal_id": "FVT-G241",
+    "markers_bound": [
+      "data/agent_supervisor/formal_verification_tactician_readiness/managed-residuals/managed-souffle-secpal/tools/souffle/managed-root.marker",
+      "data/agent_supervisor/formal_verification_tactician_readiness/managed-residuals/managed-souffle-secpal/tools/secpal/managed-root.marker"
+    ],
+    "no_deployment_ready_claim": true,
+    "no_forged_digests": true,
+    "secpal_honest_platform_exception": true,
+    "souffle_lock_matching_managed_install": true,
+    "task_id": "FVT-109"
+  },
+  "binding_mode": "approved_immutable_sealed_root_rebind",
+  "deployment_lock": {
+    "interface": "FormalVerificationDeploymentLock@2",
+    "path": "config/formal_verification_toolchains.lock.json",
+    "sha256": "b1d1bbad034fcc8d6189fa6eaa17555783720456ee01ca860a57a68fcce29ec2"
+  },
+  "goal_id": "FVT-G241",
+  "host_platform": "linux-aarch64",
+  "interface": "ManagedCapabilityResidualInstall@1",
+  "kind": "managed_capability_residual_install",
+  "lane_id": "managed-souffle-secpal",
+  "managed_root": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers",
+  "managed_root_approved_immutable": true,
+  "managed_root_env": "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
+  "managed_root_present": true,
+  "observed_at": "2026-08-05T16:17:18Z",
+  "policy": {
+    "forbids_forged_digests": true,
+    "hermetic_shadows_are_differential_only": true,
+    "never_claim_deployment_ready_while_blockers_remain": true,
+    "never_grants_authorization_authority_to_shadows": true,
+    "never_grants_theorem_authority": true,
+    "never_greenwash_missing_sealed_roots": true,
+    "never_promote_hermetic_shadow_as_vendor": true,
+    "secpal_unsupported_platforms_fail_closed": true
+  },
+  "prior_evidence": {
+    "authorization_vendor_install_receipt": {
+      "path": "docs/architecture/formal_verification_authorization_vendor_install_receipt.json",
+      "schema_version": "formal-verification-authorization-vendor-install-receipt/v1",
+      "sha256": "ad535abbff1184c3f8eb3f441478ca85a993fe268ac21557d58a12ef2779233e"
+    },
+    "depends_on": [
+      "FVT-094"
+    ],
+    "discovery": "data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md",
+    "prior_tasks_without_host_closure": [
+      "FVT-051",
+      "FVT-055",
+      "FVT-073",
+      "FVT-101"
+    ],
+    "secpal_live_receipt": {
+      "path": "docs/architecture/formal_verification_secpal_live_receipt.json",
+      "sha256": "6ce269f01904084ce10378a7e00f073e8b0916a5636302309ab7d8e17af939c7"
+    }
+  },
+  "program": "formal-verification-tactician/managed-souffle-secpal",
+  "receipt_digest_sha256": "527ba3728672ed738e5546d8101c975afb90499ffcabfa3c104b7ca96c6cdece",
+  "schema_version": "formal-verification-managed-residual-install-receipt/v1",
+  "summary": {
+    "awaits_fvt113_reseal": true,
+    "deployment_ready": false,
+    "production_certified": false,
+    "residual_lane_complete": true,
+    "secpal_platform_exception": true,
+    "souffle_installed_lock_matching": true,
+    "tools": [
+      "souffle",
+      "secpal"
+    ]
+  },
+  "task_id": "FVT-109",
+  "tools": {
+    "secpal": {
+      "authoritative": false,
+      "authority_ceiling": "none",
+      "availability": "managed_pin",
+      "clears_managed_blockers": [
+        "managed:secpal:supported_managed_installation_missing_or_shim_only",
+        "managed:secpal:locked_version_mismatch"
+      ],
+      "complete": false,
+      "evidence_class": "platform_exception_unsupported_here",
+      "hermetic_shadow_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/authorization-shadows/secpal/1.0.0-reviewed/bin/secpal",
+      "hermetic_shadow_sha256": "3ba565b03b0e021f921eb37a7d4309092e84a295993cb9c68f330ffa977882dd",
+      "identity_manifest_file_sha256": "8f2603109378eaeee9f1e1a78734310efb11c8e39fac75971bac8d0e740cf88b",
+      "identity_manifest_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/authorization-shadows/secpal/1.0.0-reviewed/identity.json",
+      "installed": false,
+      "is_hermetic_shadow": true,
+      "is_vendor_build": false,
+      "lock_matching": true,
+      "lock_pin_version": "1.0.0-reviewed",
+      "managed_residual_status": "honest_platform_exception_residual",
+      "notes": "SecPAL residual closes false managed-install expectations by binding the narrow unsupported_here platform exception. Hermetic authorization shadow remains differential-only and cannot satisfy vendor managed capability.",
+      "platform_exception": {
+        "classification": "unsupported_here",
+        "exception": true,
+        "host_platform": "linux-aarch64",
+        "narrow_scope": true,
+        "notes": "External SecPAL has no reviewed linux-aarch64 vendor pin under the current deployment contract; never counts as installed, complete, authoritative, or production-certified on this host.",
+        "supported_platforms": []
+      },
+      "platform_supported": false,
+      "production_certified": false,
+      "residual_honest_blockers_for_reseal": [
+        "platform_exception:secpal:unsupported_here"
+      ],
+      "role": "shadow",
+      "tool_id": "secpal",
+      "under_approved_immutable_root": true,
+      "under_managed_root": true,
+      "usable": false,
+      "version": "1.0.0-reviewed"
+    },
+    "souffle": {
+      "artifact_kind": "native_compiled_executable",
+      "artifact_sha256": "064e4309de40862e484461e078a586acfa9b55a31d79e7b330e4b5b3d3e18e67",
+      "artifact_size_bytes": 14790896,
+      "authority_ceiling": "none",
+      "availability": "managed_pin",
+      "clears_managed_blockers": [
+        "managed:souffle:supported_managed_installation_missing_or_shim_only",
+        "managed:souffle:locked_version_mismatch"
+      ],
+      "evidence_class": "checked_native_souffle_vendor_shadow",
+      "executable": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/souffle-vendor/authorization-vendor/souffle/2.4.1/bin/souffle",
+      "executable_sha256": "064e4309de40862e484461e078a586acfa9b55a31d79e7b330e4b5b3d3e18e67",
+      "identity_manifest_file_sha256": "d80a8bd5e874526093c63812f7b387d7bc8773404bcca7e82d959d1360507e35",
+      "identity_manifest_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/souffle-vendor/authorization-vendor/souffle/2.4.1/identity.json",
+      "install_path": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/souffle-vendor/authorization-vendor/souffle/2.4.1",
+      "installed": true,
+      "is_hermetic_shadow": false,
+      "is_vendor_build": true,
+      "launcher": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers/bin/souffle",
+      "launcher_sha256": "f151edea05c5ae5dd92185abd7224c0c899fde3f0dcdef50923c8a674acae59f",
+      "launcher_target_bound": true,
+      "lock_matching": true,
+      "lock_pin_version": "2.4.1",
+      "managed_residual_status": "install_rebound_lock_matching",
+      "native_binary_format": "elf",
+      "native_machine": "aarch64",
+      "notes": "Sealed native Souffl\u00e9 2.4.1 vendor binary under approved immutable EXTERNAL_PROVER_ROOT; lock pin and artifact digest match; hermetic shadow retained as differential-only and is not promoted as vendor.",
+      "platform_supported": true,
+      "role": "shadow",
+      "source_archive_sha256": "08d9b19cb4a8f570ac75dea73016b6a326d87ac28fccd4afeba217ace2071587",
+      "supported_platforms": [
+        "linux-x86_64",
+        "linux-aarch64",
+        "darwin-x86_64",
+        "darwin-arm64"
+      ],
+      "tool_id": "souffle",
+      "under_approved_immutable_root": true,
+      "under_managed_root": true,
+      "usable": true,
+      "version": "2.4.1",
+      "version_banner_excerpt": "----------------------------------------------------------------------------",
+      "version_exact": true
+    }
+  }
+}

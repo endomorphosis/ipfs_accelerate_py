@@ -1,0 +1,329 @@
+{
+  "bundle": "formal-verification-tactician/managed-elevation-datalog-secpal",
+  "claims": {
+    "deployment": false,
+    "merge": false,
+    "production_elevation_evidence": true,
+    "semantic_certification": true,
+    "vendor_fanin": true
+  },
+  "description": "Live positive/negative/mutation/replay certification for datalog-authorization and secpal-authorization, joined with the sealed Soufflé vendor differential witness required for production elevation.",
+  "goal_id": "FVT-G244",
+  "interface": "ManagedCapabilityResidualCertification@1",
+  "lane_id": "managed-elevation-datalog-secpal",
+  "observed_at": "2026-08-05T16:17:14Z",
+  "policy": {
+    "authority_ceiling": "authorization",
+    "external_shadows_never_grant_authorization_authority": true,
+    "forbids_theorem_authority": true,
+    "hardcoded_success_forbidden": true,
+    "independent_reconstruction_required_before_production_elevation": true,
+    "never_claim_deployment_ready": true,
+    "no_forge_digests": true,
+    "production_elevation_allowed_gate_required": true,
+    "raw_checks_bound_by_digest_only": true,
+    "required_check_kinds": [
+      "positive",
+      "negative",
+      "mutation",
+      "replay"
+    ]
+  },
+  "production_elevation": {
+    "all_tools_eligible": true,
+    "check_set_digests": {
+      "datalog-authorization": "f8c31cd585d60994240a75fc1bfee6524882c914a20708419c1e38e98762633a",
+      "secpal-authorization": "fc56310567f7c41634ec379fb11ec11d931a809b0bad00bd656402d814aced6e"
+    },
+    "eligible_for_production_elevation": {
+      "datalog-authorization": true,
+      "secpal-authorization": true
+    },
+    "evidence_class": "reference_plus_checked_souffle_vendor",
+    "join_satisfied": true,
+    "notes": "Elevation evidence is lane-local. FVT-113 reseals the role-aware certificate, matrix, and deployment receipt; this residual never claims RoleAwareFormalVerificationRelease@1 deployment_ready.",
+    "production_elevation_allowed": true,
+    "reference_certified": true,
+    "required_kinds_all_passed": {
+      "datalog-authorization": true,
+      "secpal-authorization": true
+    },
+    "required_tools": [
+      "datalog-authorization",
+      "secpal-authorization"
+    ],
+    "vendor_witness_certified": true
+  },
+  "program_interface": "RoleAwareFormalVerificationRelease@1",
+  "public_evidence_policy": {
+    "absolute_home_paths_forbidden": true,
+    "raw_process_output_retained": false,
+    "satisfied": true
+  },
+  "receipt_identity": "36c1290501b8d9fe4ef828afff5f5d75428ec0410677c4f2c9eaf55188d0cfb5",
+  "residual_closure": {
+    "certification_bound": true,
+    "deployment_ready_claimed": false,
+    "elevation_gaps_addressed": [
+      "datalog-authorization",
+      "secpal-authorization"
+    ],
+    "honest_residual_blockers_outside_lane": [
+      "managed:secpal:* (owned by FVT-109 souffle-secpal residual)",
+      "managed:souffle:* (owned by FVT-109)",
+      "other managed tool families (FVT-103..111)",
+      "g213 terminal / publication gates on checked-in deployment receipt"
+    ],
+    "reseal_deferred_to": "FVT-113"
+  },
+  "schema_version": "formal-verification-managed-capability-residual-certification-receipt/v1",
+  "semantic": {
+    "authority_ceiling": "authorization",
+    "categories_exercised": [
+      "allow",
+      "conflict",
+      "delegation",
+      "deny",
+      "malformed",
+      "mutation",
+      "negative",
+      "revocation",
+      "unknown"
+    ],
+    "certificate_digest_sha256": "49e23f2d018a49f1789d75530a705befd0b727b960757e2a00e966c1b46c5074",
+    "certified": true,
+    "forbids_theorem_authority": true,
+    "goal_id": "FVT-G102",
+    "handler_id": "authorization_semantic_certification@1",
+    "interface": "AuthorizationSemanticCertification@1",
+    "lane_id": "datalog_secpal",
+    "mutation_kinds": [
+      "delegation",
+      "principal",
+      "rule",
+      "scope"
+    ],
+    "objective_validation_evidence": "objective validation repair",
+    "objective_validation_repair": true,
+    "repair_task_id": "FVT-068",
+    "schema_version": "authorization-semantic-certification/v1",
+    "summary": {
+      "block_reasons": [],
+      "checks_passed": 48,
+      "checks_total": 48,
+      "engines_certified": 2,
+      "engines_total": 2,
+      "objective_validation_repair": true,
+      "repair_task_id": "FVT-068"
+    },
+    "task_id": "FVT-038",
+    "tools": {
+      "datalog-authorization": {
+        "authority_ceiling": "authorization",
+        "block_reasons": [],
+        "certified": true,
+        "check_set_digest_sha256": "f8c31cd585d60994240a75fc1bfee6524882c914a20708419c1e38e98762633a",
+        "check_status_counts": {
+          "failed": 0,
+          "passed": 24,
+          "skipped": 0,
+          "unavailable": 0
+        },
+        "checks_passed": 24,
+        "checks_retained_without_kind_collapse": true,
+        "checks_total": 24,
+        "compact_check_set_digest_sha256": "013f765a847333907bcf0ff7fe80a17077ee2dfb244d1d6fb6230a4bd3764cb2",
+        "eligible_for_production_elevation": true,
+        "evidence_class": "reference_plus_checked_souffle_vendor",
+        "independent_reconstruction": {
+          "check_kinds_present": [
+            "authority",
+            "malformed",
+            "mutation",
+            "negative",
+            "positive",
+            "replay"
+          ],
+          "check_set_digest_sha256": "f8c31cd585d60994240a75fc1bfee6524882c914a20708419c1e38e98762633a",
+          "check_status_counts": {
+            "failed": 0,
+            "passed": 24,
+            "skipped": 0,
+            "unavailable": 0
+          },
+          "checks_passed": 24,
+          "checks_total": 24,
+          "compact_binding_valid": true,
+          "compact_check_set_digest_sha256": "013f765a847333907bcf0ff7fe80a17077ee2dfb244d1d6fb6230a4bd3764cb2",
+          "raw_checks_embedded": false,
+          "recompute_failure": null,
+          "recompute_valid": true,
+          "required_check_kinds": [
+            "positive",
+            "negative",
+            "mutation",
+            "replay"
+          ],
+          "required_kinds_all_passed": true,
+          "required_kinds_failed": [],
+          "required_kinds_missing": [],
+          "required_kinds_present": true,
+          "valid": true
+        },
+        "interface": "AuthorizationSemanticCertification@1",
+        "lane_id": "datalog_secpal",
+        "production_elevation_allowed": true,
+        "raw_checks_embedded": false,
+        "tool_id": "datalog-authorization",
+        "usable": true
+      },
+      "secpal-authorization": {
+        "authority_ceiling": "authorization",
+        "block_reasons": [],
+        "certified": true,
+        "check_set_digest_sha256": "fc56310567f7c41634ec379fb11ec11d931a809b0bad00bd656402d814aced6e",
+        "check_status_counts": {
+          "failed": 0,
+          "passed": 24,
+          "skipped": 0,
+          "unavailable": 0
+        },
+        "checks_passed": 24,
+        "checks_retained_without_kind_collapse": true,
+        "checks_total": 24,
+        "compact_check_set_digest_sha256": "0b7b81c82b775606bde811ccb01d2f7dadc217c12fa2cd7becb1ecce8a30d3d8",
+        "eligible_for_production_elevation": true,
+        "evidence_class": "reference_plus_checked_souffle_vendor",
+        "independent_reconstruction": {
+          "check_kinds_present": [
+            "authority",
+            "malformed",
+            "mutation",
+            "negative",
+            "positive",
+            "replay"
+          ],
+          "check_set_digest_sha256": "fc56310567f7c41634ec379fb11ec11d931a809b0bad00bd656402d814aced6e",
+          "check_status_counts": {
+            "failed": 0,
+            "passed": 24,
+            "skipped": 0,
+            "unavailable": 0
+          },
+          "checks_passed": 24,
+          "checks_total": 24,
+          "compact_binding_valid": true,
+          "compact_check_set_digest_sha256": "0b7b81c82b775606bde811ccb01d2f7dadc217c12fa2cd7becb1ecce8a30d3d8",
+          "raw_checks_embedded": false,
+          "recompute_failure": null,
+          "recompute_valid": true,
+          "required_check_kinds": [
+            "positive",
+            "negative",
+            "mutation",
+            "replay"
+          ],
+          "required_kinds_all_passed": true,
+          "required_kinds_failed": [],
+          "required_kinds_missing": [],
+          "required_kinds_present": true,
+          "valid": true
+        },
+        "interface": "AuthorizationSemanticCertification@1",
+        "lane_id": "datalog_secpal",
+        "production_elevation_allowed": true,
+        "raw_checks_embedded": false,
+        "tool_id": "secpal-authorization",
+        "usable": true
+      }
+    }
+  },
+  "status": "managed_residual_certification_bound",
+  "task_id": "FVT-112",
+  "tool_ids": [
+    "datalog-authorization",
+    "secpal-authorization"
+  ],
+  "track": "managed-capability-residual",
+  "vendor_fanin": {
+    "acceptance": {
+      "forbids_authorization_authority_on_shadows": true,
+      "forbids_theorem_authority": true,
+      "goal_id": "FVT-G209",
+      "hermetic_shadows_are_differential_only": true,
+      "hermetic_shadows_cannot_satisfy_vendor": true,
+      "objective_validation_repair": true,
+      "repair_task_id": "FVT-073",
+      "secpal_linux_aarch64_narrow_platform_exception": true,
+      "souffle_dependency_package_set_verified": true,
+      "souffle_identity_manifest_verified": true,
+      "souffle_linux_aarch64_supported": true,
+      "souffle_native_compiled_executable": true,
+      "souffle_source_archive_checksummed": true,
+      "task_id": "FVT-055"
+    },
+    "certificate_digest_sha256": "881006ad30f796ede5176d17909c638ce7e1a88501ad411a2da98cc9b379ca97",
+    "certified": true,
+    "evidence_class": "reference_plus_checked_souffle_vendor",
+    "goal_id": "FVT-G209",
+    "interface": "ExternalAuthorizationVendorCertification@1",
+    "lane_id": "datalog_secpal_external_vendor",
+    "repair_task_id": "FVT-073",
+    "schema_version": "external-authorization-vendor-certification/v1",
+    "secpal_platform_exception": true,
+    "secpal_vendor_certified": false,
+    "souffle_vendor_certified": true,
+    "summary": {
+      "block_reasons": [],
+      "categories_exercised": [
+        "allow",
+        "conflict",
+        "delegation",
+        "deny",
+        "unknown"
+      ],
+      "checks_passed": 32,
+      "checks_total": 32,
+      "combined_external_authorization_certified": false,
+      "hermetic_shadows_cannot_satisfy_vendor": true,
+      "mutation_kinds": [
+        "rule",
+        "scope"
+      ],
+      "objective_validation_repair": true,
+      "repair_task_id": "FVT-073",
+      "secpal_exception": true,
+      "secpal_live_ready": false,
+      "secpal_vendor_certified": false,
+      "souffle_certified": true,
+      "souffle_vendor_certified": true
+    },
+    "task_id": "FVT-055",
+    "witness": {
+      "artifact_kind": "native_compiled_executable",
+      "artifact_sha256": "064e4309de40862e484461e078a586acfa9b55a31d79e7b330e4b5b3d3e18e67",
+      "certificate_digest_sha256": "881006ad30f796ede5176d17909c638ce7e1a88501ad411a2da98cc9b379ca97",
+      "checked_in_vendor_receipt_relative": "docs/architecture/formal_verification_authorization_vendor_install_receipt.json",
+      "checks_passed": 32,
+      "checks_total": 32,
+      "dependency_prefix_relative": "build-dependencies/souffle/ubuntu-noble-arm64/root",
+      "executable_redacted": "<managed-tool-path-redacted>",
+      "host_platform": "linux-aarch64",
+      "identity_manifest_sha256": "c4d14408013b0f8e745ecc4d9837b031b0eae2a1419cc373d2399b2e36e27119",
+      "install_receipt_digest_sha256": "0fd9723e5e24b334667ec8e981b3e43ff5a8723ff3383f7d3d1db169168eb6b7",
+      "install_receipt_schema": "formal-verification-authorization-vendor-install-receipt/v1",
+      "install_root_relative": "souffle-vendor",
+      "interface": "ExternalAuthorizationVendorCertification@1",
+      "never_grants_authorization_authority": true,
+      "role": "differential_shadow_witness",
+      "schema_version": "external-authorization-vendor-certification/v1",
+      "sealed_prover_root_env": "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
+      "secpal_platform_exception": true,
+      "secpal_vendor_certified": false,
+      "souffle_vendor_certified": true,
+      "source_archive_sha256": "08d9b19cb4a8f570ac75dea73016b6a326d87ac28fccd4afeba217ace2071587",
+      "tool_id": "souffle",
+      "version": "2.4.1"
+    }
+  }
+}

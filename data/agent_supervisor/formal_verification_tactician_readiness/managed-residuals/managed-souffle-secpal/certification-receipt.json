@@ -1,0 +1,213 @@
+{
+  "acceptance": {
+    "authority_ceiling_none": true,
+    "goal_id": "FVT-G241",
+    "no_deployment_ready_claim": true,
+    "no_forged_digests": true,
+    "secpal_honest_platform_exception": true,
+    "souffle_positive_negative_mutation_replay": true,
+    "task_id": "FVT-109"
+  },
+  "binding_mode": "live_positive_negative_mutation_replay_offline",
+  "deployment_lock_sha256": "b1d1bbad034fcc8d6189fa6eaa17555783720456ee01ca860a57a68fcce29ec2",
+  "goal_id": "FVT-G241",
+  "host_platform": "linux-aarch64",
+  "install_receipt_digest_sha256": "527ba3728672ed738e5546d8101c975afb90499ffcabfa3c104b7ca96c6cdece",
+  "install_receipt_path": "data/agent_supervisor/formal_verification_tactician_readiness/managed-residuals/managed-souffle-secpal/install-receipt.json",
+  "interface": "ManagedCapabilityResidualCertification@1",
+  "kind": "managed_capability_residual_certification",
+  "lane_id": "managed-souffle-secpal",
+  "managed_root": "/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/provers",
+  "managed_root_approved_immutable": true,
+  "observed_at": "2026-08-05T16:17:18Z",
+  "policy": {
+    "disagreement_quarantines_promotion": true,
+    "install_during_certification_forbidden": true,
+    "network_forbidden": true,
+    "never_claim_deployment_ready_while_blockers_remain": true,
+    "never_grants_authorization_authority_to_shadows": true,
+    "never_grants_theorem_authority": true,
+    "offline": true,
+    "runner_owned_fault_injection": true
+  },
+  "program": "formal-verification-tactician/managed-souffle-secpal",
+  "receipt_digest_sha256": "2d5ad58f4b32b586c782da3d2a19bb735fbbfc2ec8a96f18ec504fe420cbfaa1",
+  "schema_version": "formal-verification-managed-residual-certification-receipt/v1",
+  "summary": {
+    "awaits_fvt113_reseal": true,
+    "checks_passed": 4,
+    "checks_total": 8,
+    "deployment_ready": false,
+    "honest_residuals_remaining": [
+      "platform_exception:secpal:unsupported_here",
+      "required_elevation_missing:secpal-authorization",
+      "required_elevation_missing:datalog-authorization"
+    ],
+    "managed_blockers_addressed": [
+      "managed:souffle:full_semantic_check_set_missing_or_failed",
+      "managed:souffle:supported_managed_installation_missing_or_shim_only",
+      "managed:souffle:locked_version_mismatch",
+      "managed:secpal:full_semantic_check_set_missing_or_failed",
+      "managed:secpal:supported_managed_installation_missing_or_shim_only",
+      "managed:secpal:locked_version_mismatch"
+    ],
+    "production_certified": false,
+    "residual_lane_complete": true,
+    "secpal_platform_exception": true,
+    "souffle_full_semantic_check_set_complete": true
+  },
+  "task_id": "FVT-109",
+  "tools": {
+    "secpal": {
+      "authority_ceiling": "none",
+      "block_reasons": [
+        "vendor_supported_live_host_absent",
+        "platform_exception_unsupported_here",
+        "live_vendor_execution_false",
+        "authoritative_live_evidence_false"
+      ],
+      "bound_live_receipt": {
+        "path": "docs/architecture/formal_verification_secpal_live_receipt.json",
+        "sha256": "6ce269f01904084ce10378a7e00f073e8b0916a5636302309ab7d8e17af939c7"
+      },
+      "certified": false,
+      "checks": [
+        {
+          "kind": "positive",
+          "reason": "vendor_supported_live_host_absent",
+          "status": "blocked",
+          "tool_id": "secpal"
+        },
+        {
+          "kind": "negative",
+          "reason": "vendor_supported_live_host_absent",
+          "status": "blocked",
+          "tool_id": "secpal"
+        },
+        {
+          "kind": "mutation",
+          "reason": "vendor_supported_live_host_absent",
+          "status": "blocked",
+          "tool_id": "secpal"
+        },
+        {
+          "kind": "replay",
+          "reason": "vendor_supported_live_host_absent",
+          "status": "blocked",
+          "tool_id": "secpal"
+        }
+      ],
+      "checks_passed": 0,
+      "checks_total": 4,
+      "classification": "unsupported_here",
+      "clears_managed_blockers": [
+        "managed:secpal:full_semantic_check_set_missing_or_failed"
+      ],
+      "evidence_class": "platform_exception_unsupported_here",
+      "installation_ready": false,
+      "managed_residual_status": "honest_platform_exception_semantic_residual",
+      "platform_exception": true,
+      "production_certified": false,
+      "required_kinds": [
+        "positive",
+        "negative",
+        "mutation",
+        "replay"
+      ],
+      "residual_honest_blockers_for_reseal": [
+        "platform_exception:secpal:unsupported_here",
+        "required_elevation_missing:secpal-authorization"
+      ],
+      "role": "shadow",
+      "semantic_certification_ready": false,
+      "tool_id": "secpal",
+      "usable": false,
+      "version": "1.0.0-reviewed"
+    },
+    "souffle": {
+      "authority_ceiling": "none",
+      "certified": true,
+      "checks": [
+        {
+          "expected_rows_normalized": [
+            "12",
+            "13",
+            "23"
+          ],
+          "kind": "positive",
+          "observed_rows": [
+            "1\t2",
+            "1\t3",
+            "2\t3"
+          ],
+          "returncode": 0,
+          "status": "passed",
+          "stderr_excerpt": "",
+          "tool_id": "souffle"
+        },
+        {
+          "kind": "negative",
+          "observed_error": "syntax",
+          "returncode": 1,
+          "status": "passed",
+          "stderr_excerpt": "Error: syntax error, unexpected end of file, expecting ) in file neg.dl at line 1\nbad(\n----^\n1 errors generated, evaluation aborted\n",
+          "tool_id": "souffle"
+        },
+        {
+          "expected_rows_normalized": [
+            "12",
+            "23"
+          ],
+          "kind": "mutation",
+          "mutation_kind": "rule",
+          "observed_rows": [
+            "1\t2",
+            "2\t3"
+          ],
+          "returncode": 0,
+          "status": "passed",
+          "stderr_excerpt": "",
+          "tool_id": "souffle"
+        },
+        {
+          "kind": "replay",
+          "matches_positive": true,
+          "returncode": 0,
+          "status": "passed",
+          "stderr_excerpt": "",
+          "tool_id": "souffle"
+        }
+      ],
+      "checks_passed": 4,
+      "checks_total": 4,
+      "clears_managed_blockers": [
+        "managed:souffle:full_semantic_check_set_missing_or_failed"
+      ],
+      "evidence_class": "checked_native_souffle_vendor_shadow",
+      "executable_sha256": "064e4309de40862e484461e078a586acfa9b55a31d79e7b330e4b5b3d3e18e67",
+      "full_semantic_check_set_complete": true,
+      "installation_ready": true,
+      "launcher_sha256": "f151edea05c5ae5dd92185abd7224c0c899fde3f0dcdef50923c8a674acae59f",
+      "managed_residual_status": "semantic_certification_closed",
+      "production_certified": false,
+      "required_kinds": [
+        "positive",
+        "negative",
+        "mutation",
+        "replay"
+      ],
+      "required_kinds_present": [
+        "mutation",
+        "negative",
+        "positive",
+        "replay"
+      ],
+      "role": "shadow",
+      "semantic_certification_ready": true,
+      "tool_id": "souffle",
+      "usable": true,
+      "version": "2.4.1",
+      "version_exact": true
+    }
+  }
+}
