@@ -6,30 +6,35 @@
   "goal_id": "FVT-G213",
   "task_id": "FVT-066",
   "program": "formal-verification-tactician/toolchain-release-candidate",
-  "observed_at": "2026-08-05T19:27:51Z",
+  "observed_at": "2026-08-05T19:46:57Z",
   "binding_mode": "pre_merge_role_aware_release_candidate",
   "status": "role_aware_release_candidate_blocked",
   "readiness_stage": "blocked",
   "description": "Fail-closed role-aware release candidate. Fans in host support, roles, ceilings, evidence classes, platform exceptions, blockers, offline policy, quarantine state, and public surfaces from bound matrix evidence without claiming merge or deployment. Maximum stage before a merge event exists is release_candidate. Bulk certificate bodies are bound by digest only.",
   "source": {
     "model": "pre_merge_release_candidate_source/v1",
-    "certified_source_commit": "0a5ab5618a8298feb1b39a8e35aaf386123ce4bc",
-    "certified_source_tree": "2ea26e35020925fde210463b1c37c783a974f586",
+    "certified_source_commit": "c37a5bbb7362dd2167ef8121ee7bef352f2c442e",
+    "certified_source_tree": "931cf03b0ebca4cfe7e4750e576105dc6830149f",
     "datasets_gitlink": "c685bfb8d2ff95ffdc1eeb612a909ca247d333b6",
     "datasets_embedded_head": "c685bfb8d2ff95ffdc1eeb612a909ca247d333b6",
     "source_commit_bound": true,
     "source_candidate_clean": false,
     "dirty_paths_at_certification": [
-      "docs/architecture/formal_verification_role_aware_release_candidate.json",
-      "docs/architecture/formal_verification_toolchain_certificate.json",
-      "tools/logic/certify_formal_verification_toolchains.py"
-    ],
-    "non_candidate_dirty_paths": [
-      "tools/logic/certify_formal_verification_toolchains.py"
-    ],
-    "attestation_paths": [
+      "docs/architecture/formal_verification_authorization_vendor_install_receipt.json",
       "docs/architecture/formal_verification_production_elevation_fanin_receipt.json",
       "docs/architecture/formal_verification_role_aware_release_candidate.json",
+      "docs/architecture/formal_verification_toolchain_certificate.json",
+      "tools/logic/build_formal_verification_tactician_receipt.py"
+    ],
+    "non_candidate_dirty_paths": [
+      "tools/logic/build_formal_verification_tactician_receipt.py"
+    ],
+    "attestation_paths": [
+      "docs/architecture/formal_verification_authorization_vendor_install_receipt.json",
+      "docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json",
+      "docs/architecture/formal_verification_production_elevation_fanin_receipt.json",
+      "docs/architecture/formal_verification_role_aware_release_candidate.json",
+      "docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json",
       "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
       "docs/architecture/formal_verification_toolchain_certificate.json"
     ],
@@ -56,8 +61,8 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "0a5ab5618a8298feb1b39a8e35aaf386123ce4bc",
-        "tree": "2ea26e35020925fde210463b1c37c783a974f586",
+        "commit": "c37a5bbb7362dd2167ef8121ee7bef352f2c442e",
+        "tree": "931cf03b0ebca4cfe7e4750e576105dc6830149f",
         "origin_main": "6c564578af0b0361741483e80ebcaf405efa1064",
         "clean": false,
         "matches_origin_main": false
@@ -167,7 +172,7 @@
     "production_certified",
     "proposal_only_semantics",
     "reference_plus_checked_runtime_mtl_vendor",
-    "usable_pending_authorization_vendor_fanin"
+    "reference_plus_checked_souffle_vendor"
   ],
   "offline_policy": {
     "satisfied": true,
@@ -246,7 +251,7 @@
         "tools": {
           "symbolicai": {
             "checks_match_canonical_receipt": true,
-            "check_set_digest_sha256": "0dbb54fb5c2a436c3dccaf0a4c73553eea09b33215202be3819bc6b99f86c2a1",
+            "check_set_digest_sha256": "b2a99346fb17b1bc27e18f8730e09a066f8fb7943ad2941db1dac6217bd156a7",
             "certified": true,
             "block_reasons": [],
             "artifact_validation_valid": true,
@@ -263,7 +268,7 @@
           },
           "ergoai": {
             "checks_match_canonical_receipt": true,
-            "check_set_digest_sha256": "569c26d15d097fc6f684cdda0528819346b7657943279f83b807601cd2003c22",
+            "check_set_digest_sha256": "a8849fd7916b85ac75d9bc8ba764b6b946381bb2497ba0e7b53592e7eca4e8ea",
             "certified": true,
             "block_reasons": [],
             "artifact_validation_valid": true,
@@ -605,11 +610,17 @@
           "failures": [],
           "live_claimed": false,
           "vendor_claimed": true,
-          "fanin_satisfied": false,
-          "eligible_tool_ids": [],
-          "production_allowed_tool_ids": [],
-          "lane_production_elevation_allowed": false,
-          "evidence_class": "usable_pending_authorization_vendor_fanin",
+          "fanin_satisfied": true,
+          "eligible_tool_ids": [
+            "datalog-authorization",
+            "secpal-authorization"
+          ],
+          "production_allowed_tool_ids": [
+            "datalog-authorization",
+            "secpal-authorization"
+          ],
+          "lane_production_elevation_allowed": true,
+          "evidence_class": "reference_plus_checked_souffle_vendor",
           "reference_audits": {
             "datalog-authorization": {
               "valid": true,
@@ -708,6 +719,14 @@
             "artifact_validation_valid": true,
             "expected_validated_artifacts": [
               {
+                "kind": "checked_vendor_install_receipt",
+                "path": "docs/architecture/formal_verification_authorization_vendor_install_receipt.json",
+                "sha256": "sha256:a805a3390eba5816962632c9f3d8966382e3d529c5f3af663ec9de98226d6717",
+                "declared_digest": "aafd6f9861ef9c137fec15f2f61648d700d923c49561c5ad50a2e2f3ce0fb78e",
+                "artifact_class": "public_deployment_binding",
+                "resolved_path": "docs/architecture/formal_verification_authorization_vendor_install_receipt.json"
+              },
+              {
                 "kind": "semantic_certifier_module",
                 "path": "tools/logic/certification/authorization.py",
                 "sha256": "sha256:3f18ee1252e5254f5e7a1a5d3499d22018593fa22bd795633f5ddb74bcdb1c78",
@@ -715,7 +734,16 @@
                 "resolved_path": "tools/logic/certification/authorization.py"
               }
             ],
-            "expected_production_bindings": []
+            "expected_production_bindings": [
+              {
+                "kind": "checked_vendor_install_receipt",
+                "path": "docs/architecture/formal_verification_authorization_vendor_install_receipt.json",
+                "sha256": "sha256:a805a3390eba5816962632c9f3d8966382e3d529c5f3af663ec9de98226d6717",
+                "declared_digest": "aafd6f9861ef9c137fec15f2f61648d700d923c49561c5ad50a2e2f3ce0fb78e",
+                "artifact_class": "public_deployment_binding",
+                "resolved_path": "docs/architecture/formal_verification_authorization_vendor_install_receipt.json"
+              }
+            ]
           },
           "secpal-authorization": {
             "checks_match_canonical_receipt": true,
@@ -725,6 +753,14 @@
             "artifact_validation_valid": true,
             "expected_validated_artifacts": [
               {
+                "kind": "checked_vendor_install_receipt",
+                "path": "docs/architecture/formal_verification_authorization_vendor_install_receipt.json",
+                "sha256": "sha256:a805a3390eba5816962632c9f3d8966382e3d529c5f3af663ec9de98226d6717",
+                "declared_digest": "aafd6f9861ef9c137fec15f2f61648d700d923c49561c5ad50a2e2f3ce0fb78e",
+                "artifact_class": "public_deployment_binding",
+                "resolved_path": "docs/architecture/formal_verification_authorization_vendor_install_receipt.json"
+              },
+              {
                 "kind": "semantic_certifier_module",
                 "path": "tools/logic/certification/authorization.py",
                 "sha256": "sha256:3f18ee1252e5254f5e7a1a5d3499d22018593fa22bd795633f5ddb74bcdb1c78",
@@ -732,7 +768,16 @@
                 "resolved_path": "tools/logic/certification/authorization.py"
               }
             ],
-            "expected_production_bindings": []
+            "expected_production_bindings": [
+              {
+                "kind": "checked_vendor_install_receipt",
+                "path": "docs/architecture/formal_verification_authorization_vendor_install_receipt.json",
+                "sha256": "sha256:a805a3390eba5816962632c9f3d8966382e3d529c5f3af663ec9de98226d6717",
+                "declared_digest": "aafd6f9861ef9c137fec15f2f61648d700d923c49561c5ad50a2e2f3ce0fb78e",
+                "artifact_class": "public_deployment_binding",
+                "resolved_path": "docs/architecture/formal_verification_authorization_vendor_install_receipt.json"
+              }
+            ]
           }
         }
       },
@@ -2055,9 +2100,10 @@
       "valid": true,
       "failures": [],
       "projection_matches": true,
-      "projection_digest_sha256": "4b60d4cca480b0bbb108d94dcabf1c11693a929692acd3c69062e8f276eab093",
+      "projection_digest_sha256": "9c7a38d062260c296a3dc41473199b0faccb8618a2fea967c0f19fb842d90f7a",
       "ready_tool_ids": [
-        "runtime-mtl-external"
+        "runtime-mtl-external",
+        "souffle"
       ],
       "lane_audits": {
         "runtime_mtl": {
@@ -2069,7 +2115,7 @@
         },
         "datalog_secpal": {
           "external_tool_id": "souffle",
-          "fresh_vendor_fanin_replayed": false,
+          "fresh_vendor_fanin_replayed": true,
           "entry_digest_valid": true,
           "authority_flags_valid": true,
           "valid": true
@@ -2093,6 +2139,7 @@
       "apalache",
       "autohyper",
       "coq",
+      "datalog-authorization",
       "eprover",
       "hyperltl",
       "isabelle",
@@ -2100,6 +2147,7 @@
       "mchyper",
       "proverif",
       "runtime-mtl",
+      "secpal-authorization",
       "tamarin",
       "tlc",
       "vampire",
@@ -2110,6 +2158,7 @@
       "autohyper",
       "coq",
       "cvc5",
+      "datalog-authorization",
       "eprover",
       "hyperltl",
       "isabelle",
@@ -2117,6 +2166,7 @@
       "mchyper",
       "proverif",
       "runtime-mtl",
+      "secpal-authorization",
       "tamarin",
       "tlc",
       "vampire",
@@ -2134,13 +2184,12 @@
     "present": [
       "lean",
       "runtime-mtl",
+      "datalog-authorization",
+      "secpal-authorization",
       "coq",
       "isabelle"
     ],
-    "missing": [
-      "datalog-authorization",
-      "secpal-authorization"
-    ],
+    "missing": [],
     "tools": {
       "lean": {
         "lane_id": "kernel",
@@ -2173,30 +2222,30 @@
       "datalog-authorization": {
         "lane_id": "datalog_secpal",
         "surfaces": {
-          "role_aware": false,
-          "promotion": false,
-          "tool": false,
-          "lane": false,
-          "decision": false
+          "role_aware": true,
+          "promotion": true,
+          "tool": true,
+          "lane": true,
+          "decision": true
         },
         "surfaces_consistent": true,
         "semantic_evidence_valid": true,
-        "production_elevation_allowed": false,
-        "present": false
+        "production_elevation_allowed": true,
+        "present": true
       },
       "secpal-authorization": {
         "lane_id": "datalog_secpal",
         "surfaces": {
-          "role_aware": false,
-          "promotion": false,
-          "tool": false,
-          "lane": false,
-          "decision": false
+          "role_aware": true,
+          "promotion": true,
+          "tool": true,
+          "lane": true,
+          "decision": true
         },
         "surfaces_consistent": true,
         "semantic_evidence_valid": true,
-        "production_elevation_allowed": false,
-        "present": false
+        "production_elevation_allowed": true,
+        "present": true
       },
       "coq": {
         "lane_id": "kernel_rocq",
@@ -2234,12 +2283,12 @@
     "schema_version": "formal-verification-production-semantic-elevation-fanin/v1",
     "goal_id": "FVT-G213",
     "task_id": "FVT-081",
-    "status": "production_semantic_elevation_fanin_structurally_valid",
-    "receipt_digest_sha256": "sha256:f883faa3aa30246bdf493dc1353ca2301300c25443f3f9413cb06662344307e9",
+    "status": "production_semantic_elevation_fanin_closed",
+    "receipt_digest_sha256": "sha256:3fb8b1efe1b8aec9ae2650026f4e3df6d86f876b01c2750c0df69d42d4697e1d",
     "certificate_identity_valid": true,
     "structurally_valid": true,
     "all_required_reconstructions_valid": true,
-    "fanin_closed": false,
+    "fanin_closed": true,
     "required_tools": [
       "lean",
       "runtime-mtl",
@@ -2259,13 +2308,12 @@
     "production_elevation_present": [
       "lean",
       "runtime-mtl",
+      "datalog-authorization",
+      "secpal-authorization",
       "coq",
       "isabelle"
     ],
-    "production_elevation_missing": [
-      "datalog-authorization",
-      "secpal-authorization"
-    ],
+    "production_elevation_missing": [],
     "tool_reconstruction_digests": {
       "lean": "31cb4af4d0bfdcfa96d6845f1793069be87a4fe7261d073328d5bc39fb666a27",
       "runtime-mtl": "d0d3e74a078116cda28017fd3c81fb128cf2299fecf54fb119d09e4f376cdc6a",
@@ -2282,12 +2330,12 @@
   },
   "checked_production_semantic_elevation_fanin": {
     "present": true,
-    "content_identity": "sha256:556345c08c0b6c9dffc3601abf142fc8bf047d041c057fce9448fe6d6421c73c",
+    "content_identity": "sha256:eaec3a0ff793d7b28f858131a6dc729f909cc08c76bd085f8afb88789ad47ca8",
     "stored_digest_valid": true,
     "identity_valid": true,
-    "matches_live": false,
-    "stored_digest_sha256": "sha256:2348ce1c4b92fb7b656c44812b5b1cd37181048459747c68802ca5899de22bd4",
-    "live_digest_sha256": "sha256:f883faa3aa30246bdf493dc1353ca2301300c25443f3f9413cb06662344307e9"
+    "matches_live": true,
+    "stored_digest_sha256": "sha256:3fb8b1efe1b8aec9ae2650026f4e3df6d86f876b01c2750c0df69d42d4697e1d",
+    "live_digest_sha256": "sha256:3fb8b1efe1b8aec9ae2650026f4e3df6d86f876b01c2750c0df69d42d4697e1d"
   },
   "acceptance": {
     "role_aware_certificate_bound": true,
@@ -2314,7 +2362,7 @@
     "synthetic_evidence_cannot_certify_production": true,
     "no_install_during_offline_certification": true,
     "semantic_receipts_full_and_bound": true,
-    "required_semantic_elevations_present": false,
+    "required_semantic_elevations_present": true,
     "supported_managed_capabilities_ready": true,
     "supported_managed_capability_blockers": [],
     "supported_managed_dependency_blockers": [],
@@ -2322,10 +2370,10 @@
     "deployment_not_claimed": true,
     "stage_at_most_release_candidate": true,
     "artifacts_present": true,
-    "production_semantic_elevation_fanin_bound": false,
-    "production_semantic_elevation_fanin_closed": false,
+    "production_semantic_elevation_fanin_bound": true,
+    "production_semantic_elevation_fanin_closed": true,
     "production_elevation_requires_independent_pnmr": true,
-    "checked_production_elevation_fanin_matches_live": false
+    "checked_production_elevation_fanin_matches_live": true
   },
   "readiness_requirements": {
     "role_aware_certificate_bound": true,
@@ -2348,28 +2396,22 @@
     "synthetic_evidence_cannot_certify_production": true,
     "no_install_during_offline_certification": true,
     "semantic_receipts_full_and_bound": true,
-    "required_semantic_elevations_present": false,
+    "required_semantic_elevations_present": true,
     "supported_managed_capabilities_ready": true,
-    "production_semantic_elevation_fanin_bound": false,
-    "production_semantic_elevation_fanin_closed": false,
+    "production_semantic_elevation_fanin_bound": true,
+    "production_semantic_elevation_fanin_closed": true,
     "production_elevation_requires_independent_pnmr": true,
-    "checked_production_elevation_fanin_matches_live": false,
+    "checked_production_elevation_fanin_matches_live": true,
     "merge_not_claimed": true,
     "deployment_not_claimed": true,
     "stage_at_most_release_candidate": true,
     "artifacts_present": true
   },
   "blockers": [
-    "checked_production_elevation_fanin_matches_live",
-    "production_semantic_elevation_fanin_bound",
-    "production_semantic_elevation_fanin_closed",
-    "required_elevation_missing:datalog-authorization",
-    "required_elevation_missing:secpal-authorization",
-    "required_semantic_elevations_present",
     "source_valid_for_release_candidate"
   ],
   "digest_material": {
-    "certificate_digest_sha256": "3e8b3b50e6072e30c2fde33a23cf22ea6de23514decb18b06e3c74550438d86b",
+    "certificate_digest_sha256": "792b4477c004e8c317d0f402d1735384a4c52251bda3227753f62d0b82274e45",
     "tool_check_digests": {
       "apalache": "758459ff1c0c034d502c8a5b7f2e4feb6d655324c02692dc2fe5c16d100e91b1",
       "autohyper": "7b2da277ace6c0bb9558adfa6d7a517948b3fc5bc06780b5072e92b3cabb5077",
@@ -2377,7 +2419,7 @@
       "cvc5": "73d8086cdb0f5ed09d53cca87584b69a3f916ca46a16b1f57634c1ced34e57d8",
       "datalog-authorization": "aedd02270f46bb29ce94c403509c78170bb03950da0a0a84141cf30724f3c713",
       "eprover": "3c4e4630d13686305eed6d6be2a4b7f791d7fdff470f6647a6080a55d5850732",
-      "ergoai": "7ab7d93d7fb1a8ac2b2f6931709dbab570b47d7f97a86c9f0ee65aa27826a904",
+      "ergoai": "48353a6c609537b8130f934643afc44d6eb10c210be1a21349e8c8cf9c6326d7",
       "hyperltl": "365b281a795f91bf4e8bf72b6db9dce506e9c9e8d6958d334706fd414c5fb70b",
       "isabelle": "09606ecb1d545a6bda8681b5374aa8f6f4cd4659d066a8533e8e16704020e04a",
       "java": "a2dc02405ecb06edf620c7ff499416b9f45a4da8430bdd7c70acbc302cdd045d",
@@ -2392,7 +2434,7 @@
       "secpal-authorization": "9335c3b5c2f73d84b5fa90da9ac9e7f2c4e2bf7d6f03ec5ebf7170fb2735afdf",
       "souffle": "c78ed44c31287c41ccc09f32a02f9bf35ccb20beb47aa821966ea7acb970368c",
       "stack": "81999d21e1eb47866a36fc9cda3bdc307abc68c295185aa45c13aee1ca0232fa",
-      "symbolicai": "a5d556f0590caba9cb77d0b16593eced2302e0467491a22baecd0312b6ad625c",
+      "symbolicai": "f3ca92f5572ca46527971d812ddf759b6b37c77fd4eafc2b491f1ecb2243730e",
       "tamarin": "da49eee8c3b361d681c3ff4c87a10544ac4768fe8a98f01a71a97bc3f0d7790a",
       "temurin-jdk": "7cd6175bc51c9dbf2f45bdf059c7e0ee28f5166807d45f6581df6d8d05e8b682",
       "tlc": "f95c0c636194f5cf68f6cebe77176ceefe95f0bae3d5886112363836338e692f",
@@ -2429,7 +2471,8 @@
         "sha256:cad00b4849b015ea6a7790f73cecdf639423f1a17f2c5ec90fda783f778611fb"
       ],
       "datalog-authorization": [
-        "sha256:3f18ee1252e5254f5e7a1a5d3499d22018593fa22bd795633f5ddb74bcdb1c78"
+        "sha256:3f18ee1252e5254f5e7a1a5d3499d22018593fa22bd795633f5ddb74bcdb1c78",
+        "sha256:a805a3390eba5816962632c9f3d8966382e3d529c5f3af663ec9de98226d6717"
       ],
       "eprover": [
         "sha256:074c8e5fc3062476341ce790fd15ad8004d322d6b6627844bd2768a8830bd4ae",
@@ -2510,7 +2553,8 @@
         "sha256:3ba565b03b0e021f921eb37a7d4309092e84a295993cb9c68f330ffa977882dd"
       ],
       "secpal-authorization": [
-        "sha256:3f18ee1252e5254f5e7a1a5d3499d22018593fa22bd795633f5ddb74bcdb1c78"
+        "sha256:3f18ee1252e5254f5e7a1a5d3499d22018593fa22bd795633f5ddb74bcdb1c78",
+        "sha256:a805a3390eba5816962632c9f3d8966382e3d529c5f3af663ec9de98226d6717"
       ],
       "souffle": [
         "sha256:064e4309de40862e484461e078a586acfa9b55a31d79e7b330e4b5b3d3e18e67",
@@ -2565,7 +2609,7 @@
       "kernel_rocq": "ab4bb0ab30b820d7a33a28e879dbba34b090bb48adbd0efdc4bbcaa732f2f945",
       "kernel_isabelle": "1016906acac8a991a7913e2cda5de2c2df8216483362859b66d36e3532c0bbe5",
       "runtime_mtl": "36bdd6befe9c015845c4e943e7f0605673f62d786ad754b2b9342af40b94920d",
-      "datalog_secpal": "de3b9680972117046e0e41db352695f4f1090205f6b66b32aac7c2c7016e8541",
+      "datalog_secpal": "e09f43f66b7d569dca44350aca12d37e46ebf0b5be79a58f20f3b9d9aa628717",
       "state_model": "00815bee43d758ac70a432074feb92fd971138f7c9243de768d1e3472d169106",
       "protocol_tamarin": "f089db46c315ae14f13741ba04d806ae6b1492bdbd0fd808e8cc1532d0ff336e",
       "protocol_proverif": "01b4d90ecd167758925f31c25352f9347e9e69dd41ed84ec4a5777c4cfaa0461",
@@ -2574,20 +2618,20 @@
       "runtime_mtl_external": "048fb5d6a3115862aef10670f0687438f9051cb6a4439444bd4b8f36de96c286",
       "authorization_external": "2c843acd12bdcb8a0ec231812ab91f2be7675802bcec3a00a0aab312b5c3647d",
       "attestation": "9a10496729b1f60f05df35c795f8f0403ed50b8a72a02c746a92a6b2499c84a6",
-      "advisors": "2c0b70d91f2fe9dbfab69b21887e15fdc31d5b0b8106c5ba51247690da1e78db"
+      "advisors": "d7ae3061e2efc5de75a9d28b90182e5ec991f009c4777ab31d0a6db14f4c3655"
     },
-    "specialized_projection_aggregation_digest": "82ff49ffc247f2e1eab89351989e185bfa1af6e833123011ca0572e32850164b",
-    "specialized_source_aggregation_digest": "f3389cbcdbebfbaa4d07c4903de15edb470e5c14e873e41df53a030d1d79cae7",
+    "specialized_projection_aggregation_digest": "3970ea16551e88634e60e6eead58e0e76295d3206c1a5252395094a7eb2c702d",
+    "specialized_source_aggregation_digest": "72f34449c0281463d8b94f5574e2d246ce09471fc31aa0d9f12173715619819a",
     "specialized_projection_handler_digests": {
       "atp::eprover": "0674387357d39c4005ab291959cba38c1c54f8629e166e61b6aff493980b16f9",
       "atp::vampire": "8e03a793c01df905b3ee32d3b71b6ada9606f072070b826c23e2888eb5fa8939",
       "attestation::zkp-circuit": "a2d782ac5e6a9921a6ff781ea7d53cdb2d657277ddcc82bf7dff81dbbb8fdfa6",
-      "datalog_secpal::datalog-authorization": "217a9dc07dafd12ef8b5437b74f1fb181cfed878c513208fa8640908efc6f359",
+      "datalog_secpal::datalog-authorization": "40e2af542968e48ff9d24e0adb990c59613665ee4c3922921cd4c6edd2607d07",
       "datalog_secpal::secpal": "7a87983a35a3e66054a866f439689ca9081639af855d8d66ab0c8ccc23957108",
-      "datalog_secpal::secpal-authorization": "6627a2e19537337c893b3093195e7824196339edca7eb5bc420e93f9ca854409",
+      "datalog_secpal::secpal-authorization": "ad16f198d86c359668456287f10fbbe9187973fdf1bbe237321e27d4eb1bbf48",
       "datalog_secpal::souffle": "69790f4b00c5dbd14a1a75d8000db898c01c277b86139f55c88251839bdcc794",
-      "hammer::ergoai": "fde5d20ab50edbe2b486e48a1a54a992fdb3702b1c075e24480bfde87ee13169",
-      "hammer::symbolicai": "cfbfa0589814c20cb4a97ee310f1758cb2e54b2969dae00f3ef94f4cd874827e",
+      "hammer::ergoai": "3e477700bb8d7fe6576f681f54798af33943ceca1d67ab257001b239372fa739",
+      "hammer::symbolicai": "153a709fa727fb93ef6073cd9f7554de71edbbea907226a52ab9f477dd91a145",
       "hyperltl::autohyper": "22a0ab38a2ab0265fb45f23b4e5e81281a5470951053f184f369345e97de854e",
       "hyperltl::hyperltl": "c52c94d6cdc96edcb9ef025df1aa6217e846abdef4f7c3b76211f7a783778236",
       "hyperltl::mchyper": "314ecc1163290427d834864386335ef9fb96e182a1ed2bd879164b4eca787aef",
@@ -2605,12 +2649,12 @@
       "atp::eprover": "528ee52b6adb804b5300238018484d7677f92513c9079e9a64c00755fdffa058",
       "atp::vampire": "99fe3d8e1ab788ae1187b6151c95eae43ad353a177f82df0f24cb6f15b98ff10",
       "attestation::zkp-circuit": "2533e263264d111fd17f8b8add2fb3f57187305d4d51843e7138fef117f615cf",
-      "datalog_secpal::datalog-authorization": "01addf3b118b90716a3c7b147560bda81f11ae6c71a6e6c9a633f04be77499b3",
+      "datalog_secpal::datalog-authorization": "885c5ecf4d3207909eed94ad5d5061dcb368419a135d2785a2e83f8f3892bcaa",
       "datalog_secpal::secpal": "5a1f088b2d6ca3ef4d59b4da809dae7102a51b91b3ca3432f69354ee941f9bea",
-      "datalog_secpal::secpal-authorization": "706e22f5a543b3a83d32e9fde0d2aa28daf3ff60e370cf17644a6eb6c1db60a2",
+      "datalog_secpal::secpal-authorization": "c6a2e357e3567971bb7f05c0c77b252e8fc887f3e62b66bc8191519650d5123f",
       "datalog_secpal::souffle": "1653b8c8af941b6a0c044b5eba0888f469138d958e7193d268c02e793cd87581",
-      "hammer::ergoai": "8267ca1a4e3da6dcd5c48c054ba9c3a1d22571f2107b195de1df69bb4376b45f",
-      "hammer::symbolicai": "01c2399616dc0b0125a3344bd78c5403351c3a6b68efdb55449a41f25c159696",
+      "hammer::ergoai": "723a835a31b82d4a21c15de72bffa667fc12c566a0c18960e2782bcbce96b60f",
+      "hammer::symbolicai": "d7c3b56bd8533592255a97d89406ac96f11e5d820bbdecc9ae3ee1e1771afe48",
       "hyperltl::autohyper": "23cdf2940f47b9f4d8a4806491f31ada71a9ca5f485d3f8b1b8378f38e0f8034",
       "hyperltl::hyperltl": "eccc347d7c6403d53549f6337c045a7f039e172229a9e5b5d0f12feda0af0053",
       "hyperltl::mchyper": "e46784ef71378b2335f08dd67bfaf469106c85f62b9467206c6c00d98991dd69",
@@ -2627,8 +2671,8 @@
     "authority_roles_policy_digest": "78edbfd69cdcdaab0ff4a34d260e6316ac18ee48337e9896756b1e79728d911a",
     "lock_digest": "9e2573ddf961e5f5501e8095ba63da475222b6971413ac79a0356bc7feb78caa",
     "quarantine_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-    "production_elevation_fanin_receipt_digest": "sha256:f883faa3aa30246bdf493dc1353ca2301300c25443f3f9413cb06662344307e9",
-    "checked_production_elevation_fanin_content_identity": "sha256:556345c08c0b6c9dffc3601abf142fc8bf047d041c057fce9448fe6d6421c73c"
+    "production_elevation_fanin_receipt_digest": "sha256:3fb8b1efe1b8aec9ae2650026f4e3df6d86f876b01c2750c0df69d42d4697e1d",
+    "checked_production_elevation_fanin_content_identity": "sha256:eaec3a0ff793d7b28f858131a6dc729f909cc08c76bd085f8afb88789ad47ca8"
   },
   "role_aware_certificate": {
     "projection_model": "digest_bound_compact_projection/v1",
@@ -2638,7 +2682,7 @@
     "goal_id": "FVT-G060",
     "task_id": "FVT-030",
     "binding_mode": "offline_pinned_live_lanes_role_aware",
-    "certificate_digest_sha256": "3e8b3b50e6072e30c2fde33a23cf22ea6de23514decb18b06e3c74550438d86b",
+    "certificate_digest_sha256": "792b4477c004e8c317d0f402d1735384a4c52251bda3227753f62d0b82274e45",
     "role_aware": {
       "enabled": true,
       "goal_id": "FVT-G200",
@@ -2648,6 +2692,7 @@
         "apalache",
         "autohyper",
         "coq",
+        "datalog-authorization",
         "eprover",
         "hyperltl",
         "isabelle",
@@ -2655,6 +2700,7 @@
         "mchyper",
         "proverif",
         "runtime-mtl",
+        "secpal-authorization",
         "tamarin",
         "tlc",
         "vampire",
@@ -2695,6 +2741,7 @@
         "autohyper",
         "coq",
         "cvc5",
+        "datalog-authorization",
         "eprover",
         "hyperltl",
         "isabelle",
@@ -2702,6 +2749,7 @@
         "mchyper",
         "proverif",
         "runtime-mtl",
+        "secpal-authorization",
         "tamarin",
         "tlc",
         "vampire",
@@ -2709,14 +2757,12 @@
         "zkp-circuit"
       ],
       "merely_usable_tool_ids": [
-        "datalog-authorization",
         "ergoai",
         "java",
         "maude",
         "opam",
         "runtime-mtl-external",
         "secpal",
-        "secpal-authorization",
         "souffle",
         "stack",
         "symbolicai",
@@ -2796,17 +2842,21 @@
           "souffle",
           "secpal"
         ],
-        "certified_tool_ids": [],
-        "certified_authority_tool_ids": [],
+        "certified_tool_ids": [
+          "datalog-authorization",
+          "secpal-authorization"
+        ],
+        "certified_authority_tool_ids": [
+          "datalog-authorization",
+          "secpal-authorization"
+        ],
         "unavailable_tool_ids": [],
         "blocked_tool_ids": [
-          "datalog-authorization",
-          "secpal-authorization",
           "souffle",
           "secpal"
         ],
         "disagreement_quarantine_ids": [],
-        "promotion_ready": false,
+        "promotion_ready": true,
         "notes": ""
       },
       {
@@ -3106,18 +3156,18 @@
       {
         "lane_id": "datalog_secpal",
         "status": "ran",
-        "digest_sha256": "de3b9680972117046e0e41db352695f4f1090205f6b66b32aac7c2c7016e8541",
+        "digest_sha256": "e09f43f66b7d569dca44350aca12d37e46ebf0b5be79a58f20f3b9d9aa628717",
         "block_reasons": [],
         "receipt_integrity_valid": true,
         "per_tool_bindings": {
           "datalog-authorization": {
             "check_set_digest_sha256": "017b17fd14348ed4cb9a4fac7f263be1ae02b5823378c50e6a4c24a8effbc296",
-            "tool_evidence_digest_sha256": "4d1eb609252b6af526b26fd4ce625a0843bb00048ac8af269525d6db4aacfb12",
+            "tool_evidence_digest_sha256": "de157c679b09759b2ff2eee5384b94342a4dc5d581eba26f35e7b441cc8234ca",
             "artifact_validation_valid": true
           },
           "secpal-authorization": {
             "check_set_digest_sha256": "f81d07888f4e03b9fe7f70a7232fbf44de81d80049cd56f082fab6ca5e8023b8",
-            "tool_evidence_digest_sha256": "38d52c55d4ee29fdbe1caadfd3053b76955b7be264211bec33d20a537346a0b5",
+            "tool_evidence_digest_sha256": "4115f8572309fa08cd142dfa90afe2d9990155d81a6b9fe2fcc42164e163d845",
             "artifact_validation_valid": true
           }
         }
@@ -3262,18 +3312,18 @@
       {
         "lane_id": "advisors",
         "status": "ran",
-        "digest_sha256": "2c0b70d91f2fe9dbfab69b21887e15fdc31d5b0b8106c5ba51247690da1e78db",
+        "digest_sha256": "d7ae3061e2efc5de75a9d28b90182e5ec991f009c4777ab31d0a6db14f4c3655",
         "block_reasons": [],
         "receipt_integrity_valid": true,
         "per_tool_bindings": {
           "symbolicai": {
-            "check_set_digest_sha256": "0dbb54fb5c2a436c3dccaf0a4c73553eea09b33215202be3819bc6b99f86c2a1",
-            "tool_evidence_digest_sha256": "1d5beaac5fc06ba4e62d2eaf8117b205e1468a73d472cf34cac5a0de7745f279",
+            "check_set_digest_sha256": "b2a99346fb17b1bc27e18f8730e09a066f8fb7943ad2941db1dac6217bd156a7",
+            "tool_evidence_digest_sha256": "d9ab9c710d8c5964f576f8fc8ad70053b128493ab5a538de96ae6c4f3a1a9c76",
             "artifact_validation_valid": true
           },
           "ergoai": {
-            "check_set_digest_sha256": "569c26d15d097fc6f684cdda0528819346b7657943279f83b807601cd2003c22",
-            "tool_evidence_digest_sha256": "f88a8f90d3d57f2a60159a07b2e32a8eabd6002a82c482b5a7ee72cc4bffe583",
+            "check_set_digest_sha256": "a8849fd7916b85ac75d9bc8ba764b6b946381bb2497ba0e7b53592e7eca4e8ea",
+            "tool_evidence_digest_sha256": "81dde7744d927bd05e837eeec51e7455155f9aaaf16a804d5258df99e770e38d",
             "artifact_validation_valid": true
           }
         }
@@ -3365,7 +3415,7 @@
               "datalog_secpal::souffle",
               "datalog_secpal::secpal"
             ],
-            "digest_sha256": "242d7a5235a5c690618482e3ae66019750e32dc50bf44f94fb9f31963a89f911"
+            "digest_sha256": "68acc680bff16b3332b3797a010d69d5bbb470bee34dee012212dbcedf46260e"
           },
           "hammer": {
             "property_lane_id": "hammer",
@@ -3377,7 +3427,7 @@
               "hammer::symbolicai",
               "hammer::ergoai"
             ],
-            "digest_sha256": "4e071b2248d833ebd77db5fa4438bb34bf2f917bb8c212a6819f6d73b66767c9"
+            "digest_sha256": "49f3c30249f4a6c523424a07d3225b22ed3e77f1c81aa92627808ad1388392d0"
           },
           "hyperltl": {
             "property_lane_id": "hyperltl",
@@ -3510,16 +3560,16 @@
             "certifier_family": "authorization_in_process",
             "certified": true,
             "authority_ceiling": "authorization",
-            "receipt_digest_sha256": "de3b9680972117046e0e41db352695f4f1090205f6b66b32aac7c2c7016e8541",
+            "receipt_digest_sha256": "e09f43f66b7d569dca44350aca12d37e46ebf0b5be79a58f20f3b9d9aa628717",
             "check_set_digest_sha256": "017b17fd14348ed4cb9a4fac7f263be1ae02b5823378c50e6a4c24a8effbc296",
-            "identity_digest_sha256": "b4f7b18923a1875a231aeb06861489653e08a63c5e5e06c3089ba685b278e080",
-            "artifacts_digest_sha256": "f3837de102b93fe94768add36ba41977cce3e5bb05086c1ba39b5e5b2f366c60",
-            "bindings_digest_sha256": "f0ef0ffae44bdf7ebd23cfcca274f6a944e8bbaf7f2eb2121c0b5d11808eacbf",
+            "identity_digest_sha256": "d85f92492d2151860a24bb12665b253caf72130ab06e5d3a393945f52db3aefa",
+            "artifacts_digest_sha256": "0db11797c96a5cba089d9acdf81a7099efa7e1b3b6c228eacb5cc24d4783bd87",
+            "bindings_digest_sha256": "17f104cbf2b04866801c7a2971ac5ad642f34c747dd9907ceadae1a01008c03c",
             "cases_digest_sha256": "150140633f369154a168ead072fe9da24fd4b9c5920d3d3f969fac8c837dfb4f",
             "dependencies_digest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-            "sources_digest_sha256": "6602dc6eb96681f92bc35a9caafd59e11202d2bc772f96d7bb5f91fc022c7fa9",
-            "source_tool_evidence_digest_sha256": "01addf3b118b90716a3c7b147560bda81f11ae6c71a6e6c9a633f04be77499b3",
-            "tool_evidence_digest_sha256": "217a9dc07dafd12ef8b5437b74f1fb181cfed878c513208fa8640908efc6f359"
+            "sources_digest_sha256": "4b0ac63afbd2ba520570479ec2c00606eba7652714dbc8b9bb37d1e94f1c503d",
+            "source_tool_evidence_digest_sha256": "885c5ecf4d3207909eed94ad5d5061dcb368419a135d2785a2e83f8f3892bcaa",
+            "tool_evidence_digest_sha256": "40e2af542968e48ff9d24e0adb990c59613665ee4c3922921cd4c6edd2607d07"
           },
           "datalog_secpal::secpal": {
             "handler_key": "datalog_secpal::secpal",
@@ -3548,16 +3598,16 @@
             "certifier_family": "authorization_in_process",
             "certified": true,
             "authority_ceiling": "authorization",
-            "receipt_digest_sha256": "de3b9680972117046e0e41db352695f4f1090205f6b66b32aac7c2c7016e8541",
+            "receipt_digest_sha256": "e09f43f66b7d569dca44350aca12d37e46ebf0b5be79a58f20f3b9d9aa628717",
             "check_set_digest_sha256": "f81d07888f4e03b9fe7f70a7232fbf44de81d80049cd56f082fab6ca5e8023b8",
-            "identity_digest_sha256": "b4f7b18923a1875a231aeb06861489653e08a63c5e5e06c3089ba685b278e080",
-            "artifacts_digest_sha256": "f3837de102b93fe94768add36ba41977cce3e5bb05086c1ba39b5e5b2f366c60",
-            "bindings_digest_sha256": "f0ef0ffae44bdf7ebd23cfcca274f6a944e8bbaf7f2eb2121c0b5d11808eacbf",
+            "identity_digest_sha256": "d85f92492d2151860a24bb12665b253caf72130ab06e5d3a393945f52db3aefa",
+            "artifacts_digest_sha256": "0db11797c96a5cba089d9acdf81a7099efa7e1b3b6c228eacb5cc24d4783bd87",
+            "bindings_digest_sha256": "17f104cbf2b04866801c7a2971ac5ad642f34c747dd9907ceadae1a01008c03c",
             "cases_digest_sha256": "b167a06a3c716534f74456d8789ae50689936c5d9553525b0dd7e083fede47c0",
             "dependencies_digest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-            "sources_digest_sha256": "6602dc6eb96681f92bc35a9caafd59e11202d2bc772f96d7bb5f91fc022c7fa9",
-            "source_tool_evidence_digest_sha256": "706e22f5a543b3a83d32e9fde0d2aa28daf3ff60e370cf17644a6eb6c1db60a2",
-            "tool_evidence_digest_sha256": "6627a2e19537337c893b3093195e7824196339edca7eb5bc420e93f9ca854409"
+            "sources_digest_sha256": "4b0ac63afbd2ba520570479ec2c00606eba7652714dbc8b9bb37d1e94f1c503d",
+            "source_tool_evidence_digest_sha256": "c6a2e357e3567971bb7f05c0c77b252e8fc887f3e62b66bc8191519650d5123f",
+            "tool_evidence_digest_sha256": "ad16f198d86c359668456287f10fbbe9187973fdf1bbe237321e27d4eb1bbf48"
           },
           "datalog_secpal::souffle": {
             "handler_key": "datalog_secpal::souffle",
@@ -3586,16 +3636,16 @@
             "certifier_family": "advisor",
             "certified": true,
             "authority_ceiling": "advisory",
-            "receipt_digest_sha256": "2c0b70d91f2fe9dbfab69b21887e15fdc31d5b0b8106c5ba51247690da1e78db",
-            "check_set_digest_sha256": "569c26d15d097fc6f684cdda0528819346b7657943279f83b807601cd2003c22",
+            "receipt_digest_sha256": "d7ae3061e2efc5de75a9d28b90182e5ec991f009c4777ab31d0a6db14f4c3655",
+            "check_set_digest_sha256": "a8849fd7916b85ac75d9bc8ba764b6b946381bb2497ba0e7b53592e7eca4e8ea",
             "identity_digest_sha256": "e090140df640d9437864d0276cec0f5140abba002a42154fc6c65827d25a4110",
             "artifacts_digest_sha256": "9a046f68a1ba535fc29f75bbca3a76fd7d76a6fa9c43b718cf0f36b910e7e042",
             "bindings_digest_sha256": "47ca25852435b9d23b29d3d8ef6cd4d12df7b275b83b2cfb3941142187d17799",
             "cases_digest_sha256": "1712de8cfab164a4ab6366c62c99836861c08e575d8539b3748ddac183f44e97",
             "dependencies_digest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-            "sources_digest_sha256": "a10f5867dc6abda25e4db9d45be88baa1cf52f8257b851b3ff215cf40b784689",
-            "source_tool_evidence_digest_sha256": "8267ca1a4e3da6dcd5c48c054ba9c3a1d22571f2107b195de1df69bb4376b45f",
-            "tool_evidence_digest_sha256": "fde5d20ab50edbe2b486e48a1a54a992fdb3702b1c075e24480bfde87ee13169"
+            "sources_digest_sha256": "8af30f01d3cd6a9f5addf67d26f2d8162991b69fa7bb9e07f42f8162ef8e37bd",
+            "source_tool_evidence_digest_sha256": "723a835a31b82d4a21c15de72bffa667fc12c566a0c18960e2782bcbce96b60f",
+            "tool_evidence_digest_sha256": "3e477700bb8d7fe6576f681f54798af33943ceca1d67ab257001b239372fa739"
           },
           "hammer::symbolicai": {
             "handler_key": "hammer::symbolicai",
@@ -3605,16 +3655,16 @@
             "certifier_family": "advisor",
             "certified": true,
             "authority_ceiling": "advisory",
-            "receipt_digest_sha256": "2c0b70d91f2fe9dbfab69b21887e15fdc31d5b0b8106c5ba51247690da1e78db",
-            "check_set_digest_sha256": "0dbb54fb5c2a436c3dccaf0a4c73553eea09b33215202be3819bc6b99f86c2a1",
+            "receipt_digest_sha256": "d7ae3061e2efc5de75a9d28b90182e5ec991f009c4777ab31d0a6db14f4c3655",
+            "check_set_digest_sha256": "b2a99346fb17b1bc27e18f8730e09a066f8fb7943ad2941db1dac6217bd156a7",
             "identity_digest_sha256": "e090140df640d9437864d0276cec0f5140abba002a42154fc6c65827d25a4110",
             "artifacts_digest_sha256": "9a046f68a1ba535fc29f75bbca3a76fd7d76a6fa9c43b718cf0f36b910e7e042",
             "bindings_digest_sha256": "47ca25852435b9d23b29d3d8ef6cd4d12df7b275b83b2cfb3941142187d17799",
             "cases_digest_sha256": "5b551d72e541b7bd22ea1189a5d72617e5dd557255361c4d0dfaed39a77b0ed7",
             "dependencies_digest_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-            "sources_digest_sha256": "a10f5867dc6abda25e4db9d45be88baa1cf52f8257b851b3ff215cf40b784689",
-            "source_tool_evidence_digest_sha256": "01c2399616dc0b0125a3344bd78c5403351c3a6b68efdb55449a41f25c159696",
-            "tool_evidence_digest_sha256": "cfbfa0589814c20cb4a97ee310f1758cb2e54b2969dae00f3ef94f4cd874827e"
+            "sources_digest_sha256": "8af30f01d3cd6a9f5addf67d26f2d8162991b69fa7bb9e07f42f8162ef8e37bd",
+            "source_tool_evidence_digest_sha256": "d7c3b56bd8533592255a97d89406ac96f11e5d820bbdecc9ae3ee1e1771afe48",
+            "tool_evidence_digest_sha256": "153a709fa727fb93ef6073cd9f7554de71edbbea907226a52ab9f477dd91a145"
           },
           "hyperltl::autohyper": {
             "handler_key": "hyperltl::autohyper",
@@ -3845,7 +3895,7 @@
             "tool_evidence_digest_sha256": "f1b4f25016fc8fa0471e539f990320e20c02ed0412624f0b682d9c52277ee8e8"
           }
         },
-        "source_aggregation_digest_sha256": "f3389cbcdbebfbaa4d07c4903de15edb470e5c14e873e41df53a030d1d79cae7",
+        "source_aggregation_digest_sha256": "72f34449c0281463d8b94f5574e2d246ce09471fc31aa0d9f12173715619819a",
         "projection_policy": {
           "canonical_full_receipts_live_in_semantic_lane_results": true,
           "derived_specialized_rows_are_digest_only": true,
@@ -3858,7 +3908,7 @@
           "goal_id": "FVT-G203",
           "task_id": "FVT-065"
         },
-        "aggregation_digest_sha256": "82ff49ffc247f2e1eab89351989e185bfa1af6e833123011ca0572e32850164b"
+        "aggregation_digest_sha256": "3970ea16551e88634e60e6eead58e0e76295d3206c1a5252395094a7eb2c702d"
       },
       "verification": {
         "projection_valid": true,
@@ -3875,12 +3925,12 @@
         "source_composites_valid": true,
         "source_matches_independent_reconstruction": true,
         "compact_projection_matches_source": true,
-        "projection_aggregation_digest_sha256": "82ff49ffc247f2e1eab89351989e185bfa1af6e833123011ca0572e32850164b",
-        "projection_aggregation_digest_computed_sha256": "82ff49ffc247f2e1eab89351989e185bfa1af6e833123011ca0572e32850164b",
+        "projection_aggregation_digest_sha256": "3970ea16551e88634e60e6eead58e0e76295d3206c1a5252395094a7eb2c702d",
+        "projection_aggregation_digest_computed_sha256": "3970ea16551e88634e60e6eead58e0e76295d3206c1a5252395094a7eb2c702d",
         "projection_aggregation_digest_valid": true,
-        "source_aggregation_digest_sha256": "f3389cbcdbebfbaa4d07c4903de15edb470e5c14e873e41df53a030d1d79cae7",
-        "source_aggregation_digest_computed_sha256": "f3389cbcdbebfbaa4d07c4903de15edb470e5c14e873e41df53a030d1d79cae7",
-        "source_aggregation_digest_reconstructed_sha256": "f3389cbcdbebfbaa4d07c4903de15edb470e5c14e873e41df53a030d1d79cae7",
+        "source_aggregation_digest_sha256": "72f34449c0281463d8b94f5574e2d246ce09471fc31aa0d9f12173715619819a",
+        "source_aggregation_digest_computed_sha256": "72f34449c0281463d8b94f5574e2d246ce09471fc31aa0d9f12173715619819a",
+        "source_aggregation_digest_reconstructed_sha256": "72f34449c0281463d8b94f5574e2d246ce09471fc31aa0d9f12173715619819a",
         "source_aggregation_digest_well_formed": true,
         "source_aggregation_digest_verified": true,
         "handlers": {
@@ -3921,15 +3971,15 @@
             "compact_handler_matches_source": true
           },
           "datalog_secpal::datalog-authorization": {
-            "projection_tool_evidence_digest_sha256": "217a9dc07dafd12ef8b5437b74f1fb181cfed878c513208fa8640908efc6f359",
-            "projection_tool_evidence_digest_computed_sha256": "217a9dc07dafd12ef8b5437b74f1fb181cfed878c513208fa8640908efc6f359",
+            "projection_tool_evidence_digest_sha256": "40e2af542968e48ff9d24e0adb990c59613665ee4c3922921cd4c6edd2607d07",
+            "projection_tool_evidence_digest_computed_sha256": "40e2af542968e48ff9d24e0adb990c59613665ee4c3922921cd4c6edd2607d07",
             "projection_tool_evidence_digest_valid": true,
-            "source_tool_evidence_digest_sha256": "01addf3b118b90716a3c7b147560bda81f11ae6c71a6e6c9a633f04be77499b3",
+            "source_tool_evidence_digest_sha256": "885c5ecf4d3207909eed94ad5d5061dcb368419a135d2785a2e83f8f3892bcaa",
             "source_tool_evidence_digest_well_formed": true,
             "source_tool_evidence_digest_verified": true,
             "mapping_valid": true,
             "receipt_binding_valid": true,
-            "source_tool_evidence_digest_computed_sha256": "01addf3b118b90716a3c7b147560bda81f11ae6c71a6e6c9a633f04be77499b3",
+            "source_tool_evidence_digest_computed_sha256": "885c5ecf4d3207909eed94ad5d5061dcb368419a135d2785a2e83f8f3892bcaa",
             "compact_handler_matches_source": true
           },
           "datalog_secpal::secpal": {
@@ -3945,15 +3995,15 @@
             "compact_handler_matches_source": true
           },
           "datalog_secpal::secpal-authorization": {
-            "projection_tool_evidence_digest_sha256": "6627a2e19537337c893b3093195e7824196339edca7eb5bc420e93f9ca854409",
-            "projection_tool_evidence_digest_computed_sha256": "6627a2e19537337c893b3093195e7824196339edca7eb5bc420e93f9ca854409",
+            "projection_tool_evidence_digest_sha256": "ad16f198d86c359668456287f10fbbe9187973fdf1bbe237321e27d4eb1bbf48",
+            "projection_tool_evidence_digest_computed_sha256": "ad16f198d86c359668456287f10fbbe9187973fdf1bbe237321e27d4eb1bbf48",
             "projection_tool_evidence_digest_valid": true,
-            "source_tool_evidence_digest_sha256": "706e22f5a543b3a83d32e9fde0d2aa28daf3ff60e370cf17644a6eb6c1db60a2",
+            "source_tool_evidence_digest_sha256": "c6a2e357e3567971bb7f05c0c77b252e8fc887f3e62b66bc8191519650d5123f",
             "source_tool_evidence_digest_well_formed": true,
             "source_tool_evidence_digest_verified": true,
             "mapping_valid": true,
             "receipt_binding_valid": true,
-            "source_tool_evidence_digest_computed_sha256": "706e22f5a543b3a83d32e9fde0d2aa28daf3ff60e370cf17644a6eb6c1db60a2",
+            "source_tool_evidence_digest_computed_sha256": "c6a2e357e3567971bb7f05c0c77b252e8fc887f3e62b66bc8191519650d5123f",
             "compact_handler_matches_source": true
           },
           "datalog_secpal::souffle": {
@@ -3969,27 +4019,27 @@
             "compact_handler_matches_source": true
           },
           "hammer::ergoai": {
-            "projection_tool_evidence_digest_sha256": "fde5d20ab50edbe2b486e48a1a54a992fdb3702b1c075e24480bfde87ee13169",
-            "projection_tool_evidence_digest_computed_sha256": "fde5d20ab50edbe2b486e48a1a54a992fdb3702b1c075e24480bfde87ee13169",
+            "projection_tool_evidence_digest_sha256": "3e477700bb8d7fe6576f681f54798af33943ceca1d67ab257001b239372fa739",
+            "projection_tool_evidence_digest_computed_sha256": "3e477700bb8d7fe6576f681f54798af33943ceca1d67ab257001b239372fa739",
             "projection_tool_evidence_digest_valid": true,
-            "source_tool_evidence_digest_sha256": "8267ca1a4e3da6dcd5c48c054ba9c3a1d22571f2107b195de1df69bb4376b45f",
+            "source_tool_evidence_digest_sha256": "723a835a31b82d4a21c15de72bffa667fc12c566a0c18960e2782bcbce96b60f",
             "source_tool_evidence_digest_well_formed": true,
             "source_tool_evidence_digest_verified": true,
             "mapping_valid": true,
             "receipt_binding_valid": true,
-            "source_tool_evidence_digest_computed_sha256": "8267ca1a4e3da6dcd5c48c054ba9c3a1d22571f2107b195de1df69bb4376b45f",
+            "source_tool_evidence_digest_computed_sha256": "723a835a31b82d4a21c15de72bffa667fc12c566a0c18960e2782bcbce96b60f",
             "compact_handler_matches_source": true
           },
           "hammer::symbolicai": {
-            "projection_tool_evidence_digest_sha256": "cfbfa0589814c20cb4a97ee310f1758cb2e54b2969dae00f3ef94f4cd874827e",
-            "projection_tool_evidence_digest_computed_sha256": "cfbfa0589814c20cb4a97ee310f1758cb2e54b2969dae00f3ef94f4cd874827e",
+            "projection_tool_evidence_digest_sha256": "153a709fa727fb93ef6073cd9f7554de71edbbea907226a52ab9f477dd91a145",
+            "projection_tool_evidence_digest_computed_sha256": "153a709fa727fb93ef6073cd9f7554de71edbbea907226a52ab9f477dd91a145",
             "projection_tool_evidence_digest_valid": true,
-            "source_tool_evidence_digest_sha256": "01c2399616dc0b0125a3344bd78c5403351c3a6b68efdb55449a41f25c159696",
+            "source_tool_evidence_digest_sha256": "d7c3b56bd8533592255a97d89406ac96f11e5d820bbdecc9ae3ee1e1771afe48",
             "source_tool_evidence_digest_well_formed": true,
             "source_tool_evidence_digest_verified": true,
             "mapping_valid": true,
             "receipt_binding_valid": true,
-            "source_tool_evidence_digest_computed_sha256": "01c2399616dc0b0125a3344bd78c5403351c3a6b68efdb55449a41f25c159696",
+            "source_tool_evidence_digest_computed_sha256": "d7c3b56bd8533592255a97d89406ac96f11e5d820bbdecc9ae3ee1e1771afe48",
             "compact_handler_matches_source": true
           },
           "hyperltl::autohyper": {
@@ -4232,25 +4282,21 @@
             "declared_authority_ceiling": "none",
             "declared_role_can_satisfy_certified_authority": false,
             "authority_requirement_satisfied": false,
-            "ready": false,
-            "installation_ready": false,
-            "semantic_certification_ready": false,
+            "ready": true,
+            "installation_ready": true,
+            "semantic_certification_ready": true,
             "vendor_checks_passed": 32,
             "vendor_checks_total": 32,
             "expected_vendor_checks": 32,
-            "checked_vendor_fanin_digest_sha256": "6c4225334f908ba22a8f62a6468fbc07d10037e9f839521bf56e505f5d109ef6",
+            "checked_vendor_fanin_digest_sha256": "28b671261f73bf1a71e9f1a185cb8a00cd831cf31b7f11165f3fed978f65fd75",
             "checked_install_receipt_artifact": {
               "kind": "checked_vendor_install_receipt",
               "path": "docs/architecture/formal_verification_authorization_vendor_install_receipt.json",
-              "sha256": "sha256:ad535abbff1184c3f8eb3f441478ca85a993fe268ac21557d58a12ef2779233e",
-              "declared_digest": "df0de83b42e084a881c798babcd63202cc958bb418bc481027de88de9a85baea",
+              "sha256": "sha256:a805a3390eba5816962632c9f3d8966382e3d529c5f3af663ec9de98226d6717",
+              "declared_digest": "aafd6f9861ef9c137fec15f2f61648d700d923c49561c5ad50a2e2f3ce0fb78e",
               "artifact_class": "public_deployment_binding"
             },
-            "failures": [
-              "checked_vendor_closed_check_set_invalid",
-              "checked_vendor_fanin_not_complete",
-              "checked_vendor_live_nested_receipt_mismatch"
-            ],
+            "failures": [],
             "production_certified": false,
             "production_elevation_allowed": false,
             "authority_granted": false,
@@ -4261,14 +4307,15 @@
               "datalog-authorization",
               "secpal-authorization"
             ],
-            "digest_sha256": "2f11b7374b7b09815127a74f631bd8794d3694c4956e318f34ff4fdc44170a7a"
+            "digest_sha256": "9a8537d6c6d2b2259073ff6dd6beb32b86846237d1eca2257a6c57594211b950"
           }
         },
-        "digest_sha256": "4b60d4cca480b0bbb108d94dcabf1c11693a929692acd3c69062e8f276eab093"
+        "digest_sha256": "9c7a38d062260c296a3dc41473199b0faccb8618a2fea967c0f19fb842d90f7a"
       },
       "checked_vendor_capability_readiness_binding_valid": true,
       "ready_via_checked_vendor_capability_tool_ids": [
-        "runtime-mtl-external"
+        "runtime-mtl-external",
+        "souffle"
       ],
       "platform_exceptions": [
         {
@@ -4559,13 +4606,14 @@
       },
       {
         "tool_id": "datalog-authorization",
-        "evidence_class": "usable_pending_authorization_vendor_fanin",
-        "production_certified": false,
+        "evidence_class": "reference_plus_checked_souffle_vendor",
+        "production_certified": true,
         "executable_artifact_class": "none",
         "executable_sha256": null,
         "checks_digest_sha256": "aedd02270f46bb29ce94c403509c78170bb03950da0a0a84141cf30724f3c713",
         "artifact_digests": [
-          "sha256:3f18ee1252e5254f5e7a1a5d3499d22018593fa22bd795633f5ddb74bcdb1c78"
+          "sha256:3f18ee1252e5254f5e7a1a5d3499d22018593fa22bd795633f5ddb74bcdb1c78",
+          "sha256:a805a3390eba5816962632c9f3d8966382e3d529c5f3af663ec9de98226d6717"
         ],
         "role": null,
         "assurance_ceiling": null
@@ -4593,7 +4641,7 @@
         "production_certified": false,
         "executable_artifact_class": "launcher_script",
         "executable_sha256": "sha256:9af6efe5c7cd63b67253202669506acd4055339b8a97d84e83f24bfc031d2190",
-        "checks_digest_sha256": "7ab7d93d7fb1a8ac2b2f6931709dbab570b47d7f97a86c9f0ee65aa27826a904",
+        "checks_digest_sha256": "48353a6c609537b8130f934643afc44d6eb10c210be1a21349e8c8cf9c6326d7",
         "artifact_digests": [
           "sha256:2b77b9de26daae6013f7f91b37826718e69bd73a0ab89c56e602a20d5d1992b7",
           "sha256:46f9747db118567a7da50f70b439e35ee36ea02c3dfde971a57c77a8ce94aa01",
@@ -4780,13 +4828,14 @@
       },
       {
         "tool_id": "secpal-authorization",
-        "evidence_class": "usable_pending_authorization_vendor_fanin",
-        "production_certified": false,
+        "evidence_class": "reference_plus_checked_souffle_vendor",
+        "production_certified": true,
         "executable_artifact_class": "none",
         "executable_sha256": null,
         "checks_digest_sha256": "9335c3b5c2f73d84b5fa90da9ac9e7f2c4e2bf7d6f03ec5ebf7170fb2735afdf",
         "artifact_digests": [
-          "sha256:3f18ee1252e5254f5e7a1a5d3499d22018593fa22bd795633f5ddb74bcdb1c78"
+          "sha256:3f18ee1252e5254f5e7a1a5d3499d22018593fa22bd795633f5ddb74bcdb1c78",
+          "sha256:a805a3390eba5816962632c9f3d8966382e3d529c5f3af663ec9de98226d6717"
         ],
         "role": null,
         "assurance_ceiling": null
@@ -4826,7 +4875,7 @@
         "production_certified": false,
         "executable_artifact_class": "none",
         "executable_sha256": null,
-        "checks_digest_sha256": "a5d556f0590caba9cb77d0b16593eced2302e0467491a22baecd0312b6ad625c",
+        "checks_digest_sha256": "f3ca92f5572ca46527971d812ddf759b6b37c77fd4eafc2b491f1ecb2243730e",
         "artifact_digests": [
           "sha256:2b77b9de26daae6013f7f91b37826718e69bd73a0ab89c56e602a20d5d1992b7"
         ],
@@ -4964,6 +5013,7 @@
       "apalache",
       "autohyper",
       "coq",
+      "datalog-authorization",
       "eprover",
       "hyperltl",
       "isabelle",
@@ -4971,24 +5021,20 @@
       "mchyper",
       "proverif",
       "runtime-mtl",
+      "secpal-authorization",
       "tamarin",
       "tlc",
       "vampire",
       "zkp-circuit"
     ],
-    "missing_required": [
-      "datalog-authorization",
-      "secpal-authorization"
-    ],
+    "missing_required": [],
     "merely_usable_tool_ids": [
-      "datalog-authorization",
       "ergoai",
       "java",
       "maude",
       "opam",
       "runtime-mtl-external",
       "secpal",
-      "secpal-authorization",
       "souffle",
       "stack",
       "symbolicai",
@@ -4999,6 +5045,7 @@
       "autohyper",
       "coq",
       "cvc5",
+      "datalog-authorization",
       "eprover",
       "hyperltl",
       "isabelle",
@@ -5006,6 +5053,7 @@
       "mchyper",
       "proverif",
       "runtime-mtl",
+      "secpal-authorization",
       "tamarin",
       "tlc",
       "vampire",
@@ -5035,13 +5083,13 @@
       },
       {
         "tool_id": "datalog-authorization",
-        "elevated": false,
-        "evidence_class": "usable_pending_authorization_vendor_fanin"
+        "elevated": true,
+        "evidence_class": "reference_plus_checked_souffle_vendor"
       },
       {
         "tool_id": "secpal-authorization",
-        "elevated": false,
-        "evidence_class": "usable_pending_authorization_vendor_fanin"
+        "elevated": true,
+        "evidence_class": "reference_plus_checked_souffle_vendor"
       },
       {
         "tool_id": "apalache",
@@ -5139,8 +5187,8 @@
     "toolchain_certificate": {
       "path": "docs/architecture/formal_verification_toolchain_certificate.json",
       "present": true,
-      "content_identity": "sha256:6547bcf355baf7a6e81714f5c5a023eeb94892f7cf81dc3cabf89a26e6a698a9",
-      "role_aware_digest": "3e8b3b50e6072e30c2fde33a23cf22ea6de23514decb18b06e3c74550438d86b"
+      "content_identity": "sha256:f4b35051eff5cae4ff51db5107070210742b27f9de4a3a0f3f7dbb8902f61260",
+      "role_aware_digest": "792b4477c004e8c317d0f402d1735384a4c52251bda3227753f62d0b82274e45"
     },
     "release_candidate": {
       "path": "docs/architecture/formal_verification_role_aware_release_candidate.json",
@@ -5156,10 +5204,10 @@
     "production_elevation_fanin_receipt": {
       "path": "docs/architecture/formal_verification_production_elevation_fanin_receipt.json",
       "present": true,
-      "content_identity": "sha256:556345c08c0b6c9dffc3601abf142fc8bf047d041c057fce9448fe6d6421c73c",
+      "content_identity": "sha256:eaec3a0ff793d7b28f858131a6dc729f909cc08c76bd085f8afb88789ad47ca8",
       "stored_digest_valid": true,
-      "matches_live": false,
-      "live_digest_sha256": "sha256:f883faa3aa30246bdf493dc1353ca2301300c25443f3f9413cb06662344307e9"
+      "matches_live": true,
+      "live_digest_sha256": "sha256:3fb8b1efe1b8aec9ae2650026f4e3df6d86f876b01c2750c0df69d42d4697e1d"
     },
     "production_elevation_fanin_test": {
       "path": "test/integration/toolchains/test_formal_verification_production_elevation_fanin.py",
@@ -5174,7 +5222,7 @@
     "receipt_builder": {
       "path": "tools/logic/build_formal_verification_tactician_receipt.py",
       "present": true,
-      "content_identity": "sha256:c2a5a6a585d9048531224e040ba8f1fa9d6ac48a4781dc3eb9650839a2fa26ea"
+      "content_identity": "sha256:e5c5160c2b3cd4635a6766ed42fea6073d6beb0049fb4b841c4f41895d2b9c9d"
     }
   },
   "claims": {
@@ -5188,23 +5236,18 @@
   "disclosures": {
     "unavailable_tools": [],
     "merely_usable_tools": [
-      "datalog-authorization",
       "ergoai",
       "java",
       "maude",
       "opam",
       "runtime-mtl-external",
       "secpal",
-      "secpal-authorization",
       "souffle",
       "stack",
       "symbolicai",
       "temurin-jdk"
     ],
-    "missing_required_elevations": [
-      "datalog-authorization",
-      "secpal-authorization"
-    ],
+    "missing_required_elevations": [],
     "supported_managed_capability_blockers": [],
     "supported_managed_dependency_blockers": [],
     "assurance_ceilings": {
@@ -5243,5 +5286,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "candidate_identity": "sha256:16347d911b4d4affd149da23c80fe1b381e13a63dd69a329a973f5ba864a73fe"
+  "candidate_identity": "sha256:c98f30cd5dfebdfa4d4a900225bda270ade2f63303fac0d2b4ea6fd61a4ab5b4"
 }

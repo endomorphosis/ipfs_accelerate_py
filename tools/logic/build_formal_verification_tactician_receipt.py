@@ -362,6 +362,10 @@ RELEASE_CANDIDATE_ATTESTATION_PATHS: Final[frozenset[str]] = frozenset(
         DEFAULT_RELEASE_CANDIDATE_RELATIVE.as_posix(),
         "docs/architecture/formal_verification_toolchain_certificate.json",
         DEFAULT_PRODUCTION_ELEVATION_FANIN_RECEIPT_RELATIVE.as_posix(),
+        # Checked vendor install receipts that the elevation fan-in joins.
+        "docs/architecture/formal_verification_authorization_vendor_install_receipt.json",
+        "docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json",
+        "docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json",
     }
 )
 
