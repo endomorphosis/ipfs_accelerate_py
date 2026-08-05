@@ -709,9 +709,30 @@ def test_platform_audit_binds_exact_nonproduction_semantic_artifact(
         ]["artifacts"]
         if artifact.get("kind") == "semantic_executable"
     )
-    assert audit["non_production_artifact_omissions"] == []
+    # Hermetic Runtime MTL external shims never promote. When the live path is
+    # redacted (sealed private-HOME validation) or deleted after semantic
+    # binding, the platform audit discloses the exact non-production omission
+    # instead of inventing a live managed authority. A resolvable approved
+    # path yields an empty omission list. Either shape keeps the audit valid.
     runtime_tool = _tools(certificate)["runtime-mtl-external"]
     assert runtime_tool["production_certified"] is False
+    omissions = audit["non_production_artifact_omissions"]
+    if omissions:
+        assert all(
+            omission.get("tool_id") == "runtime-mtl-external"
+            and omission.get("lane_id") == "runtime_mtl_external"
+            and omission.get("kind") == "semantic_executable"
+            and omission.get("artifact_class") == "generated_hermetic_shim"
+            and omission.get("basis")
+            == (
+                "exact_non_production_semantic_lane_binding_"
+                "without_live_managed_authority"
+            )
+            and omission.get("sha256") == semantic_artifact.get("sha256")
+            for omission in omissions
+        )
+    else:
+        assert omissions == []
 
     forged_semantic = copy.deepcopy(certificate)
     forged_runtime = _tools(forged_semantic)["runtime-mtl-external"]
@@ -801,8 +822,19 @@ def test_platform_audit_binds_exact_nonproduction_semantic_artifact(
         role_aware_certificate=stale_lane,
     )
     stale_lane_audit = checked_stale_lane["platform_support_audit"]
-    assert stale_lane_audit["valid"] is True
-    assert stale_lane_audit["live_artifact_failures"] == []
+    # Non-production omission binding requires an independently certified
+    # non-production semantic lane. When the hermetic shim is redacted and
+    # that certified binding is revoked, the redacted path fails closed as a
+    # live identity failure. A resolvable live path remains valid.
+    if omissions:
+        assert stale_lane_audit["valid"] is False
+        assert (
+            "runtime-mtl-external:artifact_live_identity_unavailable"
+            in stale_lane_audit["live_artifact_failures"]
+        )
+    else:
+        assert stale_lane_audit["valid"] is True
+        assert stale_lane_audit["live_artifact_failures"] == []
 
     for mutation in ("missing", "duplicate"):
         forged_population = copy.deepcopy(certificate)
@@ -1266,16 +1298,38 @@ def test_supported_missing_tools_block_rather_than_exception(
     managed = certificate["managed_deployment_readiness"]
     blockers = {row["tool_id"] for row in managed["all_blockers"]}
     exceptions = {row["tool_id"] for row in managed["platform_exceptions"]}
-    # Hyperproperty engines are supported managed capabilities that remain
-    # installation/live-cert blockers when evidence is incomplete.
+    tools = _tools(certificate)
+    # Hyperproperty engines are supported managed capabilities. Incomplete
+    # installation/live-cert evidence must block readiness; successful
+    # checked-vendor certification may clear the per-tool blocker without
+    # promoting them through a platform-exception escape hatch.
     for tool_id in ("hyperltl", "autohyper", "mchyper"):
         if tool_id in {
             row["tool_id"]
             for row in managed["platform_rows"]
             if row["managed"] and row["supported"]
         }:
-            assert tool_id in blockers or managed["ready"] is True
             assert tool_id not in exceptions
+            tool = tools.get(tool_id) or {}
+            complete = bool(
+                tool.get("installed") is True
+                and tool.get("production_certified") is True
+                and {
+                    "positive",
+                    "negative",
+                    "mutation",
+                    "replay",
+                }
+                <= {
+                    str(check.get("kind") or "")
+                    for check in (tool.get("checks") or [])
+                    if str(check.get("status") or "") == "passed"
+                }
+            )
+            if complete:
+                assert tool_id not in blockers
+            else:
+                assert tool_id in blockers or managed["ready"] is True
     if not managed["ready"]:
         assert candidate["status"] == "role_aware_release_candidate_blocked"
         assert candidate["readiness_stage"] == "blocked"
@@ -1381,9 +1435,22 @@ def test_candidate_identity_does_not_read_previous_candidate_content(
 ) -> None:
     """Regeneration is independent of whatever candidate was published before."""
 
+    # Freeze source dirtiness so consecutive regenerations are not perturbed by
+    # suite-local untracked files (caches, extraction debris) that can appear
+    # while the longer validation suite is running. The property under test is
+    # independence from the previously published candidate file, not liveness
+    # of the ambient dirty tree.
+    frozen_source = builder.build_source_attestation(REPO_ROOT)
+    monkeypatch.setattr(
+        builder,
+        "build_source_attestation",
+        lambda _repo_root: copy.deepcopy(frozen_source),
+    )
+
     original_sha256_file = builder.sha256_file
     candidate_reads: list[Path] = []
     previous_digest = "sha256:" + ("1" * 64)
+    alternate_digest = "sha256:" + ("2" * 64)
 
     def first_sha256_file(path: Path) -> str | None:
         resolved = Path(path).resolve()
@@ -1396,25 +1463,28 @@ def test_candidate_identity_does_not_read_previous_candidate_content(
     first = builder.build_role_aware_release_candidate(
         repo_root=REPO_ROOT,
         observed_at="2026-08-01T00:00:00Z",
-        role_aware_certificate=certificate,
+        role_aware_certificate=copy.deepcopy(certificate),
     )
 
     def second_sha256_file(path: Path) -> str | None:
         resolved = Path(path).resolve()
         if resolved == CANDIDATE_PATH.resolve():
             candidate_reads.append(resolved)
-            return "sha256:" + ("2" * 64)
+            return alternate_digest
         return original_sha256_file(path)
 
     monkeypatch.setattr(builder, "sha256_file", second_sha256_file)
     second = builder.build_role_aware_release_candidate(
         repo_root=REPO_ROOT,
         observed_at="2026-08-01T00:00:00Z",
-        role_aware_certificate=certificate,
+        role_aware_certificate=copy.deepcopy(certificate),
     )
 
     assert candidate_reads == []
     assert first["candidate_identity"] == second["candidate_identity"]
+    serialized = json.dumps(first) + json.dumps(second)
+    assert previous_digest not in serialized
+    assert alternate_digest not in serialized
     artifact = first["artifacts"]["release_candidate"]
     assert "content_identity_before_generation" not in artifact
     assert "present_before_generation" not in artifact
@@ -1784,8 +1854,38 @@ def test_semantic_lanes_bind_canonical_receipts_and_compact_check_sets(
             assert compact_tool["tool_evidence_digest_sha256"] == (
                 certifier.content_digest(per_tool)
             )
-    assert candidate["acceptance"]["semantic_receipts_full_and_bound"] is False
-    assert "hyperltl:semantic_lane_not_run" in candidate["blockers"]
+    hyperltl_lane = next(
+        (
+            result
+            for result in certificate.get("semantic_lane_results") or []
+            if result.get("lane_id") == "hyperltl"
+        ),
+        None,
+    )
+    # A non-ran hyperltl lane blocks full semantic binding. When the sealed
+    # environment supplies the real vendor chain, the lane runs with exact
+    # compact PNMR digests and the acceptance flag is true.
+    if hyperltl_lane is None or hyperltl_lane.get("status") != "ran":
+        assert candidate["acceptance"][
+            "semantic_receipts_full_and_bound"
+        ] is False
+        assert "hyperltl:semantic_lane_not_run" in candidate["blockers"]
+    else:
+        assert candidate["acceptance"][
+            "semantic_receipts_full_and_bound"
+        ] is True
+        assert "hyperltl:semantic_lane_not_run" not in candidate["blockers"]
+        for tool_id in ("hyperltl", "autohyper", "mchyper"):
+            per_tool = (hyperltl_lane.get("per_tool") or {})[tool_id]
+            assert REQUIRED_CHECK_KINDS <= set(
+                per_tool["check_kinds_present"]
+            )
+            compact_tool = candidate_lanes["hyperltl"]["per_tool_bindings"][
+                tool_id
+            ]
+            assert compact_tool["check_set_digest_sha256"] == (
+                per_tool["check_set_digest_sha256"]
+            )
 
 
 def test_builder_constants_align_with_goal_packet(builder) -> None:
