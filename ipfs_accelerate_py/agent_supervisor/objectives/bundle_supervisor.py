@@ -4897,6 +4897,43 @@ class DynamicBundleScheduler:
             )
         except OSError:
             return False
+        # Failure cooldowns (up to hours) would still starve residual
+        # redispatch after an infrastructure fix. Clear queue backoff for
+        # residual open members so auto-finish does not wait out exponential
+        # selection cooldowns burned by prior NameError/probe failures.
+        if open_ids:
+            queue_path = lane.state_dir / "task_queue.json"
+            try:
+                queue = json.loads(queue_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                queue = None
+            if isinstance(queue, dict) and isinstance(queue.get("entries"), dict):
+                open_set = set(open_ids)
+                queue_changed = False
+                for entry in queue["entries"].values():
+                    if not isinstance(entry, dict):
+                        continue
+                    tid = str(entry.get("task_id") or "")
+                    if tid not in open_set:
+                        continue
+                    if (
+                        float(entry.get("cooldown_until") or 0) > 0
+                        or int(entry.get("consecutive_failures") or 0) > 0
+                        or int(entry.get("selection_penalty") or 0) > 0
+                    ):
+                        entry["cooldown_until"] = 0
+                        entry["consecutive_failures"] = 0
+                        entry["selection_penalty"] = 0
+                        entry["notes"] = "bundle_board_reopened_cooldown_cleared"
+                        queue_changed = True
+                if queue_changed:
+                    try:
+                        queue_path.write_text(
+                            json.dumps(queue, indent=2, sort_keys=True) + "\n",
+                            encoding="utf-8",
+                        )
+                    except OSError:
+                        pass
         return True
 
     def _reopen_runtime_todo_statuses(self, lane: BundleLaneSpec) -> bool:
