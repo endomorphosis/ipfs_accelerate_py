@@ -78,6 +78,7 @@ def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(t
             objective_scan_min_open_tasks=3,
             objective_scan_max_findings=7,
             objective_scan_cooldown_seconds=60,
+            objective_scan_exclude_paths=("data/state", "var/runtime"),
             objective_todo_vector_index_path=tmp_path / "bundles" / "todo_vector_index.json",
             objective_surplus_findings_per_goal=4,
             objective_surplus_min_terms_per_todo=2,
@@ -115,6 +116,7 @@ def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(t
     assert parsed.todo_path == tmp_path / "tasks.todo.md"
     assert parsed.state_prefix == "custom"
     assert parsed.objective_scan_max_findings == 99
+    assert parsed.objective_scan_exclude_path == ["data/state", "var/runtime"]
     assert parsed.objective_goal_migration_preview is True
     assert parsed.objective_goal_migration_batch_size == 7
     assert parsed.objective_goal_completion_gate_path == tmp_path / "completion-gate.json"
@@ -446,6 +448,51 @@ def test_persist_supervisor_scan_receipt_keeps_strategy_projection_compact(tmp_p
     assert marker not in strategy_path.read_text(encoding="utf-8")
     assert marker not in events_path.read_text(encoding="utf-8")
     assert marker in Path(state_dir / generated_projection["artifact_path"]).read_text(encoding="utf-8")
+
+
+def test_persist_supervisor_scan_receipt_deduplicates_disabled_maintenance(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    strategy_path = state_dir / "example_strategy.json"
+    events_path = state_dir / "example_supervisor_events.jsonl"
+    first = _scan_result(ScanTerminalReason.DISABLED)
+    first = RefillScanResult(
+        **{
+            **first.__dict__,
+            "scan_mode": "disabled",
+        }
+    )
+    second = RefillScanResult(
+        terminal_reason=ScanTerminalReason.DISABLED,
+        scan_mode="disabled",
+        analyzer_version=first.analyzer_version,
+        repository_id=first.repository_id,
+        tree_id="tree-changed-by-supervisor-artifacts",
+        started_at=first.finished_at + timedelta(seconds=1),
+        finished_at=first.finished_at + timedelta(seconds=2),
+    )
+
+    first_projection = persist_supervisor_scan_receipt(
+        first,
+        scan_kind="codebase",
+        state_dir=state_dir,
+        state_prefix="example",
+        strategy_path=strategy_path,
+        events_path=events_path,
+    )
+    second_projection = persist_supervisor_scan_receipt(
+        second,
+        scan_kind="codebase",
+        state_dir=state_dir,
+        state_prefix="example",
+        strategy_path=strategy_path,
+        events_path=events_path,
+    )
+
+    assert second_projection == first_projection
+    assert len(list((state_dir / "example_scan_receipts").glob("*.json"))) == 1
+    assert len(events_path.read_text(encoding="utf-8").splitlines()) == 1
 
 
 def test_goal_completion_projection_updates_strategy_and_live_status(tmp_path: Path):

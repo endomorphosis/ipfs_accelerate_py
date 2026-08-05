@@ -3760,6 +3760,10 @@ def test_supervisor_config_from_args_applies_embedding_overrides(tmp_path):
             "hallucinate_app,swissknife",
             "--objective-interoperability-component-path",
             "hallucinate_app, external/ipfs_accelerate",
+            "--objective-scan-exclude-path",
+            "data/state",
+            "--objective-scan-exclude-path",
+            "var/runtime,logs",
             "--no-worktree-reconciliation",
             "--worktree-reconciliation-max-merges",
             "3",
@@ -3815,6 +3819,11 @@ def test_supervisor_config_from_args_applies_embedding_overrides(tmp_path):
     assert config.objective_interoperability_component_paths == (
         "hallucinate_app",
         "external/ipfs_accelerate",
+    )
+    assert config.objective_scan_exclude_paths == (
+        "data/state",
+        "var/runtime",
+        "logs",
     )
 
 
@@ -13199,6 +13208,30 @@ def test_resource_claim_deferral_passes_do_not_grow_state_or_events(
     assert holder._release_implementation_resource_claims(holder_claims)
 
 
+def test_validation_cache_bookkeeping_does_not_wake_idle_daemon(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    cache_dir = repo / "shared-validation-cache"
+    cache_dir.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        validation_cache_dir=cache_dir,
+    )
+
+    before, _ = daemon._runtime_source_head()
+    (cache_dir / "single-flight.sqlite3-journal").write_bytes(b"bookkeeping")
+    after, sources = daemon._runtime_source_head()
+
+    assert sources["validation"] == []
+    assert after == before
+
+
 def test_implementation_resource_claims_preserve_disjoint_submodule_parallelism(
     tmp_path,
     monkeypatch,
@@ -22163,6 +22196,7 @@ def test_implementation_supervisor_forwards_completion_paths_and_generation_cap(
         captured["generation_max_new_work"] = (
             args.objective_generation_max_new_work
         )
+        captured["scan_exclude_path"] = args.scan_exclude_path
         return {"generated_count": 0, "task_ids": []}
 
     monkeypatch.setattr(
@@ -22182,6 +22216,7 @@ def test_implementation_supervisor_forwards_completion_paths_and_generation_cap(
             objective_path=objective_path,
             objective_scan_min_open_tasks=0,
             objective_scan_max_findings=6,
+            objective_scan_exclude_paths=("state", "var/runtime"),
             objective_goal_completion_gate_path=gate_path,
             objective_goal_completion_evidence_path=evidence_path,
             objective_persist_ast_dataset=False,
@@ -22195,7 +22230,128 @@ def test_implementation_supervisor_forwards_completion_paths_and_generation_cap(
         "evidence_path": evidence_path,
         "generation_path": state_dir.parent / "objective_generation.json",
         "generation_max_new_work": 6,
+        "scan_exclude_path": ["state", "var/runtime"],
     }
+
+
+def test_implementation_supervisor_forwards_scan_exclusions_to_completion_reconciler(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.objectives import objective_tracker
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    objective_path = repo / "objective.md"
+    objective_path.write_text(
+        "## G1 Goal\n\n- Status: provisionally_complete\n- Acceptance: criterion\n",
+        encoding="utf-8",
+    )
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Drained board\n", encoding="utf-8")
+    state_dir = repo / "state"
+    captured = {}
+
+    def capture_reconcile(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            completed_goal_ids=(),
+            completed_goal_count=0,
+            validation_results={},
+            decisions={},
+        )
+
+    monkeypatch.setattr(
+        objective_tracker,
+        "reconcile_objective_goal_completion",
+        capture_reconcile,
+    )
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            objective_path=objective_path,
+            objective_scan_exclude_paths=("state", "var/runtime"),
+        )
+    )
+
+    result = supervisor._reconcile_objective_goal_completion_artifacts(
+        objective_path=objective_path,
+    )
+
+    assert result["attempted"] is True
+    assert captured["scan_exclude_paths"] == ("state", "var/runtime")
+
+
+def test_disabled_refills_reuse_prior_identity_without_rescanning_repo(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.objectives import scan_receipts
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Drained board\n", encoding="utf-8")
+    strategy_path = state_dir / "strategy.json"
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "scan_receipts": {
+                    "objective": {
+                        "latest_attempted_scan": {
+                            "terminal_reason": "disabled",
+                            "scan_mode": "disabled",
+                            "analyzer_version": "objective-daemon-v1",
+                            "repository_id": "cached-repository",
+                            "tree_id": "cached-objective-tree",
+                            "safe_for_completion_reasoning": False,
+                        }
+                    },
+                    "codebase": {
+                        "latest_attempted_scan": {
+                            "terminal_reason": "disabled",
+                            "scan_mode": "disabled",
+                            "analyzer_version": "codebase-scan-v1",
+                            "repository_id": "cached-repository",
+                            "tree_id": "cached-codebase-tree",
+                            "safe_for_completion_reasoning": False,
+                        }
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        scan_receipts,
+        "scan_identity",
+        lambda _repo: pytest.fail("disabled refill must not rescan repository"),
+    )
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=strategy_path,
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+
+    objective = supervisor.refill_objective_backlog()
+    codebase = supervisor.refill_codebase_backlog()
+
+    assert objective.tree_id == "cached-objective-tree"
+    assert codebase.tree_id == "cached-codebase-tree"
+    assert objective.safe_for_completion_reasoning is False
+    assert codebase.safe_for_completion_reasoning is False
 
 
 def test_disabled_objective_janitor_ignores_stale_force_goal_ids(
@@ -22381,6 +22537,7 @@ def test_completion_artifact_refresh_is_explicit_argv_without_shell(
                 "python refresh_completion.py --mode docs"
             ),
             objective_goal_completion_artifact_refresh_timeout_seconds=17,
+            objective_scan_exclude_paths=("state", "var/runtime"),
         )
     )
 
@@ -22403,6 +22560,11 @@ def test_completion_artifact_refresh_is_explicit_argv_without_shell(
         captured["kwargs"]["env"]["IPFS_ACCELERATE_COMPLETION_EVIDENCE_PATH"]
         == str((state_dir / "evidence.json").resolve())
     )
+    assert json.loads(
+        captured["kwargs"]["env"][
+            "IPFS_ACCELERATE_COMPLETION_SCAN_EXCLUDE_PATHS"
+        ]
+    ) == ["state", "var/runtime"]
 
 
 def test_completion_artifact_refresh_wraps_launch_failure(tmp_path, monkeypatch):
