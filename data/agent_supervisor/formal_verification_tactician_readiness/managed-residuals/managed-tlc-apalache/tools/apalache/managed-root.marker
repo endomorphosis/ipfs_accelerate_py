@@ -1,0 +1,33 @@
+{
+  "artifact_kind": "apalache-mc",
+  "artifact_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/apalache-0.58.3/apalache-0.58.3/bin/apalache-mc",
+  "claims": {
+    "deployment_ready": false,
+    "managed_root_bound": true,
+    "theorem_authority": false
+  },
+  "deployment_identity": "fvt083-20260801-01",
+  "executable_digest_sha256": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+  "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/apalache-mc",
+  "external_prover_root_env": "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
+  "goal_id": "FVT-G235",
+  "interface": "ManagedRootMarker@1",
+  "lane_id": "managed-tlc-apalache",
+  "lock_match": true,
+  "locked_artifact_sha256": "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5",
+  "managed_root": "<managed-tool-path-redacted>/fvt083-20260801-01/provers",
+  "managed_root_approved_immutable": true,
+  "managed_root_present": true,
+  "managed_root_writable": false,
+  "marker_digest_sha256": "sha256:c32a764e954696423adc3c89e1f220a3e2e401adc5a8e93663f156a01f4ee7e1",
+  "observed_archive_sha256": "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5",
+  "observed_at": "2026-08-05T16:19:32Z",
+  "observed_payload_sha256": "bda52d2dbdbc7f6e95289a69dfe7ddeb162493ddd3501898d33ea7d1da3a8cd7",
+  "ready": true,
+  "schema_version": "formal-verification-managed-root-marker/v1",
+  "task_id": "FVT-103",
+  "tool_id": "apalache",
+  "under_approved_immutable_root": true,
+  "under_managed_root": true,
+  "version": "0.58.3"
+}

@@ -1,0 +1,257 @@
+{
+  "acceptance": {
+    "deployment_not_claimed": true,
+    "goal_id": "FVT-G235",
+    "install_receipt_bound": true,
+    "no_forged_digests": true,
+    "task_id": "FVT-103",
+    "tools_lock_matching": true,
+    "tools_under_approved_immutable_root": true
+  },
+  "claims": {
+    "deployment": false,
+    "deployment_ready": false,
+    "managed_install_lock_matching": true,
+    "role_aware_deployment_ready": false,
+    "theorem_authority": false
+  },
+  "deployment_identity": "fvt083-20260801-01",
+  "discovery": "data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-05-fvt-managed-tool-residual.md",
+  "external_prover_root_env": "IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT",
+  "goal_id": "FVT-G235",
+  "installation_phase": {
+    "download_attempted": false,
+    "immutable_root_not_mutated": true,
+    "install_attempted": false,
+    "network_used": false,
+    "reason": "Approved sealed deployment root already contains lock-matching TLC 1.8.0 and Apalache 0.58.3; residual verifies digests and runtime identity without rewriting the immutable root.",
+    "separately_invoked_acquisition": true
+  },
+  "interface": "ManagedCapabilityResidualInstall@1",
+  "lane_id": "managed-tlc-apalache",
+  "lock_binding": {
+    "apalache": {
+      "match": true,
+      "observed_archive_sha256": "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5",
+      "observed_payload_sha256": "bda52d2dbdbc7f6e95289a69dfe7ddeb162493ddd3501898d33ea7d1da3a8cd7",
+      "sha256": "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5",
+      "version": "0.58.3"
+    },
+    "tlc": {
+      "match": true,
+      "observed_sha256": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5",
+      "sha256": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5",
+      "version": "1.8.0"
+    }
+  },
+  "lock_path": "config/formal_verification_toolchains.lock.json",
+  "managed_root": "<managed-tool-path-redacted>/fvt083-20260801-01/provers",
+  "managed_root_approved_immutable": true,
+  "managed_root_present": true,
+  "managed_root_writable": false,
+  "marker_paths": {
+    "apalache": "data/agent_supervisor/formal_verification_tactician_readiness/managed-residuals/managed-tlc-apalache/tools/apalache/managed-root.marker",
+    "tlc": "data/agent_supervisor/formal_verification_tactician_readiness/managed-residuals/managed-tlc-apalache/tools/tlc/managed-root.marker"
+  },
+  "observed_at": "2026-08-05T16:19:32Z",
+  "policy": {
+    "does_not_edit_central_certificate": true,
+    "does_not_edit_deployment_receipt": true,
+    "does_not_edit_shared_lock": true,
+    "installation_is_not_semantic_certification": true,
+    "java_is_support_only": true,
+    "never_claim_deployment_ready": true,
+    "never_theorem_authority": true,
+    "no_greenwash_missing_sealed_roots": true
+  },
+  "prior_install_task_ids": [
+    "FVT-042",
+    "FVT-060",
+    "FVT-076"
+  ],
+  "program": "formal-verification-tactician/managed-tlc-apalache",
+  "receipt_digest_sha256": "sha256:a84ee795bba3e8e06eeb9c414190ffcd1c6452768994436668f3d7d023f6d198",
+  "schema_version": "formal-verification-managed-residual-install-receipt/v1",
+  "summary": {
+    "all_lock_matching": true,
+    "all_under_approved_immutable_root": true,
+    "all_under_managed_root": true,
+    "tools_blocked": [],
+    "tools_ready": [
+      "tlc",
+      "apalache"
+    ]
+  },
+  "support_tools": {
+    "java": {
+      "authority_tool": false,
+      "banner": "openjdk version \"21.0.9\" 2025-10-21 LTS\nOpenJDK Runtime Environment Zulu21.46+19-CA (build 21.0.9+10-LTS)\nOpenJDK 64-Bit Server VM Zulu21.46+19-CA (build 21.0.9+10-LTS, mixed mode, sharing)",
+      "can_promote_tla_lane": false,
+      "executable_digest_sha256": "29cd006b1db6557741e1c5c0a5d43370a25358a3b72780a2c9b1515833af89dc",
+      "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/Isabelle2025-2-linux-aarch64/Isabelle2025-2/contrib/jdk-21.0.9/arm64-linux/bin/java",
+      "grants_theorem_authority": false,
+      "major": 21,
+      "minimum_major": 17,
+      "reason_code": null,
+      "source": "argument",
+      "support_only": true,
+      "tool_id": "java",
+      "usable": true
+    }
+  },
+  "task_id": "FVT-103",
+  "tool_ids": [
+    "tlc",
+    "apalache"
+  ],
+  "tools": {
+    "apalache": {
+      "already_present": true,
+      "archive_present_under_managed_root": true,
+      "authority_tool": true,
+      "checksum_verified": true,
+      "download_attempted": false,
+      "executable_digest_sha256": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9",
+      "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/apalache-mc",
+      "grants_theorem_authority": false,
+      "identity_kind": "release_archive",
+      "install_attempted": false,
+      "installed": true,
+      "java_is_support_only": true,
+      "launcher_aliases": {
+        "apalache": {
+          "path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/apalache",
+          "sha256": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9"
+        },
+        "apalache-mc": {
+          "path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/apalache-mc",
+          "sha256": "8229bb4aaa4e7dddd22c04b79c48a1bd0b84c740b435c2afc8342fa61ae008e9"
+        }
+      },
+      "lock_match": true,
+      "locked_archive_sha256": "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5",
+      "messages": [
+        "Sealed managed Apalache install verified under approved immutable root; no reinstall mutation of immutable deployment root."
+      ],
+      "network_used": false,
+      "observed_archive_sha256": "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5",
+      "observed_payload_sha256": "bda52d2dbdbc7f6e95289a69dfe7ddeb162493ddd3501898d33ea7d1da3a8cd7",
+      "payload_digest_sha256": "bda52d2dbdbc7f6e95289a69dfe7ddeb162493ddd3501898d33ea7d1da3a8cd7",
+      "payload_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/apalache-0.58.3/apalache-0.58.3/bin/apalache-mc",
+      "phase": "sealed_managed_root_verified",
+      "pin": {
+        "artifact_url": "https://github.com/apalache-mc/apalache/releases/download/v0.58.3/apalache-0.58.3.tgz",
+        "identity_kind": "release_archive",
+        "is_checksummed": true,
+        "license": "Apache-2.0",
+        "platform": "any",
+        "schema_version": "verification-toolchain-pin/v1",
+        "sha256": "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5",
+        "source": "https://github.com/apalache-mc/apalache",
+        "tool_id": "apalache",
+        "version": "0.58.3"
+      },
+      "reason_codes": [],
+      "requested_version": "0.58.3",
+      "runtime_probe": {
+        "command": [
+          "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/apalache-mc",
+          "version"
+        ],
+        "reason_code": null,
+        "returncode": 0,
+        "usable": true,
+        "version_banner": "0.58.3"
+      },
+      "sealed_managed_root": true,
+      "selected_platform": "any",
+      "selected_version": "0.58.3",
+      "status": "available",
+      "strict": true,
+      "support_only": false,
+      "tool_id": "apalache",
+      "under_approved_immutable_root": true,
+      "under_managed_root": true,
+      "user_local": false
+    },
+    "tlc": {
+      "already_present": true,
+      "authority_tool": true,
+      "checksum_verified": true,
+      "download_attempted": false,
+      "executable_digest_sha256": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996",
+      "executable_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/tlc",
+      "grants_theorem_authority": false,
+      "identity_kind": "immutable_release_tag",
+      "install_attempted": false,
+      "installed": true,
+      "jar_digest_sha256": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5",
+      "jar_manifest_identity": {
+        "full_revision": "30cc3601321c3fc02e044d0ecb5c58d8921e18df",
+        "jar_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/tlc/1.8.0/tla2tools.jar",
+        "reason_code": null,
+        "release_tag": "v1.8.0",
+        "short_revision": "30cc360",
+        "valid": true
+      },
+      "jar_path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/tlc/1.8.0/tla2tools.jar",
+      "java_is_support_only": true,
+      "launcher_aliases": {
+        "tlc": {
+          "path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/tlc",
+          "sha256": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996"
+        },
+        "tlc2": {
+          "path": "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/tlc2",
+          "sha256": "11f1e33ce897c55bcdd4ce5967a4dba488b05ec2564972e5cde0b01d72384996"
+        }
+      },
+      "lock_match": true,
+      "locked_sha256": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5",
+      "messages": [
+        "Sealed managed TLC install verified lock-matching under approved immutable root; no reinstall mutation of immutable deployment root."
+      ],
+      "network_used": false,
+      "observed_sha256": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5",
+      "phase": "sealed_managed_root_verified",
+      "pin": {
+        "artifact_url": "https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar",
+        "identity_kind": "immutable_release_tag",
+        "is_checksummed": true,
+        "license": "MIT",
+        "platform": "any",
+        "release_tag": "v1.8.0",
+        "revision": "30cc360",
+        "schema_version": "verification-toolchain-pin/v1",
+        "sha256": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5",
+        "source": "https://github.com/tlaplus/tlaplus",
+        "tool_id": "tlc",
+        "version": "1.8.0"
+      },
+      "reason_codes": [],
+      "release_tag": "v1.8.0",
+      "requested_version": "1.8.0",
+      "revision": "30cc360",
+      "runtime_probe": {
+        "command": [
+          "<managed-tool-path-redacted>/fvt083-20260801-01/provers/bin/tlc",
+          "-help"
+        ],
+        "reason_code": null,
+        "returncode": 1,
+        "usable": true
+      },
+      "sealed_managed_root": true,
+      "selected_platform": "any",
+      "selected_version": "1.8.0",
+      "status": "available",
+      "strict": true,
+      "support_only": false,
+      "tool_id": "tlc",
+      "under_approved_immutable_root": true,
+      "under_managed_root": true,
+      "user_local": false
+    }
+  },
+  "track": "managed-capability-residual"
+}
