@@ -35130,6 +35130,16 @@ class PortalImplementationDaemon:
                 )
                 continue
             checkout = (workspace / relative).resolve()
+            # When the parent already records this exact gitlink (common when
+            # the submodule merge was already up-to-date / ff-only no-op), the
+            # isolated child worktree may be absent from the publication
+            # workspace. Treating that as failure leaves residual FVT merges
+            # spinning on submodule_merge_retry_failed forever even though the
+            # target branch already has the correct gitlink.
+            current_gitlink = self._submodule_gitlink_ref(workspace, relative)
+            if current_gitlink == commit:
+                selected[relative] = commit
+                continue
             if not self._is_git_worktree(checkout):
                 failures.append(
                     {
@@ -35345,6 +35355,21 @@ class PortalImplementationDaemon:
         alignments: list[dict[str, Any]] = []
         for relative, commit in sorted(selected.items()):
             checkout = (workspace / relative).resolve()
+            # Parent gitlink already points at the isolated commit and the
+            # publication workspace may not materialize the child checkout.
+            if (
+                original_gitlinks.get(relative) == commit
+                and not self._is_git_worktree(checkout)
+            ):
+                alignments.append(
+                    {
+                        "path": relative,
+                        "commit": commit,
+                        "aligned": True,
+                        "reason": "parent_gitlink_already_published",
+                    }
+                )
+                continue
             current = subprocess.run(
                 ["git", "rev-parse", "HEAD"],
                 cwd=checkout,
