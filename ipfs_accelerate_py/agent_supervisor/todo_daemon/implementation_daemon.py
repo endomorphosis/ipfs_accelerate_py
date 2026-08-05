@@ -9127,6 +9127,33 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             if str(v).strip()
                         }
                     outputs = list(getattr(task, "outputs", []) or [])
+                    # Rewrite bare gitignored discovery directories to the
+                    # concrete discovery file so proposal force-add targets a
+                    # regular file (VOICE-ACTION-037 stall class).
+                    if is_retry:
+                        discovery_file = str(
+                            task_meta.get("retry repair discovery")
+                            or task_meta.get("retry repair discovery path")
+                            or ""
+                        ).strip()
+                        discovery_name = Path(discovery_file).name if discovery_file else ""
+                        rewritten: list[str] = []
+                        changed_outputs = False
+                        for item in outputs:
+                            path = str(item).strip().replace("\\", "/")
+                            bare_discovery = (
+                                path.rstrip("/").endswith("/discovery")
+                                or path.rstrip("/") == "discovery"
+                            ) and "/discovery/" not in path
+                            if bare_discovery and discovery_name:
+                                rewritten.append(
+                                    f"{path.rstrip('/')}/{discovery_name}"
+                                )
+                                changed_outputs = True
+                            else:
+                                rewritten.append(path)
+                        if changed_outputs:
+                            outputs = rewritten
                     predicted = [
                         p.strip()
                         for p in str(
@@ -9139,6 +9166,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         needs.append(
                             ("Predicted files", ", ".join(outputs))
                         )
+                    original_outputs = [
+                        str(p).strip().replace("\\", "/")
+                        for p in (getattr(task, "outputs", []) or [])
+                        if str(p).strip()
+                    ]
+                    if is_retry and outputs and outputs != original_outputs:
+                        needs.append(("Outputs", ", ".join(outputs)))
                     field_defaults = (
                         (
                             "Goal id",
@@ -9513,6 +9547,147 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         return {match.group(1) for match in pattern.finditer(text or "")}
 
+    def _auto_restore_submodule_only_dirty_worktrees(self) -> list[dict[str, str]]:
+        """Clear inactive worktrees whose only dirt is nested submodule checkouts.
+
+        Multi-lane runs leave `` M ipfs_accelerate_py`` (and nested datasets/kit
+        pins) on abandoned rescue worktrees. That status is reported as
+        ``unsupported_status`` / dirty_backlogged_worktree and freezes cleanup
+        even though ``git status --ignore-submodules=dirty`` is clean. Restore
+        configured submodule gitlinks from the merge tip and drop the worktree
+        when no non-submodule dirt remains.
+        """
+
+        restored: list[dict[str, str]] = []
+        if not self.worktree_root.exists():
+            return restored
+        target = self._main_branch_name()
+        if not target:
+            return restored
+        configured = {
+            str(path).strip("/").split("/", 1)[0]
+            for path in (
+                *self.worktree_submodule_paths,
+                *self._configured_submodule_root_names(),
+            )
+            if str(path).strip("/")
+        }
+        try:
+            listed = subprocess.run(
+                ["git", "worktree", "list", "--porcelain"],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError:
+            return restored
+        if listed.returncode != 0:
+            return restored
+        current_path = ""
+        entries: list[str] = []
+        for line in listed.stdout.splitlines():
+            if line.startswith("worktree "):
+                if current_path:
+                    entries.append(current_path)
+                current_path = line[len("worktree ") :].strip()
+            elif line == "" and current_path:
+                entries.append(current_path)
+                current_path = ""
+        if current_path:
+            entries.append(current_path)
+        worktree_root = self.worktree_root.resolve()
+        for raw_path in entries:
+            if not raw_path:
+                continue
+            try:
+                path = Path(raw_path).resolve()
+            except OSError:
+                continue
+            try:
+                path.relative_to(worktree_root)
+            except ValueError:
+                continue
+            if path == self.repo_root.resolve():
+                continue
+            # Skip live active worktrees claimed by this daemon.
+            if (
+                getattr(self, "_active_worktree_path", None)
+                and Path(str(self._active_worktree_path)).resolve() == path
+            ):
+                continue
+            non_sub_dirty = self._dirty_worktree_paths_ignore_submodule_dirt(path)
+            if non_sub_dirty:
+                continue
+            full_dirty = self._dirty_worktree_paths(path)
+            if not full_dirty:
+                continue
+            # Only act when every dirty path is a configured submodule root.
+            if not all(
+                rel.split("/", 1)[0] in configured for rel in full_dirty
+            ):
+                continue
+            ok = True
+            for rel in sorted(full_dirty):
+                root = rel.split("/", 1)[0]
+                restore = subprocess.run(
+                    [
+                        "git",
+                        "restore",
+                        "--source",
+                        target,
+                        "--staged",
+                        "--worktree",
+                        "--",
+                        root,
+                    ],
+                    cwd=path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if restore.returncode != 0:
+                    restore = subprocess.run(
+                        ["git", "checkout", "-f", target, "--", root],
+                        cwd=path,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                if restore.returncode != 0:
+                    ok = False
+            remaining = self._dirty_worktree_paths(path)
+            removed = False
+            if ok and not remaining:
+                # Safe to remove abandoned rescue worktrees that are now clean.
+                remove = subprocess.run(
+                    ["git", "worktree", "remove", "--force", str(path)],
+                    cwd=self.repo_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                removed = remove.returncode == 0
+            restored.append(
+                {
+                    "path": str(path),
+                    "restored": str(ok).lower(),
+                    "removed": str(removed).lower(),
+                    "dirty_before": ",".join(sorted(full_dirty))[:300],
+                    "dirty_after": ",".join(sorted(remaining))[:300],
+                }
+            )
+        if restored:
+            self._record_event(
+                "auto_unblock_submodule_only_dirty_worktrees_restored",
+                {
+                    "target_branch": target,
+                    "restored_count": len(restored),
+                    "restored": restored[:40],
+                },
+            )
+        return restored
+
     def _auto_cleanup_completed_task_rescue_worktrees(
         self,
         tasks: Sequence[PortalTask],
@@ -9872,6 +10047,46 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     }
                 )
                 continue
+            # Dirty worktrees whose sample only shows submodule pin noise
+            # (`` M ipfs_accelerate_py`` / status ``?``) are cleaned by
+            # ``_auto_restore_submodule_only_dirty_worktrees``; retire the
+            # operator card once evidence is submodule-only.
+            if recon_kind in {
+                "dirty_backlogged_worktree",
+                "unsupported_status",
+            } or "unsupported_status" in haystack.lower():
+                lowered_ev = evidence.lower()
+                submodule_markers = (
+                    "ipfs_accelerate_py",
+                    "ipfs_datasets_py",
+                    "ipfs_kit_py",
+                    "status: ` ? ",
+                    "status: ` m ",
+                    " m ipfs_",
+                    " ? ipfs_",
+                )
+                has_submodule_noise = any(
+                    marker in lowered_ev for marker in submodule_markers
+                )
+                has_real_conflict = any(
+                    marker in lowered_ev
+                    for marker in (
+                        "conflict paths:",
+                        "uu ",
+                        "both modified",
+                        "unmerged",
+                    )
+                )
+                if has_submodule_noise and not has_real_conflict:
+                    retire.append(task.task_id)
+                    details.append(
+                        {
+                            "task_id": task.task_id,
+                            "reason": "submodule_only_dirty_worktree_noise",
+                            "referenced_completed": "",
+                        }
+                    )
+                    continue
             if not referenced:
                 continue
             incomplete_refs = sorted(referenced.intersection(open_ids))
@@ -10180,6 +10395,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "attempt_budget_resets": [],
             "completed_task_worktrees_cleaned": [],
             "host_dirt_restored": [],
+            "submodule_only_worktrees_restored": [],
             "stale_reconciliation_retired": [],
             "dead_lifecycle_owners_reclaimed": [],
             "stale_task_claims_released": [],
@@ -10212,6 +10428,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         except Exception as exc:
             result["host_dirt_error"] = f"{type(exc).__name__}: {exc}"[-300:]
+        try:
+            result["submodule_only_worktrees_restored"] = (
+                self._auto_restore_submodule_only_dirty_worktrees()
+            )
+        except Exception as exc:
+            result["submodule_only_worktree_error"] = (
+                f"{type(exc).__name__}: {exc}"[-300:]
+            )
         try:
             # Heal board metadata before infra releases so preflight/start can
             # succeed after generated repair/recon cards land incomplete.
@@ -10323,6 +10547,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "attempt_budget_resets",
                 "completed_task_worktrees_cleaned",
                 "host_dirt_restored",
+                "submodule_only_worktrees_restored",
                 "stale_reconciliation_retired",
                 "dead_lifecycle_owners_reclaimed",
                 "stale_task_claims_released",
@@ -31052,9 +31277,22 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             regular_file = bool(
                 exists and target.is_file() and not target.is_symlink()
             )
+            is_directory = bool(
+                exists and target.is_dir() and not target.is_symlink()
+            )
             needs_candidate = not baseline_present
+            # Directory/glob declarations are scope prefixes only — never
+            # force-add targets. Retry-budget repairs historically listed the
+            # discovery *directory* (gitignored under data/*); requiring
+            # force-add of that directory burned attempt budget forever with
+            # expected_output_force_add_forbidden while real product files
+            # were already staged under the prefix.
             force_stage_required = bool(
-                needs_candidate and ignored and not indexed
+                needs_candidate
+                and ignored
+                and not indexed
+                and regular_file
+                and not is_directory
             )
             force_stage_attempted = False
             force_stage_succeeded = False
@@ -31111,6 +31349,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "submodule_bound": submodule_bound,
                     "symlink_bound": symlink_bound,
                     "regular_file": regular_file,
+                    "is_directory": is_directory,
                     "needs_candidate": needs_candidate,
                     "force_stage_required": force_stage_required,
                     "force_stage_attempted": force_stage_attempted,
@@ -31209,20 +31448,31 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 reason = ""
             represented = any(
                 self._path_matches_scope(path, relative)
+                or self._path_matches_prefix(path, relative)
                 for path in changed
             )
-            if (
-                not reason
-                and raw_check.get("needs_candidate") is True
-                and not represented
-            ):
-                reason = EXPECTED_OUTPUT_ABSENT_FROM_PROPOSAL
-            if (
-                not reason
-                and raw_check.get("force_stage_required") is True
-                and raw_check.get("staged") is not True
-            ):
-                reason = EXPECTED_OUTPUT_IGNORED_OR_UNSTAGED
+            is_directory = raw_check.get("is_directory") is True
+            # Directory outputs are scope prefixes (e.g. discovery folders under
+            # data/*). When the directory exists, require only that some child
+            # path appears in the candidate — never force-add the directory.
+            if is_directory and raw_check.get("exists") is True:
+                if not represented and raw_check.get("needs_candidate") is True:
+                    # Still missing any child materialization.
+                    reason = reason or EXPECTED_OUTPUT_ABSENT_FROM_PROPOSAL
+                # Do not fall through to force-stage checks for directories.
+            else:
+                if (
+                    not reason
+                    and raw_check.get("needs_candidate") is True
+                    and not represented
+                ):
+                    reason = EXPECTED_OUTPUT_ABSENT_FROM_PROPOSAL
+                if (
+                    not reason
+                    and raw_check.get("force_stage_required") is True
+                    and raw_check.get("staged") is not True
+                ):
+                    reason = EXPECTED_OUTPUT_IGNORED_OR_UNSTAGED
             if reason:
                 issues.append({"path": relative, "reason": reason})
         return tuple(

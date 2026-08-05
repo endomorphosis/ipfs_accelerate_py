@@ -793,3 +793,58 @@ def test_expected_output_preflight_compares_filesystem_proposal_and_stage(
     assert checks["src.py"]["ignored"] is False
     assert checks["src.py"]["force_stage_required"] is False
     assert not any(item.get("issue") for item in preflight["checks"])
+
+
+def test_expected_output_directory_not_force_add_forbidden(
+    tmp_path: Path,
+) -> None:
+    """Ignored discovery *directories* are scope prefixes, not force-add leaves.
+
+    Retry-budget repairs historically listed ``data/.../discovery`` as an
+    Output. Force-adding a directory is impossible and used to burn attempt
+    budget with ``expected_output_force_add_forbidden`` forever.
+    """
+
+    repo = _init_repo(tmp_path / "repo")
+    (repo / ".gitignore").write_text("data/*\n", encoding="utf-8")
+    (repo / "src.py").write_text("X = 0\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore", "src.py")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (repo / "src.py").write_text("X = 1\n", encoding="utf-8")
+    discovery = repo / "data" / "voice" / "discovery"
+    discovery.mkdir(parents=True)
+    (discovery / "repair.md").write_text("ok\n", encoding="utf-8")
+    daemon = _daemon(repo)
+    task = _proposal_task(
+        "FVT-DIR-A",
+        "src.py",
+        "data/voice/discovery",
+        "data/voice/discovery/repair.md",
+    )
+
+    preflight = daemon._prepare_proposal_expected_outputs(
+        repo,
+        task,
+        baseline_ref=baseline,
+        scope_paths=(
+            "src.py",
+            "data/voice/discovery",
+            "data/voice/discovery/repair.md",
+        ),
+    )
+    checks = {item["path"]: item for item in preflight["checks"]}
+    assert checks["data/voice/discovery"]["is_directory"] is True
+    assert checks["data/voice/discovery"]["force_stage_required"] is False
+    assert checks["data/voice/discovery"]["issue"] == ""
+    assert checks["data/voice/discovery/repair.md"]["regular_file"] is True
+    issues = daemon._proposal_expected_output_issues(
+        preflight,
+        changed_paths=[
+            "src.py",
+            "data/voice/discovery/repair.md",
+        ],
+    )
+    assert not any(
+        item["path"] == "data/voice/discovery" for item in issues
+    ), issues

@@ -6448,6 +6448,54 @@ def _focused_npm_playwright_retry_command(
     return " && ".join(rendered_clauses)
 
 
+def _retry_discovery_output_paths(
+    discovery_path: Path,
+    discovery_output_path: str,
+) -> list[str]:
+    """Prefer the concrete discovery file over a bare discovery directory.
+
+    Listing only the gitignored discovery directory as an Output makes the
+    proposal gate try to force-add a non-file path and reject the attempt with
+    ``expected_output_force_add_forbidden``, burning the repair budget.
+    """
+
+    paths: list[str] = []
+    directory = str(discovery_output_path or "").strip().replace("\\", "/")
+    while directory.startswith("./"):
+        directory = directory[2:]
+    directory = directory.rstrip("/")
+    name = Path(str(discovery_path or "")).name.strip()
+    if directory and name:
+        paths.append(f"{directory}/{name}")
+    elif directory:
+        paths.append(directory)
+    elif name:
+        paths.append(name)
+    return paths
+
+
+def _drop_bare_discovery_directory_outputs(outputs: Sequence[str]) -> list[str]:
+    """Remove bare ``.../discovery`` dirs when a concrete file under them exists."""
+
+    normalized = [str(p).strip().replace("\\", "/") for p in outputs if str(p).strip()]
+    concrete_under_discovery = [
+        p
+        for p in normalized
+        if "/discovery/" in p
+    ]
+    if not concrete_under_discovery:
+        return normalized
+    return [
+        p
+        for p in normalized
+        if not (
+            p.rstrip("/").endswith("/discovery")
+            or p.rstrip("/") == "discovery"
+        )
+        or "/discovery/" in p
+    ]
+
+
 def validation_retry_task_block(
     *,
     task_id: str,
@@ -6460,8 +6508,13 @@ def validation_retry_task_block(
     launch_playwright_validation_gate: bool = False,
 ) -> str:
     outputs = list(getattr(source_task, "outputs", []) or [])
-    if discovery_output_path not in outputs:
-        outputs.append(discovery_output_path)
+    for path in _retry_discovery_output_paths(
+        discovery_path,
+        discovery_output_path,
+    ):
+        if path not in outputs:
+            outputs.append(path)
+    outputs = _drop_bare_discovery_directory_outputs(outputs)
     exact_failure_paths = _bounded_validation_failure_paths(
         failed_test_paths
     )
@@ -6683,8 +6736,13 @@ def implementation_retry_task_block(
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
 ) -> str:
     outputs = list(getattr(source_task, "outputs", []) or [])
-    if discovery_output_path not in outputs:
-        outputs.append(discovery_output_path)
+    for path in _retry_discovery_output_paths(
+        discovery_path,
+        discovery_output_path,
+    ):
+        if path not in outputs:
+            outputs.append(path)
+    outputs = _drop_bare_discovery_directory_outputs(outputs)
     validation_command = f"test -f {shlex.quote(str(discovery_path))}"
     execution_metadata = retry_task_execution_metadata(
         source_task,
@@ -6732,8 +6790,12 @@ def merge_retry_task_block(
     # durable write scope is the discovery output only; inheriting the source
     # implementation paths makes strict parallel-board validation treat the
     # strategy-blocked source and its repair as concurrent writers. Keep
-    # predicted files identical to outputs for plan preflight.
-    outputs = [discovery_output_path]
+    # predicted files identical to outputs for plan preflight. Prefer the
+    # concrete discovery file so proposal force-add never targets a directory.
+    outputs = _retry_discovery_output_paths(
+        discovery_path,
+        discovery_output_path,
+    ) or [discovery_output_path]
     validation_command = f"test -f {shlex.quote(str(discovery_path))}"
     execution_metadata = retry_task_execution_metadata(
         source_task,
