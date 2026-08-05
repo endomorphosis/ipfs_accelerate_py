@@ -6,7 +6,7 @@ tranche.
 
 ## ANALYSIS-CONTRACT-001 Define bounded analysis evidence contracts
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: analysis-contracts
